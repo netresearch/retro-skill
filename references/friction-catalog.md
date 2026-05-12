@@ -1,6 +1,29 @@
 # Friction Catalog
 
-All friction signals retro-skill detects, organized in three layers (Schichten) by detection mechanism.
+All friction signals retro-skill detects, organized in four layers (Schichten) by detection mechanism and a fifth (constitutional) for cross-session architectural analysis.
+
+## Scope and honest limitations
+
+This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, and cross-session JSONL/Coach data.
+
+**It does NOT detect:**
+- Architectural choices that are wrong but "work" (no friction signal)
+- External feedback the agent never saw (production alerts, customer complaints, Slack/Jira mentions)
+- Slow constitutional drift unless `/retro audit` mode is run with sufficient history
+
+External-feedback ingestion (Sentry, Jira, monitoring) is out of v0.1 scope — see "Future directions" at the bottom.
+
+## Implementation status (v0.1.1)
+
+| Schicht | Catalog signals | Implemented in code |
+|---|---|---|
+| A — Mechanical | 18 | 13 (A1, A2, A3, A6, A7, A8, A9, A10, A12, A14, A15, A16, A17) |
+| B — LLM inference | 14 | LLM-driven (no separate code) |
+| C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
+| D — Outcome | 10 | Planned for v0.1.x |
+| E — Constitutional (audit) | 6 | Planned for v0.1.x |
+
+A4, A5, A11, A13, A18 are catalogued but deferred to a follow-up release. See `references/destination-taxonomy.md` for what each signal class routes to.
 
 ## Schicht A — Mechanical (Python pre-pass)
 
@@ -58,10 +81,65 @@ Not detectable from a single session. Optional Coach-events read; otherwise sess
 | C2 | Cross-project pattern | Same friction class in N≥2 projects | Multi-session JSONL grouped by project |
 | C3 | Memory drift | `feedback_*.md` exists but assistant violated it anyway → skill needs it more prominently | JSONL diff against memory files |
 | C4 | Skill update ineffective | Previous PR to skill X, same bug returned afterward | Git log of skill repo + JSONL |
+| C5 | Follow-up-fix session | A later session exists primarily to fix what an earlier session broke (mentions earlier commits, works on same files within 7 days with reverting edits, or `git revert` of earlier commits) | Cross-session JSONL + git log |
+
+## Schicht D — Outcome (Post-Session, requires latency)
+
+What happened to the session's output **after** it left the session? These signals require waiting (days to weeks) before they become reliable. Best run periodically via `/retro outcome --since 30d`, not at session end.
+
+| # | Signal | Detection | Hint at |
+|---|---|---|---|
+| D1 | Session commit reverted | `git log --grep="revert" + ($commit_sha within revert body)` | Output was wrong |
+| D2 | Session commit superseded | Same file touched again within 7 days, diff shows substantial revert of session's changes | Output unfinished or wrong direction |
+| D3 | Session PR closed without merge | `gh pr view --json closedAt,merged,state` shows closed, not merged | Output rejected |
+| D4 | Session PR required major changes | `gh pr view --json reviews` has CHANGES_REQUESTED with substantive review body | Output below standard |
+| D5 | CI failed on session commit | `gh run list --commit $sha --json conclusion` | Output was broken |
+| D6 | Issue filed referencing session files | `gh issue list --search "filename after:$session_date"` | Output caused a bug |
+| D7 | Follow-up session detected | Schicht C5 cross-referenced from outcome perspective | Session output didn't last |
+| D8 | Regression in test suite | Test that passed at session end now fails on a later commit | Output regressed |
+| D9 | Code reverted in same file within 30 days | Diff-based: session's net contribution to file is largely undone | Output not durable |
+| D10 | External tracker mention (out-of-scope marker) | Issue/PR/Slack reference using session commit/PR ID (requires external integration; v0.2+) | Output had external impact |
+
+### When NOT to use Schicht D
+
+- Session is too recent (< 24h) — most D signals haven't had time to manifest
+- Session was a refactor or doc-only change — D2/D9 fire spuriously
+- Working on a long-lived feature branch — `git log --grep="revert"` is noisy
+
+D mode is best for **monthly retros over a 30-day window**, not real-time.
+
+## Schicht E — Constitutional (Audit mode only)
+
+Cross-session architectural patterns. Detectable only with longer horizon (weeks/months). Output class is "architectural finding", not "friction finding" — different severity logic, different destinations (often `project-rule` + ADR update, not `skill-update`).
+
+| # | Signal | Detection | Hint at |
+|---|---|---|---|
+| E1 | ADR violation pattern | Active ADRs declare X; recent N sessions violated X | Design erosion |
+| E2 | AGENTS.md rule compliance trend | `feedback_*.md` files exist but sessions repeatedly violate them | Rules aren't reaching the agent |
+| E3 | Test coverage trend | Coverage over recent commits trending down | Regression in quality discipline |
+| E4 | Skill-inventory drift | Skill count growing without corresponding scope; redundant skills present | Bloat / fragmentation |
+| E5 | Dependency staleness trend | Outdated-tool warnings (A16) recurring across sessions | Library maintenance gap |
+| E6 | Convention divergence | Style/naming patterns diverging across recent commits | Onboarding or review gap |
+
+E mode is best for **monthly or quarterly reviews**, with tech-lead-level actor and ADR-style output (not per-developer per-session).
+
+## Future directions (out of v0.1.x scope)
+
+External-feedback ingestion would extend the catalog significantly:
+
+- **Sentry / error tracker integration** — production crashes correlated to session-touched files
+- **Jira / Linear bug filings** — tickets mentioning session output
+- **Slack / Matrix mentions** — customer/team feedback referencing session commits
+- **PagerDuty / OnCall** — production incidents correlated to session output
+- **Documentation drift detection** — docs changed but corresponding code didn't (or vice versa)
+
+Each source needs an integration. Track interest before implementing.
 
 ## Notes
 
 - **Pre-pass output is structured JSON** consumed by the LLM in Schicht B. The LLM doesn't re-scan the transcript for A-signals.
 - **False positives are expected** in Schicht A; B filters them.
 - **Schicht C is optional**. Absence of Coach data triggers JSONL fallback; absence of multi-session history just means C-signals stay empty.
+- **Schicht D requires latency.** Don't run at session end; run monthly with `--since 30d`.
+- **Schicht E (audit mode) requires longer horizon.** Quarterly cadence; tech-lead actor.
 - **Severity grading happens during classification**, not detection. A single A1 (tool error) might be trivial or critical depending on context — the LLM decides during enrichment.

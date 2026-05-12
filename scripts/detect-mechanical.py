@@ -86,8 +86,8 @@ def extract_user_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
     return out
 
 
-def extract_tool_uses(events: Iterable[dict]) -> list[tuple[int, str, dict, str]]:
-    """Yield (event_index, tool_name, input, result_text)."""
+def extract_tool_uses(events: Iterable[dict]) -> list[tuple[int, str, dict, str, bool]]:
+    """Yield (event_index, tool_name, input, result_text, is_error)."""
     out = []
     tool_uses_pending: dict[str, tuple[int, str, dict]] = {}
     for i, ev in enumerate(events):

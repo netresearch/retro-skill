@@ -1,13 +1,13 @@
 ---
 name: retro
-description: "Use at end of a Claude Code session, or on-demand for specific issues, to detect friction patterns in the conversation and materialize learnings into the correct destination (user memory, project rules, skill PRs, checkpoints, or harness artefacts). Triggers: /retro command, 'retrospective', 'review the session', 'fix this skill', 'we keep hitting this'."
+description: "Use at end of a Claude Code session, on-demand for specific issues, or periodically for cross-session audits, to detect friction patterns and materialize learnings into the correct destination (user memory, project rules, skill PRs, checkpoints, or harness artefacts). Triggers: /retro command, 'retrospective', 'review the session', 'fix this skill', 'we keep hitting this', 'audit the architecture'."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
-compatibility: "Requires python3 (mechanical pre-pass + cross-session scan), gh and/or glab for PR creation."
+compatibility: "Requires python3 (pre-pass + cross-session scan), jq (skill discovery + manifest parsing), gh and/or glab (PR creation)."
 metadata:
   author: Netresearch DTT GmbH
-  version: "0.1.0"
+  version: "0.1.1"
   repository: https://github.com/netresearch/retro-skill
-allowed-tools: Bash(python3:*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) Bash(grep:*) Bash(jq:*) Read Write Edit Glob Grep Agent
+allowed-tools: Bash(python3:*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) Bash(grep:*) Bash(jq:*) Read Write Edit Glob Grep Task
 ---
 
 # Retro — LLM-driven Session Retrospection
@@ -24,8 +24,25 @@ Analyze the entire current session. Returns ≤10 actionable proposals grouped b
 ### `/retro "<problem>"` — Spotlight
 Focus on a specific issue described in the argument. Returns proposals only for that issue. Use mid-session for direct fixes (e.g. "the assistant kept forgetting we use bun, not npm").
 
+### `/retro outcome [session-id|--since N]` — Outcome (Schicht D)
+Replay a past session through the lens of what happened to its output afterwards. Detects: commits reverted, PRs rejected, CI failures, follow-up sessions fixing earlier work, issues filed referencing session files. Use periodically (e.g. monthly) or when you suspect a past decision was wrong.
+
+### `/retro audit [--scope project|repo|skill]` — Constitutional audit
+Cross-session architectural review with a longer horizon (weeks/months). Detects design drift, convention erosion, and patterns that don't manifest as per-session friction but accumulate over time. Same skill, broader window. Use when you want a "is the system on track?" health check, not a "what went wrong this session?" view.
+
 ### Auto (off by default)
 Optional SessionEnd hook (`hooks/session-end.json`). Activate per user opt-in. Skips trivial sessions via length heuristic.
+
+## Honest limitations
+
+retro-skill detects friction **observable in or near the session**. It does **not** detect:
+
+- **Silent badness:** architectural choices that "work" but are wrong — these don't generate friction signals.
+- **External signals:** customer complaints, production alerts, Slack/Jira/Sentry feedback. Out of scope; document via `external-feedback` integration if needed.
+- **Constitutional drift over time** *without* `audit` mode: per-session retro can't see slow erosion.
+- **Outcomes the agent never saw:** unless the work was reverted, the PR rejected, or a follow-up session occurred, retro-skill is blind to "the customer hated it but no one told us".
+
+For these, run `/retro outcome` (post-hoc) or `/retro audit` (cross-session). External-feedback ingestion is a future direction.
 
 ## Workflow
 
@@ -33,7 +50,11 @@ Optional SessionEnd hook (`hooks/session-end.json`). Activate per user opt-in. S
 
 2. **LLM enrichment** — Read pre-pass output + relevant transcript excerpts. Add inferential signals (skill capability gaps, wrong skill choice, hallucinations, convention violations, missing skills, repeated mistakes, assumption-without-asking, doc drift). Filter false positives.
 
-3. **Cross-session enrichment (optional)** — If `~/.claude-coach/events.sqlite` present, query for related events. Otherwise scan `~/.claude/projects/<slug>/*.jsonl` for similar friction. Detects: same-friction-again, cross-project patterns, memory drift, ineffective skill updates.
+3. **Cross-session enrichment (optional)** — If `~/.claude-coach/events.sqlite` present, query for related events. Otherwise scan `~/.claude/projects/<slug>/*.jsonl` for similar friction. Detects: same-friction-again, cross-project patterns, memory drift, ineffective skill updates, follow-up-fix sessions.
+
+3b. **Outcome enrichment (Schicht D — only in `/retro outcome` mode)** — Walk forward from session end: `git log` for revert/amend/supersede on session commits, `gh pr view` for session PRs (closed without merge? major changes requested?), CI history, follow-up sessions referencing this one. Detects: rejected output, retrospective errors, decisions that didn't survive contact with reality.
+
+3c. **Constitutional analysis (only in `/retro audit` mode)** — Cross-session architectural patterns vs declared design: ADR adherence, AGENTS.md rule compliance over recent sessions, coverage trends, skill-inventory drift. Different output class (architectural findings, not friction findings).
 
 4. **Classification** — Per finding, map to 1 of 6 destinations using `references/classification-heuristic.md`.
 

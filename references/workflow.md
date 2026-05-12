@@ -33,13 +33,38 @@ Examples:
 /retro "git push failed because we missed phpstan"
 ```
 
+### Outcome — `/retro outcome [session-id|--since N]`
+
+Replay a past session through the lens of what happened to its output afterwards.
+
+```
+Input: past session id (or all sessions within --since window)
+Output: Schicht D findings (commits reverted, PRs rejected, etc.) for that session
+Use case: monthly look-back at decisions that didn't survive contact with reality
+```
+
+Requires latency. Don't run within 24h of the session. Best run with `--since 30d` for the previous month.
+
+### Audit — `/retro audit [--scope project|repo|skill]`
+
+Constitutional review: cross-session architectural patterns vs declared design.
+
+```
+Input: scope (which project / repo / skill to audit)
+Output: Schicht E findings (architectural drift, convention erosion, ADR violations)
+Use case: quarterly or monthly system health check
+```
+
+Different output class from per-session retro. Destinations typically include ADR creation/update (via project-rule).
+
 ### Auto — SessionEnd hook (off by default)
 
 Optional automated trigger. Activate by copying `hooks/session-end.json` to `~/.claude/hooks/` or `<project>/.claude/hooks/`.
 
 ```
 Trigger: SessionEnd event
-Behavior: Prints reminder to run /retro if session was non-trivial (>1000 words)
+Behavior: Prints reminder to run /retro if session was non-trivial (>1000 words).
+          Reads transcript_path from stdin JSON (the SessionEnd hook input format).
 Use case: developers who want a nudge after long sessions
 ```
 
@@ -47,7 +72,7 @@ Currently the hook only prints a reminder; invoking slash commands from hooks va
 
 ## Shared pipeline
 
-All three modes use the same underlying flow:
+All five modes use the same underlying flow (with mode-specific Schicht selection):
 
 ```
 1. Mechanical pre-pass (Schicht A)
@@ -65,13 +90,15 @@ All three modes use the same underlying flow:
 
 Differences between modes:
 
-| Phase | Sweep | Spotlight | Auto |
-|---|---|---|---|
-| 1 (mechanical) | Full transcript | Last N turns or argument-matched | Full transcript |
-| 2 (LLM enrich) | Full transcript | Argument-focused | Full transcript |
-| 3 (cross-session) | Yes | Yes (filtered) | Yes |
-| 4-10 | Same | Same (fewer findings) | Same |
-| 11 (report) | Detailed | Targeted | Detailed |
+| Phase | Sweep | Spotlight | Outcome | Audit | Auto |
+|---|---|---|---|---|---|
+| 1 (mechanical A) | Full transcript | Argument-filtered turns | Skipped (past session) | Skipped | Full transcript |
+| 2 (LLM enrich B) | Full transcript | Argument-focused | Past session highlights | Cross-session prose | Full transcript |
+| 3 (cross-session C) | Yes | Yes (filtered) | Yes | Yes (wider window) | Yes |
+| 3b (outcome D) | No | No | **Primary** | Some | No |
+| 3c (constitutional E) | No | No | No | **Primary** | No |
+| 4-10 | Same | Same (fewer findings) | D-focused | E-focused | Same |
+| 11 (report) | Detailed | Targeted | Outcome-table | Architectural-table | Reminder only |
 
 ## Efficiency targets
 

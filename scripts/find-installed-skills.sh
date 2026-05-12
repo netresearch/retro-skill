@@ -11,9 +11,35 @@
 
 set -euo pipefail
 
-PROJECT_DIR="${1:-}"
-if [ "${1:-}" = "--project" ] && [ -n "${2:-}" ]; then
-  PROJECT_DIR="$2"
+# Hard dependency on jq: every value is JSON-escaped via `jq -Rs .`. Without jq
+# the output would be malformed JSON which downstream consumers cannot handle.
+if ! command -v jq >/dev/null 2>&1; then
+  echo "[]"
+  exit 0
+fi
+
+PROJECT_DIR=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --project)
+      PROJECT_DIR="${2:-}"
+      [ -n "$PROJECT_DIR" ] || { echo "find-installed-skills.sh: --project requires a path" >&2; exit 2; }
+      shift 2
+      ;;
+    --help|-h)
+      echo "Usage: $0 [--project <path>] [<path>]"
+      exit 0
+      ;;
+    *)
+      PROJECT_DIR="$1"
+      shift
+      ;;
+  esac
+done
+
+if [ -n "$PROJECT_DIR" ] && [ ! -d "$PROJECT_DIR" ]; then
+  echo "find-installed-skills.sh: project path does not exist: $PROJECT_DIR" >&2
+  PROJECT_DIR=""
 fi
 
 CLAUDE_HOME="${CLAUDE_HOME:-$HOME/.claude}"
