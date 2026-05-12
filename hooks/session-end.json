@@ -8,7 +8,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'input=$(cat); tp=$(printf \"%s\" \"$input\" | jq -r \".transcript_path // empty\" 2>/dev/null); [ -z \"$tp\" ] || [ ! -r \"$tp\" ] && exit 0; tokens=$(wc -w < \"$tp\" 2>/dev/null || echo 0); if [ \"${tokens:-0}\" -gt 1000 ]; then printf \"Session was non-trivial (%s words). Run /retro to extract learnings.\\n\" \"$tokens\"; fi'"
+            "command": "bash -c 'tp=$(jq -r \".transcript_path // empty\" 2>/dev/null); [ -z \"$tp\" ] || [ ! -r \"$tp\" ] && exit 0; tokens=$(wc -w < \"$tp\" 2>/dev/null || echo 0); if [ \"${tokens:-0}\" -gt 1000 ]; then printf \"Session was non-trivial (%s words). Run /retro to extract learnings.\\n\" \"$tokens\"; fi'"
           }
         ]
       }
