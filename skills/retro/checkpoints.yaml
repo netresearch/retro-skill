@@ -1,0 +1,74 @@
+version: 1
+skill_id: retro
+
+preconditions:
+  - type: command
+    pattern: "python3 --version"
+    desc: "python3 available for mechanical pre-pass"
+
+mechanical:
+  - id: RT-01
+    type: file_exists
+    target: skills/retro/SKILL.md
+    severity: error
+    desc: "SKILL.md exists"
+
+  - id: RT-02
+    type: file_exists
+    target: commands/retro.md
+    severity: error
+    desc: "/retro command definition exists"
+
+  - id: RT-03
+    type: file_exists
+    target: scripts/detect-mechanical.py
+    severity: error
+    desc: "Mechanical pre-pass script exists"
+
+  - id: RT-04
+    type: command
+    pattern: "python3 -m py_compile scripts/detect-mechanical.py"
+    severity: error
+    desc: "Mechanical pre-pass script is syntactically valid Python"
+
+  - id: RT-05
+    type: file_exists
+    target: scripts/find-installed-skills.sh
+    severity: error
+    desc: "Skill discovery helper exists"
+
+  - id: RT-06
+    type: command
+    pattern: "bash -n scripts/find-installed-skills.sh"
+    severity: error
+    desc: "Skill discovery script is syntactically valid bash"
+
+  - id: RT-10
+    type: file_exists
+    target: "{references/friction-catalog.md,references/destination-taxonomy.md,references/classification-heuristic.md}"
+    severity: error
+    desc: "Core reference docs exist (catalog, taxonomy, heuristic)"
+
+  - id: RT-11
+    type: file_exists
+    target: "{references/skill-discovery.md,references/patch-workflow.md,references/workflow.md}"
+    severity: error
+    desc: "Workflow reference docs exist (discovery, patch, workflow)"
+
+  - id: RT-20
+    type: file_exists
+    target: hooks/session-end.json
+    severity: warning
+    desc: "Optional SessionEnd hook template provided"
+
+  - id: RT-21
+    type: command
+    pattern: "jq -e . hooks/session-end.json > /dev/null"
+    severity: error
+    desc: "SessionEnd hook JSON is valid"
+
+  - id: RT-30
+    type: file_exists
+    target: docs/specs/retro-skill.md
+    severity: warning
+    desc: "Spec mirror exists for traceability"

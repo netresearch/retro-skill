@@ -1,0 +1,22 @@
+{
+  "$schema": "https://docs.anthropic.com/claude-code/hooks-schema.json",
+  "description": "Optional SessionEnd hook that runs /retro after non-trivial sessions. Off by default — copy to your ~/.claude/hooks/ or <project>/.claude/hooks/ to enable.",
+  "hooks": {
+    "SessionEnd": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash -c 'tokens=$(wc -w < \"$CLAUDE_TRANSCRIPT_PATH\" 2>/dev/null || echo 0); if [ \"${tokens:-0}\" -gt 1000 ]; then echo \"Session was non-trivial ($tokens words). Run /retro to extract learnings.\"; fi'"
+          }
+        ]
+      }
+    ]
+  },
+  "notes": {
+    "enable-instructions": "This hook only prints a reminder. To actually invoke /retro automatically, replace the command with a way to invoke the slash command in your client. For Claude Code CLI, this is currently a manual user action — the hook serves as a nudge.",
+    "trivial-session-threshold": "1000 words. Adjust as needed.",
+    "off-by-default-rationale": "Auto-running /retro on every session end would burn tokens for trivial sessions. The user opts in by copying this file."
+  }
+}
