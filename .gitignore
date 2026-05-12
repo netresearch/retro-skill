@@ -1,0 +1,28 @@
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Composer
+/vendor/
+composer.lock
+
+# Node
+node_modules/
+
+# Build artifacts
+/dist/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Local retro workspace (per patch-workflow.md fallback dir)
+/tmp/retro-workspace/
