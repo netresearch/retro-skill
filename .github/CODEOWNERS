@@ -1,0 +1,14 @@
+# Code owners for netresearch/retro-skill
+#
+# These owners will be requested for review when someone opens a pull request.
+# See https://docs.github.com/en/repositories/managing-your-repositorys-settings-and-features/customizing-your-repository/about-code-owners
+
+* @netresearch/coding-ai-team
+
+# Skill content and friction catalog — review for accuracy
+/skills/retro/        @netresearch/coding-ai-team
+/references/          @netresearch/coding-ai-team
+
+# Build infrastructure
+/.github/workflows/   @netresearch/coding-ai-team
+/scripts/             @netresearch/coding-ai-team

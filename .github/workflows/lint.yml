@@ -1,0 +1,89 @@
+name: lint
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    name: Lint scripts, JSON, YAML
+    runs-on: ubuntu-latest
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.13.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5.0.1
+
+      - name: Python compile check
+        run: |
+          python3 -m py_compile scripts/detect-mechanical.py
+          python3 -m py_compile scripts/extract-coach-events.py
+          python3 -m py_compile scripts/scan-cross-session.py
+
+      - name: Bash syntax check
+        run: bash -n scripts/find-installed-skills.sh
+
+      - name: ShellCheck
+        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
+        with:
+          scandir: ./scripts
+          additional_files: ./hooks/session-end.json
+        continue-on-error: true
+
+      - name: JSON validate
+        run: |
+          jq -e . hooks/session-end.json > /dev/null
+          jq -e . .claude-plugin/plugin.json > /dev/null
+          jq -e . composer.json > /dev/null
+
+      - name: YAML validate
+        run: |
+          python3 -c "import yaml; yaml.safe_load(open('skills/retro/checkpoints.yaml'))"
+
+      - name: Run unit tests
+        run: python3 -m unittest discover -s tests -v
+
+  dco:
+    name: DCO
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Harden runner
+        uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.13.1
+        with:
+          egress-policy: audit
+
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5.0.1
+        with:
+          fetch-depth: 0
+          # Check out the actual PR head commit, not the ephemeral merge commit
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Check DCO sign-off
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          missing=0
+          # Only inspect commits that belong to this PR (base..head), not the
+          # synthetic merge commit GitHub creates for actions/checkout.
+          for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
+            if ! git log -1 --pretty=%B "$sha" | grep -qE '^Signed-off-by: .+ <.+@.+>'; then
+              echo "::error::Commit $sha is missing Signed-off-by trailer"
+              missing=$((missing + 1))
+            fi
+          done
+          if [ $missing -gt 0 ]; then
+            echo "Add --signoff to your commits or run: git rebase --signoff main"
+            exit 1
+          fi
+          echo "All commits have DCO sign-off"

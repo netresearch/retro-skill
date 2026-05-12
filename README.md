@@ -40,8 +40,9 @@ composer require netresearch/retro-skill
 Enable auto-trigger at session end (off by default):
 
 ```bash
-# In your project's .claude/hooks/ or ~/.claude/hooks/
-cp .claude/hooks/session-end.json /your/path/
+mkdir -p ~/.claude/hooks
+cp hooks/session-end.json ~/.claude/hooks/
+# Or per-project: cp hooks/session-end.json <your-project>/.claude/hooks/
 ```
 
 ## How it works
