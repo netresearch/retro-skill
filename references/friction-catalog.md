@@ -17,13 +17,13 @@ External-feedback ingestion (Sentry, Jira, monitoring) is out of v0.1 scope — 
 
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
-| A — Mechanical | 18 | 13 (A1, A2, A3, A6, A7, A8, A9, A10, A12, A14, A15, A16, A17) |
+| A — Mechanical | 18 | 18 (all of A1–A18) |
 | B — LLM inference | 14 | LLM-driven (no separate code) |
 | C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
 | D — Outcome | 10 | Planned for v0.1.x |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
 
-A4, A5, A11, A13, A18 are catalogued but deferred to a follow-up release. See `references/destination-taxonomy.md` for what each signal class routes to.
+Schicht A is feature-complete. See `references/destination-taxonomy.md` for what each signal class routes to.
 
 ## Schicht A — Mechanical (Python pre-pass)
 

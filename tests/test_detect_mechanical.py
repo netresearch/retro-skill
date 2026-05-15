@@ -46,21 +46,36 @@ def tool_use_pair(tool_id: str, name: str, input_: dict, result_text: str, is_er
 
 class TestSchichtA(unittest.TestCase):
     def assert_signal(self, events: list[dict], expected_signal: str):
+        signals = self._run_all(events)
+        self.assertIn(expected_signal, signals, f"expected {expected_signal} in {signals}")
+
+    def assert_not_signal(self, events: list[dict], unexpected_signal: str):
+        signals = self._run_all(events)
+        self.assertNotIn(unexpected_signal, signals, f"unexpected {unexpected_signal} in {signals}")
+
+    def _run_all(self, events: list[dict]) -> set:
         path = write_jsonl(events)
         try:
             events_loaded = detect.load_jsonl(path)
             user_texts = detect.extract_user_texts(events_loaded)
+            assistant_texts = detect.extract_assistant_texts(events_loaded)
             tool_uses = detect.extract_tool_uses(events_loaded)
+            tool_uses_msg = detect.extract_tool_uses_with_msg(events_loaded)
             findings = []
             for sid, func in detect.SIGNAL_FUNCS.items():
                 if func in (detect.signal_user_corrections, detect.signal_prompt_repetition, detect.signal_prompt_sequence_repetition):
                     findings.extend(func(user_texts))
                 elif func is detect.signal_skill_reminder_vs_invoke:
                     findings.extend(func(events_loaded))
+                elif func is detect.signal_tool_count_vs_task:
+                    findings.extend(func(tool_uses, user_texts))
+                elif func is detect.signal_sequential_parallelizable:
+                    findings.extend(func(tool_uses_msg))
+                elif func is detect.signal_skipped_verification:
+                    findings.extend(func(assistant_texts, tool_uses))
                 else:
                     findings.extend(func(tool_uses))
-            signals = {f["signal"] for f in findings}
-            self.assertIn(expected_signal, signals, f"expected {expected_signal} in {signals}")
+            return {f["signal"] for f in findings}
         finally:
             path.unlink(missing_ok=True)
 
@@ -94,6 +109,88 @@ class TestSchichtA(unittest.TestCase):
     def test_A17_upstream_failure(self):
         evs = tool_use_pair("u1", "Bash", {"command": "git push origin main"}, "remote: rejected", is_error=True)
         self.assert_signal(evs, "A17")
+
+    def test_A4_tool_call_inefficiency(self):
+        # 25 tool calls vs 2 user messages → ratio 12.5, well over threshold
+        evs = [user_msg("do a lot of work"), user_msg("keep going")]
+        for i in range(25):
+            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": f"echo {i}"}, "ok"))
+        self.assert_signal(evs, "A4")
+
+    def test_A4_small_session_does_not_fire(self):
+        # Below A4_MIN_TOOL_USES — must not fire even with extreme ratio.
+        evs = [user_msg("hi")]
+        for i in range(5):
+            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": f"echo {i}"}, "ok"))
+        self.assert_not_signal(evs, "A4")
+
+    def test_A5_three_separate_reads_fire(self):
+        # Each Read in its own assistant message → serial; should fire A5.
+        evs = []
+        for i, path in enumerate(["/a.py", "/b.py", "/c.py", "/d.py"]):
+            evs.extend(tool_use_pair(f"u{i}", "Read", {"file_path": path}, "ok"))
+        self.assert_signal(evs, "A5")
+
+    def test_A5_parallel_batch_does_not_fire(self):
+        # All three tool_use blocks live in ONE assistant message → parallel; must not fire.
+        events = [
+            {"type": "assistant", "message": {"content": [
+                {"type": "tool_use", "id": "p1", "name": "Read", "input": {"file_path": "/a.py"}},
+                {"type": "tool_use", "id": "p2", "name": "Read", "input": {"file_path": "/b.py"}},
+                {"type": "tool_use", "id": "p3", "name": "Read", "input": {"file_path": "/c.py"}},
+            ]}},
+            {"type": "user", "message": {"content": [
+                {"type": "tool_result", "tool_use_id": "p1", "content": "ok", "is_error": False},
+                {"type": "tool_result", "tool_use_id": "p2", "content": "ok", "is_error": False},
+                {"type": "tool_result", "tool_use_id": "p3", "content": "ok", "is_error": False},
+            ]}},
+        ]
+        self.assert_not_signal(events, "A5")
+
+    def test_A11_grep_on_json(self):
+        evs = tool_use_pair("u1", "Bash", {"command": "grep version package.json"}, "...")
+        self.assert_signal(evs, "A11")
+
+    def test_A11_grep_via_pipe_does_not_fire(self):
+        # grep on stdin (piped) is fine — only a direct file argument is the misuse.
+        evs = tool_use_pair("u1", "Bash", {"command": "jq . package.json | grep version"}, "...")
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_cat_instead_of_read(self):
+        evs = tool_use_pair("u1", "Bash", {"command": "cat README.md"}, "...")
+        self.assert_signal(evs, "A11")
+
+    def test_A13_claim_without_verification(self):
+        evs = [
+            {"type": "assistant", "message": {"content": [
+                {"type": "text", "text": "All tests pass now, the bug is fixed."}
+            ]}},
+        ]
+        self.assert_signal(evs, "A13")
+
+    def test_A13_claim_with_prior_test_run_does_not_fire(self):
+        evs = tool_use_pair("u1", "Bash", {"command": "pytest tests/"}, "5 passed")
+        evs.append({"type": "assistant", "message": {"content": [
+            {"type": "text", "text": "All tests pass now."}
+        ]}})
+        self.assert_not_signal(evs, "A13")
+
+    def test_A18_permission_reapproval_spread(self):
+        # Same `git status` 4× spread far apart → allowlist candidate.
+        evs = []
+        for i in range(4):
+            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": "git status"}, "clean"))
+            # Inject filler tool calls to spread occurrences apart.
+            for j in range(15):
+                evs.extend(tool_use_pair(f"f{i}_{j}", "Read", {"file_path": f"/x{i}{j}.py"}, "ok"))
+        self.assert_signal(evs, "A18")
+
+    def test_A18_burst_does_not_fire(self):
+        # 3× back-to-back is a retry burst (A2), not a permission re-approval (A18).
+        evs = []
+        for i in range(3):
+            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": "git status"}, "clean"))
+        self.assert_not_signal(evs, "A18")
 
 
 class TestHelpers(unittest.TestCase):
