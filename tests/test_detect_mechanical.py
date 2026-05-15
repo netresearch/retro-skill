@@ -60,7 +60,6 @@ class TestSchichtA(unittest.TestCase):
             user_texts = detect.extract_user_texts(events_loaded)
             assistant_texts = detect.extract_assistant_texts(events_loaded)
             tool_uses = detect.extract_tool_uses(events_loaded)
-            tool_uses_msg = detect.extract_tool_uses_with_msg(events_loaded)
             findings = []
             for sid, func in detect.SIGNAL_FUNCS.items():
                 if func in (detect.signal_user_corrections, detect.signal_prompt_repetition, detect.signal_prompt_sequence_repetition):
@@ -69,8 +68,6 @@ class TestSchichtA(unittest.TestCase):
                     findings.extend(func(events_loaded))
                 elif func is detect.signal_tool_count_vs_task:
                     findings.extend(func(tool_uses, user_texts))
-                elif func is detect.signal_sequential_parallelizable:
-                    findings.extend(func(tool_uses_msg))
                 elif func is detect.signal_skipped_verification:
                     findings.extend(func(assistant_texts, tool_uses))
                 else:
@@ -191,6 +188,54 @@ class TestSchichtA(unittest.TestCase):
         for i in range(3):
             evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": "git status"}, "clean"))
         self.assert_not_signal(evs, "A18")
+
+    def test_A18_repeated_read_does_not_fire(self):
+        # A18 is restricted to Bash; Read is permission-scoped by tool name
+        # and repeated invocations would be noise.
+        evs = []
+        for i in range(6):
+            evs.extend(tool_use_pair(f"u{i}", "Read", {"file_path": f"/x{i}.py"}, "ok"))
+            for j in range(15):
+                evs.extend(tool_use_pair(f"f{i}_{j}", "Bash", {"command": f"echo {i}{j}"}, "ok"))
+        self.assert_not_signal(evs, "A18")
+
+    def test_A11_sed_with_pipes_in_program(self):
+        # Quoted sed body containing | must tokenize correctly with shlex.
+        evs = tool_use_pair("u1", "Bash", {"command": "sed -i 's|foo|bar|g' config.yaml"}, "")
+        self.assert_signal(evs, "A11")
+
+    def test_A11_grep_with_alternation_pattern(self):
+        # `grep -E 'a|b' file.yaml` — alternation in the regex, structured file arg.
+        evs = tool_use_pair("u1", "Bash", {"command": "grep -E 'a|b' config.yaml"}, "ok")
+        self.assert_signal(evs, "A11")
+
+    def test_A11_cat_piped_does_not_fire(self):
+        # `cat file | wc -l` uses cat as a pipeline source; Read can't replace it.
+        evs = tool_use_pair("u1", "Bash", {"command": "cat file.log | wc -l"}, "42")
+        self.assert_not_signal(evs, "A11")
+
+    def test_A4_multi_block_user_message_counts_as_one(self):
+        # User event with two text blocks must not count as two messages.
+        # 21 tool calls / 1 user event = 21.0 (fires); / 2 text blocks = 10.5 (also fires) —
+        # so check the reported user_messages value rather than just the signal presence.
+        events = [
+            {"type": "user", "message": {"content": [
+                {"type": "text", "text": "first part"},
+                {"type": "text", "text": "second part"},
+            ]}}
+        ]
+        for k in range(21):
+            events.extend(tool_use_pair(f"u{k}", "Bash", {"command": f"echo {k}"}, "ok"))
+        path = write_jsonl(events)
+        try:
+            loaded = detect.load_jsonl(path)
+            tool_uses = detect.extract_tool_uses(loaded)
+            user_texts = detect.extract_user_texts(loaded)
+            findings = detect.signal_tool_count_vs_task(tool_uses, user_texts)
+            self.assertEqual(len(findings), 1)
+            self.assertEqual(findings[0]["user_messages"], 1)
+        finally:
+            path.unlink(missing_ok=True)
 
 
 class TestHelpers(unittest.TestCase):
