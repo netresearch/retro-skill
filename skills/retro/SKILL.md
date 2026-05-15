@@ -46,7 +46,7 @@ For these, run `/retro outcome` (post-hoc) or `/retro audit` (cross-session). Ex
 
 ## Workflow
 
-1. **Mechanical pre-pass** — `scripts/detect-mechanical.py` parses the transcript for ~14 deterministic signals (tool errors, retry clusters, output verbosity, correction phrases, prompt/tool sequence repetition, skipped verification, upstream failures, etc.). Output: structured candidate list.
+1. **Mechanical pre-pass** — `scripts/detect-mechanical.py` parses the transcript for 18 deterministic signals (tool errors, retry clusters, output verbosity, tool-call inefficiency, sequential-vs-parallel, correction phrases, prompt/tool sequence repetition, wrong tool choice, skipped verification, upstream failures, permission re-approval, etc.). Output: structured candidate list.
 
 2. **LLM enrichment** — Read pre-pass output + relevant transcript excerpts. Add inferential signals (skill capability gaps, wrong skill choice, hallucinations, convention violations, missing skills, repeated mistakes, assumption-without-asking, doc drift). Filter false positives.
 

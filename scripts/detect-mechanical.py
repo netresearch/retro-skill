@@ -9,26 +9,32 @@ Usage:
     python3 detect-mechanical.py --transcript-file <path> [--output-format json]
     python3 detect-mechanical.py --transcript-file <path> --signals A1,A6,A17
 
-Signals implemented (subset of friction-catalog.md):
+Signals implemented (Schicht A — full catalog):
     A1  Tool errors
     A2  Tool retry clusters
     A3  Tool output verbosity
+    A4  Tool call count vs task (inefficiency ratio)
+    A5  Sequential calls that could be parallel
     A6  User correction phrases
     A7  Prompt repetition (exact)
     A8  Prompt sequence repetition
     A9  Tool sequence repetition
     A10 Skill in reminder vs invoke
+    A11 Wrong tool choice (grep/sed on structured files)
     A12 Re-read same file
+    A13 Skipped verification (claim without prior test/build)
     A14 Worked on main/master
     A15 Bot attribution in commit
     A16 Outdated tool warnings
     A17 Upstream failure (git push / gh pr checks)
+    A18 Permission re-approval (same prompt ≥3× spread over session)
 """
 from __future__ import annotations
 
 import argparse
 import json
 import re
+import shlex
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -55,6 +61,54 @@ LARGE_TOOL_RESULT_BYTES = 5000
 DEFAULT_RETRY_WINDOW = 5  # turns
 DEFAULT_SEQ_NGRAM = 3
 
+# A4: efficiency ratio
+A4_RATIO_THRESHOLD = 5.0          # tool_uses / user_messages
+A4_MIN_TOOL_USES = 20             # skip tiny sessions
+
+# A5: read-only / independent tools that benefit from batching
+A5_PARALLELIZABLE_TOOLS = {"Read", "Glob", "Grep", "Bash"}
+A5_MIN_SERIAL_RUN = 3             # >=3 calls in separate assistant turns
+
+# A11: tool-misuse patterns — shlex tokenization to handle quoted regex/sed bodies
+# (e.g. `sed -i 's|a|b|g' file.json`) and to distinguish piped from terminal cat.
+A11_STRUCTURED_EXT_RE = re.compile(r"\.(?:json|jsonl|ya?ml|toml|xml|csv)$", re.IGNORECASE)
+A11_STRUCTURED_TOOLS = {"grep", "egrep", "fgrep", "sed", "awk", "gawk"}
+A11_CAT_TOOLS = {"cat", "head", "tail"}
+A11_PIPELINE_OPS = {"|", "||", "&&", ";", ">", ">>", "<"}
+
+# A13: verification-skip claims — tightened to phrases that are unambiguously
+# success assertions, not incidental status notes ("done", "fixed in v2", etc.).
+A13_CLAIM_PATTERNS = re.compile(
+    r"\b("
+    r"tests?\s+pass(?:es|ed|ing)?"             # "tests pass" / "test passed"
+    r"|all\s+tests?\s+(?:pass|green)"          # "all tests pass" / "all tests green"
+    r"|build\s+(?:passes|works|succeeds|succeeded)"
+    r"|(?:the\s+)?bug\s+is\s+fixed"            # "the bug is fixed"
+    r"|behoben"                                # DE: "fixed"
+    r"|tests?\s+laufen(?:\s+(?:jetzt|wieder|durch))?"
+    r"|läuft\s+jetzt(?:\s+wieder)?"            # DE: "läuft jetzt"
+    r"|funktioniert\s+jetzt(?:\s+wieder)?"     # DE: "funktioniert jetzt"
+    r")\b",
+    re.IGNORECASE,
+)
+A13_VERIFICATION_CMD = re.compile(
+    r"\b("
+    r"pytest|unittest|jest|vitest|phpunit|composer\s+(?:test|ci:test)"
+    r"|npm\s+(?:test|run\s+test)|yarn\s+test|pnpm\s+(?:test|run\s+test)|bun\s+test"
+    r"|go\s+test|cargo\s+test|mvn\s+test|gradle\s+test"
+    r"|make\s+(?:test|check|lint)|tox|nox"
+    r"|ruff|flake8|mypy|pyright|eslint|tsc|phpstan|psalm|rector|golangci-lint"
+    r"|npm\s+run\s+build|yarn\s+build|pnpm\s+build|cargo\s+build|go\s+build|tsc\s+--build"
+    r")\b",
+)
+A13_LOOKBACK_BASH_CMDS = 10  # examine the most recent N Bash invocations prior to the claim
+
+# A18: allowlist candidate — same Bash command-prefix appearing ≥3× spread out
+# (not a retry burst). Restricted to Bash; non-Bash tools like Read/Glob/Grep
+# are already permission-scoped by name and would generate noisy false positives.
+A18_MIN_OCCURRENCES = 3
+A18_BASH_PREFIX_TOKENS = 2  # e.g. "git status", "gh pr"
+
 
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
@@ -77,6 +131,22 @@ def extract_user_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
             continue
         msg = ev.get("message", {})
         content = msg.get("content")
+        if isinstance(content, str):
+            out.append((i, content))
+        elif isinstance(content, list):
+            for block in content:
+                if isinstance(block, dict) and block.get("type") == "text":
+                    out.append((i, block.get("text", "")))
+    return out
+
+
+def extract_assistant_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
+    """Return (event_index, text) for assistant-authored text blocks only."""
+    out = []
+    for i, ev in enumerate(events):
+        if ev.get("type") != "assistant":
+            continue
+        content = (ev.get("message") or {}).get("content")
         if isinstance(content, str):
             out.append((i, content))
         elif isinstance(content, list):
@@ -364,20 +434,244 @@ def signal_upstream_failure(tool_uses) -> list[dict]:
     return out
 
 
+def signal_tool_count_vs_task(tool_uses, user_texts) -> list[dict]:
+    """A4: total tool-call/user-message ratio above threshold on a non-trivial session.
+
+    Denominator counts distinct user *events*, not text blocks — a single user
+    event with multiple text blocks must not skew the ratio downward.
+    """
+    n_tools = len(tool_uses)
+    n_msgs = len({i for i, _ in user_texts}) or 1
+    ratio = n_tools / n_msgs
+    if n_tools >= A4_MIN_TOOL_USES and ratio >= A4_RATIO_THRESHOLD:
+        return [{
+            "signal": "A4",
+            "name": "tool_call_inefficiency_ratio",
+            "tool_uses": n_tools,
+            "user_messages": n_msgs,
+            "ratio": round(ratio, 2),
+            "threshold": A4_RATIO_THRESHOLD,
+        }]
+    return []
+
+
+def signal_sequential_parallelizable(tool_uses) -> list[dict]:
+    """A5: ≥N parallelizable tools (Read/Glob/Grep/Bash) in *separate* assistant
+    messages, back-to-back, without an interleaving non-parallelizable call.
+
+    Two tool_use blocks emitted from the same assistant message share the same
+    event index in the 5-tuple, so a parallel batch inside one assistant
+    message is naturally not counted as a multi-message run.
+    """
+    out = []
+    run: list[tuple[int, str]] = []  # (event_index, name)
+
+    def flush(run):
+        if len(run) < A5_MIN_SERIAL_RUN:
+            return
+        distinct_msgs = {ev for ev, _ in run}
+        if len(distinct_msgs) >= A5_MIN_SERIAL_RUN:
+            out.append({
+                "signal": "A5",
+                "name": "sequential_parallelizable",
+                "tools": [n for _, n in run],
+                "assistant_messages": sorted(distinct_msgs),
+            })
+
+    for ev_idx, name, _inp, _result, _err in tool_uses:
+        if name in A5_PARALLELIZABLE_TOOLS:
+            run.append((ev_idx, name))
+        else:
+            flush(run)
+            run = []
+    flush(run)
+    return out
+
+
+def _tokenize_bash(cmd: str) -> list[str] | None:
+    """shlex-tokenize a Bash command. Returns None on unbalanced quotes etc."""
+    try:
+        return shlex.split(cmd, posix=True, comments=False)
+    except ValueError:
+        return None
+
+
+def _split_pipeline_segments(tokens: list[str]) -> list[list[str]]:
+    """Split a token list into pipeline segments at | || && ; operators."""
+    segments: list[list[str]] = []
+    current: list[str] = []
+    for tok in tokens:
+        if tok in ("|", "||", "&&", ";"):
+            if current:
+                segments.append(current)
+            current = []
+        else:
+            current.append(tok)
+    if current:
+        segments.append(current)
+    return segments
+
+
+def signal_wrong_tool_choice(tool_uses) -> list[dict]:
+    """A11: Bash invoking grep/sed/awk on structured files, or cat/head/tail
+    *terminally* on a single file (Read would fit).
+
+    Uses shlex so quoted regex/sed bodies like `sed -i 's|a|b|g' file.json`
+    tokenize correctly, and so piped pipelines like `cat file | wc -l`
+    aren't misread as a cat-instead-of-read pattern.
+    """
+    out = []
+    for i, name, inp, _result, _err in tool_uses:
+        if name != "Bash":
+            continue
+        cmd = inp.get("command", "")
+        if not cmd:
+            continue
+        tokens = _tokenize_bash(cmd)
+        if not tokens:
+            continue
+
+        # Misuse 1: grep/sed/awk acting on a structured-file argument.
+        fired_structured = False
+        for segment in _split_pipeline_segments(tokens):
+            if not segment:
+                continue
+            tool = segment[0]
+            if tool not in A11_STRUCTURED_TOOLS:
+                continue
+            for tok in segment[1:]:
+                if tok.startswith("-"):
+                    continue
+                if A11_STRUCTURED_EXT_RE.search(tok):
+                    out.append({
+                        "signal": "A11",
+                        "name": "structured_file_misuse",
+                        "turn": i,
+                        "tool_invoked": tool,
+                        "file": tok,
+                        "hint": "use data-tools (jq / yq / dasel) instead of grep/sed/awk on structured formats",
+                        "snippet": cmd[:200],
+                    })
+                    fired_structured = True
+                    break
+            if fired_structured:
+                break
+        if fired_structured:
+            continue
+
+        # Misuse 2: cat/head/tail used as the terminal command (no pipe/redirect).
+        if any(tok in A11_PIPELINE_OPS for tok in tokens):
+            continue
+        head = tokens[0]
+        if head in A11_CAT_TOOLS:
+            file_args = [t for t in tokens[1:] if not t.startswith("-")]
+            if file_args:
+                out.append({
+                    "signal": "A11",
+                    "name": "cat_instead_of_read",
+                    "turn": i,
+                    "tool_invoked": head,
+                    "hint": "use the Read tool (line-numbered output, ranged reads) instead of cat/head/tail",
+                    "snippet": cmd[:200],
+                })
+    return out
+
+
+def signal_skipped_verification(assistant_texts, tool_uses) -> list[dict]:
+    """A13: assistant claims success without any prior test/build/lint Bash
+    call within the last `A13_LOOKBACK_BASH_CMDS` Bash invocations.
+
+    Counting Bash calls (rather than estimating events-per-turn) makes the
+    lookback robust regardless of how many tool_use blocks a turn contains.
+    `tool_uses` is already chronological from `extract_tool_uses`, so no sort
+    is needed.
+    """
+    out = []
+    bash_commands_chronological: list[tuple[int, str]] = [
+        (i, inp.get("command", "")) for i, name, inp, _r, _e in tool_uses if name == "Bash"
+    ]
+
+    def had_verification_before(turn: int) -> bool:
+        recent = [(i, c) for i, c in bash_commands_chronological if i < turn][-A13_LOOKBACK_BASH_CMDS:]
+        return any(A13_VERIFICATION_CMD.search(c) for _, c in recent)
+
+    for i, text in assistant_texts:
+        m = A13_CLAIM_PATTERNS.search(text)
+        if not m:
+            continue
+        if had_verification_before(i):
+            continue
+        out.append({
+            "signal": "A13",
+            "name": "claim_without_verification",
+            "turn": i,
+            "claim": m.group(0),
+            "snippet": text[:200],
+        })
+    return out
+
+
+def signal_permission_reapproval(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list[dict]:
+    """A18: same Bash command-prefix appears ≥3× *spread* over the session.
+
+    Distinct from A2 (retry burst): A18 fires only when the run is dispersed,
+    i.e. median gap between occurrences exceeds the retry window — these are
+    candidates for an allowlist entry, not a misunderstanding.
+
+    Restricted to Bash. Non-Bash tools (Read/Glob/Grep/etc.) are already
+    permission-scoped by tool name, so repeated invocations don't represent
+    re-approval friction.
+    """
+    out = []
+    grouped: dict[str, list[int]] = defaultdict(list)
+    for i, name, inp, _r, _e in tool_uses:
+        if name != "Bash":
+            continue
+        cmd = (inp.get("command") or "").strip()
+        prefix = " ".join(cmd.split()[:A18_BASH_PREFIX_TOKENS])
+        if not prefix:
+            continue
+        grouped[prefix].append(i)
+    for prefix, turns in grouped.items():
+        if len(turns) < A18_MIN_OCCURRENCES:
+            continue
+        gaps = [b - a for a, b in zip(turns, turns[1:])]
+        if not gaps:
+            continue
+        gaps_sorted = sorted(gaps)
+        median = gaps_sorted[len(gaps_sorted) // 2]
+        if median <= window * 2:
+            # Looks like a retry burst — leave it to A2.
+            continue
+        out.append({
+            "signal": "A18",
+            "name": "permission_reapproval_candidate",
+            "prefix": prefix,
+            "occurrences": len(turns),
+            "median_gap_turns": median,
+        })
+    return out
+
+
 SIGNAL_FUNCS = {
     "A1": signal_tool_errors,
     "A2": signal_retry_clusters,
     "A3": signal_verbose_results,
+    "A4": signal_tool_count_vs_task,
+    "A5": signal_sequential_parallelizable,
     "A6": signal_user_corrections,
     "A7": signal_prompt_repetition,
     "A8": signal_prompt_sequence_repetition,
     "A9": signal_tool_sequence_repetition,
     "A10": signal_skill_reminder_vs_invoke,
+    "A11": signal_wrong_tool_choice,
     "A12": signal_reread_same_file,
+    "A13": signal_skipped_verification,
     "A14": signal_main_branch_work,
     "A15": signal_bot_attribution,
     "A16": signal_outdated_tool,
     "A17": signal_upstream_failure,
+    "A18": signal_permission_reapproval,
 }
 
 
@@ -395,6 +689,7 @@ def main() -> int:
 
     events = load_jsonl(args.transcript_file)
     user_texts = extract_user_texts(events)
+    assistant_texts = extract_assistant_texts(events)
     tool_uses = extract_tool_uses(events)
 
     selected = {s.strip() for s in args.signals.split(",") if s.strip()}
@@ -407,6 +702,10 @@ def main() -> int:
             findings.extend(func(user_texts))
         elif func is signal_skill_reminder_vs_invoke:
             findings.extend(func(events))
+        elif func is signal_tool_count_vs_task:
+            findings.extend(func(tool_uses, user_texts))
+        elif func is signal_skipped_verification:
+            findings.extend(func(assistant_texts, tool_uses))
         else:
             findings.extend(func(tool_uses))
 
