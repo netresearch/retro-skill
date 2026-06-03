@@ -9,8 +9,8 @@ LLM-driven session retrospection for Claude Code agents.
 `/retro` analyzes the current Claude Code session, identifies friction patterns directly from the conversation transcript (no continuous hooks pipeline), classifies each into one of six destinations, and materializes approved learnings with per-proposal confirmation.
 
 **Destinations:**
-- `user-memory` — personal preference → `feedback_<slug>.md`
-- `project-rule` — project-specific convention → `docs/feedback/<slug>.md`
+- `user-memory` — personal preference → append a rule to `~/.claude/CLAUDE.md`
+- `project-rule` — project-specific convention → append a rule to `<project>/AGENTS.md`
 - `skill-update` — improve existing skill → PR to source repo
 - `new-skill` — skill-shaped gap → scaffold new repo
 - `checkpoint` — mechanical check → `checkpoints.yaml` entry

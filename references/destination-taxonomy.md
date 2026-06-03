@@ -37,7 +37,7 @@ projects (the failure this skill exists to surface). Global rules go in
 
 A project-specific convention belongs in that repo's `AGENTS.md` (committed,
 versioned, loaded for everyone working the repo). Append a titled rule in the
-same form as above. Do not create `<project>/.claude/CLAUDE.md` or
+same form as above. Do not create `<project>/CLAUDE.md` or
 `<project>/docs/feedback/` files — `AGENTS.md` is the single project rule store.
 
 ### 3. `skill-update` — PR to source repo

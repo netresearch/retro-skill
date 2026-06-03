@@ -68,7 +68,7 @@ For these, run `/retro outcome` (post-hoc) or `/retro audit` (cross-session). Ex
 
 9. **Materialization** — Per destination:
    - `user-memory` → append a rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file). **Never** `~/.claude/projects/<slug>/memory/` — that dir is cwd-scoped and not loaded globally.
-   - `project-rule` → append a rule to `<project>/AGENTS.md` (not `.claude/CLAUDE.md`, not `docs/feedback/`)
+   - `project-rule` → append a rule to `<project>/AGENTS.md` (not `<project>/CLAUDE.md`, not `docs/feedback/`)
    - `skill-update` → clone source repo (or use existing `~/p/<name>/main/` worktree), branch, commit **with `-s` (DCO sign-off) — without it the PR is BLOCKED even when all checks pass**, push, open PR
    - `new-skill` → invoke `skill-repo` scaffolding
    - `checkpoint` → YAML entry in target skill's `checkpoints.yaml`
