@@ -74,10 +74,14 @@ GIT_WORKTREE_ADD_BRANCH = re.compile(
     r"\bgit\s+worktree\s+add\s+(?:-[^\s;&|]+\s+)*\S+\s+(?P<br>[^\s;&|-][^\s;&|]*)"
 )
 GIT_ON_BRANCH_OUT = re.compile(
-    r"(?:On branch|Switched to(?: a new)? branch '?)(?P<br>[\w./-]+)"
+    r"(?:On branch|Switched to(?: a new)? branch '?|Already on '?)(?P<br>[\w./-]+)"
 )
 GIT_COMMIT_OR_PUSH = re.compile(r"\bgit\s+(?:commit|push)\b")
-GIT_PUSH_TO_MAIN = re.compile(r"\bgit\s+push\b[^\n]*\b(?:HEAD:)?(?:main|master)\b")
+# `(?![\w-])` requires main/master as a full token so "main-menu" / "master2"
+# (where `\b` would otherwise match the "main"/"master" prefix) do not fire.
+GIT_PUSH_TO_MAIN = re.compile(
+    r"\bgit\s+push\b[^\n]*\b(?:HEAD:)?(?:main|master)(?![\w-])"
+)
 
 # A1: textual error markers, used as a fallback only when the harness `is_error`
 # flag is absent. The previous bare `"error" in result` substring test fired on

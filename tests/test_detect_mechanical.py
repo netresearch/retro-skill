@@ -199,6 +199,23 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_not_signal(evs, "A14")
 
+    def test_A14_already_on_main_fires(self):
+        # `git checkout main` when already there prints "Already on 'main'".
+        evs = tool_use_pair(
+            "c", "Bash", {"command": "git checkout main"}, "Already on 'main'"
+        )
+        evs += tool_use_pair(
+            "u1", "Bash", {"command": "git commit -m wip"}, "1 file changed"
+        )
+        self.assert_signal(evs, "A14")
+
+    def test_A14_push_to_main_prefixed_branch_does_not_fire(self):
+        # Pushing a branch that merely starts with "main" must not fire.
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "git push origin main-menu"}, "done"
+        )
+        self.assert_not_signal(evs, "A14")
+
     def test_A2_retry_cluster(self):
         evs = []
         for i in range(3):
