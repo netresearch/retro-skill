@@ -65,9 +65,13 @@ GIT_CHECKOUT_B = re.compile(
 # decide whether a commit/push is actually happening on main — replacing the old
 # "the word 'main' appears anywhere in the command or output" heuristic, which
 # fired on every worktree commit and on commit messages mentioning "main".
-GIT_SWITCH_TO = re.compile(r"\bgit\s+(?:checkout|switch)\s+(?P<br>[^\s;&|]+)")
+# `(?:-[^\s;&|]+\s+)*` skips optional flags (e.g. `-f`, `--quiet`) that may
+# precede the branch name/path before the capture group.
+GIT_SWITCH_TO = re.compile(
+    r"\bgit\s+(?:checkout|switch)\s+(?:-[^\s;&|]+\s+)*(?P<br>[^\s;&|]+)"
+)
 GIT_WORKTREE_ADD_BRANCH = re.compile(
-    r"\bgit\s+worktree\s+add\s+\S+\s+(?P<br>[^\s;&|-][^\s;&|]*)"
+    r"\bgit\s+worktree\s+add\s+(?:-[^\s;&|]+\s+)*\S+\s+(?P<br>[^\s;&|-][^\s;&|]*)"
 )
 GIT_ON_BRANCH_OUT = re.compile(
     r"(?:On branch|Switched to(?: a new)? branch '?)(?P<br>[\w./-]+)"
@@ -239,11 +243,11 @@ def signal_tool_errors(tool_uses) -> list[dict]:
     out = []
     for i, name, inp, result, is_error in tool_uses:
         head = result[:200]
-        if A1_BENIGN.search(head):
-            # Success output that merely contains the word "error"
-            # (e.g. "0 errors", "all checks passed") — not a failure.
-            continue
-        if is_error or A1_ERROR_MARKER.search(head):
+        # Trust the harness is_error flag unconditionally (an authoritative
+        # failure). Only the text-based fallback is gated by A1_BENIGN, so
+        # success output that merely contains the word "error" ("0 errors",
+        # "all checks passed") is not flagged.
+        if is_error or (A1_ERROR_MARKER.search(head) and not A1_BENIGN.search(head)):
             out.append(
                 {
                     "signal": "A1",

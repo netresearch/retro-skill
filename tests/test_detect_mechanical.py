@@ -147,6 +147,26 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_not_signal(evs, "A1")
 
+    def test_A1_is_error_flag_trusted_despite_benign_text(self):
+        # An explicit harness failure must fire even if output reads benign.
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "make check"}, "0 errors", is_error=True
+        )
+        self.assert_signal(evs, "A1")
+
+    def test_A14_checkout_main_with_flag_fires(self):
+        # Optional flags (e.g. -f) before the branch name must not hide main.
+        evs = tool_use_pair(
+            "c",
+            "Bash",
+            {"command": "git checkout -f main"},
+            "Switched to branch 'main'",
+        )
+        evs += tool_use_pair(
+            "u1", "Bash", {"command": "git commit -m wip"}, "1 file changed"
+        )
+        self.assert_signal(evs, "A14")
+
     def test_A14_commit_after_checkout_main_fires(self):
         evs = tool_use_pair(
             "c", "Bash", {"command": "git checkout main"}, "Switched to branch 'main'"
