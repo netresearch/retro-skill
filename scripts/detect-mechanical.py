@@ -29,6 +29,7 @@ Signals implemented (Schicht A — full catalog):
     A17 Upstream failure (git push / gh pr checks)
     A18 Permission re-approval (same prompt ≥3× spread over session)
 """
+
 from __future__ import annotations
 
 import argparse
@@ -56,22 +57,65 @@ OUTDATED_TOOL = re.compile(
     re.IGNORECASE,
 )
 GIT_BRANCH_MAIN = re.compile(r"\b(?:main|master)\b")
-GIT_CHECKOUT_B = re.compile(r"git\s+checkout\s+-b\b|git\s+switch\s+-c\b|git\s+worktree\s+add\s+-b\b")
+GIT_CHECKOUT_B = re.compile(
+    r"git\s+checkout\s+-b\b|git\s+switch\s+-c\b|git\s+worktree\s+add\s+-b\b"
+)
+# A14 branch-state tracking: a checkout/switch to a named branch, a worktree
+# added on an existing branch, or a branch reported in command output. Used to
+# decide whether a commit/push is actually happening on main — replacing the old
+# "the word 'main' appears anywhere in the command or output" heuristic, which
+# fired on every worktree commit and on commit messages mentioning "main".
+GIT_SWITCH_TO = re.compile(r"\bgit\s+(?:checkout|switch)\s+(?P<br>[^\s;&|]+)")
+GIT_WORKTREE_ADD_BRANCH = re.compile(
+    r"\bgit\s+worktree\s+add\s+\S+\s+(?P<br>[^\s;&|-][^\s;&|]*)"
+)
+GIT_ON_BRANCH_OUT = re.compile(
+    r"(?:On branch|Switched to(?: a new)? branch '?)(?P<br>[\w./-]+)"
+)
+GIT_COMMIT_OR_PUSH = re.compile(r"\bgit\s+(?:commit|push)\b")
+GIT_PUSH_TO_MAIN = re.compile(r"\bgit\s+push\b[^\n]*\b(?:HEAD:)?(?:main|master)\b")
+
+# A1: textual error markers, used as a fallback only when the harness `is_error`
+# flag is absent. The previous bare `"error" in result` substring test fired on
+# benign output ("0 errors", "no errors found", code that mentions error
+# handling), producing the bulk of A1 false positives. Require a real error
+# marker AND exclude success phrasing that merely contains the word "error".
+A1_ERROR_MARKER = re.compile(
+    r"(?:^|\n)\s*(?:error|fatal|panic)\b[:\s]"
+    r"|command not found"
+    r"|no such file or directory"
+    r"|:\s*error:"
+    r"|\bexit code [1-9]"
+    r"|\bnon-zero exit\b"
+    r"|Traceback \(most recent call last\)",
+    re.IGNORECASE,
+)
+A1_BENIGN = re.compile(
+    r"\b(?:0|no|zero|without|found 0)\s+errors?\b"
+    r"|\berrors?\s*[:=]\s*0\b"
+    r"|\berror[- ]free\b"
+    r"|all checks passed"
+    r"|created successfully"
+    r"|\bgood\b.*\bsignature\b",
+    re.IGNORECASE,
+)
 LARGE_TOOL_RESULT_BYTES = 5000
 DEFAULT_RETRY_WINDOW = 5  # turns
 DEFAULT_SEQ_NGRAM = 3
 
 # A4: efficiency ratio
-A4_RATIO_THRESHOLD = 5.0          # tool_uses / user_messages
-A4_MIN_TOOL_USES = 20             # skip tiny sessions
+A4_RATIO_THRESHOLD = 5.0  # tool_uses / user_messages
+A4_MIN_TOOL_USES = 20  # skip tiny sessions
 
 # A5: read-only / independent tools that benefit from batching
 A5_PARALLELIZABLE_TOOLS = {"Read", "Glob", "Grep", "Bash"}
-A5_MIN_SERIAL_RUN = 3             # >=3 calls in separate assistant turns
+A5_MIN_SERIAL_RUN = 3  # >=3 calls in separate assistant turns
 
 # A11: tool-misuse patterns — shlex tokenization to handle quoted regex/sed bodies
 # (e.g. `sed -i 's|a|b|g' file.json`) and to distinguish piped from terminal cat.
-A11_STRUCTURED_EXT_RE = re.compile(r"\.(?:json|jsonl|ya?ml|toml|xml|csv)$", re.IGNORECASE)
+A11_STRUCTURED_EXT_RE = re.compile(
+    r"\.(?:json|jsonl|ya?ml|toml|xml|csv)$", re.IGNORECASE
+)
 A11_STRUCTURED_TOOLS = {"grep", "egrep", "fgrep", "sed", "awk", "gawk"}
 A11_CAT_TOOLS = {"cat", "head", "tail"}
 A11_PIPELINE_OPS = {"|", "||", "&&", ";", ">", ">>", "<"}
@@ -80,14 +124,14 @@ A11_PIPELINE_OPS = {"|", "||", "&&", ";", ">", ">>", "<"}
 # success assertions, not incidental status notes ("done", "fixed in v2", etc.).
 A13_CLAIM_PATTERNS = re.compile(
     r"\b("
-    r"tests?\s+pass(?:es|ed|ing)?"             # "tests pass" / "test passed"
-    r"|all\s+tests?\s+(?:pass|green)"          # "all tests pass" / "all tests green"
+    r"tests?\s+pass(?:es|ed|ing)?"  # "tests pass" / "test passed"
+    r"|all\s+tests?\s+(?:pass|green)"  # "all tests pass" / "all tests green"
     r"|build\s+(?:passes|works|succeeds|succeeded)"
-    r"|(?:the\s+)?bug\s+is\s+fixed"            # "the bug is fixed"
-    r"|behoben"                                # DE: "fixed"
+    r"|(?:the\s+)?bug\s+is\s+fixed"  # "the bug is fixed"
+    r"|behoben"  # DE: "fixed"
     r"|tests?\s+laufen(?:\s+(?:jetzt|wieder|durch))?"
-    r"|läuft\s+jetzt(?:\s+wieder)?"            # DE: "läuft jetzt"
-    r"|funktioniert\s+jetzt(?:\s+wieder)?"     # DE: "funktioniert jetzt"
+    r"|läuft\s+jetzt(?:\s+wieder)?"  # DE: "läuft jetzt"
+    r"|funktioniert\s+jetzt(?:\s+wieder)?"  # DE: "funktioniert jetzt"
     r")\b",
     re.IGNORECASE,
 )
@@ -101,7 +145,9 @@ A13_VERIFICATION_CMD = re.compile(
     r"|npm\s+run\s+build|yarn\s+build|pnpm\s+build|cargo\s+build|go\s+build|tsc\s+--build"
     r")\b",
 )
-A13_LOOKBACK_BASH_CMDS = 10  # examine the most recent N Bash invocations prior to the claim
+A13_LOOKBACK_BASH_CMDS = (
+    10  # examine the most recent N Bash invocations prior to the claim
+)
 
 # A18: allowlist candidate — same Bash command-prefix appearing ≥3× spread out
 # (not a retry burst). Restricted to Bash; non-Bash tools like Read/Glob/Grep
@@ -169,7 +215,11 @@ def extract_tool_uses(events: Iterable[dict]) -> list[tuple[int, str, dict, str,
             if not isinstance(block, dict):
                 continue
             if block.get("type") == "tool_use":
-                tool_uses_pending[block["id"]] = (i, block["name"], block.get("input", {}))
+                tool_uses_pending[block["id"]] = (
+                    i,
+                    block["name"],
+                    block.get("input", {}),
+                )
             elif block.get("type") == "tool_result":
                 use_id = block.get("tool_use_id")
                 if use_id in tool_uses_pending:
@@ -177,7 +227,8 @@ def extract_tool_uses(events: Iterable[dict]) -> list[tuple[int, str, dict, str,
                     result = block.get("content", "")
                     if isinstance(result, list):
                         result = " ".join(
-                            b.get("text", "") if isinstance(b, dict) else str(b) for b in result
+                            b.get("text", "") if isinstance(b, dict) else str(b)
+                            for b in result
                         )
                     is_error = block.get("is_error", False)
                     out.append((i_use, name, inp, str(result), bool(is_error)))
@@ -187,14 +238,21 @@ def extract_tool_uses(events: Iterable[dict]) -> list[tuple[int, str, dict, str,
 def signal_tool_errors(tool_uses) -> list[dict]:
     out = []
     for i, name, inp, result, is_error in tool_uses:
-        if is_error or "error" in result.lower()[:200]:
-            out.append({
-                "signal": "A1",
-                "name": "tool_error",
-                "turn": i,
-                "tool": name,
-                "snippet": result[:200],
-            })
+        head = result[:200]
+        if A1_BENIGN.search(head):
+            # Success output that merely contains the word "error"
+            # (e.g. "0 errors", "all checks passed") — not a failure.
+            continue
+        if is_error or A1_ERROR_MARKER.search(head):
+            out.append(
+                {
+                    "signal": "A1",
+                    "name": "tool_error",
+                    "turn": i,
+                    "tool": name,
+                    "snippet": result[:200],
+                }
+            )
     return out
 
 
@@ -209,12 +267,14 @@ def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list
         # Detect 3+ within window
         for j in range(len(turns) - 2):
             if turns[j + 2] - turns[j] <= window * 2:
-                out.append({
-                    "signal": "A2",
-                    "name": "tool_retry_cluster",
-                    "tool": name,
-                    "turns": turns[j:j + 3],
-                })
+                out.append(
+                    {
+                        "signal": "A2",
+                        "name": "tool_retry_cluster",
+                        "tool": name,
+                        "turns": turns[j : j + 3],
+                    }
+                )
                 break
     return out
 
@@ -223,13 +283,15 @@ def signal_verbose_results(tool_uses) -> list[dict]:
     out = []
     for i, name, inp, result, is_error in tool_uses:
         if len(result) > LARGE_TOOL_RESULT_BYTES:
-            out.append({
-                "signal": "A3",
-                "name": "verbose_tool_output",
-                "turn": i,
-                "tool": name,
-                "bytes": len(result),
-            })
+            out.append(
+                {
+                    "signal": "A3",
+                    "name": "verbose_tool_output",
+                    "turn": i,
+                    "tool": name,
+                    "bytes": len(result),
+                }
+            )
     return out
 
 
@@ -237,11 +299,32 @@ def signal_user_corrections(user_texts) -> list[dict]:
     out = []
     for i, text in user_texts:
         if CORRECTION_PATTERNS.search(text):
-            out.append({"signal": "A6", "name": "user_correction", "turn": i, "snippet": text[:200]})
+            out.append(
+                {
+                    "signal": "A6",
+                    "name": "user_correction",
+                    "turn": i,
+                    "snippet": text[:200],
+                }
+            )
         elif ALL_CAPS_RUN.search(text) and len(text) < 500:
-            out.append({"signal": "A6", "name": "all_caps_emphasis", "turn": i, "snippet": text[:200]})
+            out.append(
+                {
+                    "signal": "A6",
+                    "name": "all_caps_emphasis",
+                    "turn": i,
+                    "snippet": text[:200],
+                }
+            )
         elif MULTIPLE_EXCLAIM.search(text):
-            out.append({"signal": "A6", "name": "exclamation_emphasis", "turn": i, "snippet": text[:200]})
+            out.append(
+                {
+                    "signal": "A6",
+                    "name": "exclamation_emphasis",
+                    "turn": i,
+                    "snippet": text[:200],
+                }
+            )
     return out
 
 
@@ -256,52 +339,62 @@ def signal_prompt_repetition(user_texts) -> list[dict]:
         seen[key].append(i)
     for key, turns in seen.items():
         if len(turns) >= 2:
-            out.append({
-                "signal": "A7",
-                "name": "prompt_repetition",
-                "turns": turns,
-                "snippet": key[:200],
-            })
+            out.append(
+                {
+                    "signal": "A7",
+                    "name": "prompt_repetition",
+                    "turns": turns,
+                    "snippet": key[:200],
+                }
+            )
     return out
 
 
-def signal_prompt_sequence_repetition(user_texts, n: int = DEFAULT_SEQ_NGRAM) -> list[dict]:
+def signal_prompt_sequence_repetition(
+    user_texts, n: int = DEFAULT_SEQ_NGRAM
+) -> list[dict]:
     out = []
     if len(user_texts) < n * 2:
         return out
     norm = [re.sub(r"\s+", " ", t[1].strip().lower())[:60] for t in user_texts]
     counter: Counter[tuple[str, ...]] = Counter()
     for i in range(len(norm) - n + 1):
-        ngram = tuple(norm[i:i + n])
+        ngram = tuple(norm[i : i + n])
         if all(len(s) > 5 for s in ngram):
             counter[ngram] += 1
     for ngram, cnt in counter.items():
         if cnt >= 2:
-            out.append({
-                "signal": "A8",
-                "name": "prompt_sequence_repetition",
-                "count": cnt,
-                "ngram": list(ngram),
-            })
+            out.append(
+                {
+                    "signal": "A8",
+                    "name": "prompt_sequence_repetition",
+                    "count": cnt,
+                    "ngram": list(ngram),
+                }
+            )
     return out
 
 
-def signal_tool_sequence_repetition(tool_uses, n: int = DEFAULT_SEQ_NGRAM) -> list[dict]:
+def signal_tool_sequence_repetition(
+    tool_uses, n: int = DEFAULT_SEQ_NGRAM
+) -> list[dict]:
     out = []
     if len(tool_uses) < n * 2:
         return out
     names = [t[1] for t in tool_uses]
     counter: Counter[tuple[str, ...]] = Counter()
     for i in range(len(names) - n + 1):
-        counter[tuple(names[i:i + n])] += 1
+        counter[tuple(names[i : i + n])] += 1
     for ngram, cnt in counter.items():
         if cnt >= 2:
-            out.append({
-                "signal": "A9",
-                "name": "tool_sequence_repetition",
-                "count": cnt,
-                "ngram": list(ngram),
-            })
+            out.append(
+                {
+                    "signal": "A9",
+                    "name": "tool_sequence_repetition",
+                    "count": cnt,
+                    "ngram": list(ngram),
+                }
+            )
     return out
 
 
@@ -323,18 +416,24 @@ def signal_skill_reminder_vs_invoke(events) -> list[dict]:
             content_j = events[j].get("message", {}).get("content", [])
             if isinstance(content_j, list):
                 for block in content_j:
-                    if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("name") == "Skill":
+                    if (
+                        isinstance(block, dict)
+                        and block.get("type") == "tool_use"
+                        and block.get("name") == "Skill"
+                    ):
                         invoked = True
                         break
             if invoked:
                 break
         if not invoked:
-            out.append({
-                "signal": "A10",
-                "name": "skill_reminder_not_invoked",
-                "turn": i,
-                "skills_mentioned": matches,
-            })
+            out.append(
+                {
+                    "signal": "A10",
+                    "name": "skill_reminder_not_invoked",
+                    "turn": i,
+                    "skills_mentioned": matches,
+                }
+            )
     return out
 
 
@@ -358,32 +457,57 @@ def signal_reread_same_file(tool_uses) -> list[dict]:
                 suspicious = True
                 break
         if suspicious:
-            out.append({
-                "signal": "A12",
-                "name": "reread_without_edit",
-                "path": path,
-                "turns": read_turns,
-            })
+            out.append(
+                {
+                    "signal": "A12",
+                    "name": "reread_without_edit",
+                    "path": path,
+                    "turns": read_turns,
+                }
+            )
     return out
 
 
 def signal_main_branch_work(tool_uses) -> list[dict]:
+    """Flag commits/pushes that are positively on main/master.
+
+    Tracks the active branch from explicit checkouts/switches, worktree
+    additions, and branch names echoed in command output. Only fires when we
+    *know* the operation is on main (or a push explicitly targets main) — a
+    worktree checked out on a feature branch, or a commit message that merely
+    mentions "main", no longer trips this signal.
+    """
     out = []
-    saw_branch = False
+    on_main = None  # None = unknown; only flag when positively known to be on main
     for i, name, inp, result, is_error in tool_uses:
         if name != "Bash":
             continue
         cmd = inp.get("command", "")
-        if GIT_CHECKOUT_B.search(cmd):
-            saw_branch = True
-            continue
-        if not saw_branch and re.search(r"\bgit\s+(add|commit|push)\b", cmd) and GIT_BRANCH_MAIN.search(cmd + " " + result):
-            out.append({
-                "signal": "A14",
-                "name": "git_op_without_branch",
-                "turn": i,
-                "command": cmd[:200],
-            })
+
+        if GIT_CHECKOUT_B.search(cmd):  # checkout -b / switch -c / worktree add -b
+            on_main = False
+        else:
+            m = GIT_SWITCH_TO.search(cmd)
+            mw = GIT_WORKTREE_ADD_BRANCH.search(cmd)
+            if m and not m.group("br").startswith("-"):
+                on_main = m.group("br") in ("main", "master")
+            elif mw:
+                on_main = mw.group("br") in ("main", "master")
+        mob = GIT_ON_BRANCH_OUT.search(result)
+        if mob:
+            on_main = mob.group("br") in ("main", "master")
+
+        if GIT_COMMIT_OR_PUSH.search(cmd) and (
+            on_main is True or GIT_PUSH_TO_MAIN.search(cmd)
+        ):
+            out.append(
+                {
+                    "signal": "A14",
+                    "name": "git_op_without_branch",
+                    "turn": i,
+                    "command": cmd[:200],
+                }
+            )
     return out
 
 
@@ -394,12 +518,14 @@ def signal_bot_attribution(tool_uses) -> list[dict]:
             continue
         cmd = inp.get("command", "")
         if "git commit" in cmd and BOT_ATTRIBUTION.search(cmd):
-            out.append({
-                "signal": "A15",
-                "name": "bot_attribution_in_commit",
-                "turn": i,
-                "snippet": cmd[:300],
-            })
+            out.append(
+                {
+                    "signal": "A15",
+                    "name": "bot_attribution_in_commit",
+                    "turn": i,
+                    "snippet": cmd[:300],
+                }
+            )
     return out
 
 
@@ -407,13 +533,15 @@ def signal_outdated_tool(tool_uses) -> list[dict]:
     out = []
     for i, name, inp, result, is_error in tool_uses:
         if OUTDATED_TOOL.search(result[:1000]):
-            out.append({
-                "signal": "A16",
-                "name": "outdated_tool_warning",
-                "turn": i,
-                "tool": name,
-                "snippet": result[:300],
-            })
+            out.append(
+                {
+                    "signal": "A16",
+                    "name": "outdated_tool_warning",
+                    "turn": i,
+                    "tool": name,
+                    "snippet": result[:300],
+                }
+            )
     return out
 
 
@@ -423,14 +551,18 @@ def signal_upstream_failure(tool_uses) -> list[dict]:
         if name != "Bash":
             continue
         cmd = inp.get("command", "")
-        if is_error and re.search(r"\bgit\s+push\b|\bgh\s+pr\s+(checks|create|merge)\b|\bglab\s+mr\b", cmd):
-            out.append({
-                "signal": "A17",
-                "name": "upstream_failure",
-                "turn": i,
-                "command": cmd[:200],
-                "stderr": result[:500],
-            })
+        if is_error and re.search(
+            r"\bgit\s+push\b|\bgh\s+pr\s+(checks|create|merge)\b|\bglab\s+mr\b", cmd
+        ):
+            out.append(
+                {
+                    "signal": "A17",
+                    "name": "upstream_failure",
+                    "turn": i,
+                    "command": cmd[:200],
+                    "stderr": result[:500],
+                }
+            )
     return out
 
 
@@ -444,14 +576,16 @@ def signal_tool_count_vs_task(tool_uses, user_texts) -> list[dict]:
     n_msgs = len({i for i, _ in user_texts}) or 1
     ratio = n_tools / n_msgs
     if n_tools >= A4_MIN_TOOL_USES and ratio >= A4_RATIO_THRESHOLD:
-        return [{
-            "signal": "A4",
-            "name": "tool_call_inefficiency_ratio",
-            "tool_uses": n_tools,
-            "user_messages": n_msgs,
-            "ratio": round(ratio, 2),
-            "threshold": A4_RATIO_THRESHOLD,
-        }]
+        return [
+            {
+                "signal": "A4",
+                "name": "tool_call_inefficiency_ratio",
+                "tool_uses": n_tools,
+                "user_messages": n_msgs,
+                "ratio": round(ratio, 2),
+                "threshold": A4_RATIO_THRESHOLD,
+            }
+        ]
     return []
 
 
@@ -471,12 +605,14 @@ def signal_sequential_parallelizable(tool_uses) -> list[dict]:
             return
         distinct_msgs = {ev for ev, _ in run}
         if len(distinct_msgs) >= A5_MIN_SERIAL_RUN:
-            out.append({
-                "signal": "A5",
-                "name": "sequential_parallelizable",
-                "tools": [n for _, n in run],
-                "assistant_messages": sorted(distinct_msgs),
-            })
+            out.append(
+                {
+                    "signal": "A5",
+                    "name": "sequential_parallelizable",
+                    "tools": [n for _, n in run],
+                    "assistant_messages": sorted(distinct_msgs),
+                }
+            )
 
     for ev_idx, name, _inp, _result, _err in tool_uses:
         if name in A5_PARALLELIZABLE_TOOLS:
@@ -543,15 +679,17 @@ def signal_wrong_tool_choice(tool_uses) -> list[dict]:
                 if tok.startswith("-"):
                     continue
                 if A11_STRUCTURED_EXT_RE.search(tok):
-                    out.append({
-                        "signal": "A11",
-                        "name": "structured_file_misuse",
-                        "turn": i,
-                        "tool_invoked": tool,
-                        "file": tok,
-                        "hint": "use data-tools (jq / yq / dasel) instead of grep/sed/awk on structured formats",
-                        "snippet": cmd[:200],
-                    })
+                    out.append(
+                        {
+                            "signal": "A11",
+                            "name": "structured_file_misuse",
+                            "turn": i,
+                            "tool_invoked": tool,
+                            "file": tok,
+                            "hint": "use data-tools (jq / yq / dasel) instead of grep/sed/awk on structured formats",
+                            "snippet": cmd[:200],
+                        }
+                    )
                     fired_structured = True
                     break
             if fired_structured:
@@ -566,14 +704,16 @@ def signal_wrong_tool_choice(tool_uses) -> list[dict]:
         if head in A11_CAT_TOOLS:
             file_args = [t for t in tokens[1:] if not t.startswith("-")]
             if file_args:
-                out.append({
-                    "signal": "A11",
-                    "name": "cat_instead_of_read",
-                    "turn": i,
-                    "tool_invoked": head,
-                    "hint": "use the Read tool (line-numbered output, ranged reads) instead of cat/head/tail",
-                    "snippet": cmd[:200],
-                })
+                out.append(
+                    {
+                        "signal": "A11",
+                        "name": "cat_instead_of_read",
+                        "turn": i,
+                        "tool_invoked": head,
+                        "hint": "use the Read tool (line-numbered output, ranged reads) instead of cat/head/tail",
+                        "snippet": cmd[:200],
+                    }
+                )
     return out
 
 
@@ -588,11 +728,15 @@ def signal_skipped_verification(assistant_texts, tool_uses) -> list[dict]:
     """
     out = []
     bash_commands_chronological: list[tuple[int, str]] = [
-        (i, inp.get("command", "")) for i, name, inp, _r, _e in tool_uses if name == "Bash"
+        (i, inp.get("command", ""))
+        for i, name, inp, _r, _e in tool_uses
+        if name == "Bash"
     ]
 
     def had_verification_before(turn: int) -> bool:
-        recent = [(i, c) for i, c in bash_commands_chronological if i < turn][-A13_LOOKBACK_BASH_CMDS:]
+        recent = [(i, c) for i, c in bash_commands_chronological if i < turn][
+            -A13_LOOKBACK_BASH_CMDS:
+        ]
         return any(A13_VERIFICATION_CMD.search(c) for _, c in recent)
 
     for i, text in assistant_texts:
@@ -601,17 +745,21 @@ def signal_skipped_verification(assistant_texts, tool_uses) -> list[dict]:
             continue
         if had_verification_before(i):
             continue
-        out.append({
-            "signal": "A13",
-            "name": "claim_without_verification",
-            "turn": i,
-            "claim": m.group(0),
-            "snippet": text[:200],
-        })
+        out.append(
+            {
+                "signal": "A13",
+                "name": "claim_without_verification",
+                "turn": i,
+                "claim": m.group(0),
+                "snippet": text[:200],
+            }
+        )
     return out
 
 
-def signal_permission_reapproval(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list[dict]:
+def signal_permission_reapproval(
+    tool_uses, window: int = DEFAULT_RETRY_WINDOW
+) -> list[dict]:
     """A18: same Bash command-prefix appears ≥3× *spread* over the session.
 
     Distinct from A2 (retry burst): A18 fires only when the run is dispersed,
@@ -643,13 +791,15 @@ def signal_permission_reapproval(tool_uses, window: int = DEFAULT_RETRY_WINDOW) 
         if median <= window * 2:
             # Looks like a retry burst — leave it to A2.
             continue
-        out.append({
-            "signal": "A18",
-            "name": "permission_reapproval_candidate",
-            "prefix": prefix,
-            "occurrences": len(turns),
-            "median_gap_turns": median,
-        })
+        out.append(
+            {
+                "signal": "A18",
+                "name": "permission_reapproval_candidate",
+                "prefix": prefix,
+                "occurrences": len(turns),
+                "median_gap_turns": median,
+            }
+        )
     return out
 
 
@@ -679,8 +829,11 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--transcript-file", required=True, type=Path)
     parser.add_argument("--output-format", choices=["json", "text"], default="json")
-    parser.add_argument("--signals", default=",".join(SIGNAL_FUNCS.keys()),
-                        help="Comma-separated signal IDs to run (default: all)")
+    parser.add_argument(
+        "--signals",
+        default=",".join(SIGNAL_FUNCS.keys()),
+        help="Comma-separated signal IDs to run (default: all)",
+    )
     args = parser.parse_args()
 
     if not args.transcript_file.exists():
@@ -698,7 +851,11 @@ def main() -> int:
         if sid not in selected:
             continue
         # Dispatch arg shape
-        if func in (signal_user_corrections, signal_prompt_repetition, signal_prompt_sequence_repetition):
+        if func in (
+            signal_user_corrections,
+            signal_prompt_repetition,
+            signal_prompt_sequence_repetition,
+        ):
             findings.extend(func(user_texts))
         elif func is signal_skill_reminder_vs_invoke:
             findings.extend(func(events))
@@ -721,7 +878,9 @@ def main() -> int:
         print(json.dumps(summary, indent=2, ensure_ascii=False))
     else:
         print(f"Transcript: {summary['transcript']}")
-        print(f"Events: {summary['events_total']}  User msgs: {summary['user_messages']}  Tool uses: {summary['tool_uses']}")
+        print(
+            f"Events: {summary['events_total']}  User msgs: {summary['user_messages']}  Tool uses: {summary['tool_uses']}"
+        )
         print(f"Findings: {summary['findings_total']}")
         for f in findings:
             print(f"  - [{f['signal']}] {f['name']}: {f}")
