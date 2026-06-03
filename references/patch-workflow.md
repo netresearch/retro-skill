@@ -41,8 +41,19 @@ Examples:
 
 - **Conventional Commits format:** `<type>(<scope>): <summary>`
   - Types: `feat`, `fix`, `docs`, `refactor`, `chore`
+- **DCO sign-off (required).** Commit with `git commit -s` so a `Signed-off-by:`
+  trailer matching the commit author is added. Netresearch skill repos enforce
+  the DCO check — **without sign-off the PR is BLOCKED even when every other
+  check is green** (this is the single most common reason retro-created PRs
+  stall). Before pushing, verify:
+  ```bash
+  git log -1 --format='%(trailers:key=Signed-off-by)'   # must be non-empty
+  ```
+- **Pass the message via `-F <file>`, not inline `-m`,** whenever it contains
+  quotes, backticks, or other shell-special characters — inline `-m` mangles
+  them mid-shell and produces a corrupted or partial commit message.
 - **No bot attribution.** Never add "Generated with Claude Code" or "Co-Authored-By: Claude" — see user memory.
-- **Preserve signing.** Never pass `--no-gpg-sign` or `-c commit.gpgsign=false` — see user memory `feedback_preserve-commit-signing`.
+- **Preserve signing.** Never pass `--no-gpg-sign` or `-c commit.gpgsign=false` — see user memory `feedback_preserve-commit-signing`. (GPG signing and DCO sign-off are independent — you need *both*.)
 - **Preserve hooks.** Never pass `--no-verify`. If a hook fails, investigate.
 - **Atomic.** One logical change per commit.
 
