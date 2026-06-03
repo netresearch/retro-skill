@@ -70,6 +70,7 @@ Requires conversational context understanding. The LLM reads pre-pass output + r
 | B12 | Assumption without asking | Assistant made an assumption later refuted; should have used spec-driven-development |
 | B13 | Context re-discovery | Assistant re-explored repo structure already documented in AGENTS.md |
 | B14 | Doc drift | Assistant used outdated API/library version when context7 would have helped |
+| B15 | Skill trigger-coverage gap | A **systematic** pass (not opportunistic): load *every* installed skill's `description` via `scripts/find-installed-skills.sh`, then judge — given what this session actually did — which skills *should* have triggered but were never invoked. Each miss whose root cause is weak/missing trigger words → `skill-update` to that skill's `description`. (B2/B4 are the opportunistic, single-skill version; B15 is the exhaustive sweep across the whole inventory. See the trigger-coverage step in `SKILL.md`.) |
 
 ## Schicht C — Cross-Session
 
