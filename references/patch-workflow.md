@@ -41,8 +41,19 @@ Examples:
 
 - **Conventional Commits format:** `<type>(<scope>): <summary>`
   - Types: `feat`, `fix`, `docs`, `refactor`, `chore`
+- **DCO sign-off (required).** Commit with `git commit -s` so a `Signed-off-by:`
+  trailer matching the commit author is added. Netresearch skill repos enforce
+  the DCO check — **without sign-off the PR is BLOCKED even when every other
+  check is green** (this is the single most common reason retro-created PRs
+  stall). Before pushing, verify:
+  ```bash
+  git log -1 --format='%(trailers:key=Signed-off-by)'   # must be non-empty
+  ```
+- **Pass the message via `-F <file>`, not inline `-m`,** whenever it contains
+  quotes, backticks, or other shell-special characters — inline `-m` mangles
+  them mid-shell and produces a corrupted or partial commit message.
 - **No bot attribution.** Never add "Generated with Claude Code" or "Co-Authored-By: Claude" — see user memory.
-- **Preserve signing.** Never pass `--no-gpg-sign` or `-c commit.gpgsign=false` — see user memory `feedback_preserve-commit-signing`.
+- **Preserve signing.** Never pass `--no-gpg-sign` or `-c commit.gpgsign=false` — see user memory `feedback_preserve-commit-signing`. (GPG signing and DCO sign-off are independent — you need *both*.)
 - **Preserve hooks.** Never pass `--no-verify`. If a hook fails, investigate.
 - **Atomic.** One logical change per commit.
 
@@ -55,6 +66,25 @@ A /retro session on 2026-05-11 found the assistant suggested npm
 in 4 turns despite the project using bun. The skill description
 didn't include 'bun' as a trigger keyword.
 ```
+
+## Self-review before push
+
+A `/retro` skill-update **authors content into another skill** — commands,
+recipes, code examples. That content can be plausible but wrong, and once
+merged it ships as authoritative guidance. Before pushing, re-read your own
+diff and check:
+
+- Every command/recipe you wrote **would actually run as written** (flags exist,
+  quoting is correct, the example is internally consistent — e.g. don't claim an
+  *unescaped* quote closes a string while showing an *escaped* one).
+- Any "do X then Y" sequence is coherent (no step that contradicts a prior step).
+- The root cause in the commit/PR body is one you **verified**, not inferred — if
+  you didn't confirm it, say "suspected" rather than asserting it.
+
+Observed failure: a retro shipped a self-contradictory `--force-with-lease`
+recipe and a contradictory escaping example; both were caught only by an
+external reviewer, and a wrong "main lags origin" root cause was caught only by
+the user. A 30-second self-review of the diff would have caught all three.
 
 ## PR creation
 

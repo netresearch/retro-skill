@@ -105,10 +105,28 @@ Differences between modes:
 | Metric | Target | Why |
 |---|---|---|
 | LLM passes per `/retro` | 1 | No multi-round polling |
+| `detect-mechanical.py` invocations | 1 | Capture the JSON once, post-process the saved output; never re-run the detector just to reshape/bucket its output (a full second transcript scan for nothing) |
 | Tool calls for skill discovery | ≤5 | Cached per session |
 | Proposals presented | ≤10 | Not 1011 (Coach anti-pattern) |
 | Total token cost vs Coach baseline | Dramatically below | TBD after first measurement |
 | Setup time before first proposal | <30 seconds | Mechanical pre-pass + discovery cache |
+
+## Phase transparency
+
+The mode table above is the *contract*. When a run deviates — skips a phase,
+or substitutes an ad-hoc step for the prescribed script — **say so in one line**,
+with the reason:
+
+```
+Phase 3 (cross-session): skipped — no ~/.claude-coach/events.sqlite and a single-project session.
+Phase 5 (skill discovery): used `find … SKILL.md | grep` instead of find-installed-skills.sh because <reason>.
+```
+
+Silent skips make the Phase-11 report read as "all phases ran" when they did
+not — which is itself a friction signal a future retro will (correctly) flag.
+Prefer the prescribed scripts (`find-installed-skills.sh`, `extract-coach-events.py`)
+over ad-hoc substitutes; reach for an ad-hoc step only when the script genuinely
+cannot serve, and announce it when you do.
 
 ## Failure modes and graceful degradation
 

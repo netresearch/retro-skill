@@ -3,6 +3,7 @@
 Builds tiny synthetic JSONL transcripts and asserts the detector fires the
 expected signal. Not exhaustive — one synthetic case per implemented signal.
 """
+
 from __future__ import annotations
 
 import importlib.util
@@ -37,21 +38,46 @@ def user_msg(text: str) -> dict:
     return {"type": "user", "message": {"content": [{"type": "text", "text": text}]}}
 
 
-def tool_use_pair(tool_id: str, name: str, input_: dict, result_text: str, is_error: bool = False) -> list[dict]:
+def tool_use_pair(
+    tool_id: str, name: str, input_: dict, result_text: str, is_error: bool = False
+) -> list[dict]:
     return [
-        {"type": "assistant", "message": {"content": [{"type": "tool_use", "id": tool_id, "name": name, "input": input_}]}},
-        {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": tool_id, "content": result_text, "is_error": is_error}]}},
+        {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": tool_id, "name": name, "input": input_}
+                ]
+            },
+        },
+        {
+            "type": "user",
+            "message": {
+                "content": [
+                    {
+                        "type": "tool_result",
+                        "tool_use_id": tool_id,
+                        "content": result_text,
+                        "is_error": is_error,
+                    }
+                ]
+            },
+        },
     ]
 
 
 class TestSchichtA(unittest.TestCase):
     def assert_signal(self, events: list[dict], expected_signal: str):
         signals = self._run_all(events)
-        self.assertIn(expected_signal, signals, f"expected {expected_signal} in {signals}")
+        self.assertIn(
+            expected_signal, signals, f"expected {expected_signal} in {signals}"
+        )
 
     def assert_not_signal(self, events: list[dict], unexpected_signal: str):
         signals = self._run_all(events)
-        self.assertNotIn(unexpected_signal, signals, f"unexpected {unexpected_signal} in {signals}")
+        self.assertNotIn(
+            unexpected_signal, signals, f"unexpected {unexpected_signal} in {signals}"
+        )
 
     def _run_all(self, events: list[dict]) -> set:
         path = write_jsonl(events)
@@ -62,7 +88,11 @@ class TestSchichtA(unittest.TestCase):
             tool_uses = detect.extract_tool_uses(events_loaded)
             findings = []
             for sid, func in detect.SIGNAL_FUNCS.items():
-                if func in (detect.signal_user_corrections, detect.signal_prompt_repetition, detect.signal_prompt_sequence_repetition):
+                if func in (
+                    detect.signal_user_corrections,
+                    detect.signal_prompt_repetition,
+                    detect.signal_prompt_sequence_repetition,
+                ):
                     findings.extend(func(user_texts))
                 elif func is detect.signal_skill_reminder_vs_invoke:
                     findings.extend(func(events_loaded))
@@ -77,8 +107,114 @@ class TestSchichtA(unittest.TestCase):
             path.unlink(missing_ok=True)
 
     def test_A1_tool_error(self):
-        evs = tool_use_pair("u1", "Bash", {"command": "exit 1"}, "Exit code 1\nerror", is_error=True)
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "exit 1"}, "Exit code 1\nerror", is_error=True
+        )
         self.assert_signal(evs, "A1")
+
+    def test_A1_benign_error_word_does_not_fire(self):
+        # Success output containing the word "error" must not be flagged.
+        for txt in (
+            "0 errors, all checks passed",
+            "No errors found.",
+            "lint: error-free",
+            "Good signature from key",
+        ):
+            evs = tool_use_pair(
+                "u1", "Bash", {"command": "make lint"}, txt, is_error=False
+            )
+            self.assert_not_signal(evs, "A1")
+
+    def test_A1_real_error_text_fires_without_flag(self):
+        # A genuine error marker fires even when is_error is not set.
+        evs = tool_use_pair(
+            "u1",
+            "Bash",
+            {"command": "git status"},
+            "fatal: not a git repository",
+            is_error=False,
+        )
+        self.assert_signal(evs, "A1")
+
+    def test_A1_code_grep_mentioning_error_does_not_fire(self):
+        # Grepping code that mentions error handling is not a tool error.
+        evs = tool_use_pair(
+            "u1",
+            "Grep",
+            {"pattern": "Error"},
+            "src/Handler.php: class ErrorHandler {",
+            is_error=False,
+        )
+        self.assert_not_signal(evs, "A1")
+
+    def test_A1_is_error_flag_trusted_despite_benign_text(self):
+        # An explicit harness failure must fire even if output reads benign.
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "make check"}, "0 errors", is_error=True
+        )
+        self.assert_signal(evs, "A1")
+
+    def test_A14_checkout_main_with_flag_fires(self):
+        # Optional flags (e.g. -f) before the branch name must not hide main.
+        evs = tool_use_pair(
+            "c",
+            "Bash",
+            {"command": "git checkout -f main"},
+            "Switched to branch 'main'",
+        )
+        evs += tool_use_pair(
+            "u1", "Bash", {"command": "git commit -m wip"}, "1 file changed"
+        )
+        self.assert_signal(evs, "A14")
+
+    def test_A14_commit_after_checkout_main_fires(self):
+        evs = tool_use_pair(
+            "c", "Bash", {"command": "git checkout main"}, "Switched to branch 'main'"
+        )
+        evs += tool_use_pair(
+            "u1", "Bash", {"command": "git commit -m wip"}, "1 file changed"
+        )
+        self.assert_signal(evs, "A14")
+
+    def test_A14_worktree_feature_branch_does_not_fire(self):
+        # The user's worktree workflow: each worktree is already a feature branch.
+        evs = tool_use_pair(
+            "w",
+            "Bash",
+            {"command": "git worktree add ../feat feat"},
+            "Preparing worktree",
+        )
+        evs += tool_use_pair(
+            "u1", "Bash", {"command": "git commit -m wip"}, "1 file changed"
+        )
+        self.assert_not_signal(evs, "A14")
+
+    def test_A14_main_in_commit_message_does_not_fire(self):
+        # "main" appearing in the commit message must not trip A14.
+        evs = tool_use_pair(
+            "u1",
+            "Bash",
+            {"command": 'git commit -m "fix main menu parser"'},
+            "1 file changed",
+        )
+        self.assert_not_signal(evs, "A14")
+
+    def test_A14_already_on_main_fires(self):
+        # `git checkout main` when already there prints "Already on 'main'".
+        evs = tool_use_pair(
+            "c", "Bash", {"command": "git checkout main"}, "Already on 'main'"
+        )
+        evs += tool_use_pair(
+            "u1", "Bash", {"command": "git commit -m wip"}, "1 file changed"
+        )
+        self.assert_signal(evs, "A14")
+
+    def test_A14_push_to_main_prefixed_branch_does_not_fire(self):
+        # Pushing a branch that merely starts with "main" must not fire.
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "git push origin main-menu"}, "done"
+        )
+        self.assert_not_signal(evs, "A14")
 
     def test_A2_retry_cluster(self):
         evs = []
@@ -96,15 +232,26 @@ class TestSchichtA(unittest.TestCase):
         self.assert_signal(evs, "A6")
 
     def test_A7_prompt_repetition(self):
-        evs = [user_msg("please run the tests now"), user_msg("please run the tests now")]
+        evs = [
+            user_msg("please run the tests now"),
+            user_msg("please run the tests now"),
+        ]
         self.assert_signal(evs, "A7")
 
     def test_A16_outdated_tool(self):
-        evs = tool_use_pair("u1", "Bash", {"command": "npm i"}, "npm WARN deprecated: use yarn instead")
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "npm i"}, "npm WARN deprecated: use yarn instead"
+        )
         self.assert_signal(evs, "A16")
 
     def test_A17_upstream_failure(self):
-        evs = tool_use_pair("u1", "Bash", {"command": "git push origin main"}, "remote: rejected", is_error=True)
+        evs = tool_use_pair(
+            "u1",
+            "Bash",
+            {"command": "git push origin main"},
+            "remote: rejected",
+            is_error=True,
+        )
         self.assert_signal(evs, "A17")
 
     def test_A4_tool_call_inefficiency(self):
@@ -131,26 +278,70 @@ class TestSchichtA(unittest.TestCase):
     def test_A5_parallel_batch_does_not_fire(self):
         # All three tool_use blocks live in ONE assistant message → parallel; must not fire.
         events = [
-            {"type": "assistant", "message": {"content": [
-                {"type": "tool_use", "id": "p1", "name": "Read", "input": {"file_path": "/a.py"}},
-                {"type": "tool_use", "id": "p2", "name": "Read", "input": {"file_path": "/b.py"}},
-                {"type": "tool_use", "id": "p3", "name": "Read", "input": {"file_path": "/c.py"}},
-            ]}},
-            {"type": "user", "message": {"content": [
-                {"type": "tool_result", "tool_use_id": "p1", "content": "ok", "is_error": False},
-                {"type": "tool_result", "tool_use_id": "p2", "content": "ok", "is_error": False},
-                {"type": "tool_result", "tool_use_id": "p3", "content": "ok", "is_error": False},
-            ]}},
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "p1",
+                            "name": "Read",
+                            "input": {"file_path": "/a.py"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "p2",
+                            "name": "Read",
+                            "input": {"file_path": "/b.py"},
+                        },
+                        {
+                            "type": "tool_use",
+                            "id": "p3",
+                            "name": "Read",
+                            "input": {"file_path": "/c.py"},
+                        },
+                    ]
+                },
+            },
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "p1",
+                            "content": "ok",
+                            "is_error": False,
+                        },
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "p2",
+                            "content": "ok",
+                            "is_error": False,
+                        },
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": "p3",
+                            "content": "ok",
+                            "is_error": False,
+                        },
+                    ]
+                },
+            },
         ]
         self.assert_not_signal(events, "A5")
 
     def test_A11_grep_on_json(self):
-        evs = tool_use_pair("u1", "Bash", {"command": "grep version package.json"}, "...")
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "grep version package.json"}, "..."
+        )
         self.assert_signal(evs, "A11")
 
     def test_A11_grep_via_pipe_does_not_fire(self):
         # grep on stdin (piped) is fine — only a direct file argument is the misuse.
-        evs = tool_use_pair("u1", "Bash", {"command": "jq . package.json | grep version"}, "...")
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "jq . package.json | grep version"}, "..."
+        )
         self.assert_not_signal(evs, "A11")
 
     def test_A11_cat_instead_of_read(self):
@@ -159,34 +350,55 @@ class TestSchichtA(unittest.TestCase):
 
     def test_A13_claim_without_verification(self):
         evs = [
-            {"type": "assistant", "message": {"content": [
-                {"type": "text", "text": "All tests pass now, the bug is fixed."}
-            ]}},
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "All tests pass now, the bug is fixed.",
+                        }
+                    ]
+                },
+            },
         ]
         self.assert_signal(evs, "A13")
 
     def test_A13_claim_with_prior_test_run_does_not_fire(self):
         evs = tool_use_pair("u1", "Bash", {"command": "pytest tests/"}, "5 passed")
-        evs.append({"type": "assistant", "message": {"content": [
-            {"type": "text", "text": "All tests pass now."}
-        ]}})
+        evs.append(
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [{"type": "text", "text": "All tests pass now."}]
+                },
+            }
+        )
         self.assert_not_signal(evs, "A13")
 
     def test_A18_permission_reapproval_spread(self):
         # Same `git status` 4× spread far apart → allowlist candidate.
         evs = []
         for i in range(4):
-            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": "git status"}, "clean"))
+            evs.extend(
+                tool_use_pair(f"u{i}", "Bash", {"command": "git status"}, "clean")
+            )
             # Inject filler tool calls to spread occurrences apart.
             for j in range(15):
-                evs.extend(tool_use_pair(f"f{i}_{j}", "Read", {"file_path": f"/x{i}{j}.py"}, "ok"))
+                evs.extend(
+                    tool_use_pair(
+                        f"f{i}_{j}", "Read", {"file_path": f"/x{i}{j}.py"}, "ok"
+                    )
+                )
         self.assert_signal(evs, "A18")
 
     def test_A18_burst_does_not_fire(self):
         # 3× back-to-back is a retry burst (A2), not a permission re-approval (A18).
         evs = []
         for i in range(3):
-            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": "git status"}, "clean"))
+            evs.extend(
+                tool_use_pair(f"u{i}", "Bash", {"command": "git status"}, "clean")
+            )
         self.assert_not_signal(evs, "A18")
 
     def test_A18_repeated_read_does_not_fire(self):
@@ -196,17 +408,25 @@ class TestSchichtA(unittest.TestCase):
         for i in range(6):
             evs.extend(tool_use_pair(f"u{i}", "Read", {"file_path": f"/x{i}.py"}, "ok"))
             for j in range(15):
-                evs.extend(tool_use_pair(f"f{i}_{j}", "Bash", {"command": f"echo {i}{j}"}, "ok"))
+                evs.extend(
+                    tool_use_pair(
+                        f"f{i}_{j}", "Bash", {"command": f"echo {i}{j}"}, "ok"
+                    )
+                )
         self.assert_not_signal(evs, "A18")
 
     def test_A11_sed_with_pipes_in_program(self):
         # Quoted sed body containing | must tokenize correctly with shlex.
-        evs = tool_use_pair("u1", "Bash", {"command": "sed -i 's|foo|bar|g' config.yaml"}, "")
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "sed -i 's|foo|bar|g' config.yaml"}, ""
+        )
         self.assert_signal(evs, "A11")
 
     def test_A11_grep_with_alternation_pattern(self):
         # `grep -E 'a|b' file.yaml` — alternation in the regex, structured file arg.
-        evs = tool_use_pair("u1", "Bash", {"command": "grep -E 'a|b' config.yaml"}, "ok")
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "grep -E 'a|b' config.yaml"}, "ok"
+        )
         self.assert_signal(evs, "A11")
 
     def test_A11_cat_piped_does_not_fire(self):
@@ -219,13 +439,20 @@ class TestSchichtA(unittest.TestCase):
         # 21 tool calls / 1 user event = 21.0 (fires); / 2 text blocks = 10.5 (also fires) —
         # so check the reported user_messages value rather than just the signal presence.
         events = [
-            {"type": "user", "message": {"content": [
-                {"type": "text", "text": "first part"},
-                {"type": "text", "text": "second part"},
-            ]}}
+            {
+                "type": "user",
+                "message": {
+                    "content": [
+                        {"type": "text", "text": "first part"},
+                        {"type": "text", "text": "second part"},
+                    ]
+                },
+            }
         ]
         for k in range(21):
-            events.extend(tool_use_pair(f"u{k}", "Bash", {"command": f"echo {k}"}, "ok"))
+            events.extend(
+                tool_use_pair(f"u{k}", "Bash", {"command": f"echo {k}"}, "ok")
+            )
         path = write_jsonl(events)
         try:
             loaded = detect.load_jsonl(path)

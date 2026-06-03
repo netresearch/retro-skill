@@ -69,7 +69,7 @@ For these, run `/retro outcome` (post-hoc) or `/retro audit` (cross-session). Ex
 9. **Materialization** — Per destination:
    - `user-memory` → write `~/.claude/projects/<slug>/memory/feedback_<slug>.md`
    - `project-rule` → write `<project>/docs/feedback/<slug>.md` + AGENTS.md index entry
-   - `skill-update` → clone source repo (or use existing `~/p/<name>/main/` worktree), branch, commit, push, open PR
+   - `skill-update` → clone source repo (or use existing `~/p/<name>/main/` worktree), branch, commit **with `-s` (DCO sign-off) — without it the PR is BLOCKED even when all checks pass**, push, open PR
    - `new-skill` → invoke `skill-repo` scaffolding
    - `checkpoint` → YAML entry in target skill's `checkpoints.yaml`
    - `harness-artefact` → invoke `agent-harness` bootstrap
@@ -78,7 +78,7 @@ For these, run `/retro outcome` (post-hoc) or `/retro audit` (cross-session). Ex
 
 ## Boundaries
 
-**Always:** LLM is primary classifier. Patches go to source repos, never cache. Per-private-repo confirmation. Conventional Commits. Preserve commit signing.
+**Always:** LLM is primary classifier. Patches go to source repos, never cache. Per-private-repo confirmation. Conventional Commits. DCO sign-off (`git commit -s`). Preserve commit signing (GPG and DCO are independent — both are required).
 
 **Ask first:** Skill-match ambiguity. Auto-mode activation. Private repo targets. Dirty worktree fallback.
 
