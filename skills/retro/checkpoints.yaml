@@ -37,6 +37,12 @@ mechanical:
     severity: error
     desc: "Skill discovery helper exists"
 
+  - id: RT-07
+    type: command
+    pattern: "python3 -m unittest discover -s tests -q"
+    severity: error
+    desc: "Detector test suite passes (guards A1/A14 signal regressions)"
+
   - id: RT-06
     type: command
     pattern: "bash -n scripts/find-installed-skills.sh"

@@ -67,6 +67,25 @@ in 4 turns despite the project using bun. The skill description
 didn't include 'bun' as a trigger keyword.
 ```
 
+## Self-review before push
+
+A `/retro` skill-update **authors content into another skill** — commands,
+recipes, code examples. That content can be plausible but wrong, and once
+merged it ships as authoritative guidance. Before pushing, re-read your own
+diff and check:
+
+- Every command/recipe you wrote **would actually run as written** (flags exist,
+  quoting is correct, the example is internally consistent — e.g. don't claim an
+  *unescaped* quote closes a string while showing an *escaped* one).
+- Any "do X then Y" sequence is coherent (no step that contradicts a prior step).
+- The root cause in the commit/PR body is one you **verified**, not inferred — if
+  you didn't confirm it, say "suspected" rather than asserting it.
+
+Observed failure: a retro shipped a self-contradictory `--force-with-lease`
+recipe and a contradictory escaping example; both were caught only by an
+external reviewer, and a wrong "main lags origin" root cause was caught only by
+the user. A 30-second self-review of the diff would have caught all three.
+
 ## PR creation
 
 GitHub:
