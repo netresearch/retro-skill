@@ -6,8 +6,8 @@ Every friction finding maps to exactly one of six destinations. Each destination
 
 | # | Destination | When | Owner Skill (materialization format) | Storage Location |
 |---|---|---|---|---|
-| 1 | `user-memory` | Personal preference, style, recurring quirk across projects | retro-skill (writes `feedback_<slug>.md` directly) | `~/.claude/projects/<slug>/memory/feedback_<slug>.md` |
-| 2 | `project-rule` | Project-specific convention or command | `agent-rules-skill` (defines `feedback-memory-schema`) | `<project>/docs/feedback/<slug>.md` + AGENTS.md index entry |
+| 1 | `user-memory` | Personal preference, style, recurring quirk across projects | retro-skill (appends a rule) | `~/.claude/CLAUDE.md` (the always-loaded global rules file) |
+| 2 | `project-rule` | Project-specific convention or command | retro-skill (appends a rule) | `<project>/AGENTS.md` |
 | 3 | `skill-update` | Existing skill missing instruction or has wrong guidance | `skill-repo-skill` (defines `materialization-contract`) | PR to skill **source repo** (never cache) |
 | 4 | `new-skill` | Friction is skill-shaped gap, no existing skill matches | `skill-repo-skill` (defines scaffolding) | New repo via scaffolding workflow |
 | 5 | `checkpoint` | Mechanically detectable rule, regex/script possible | `automated-assessment-skill` (defines YAML schema) | Entry in target skill's `checkpoints.yaml` |
@@ -15,25 +15,30 @@ Every friction finding maps to exactly one of six destinations. Each destination
 
 ## Format details
 
-### 1. `user-memory` — `feedback_<slug>.md`
+### 1. `user-memory` — append a rule to `~/.claude/CLAUDE.md`
 
-Canonical schema (matches existing 8 files in `~/.claude/projects/-home-sme-p/memory/`):
+A cross-project personal preference belongs in the **always-loaded global rules
+file**, `~/.claude/CLAUDE.md`. Append a short, titled rule:
 
 ```markdown
----
-name: <kebab-case-slug>
-description: <one-line summary used for relevance scoring>
-type: feedback
-originSessionId: <session-id-from-jsonl-filename>
----
-**Why:** <1-2 paragraphs explaining the friction and root cause>
+## <Short rule title>
 
-**How to apply:** <1-2 paragraphs describing how the assistant should behave next time>
+<1-2 sentences: what to do and why. State the trigger and the action.>
 ```
 
-### 2. `project-rule` — `<project>/docs/feedback/<slug>.md`
+**Do NOT** write to `~/.claude/projects/<slug>/memory/`. That directory is
+**cwd-scoped** — a file written there while working in `~/p/foo` is only
+recalled when the cwd resolves to that same project slug, so it is *not* a
+global memory at all. It silently fragments "personal preferences" across
+projects (the failure this skill exists to surface). Global rules go in
+`~/.claude/CLAUDE.md`; nothing else is reliably loaded everywhere.
 
-Same schema as user-memory but committed to the project repo. Plus an entry in the project's AGENTS.md index linking to it. See `agent-rules-skill/references/feedback-memory-schema.md`.
+### 2. `project-rule` — append a rule to `<project>/AGENTS.md`
+
+A project-specific convention belongs in that repo's `AGENTS.md` (committed,
+versioned, loaded for everyone working the repo). Append a titled rule in the
+same form as above. Do not create `<project>/.claude/CLAUDE.md` or
+`<project>/docs/feedback/` files — `AGENTS.md` is the single project rule store.
 
 ### 3. `skill-update` — PR to source repo
 

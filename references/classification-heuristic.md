@@ -49,8 +49,8 @@ When two destinations are plausible, ask the user with concrete framing:
 
 ```
 This friction could go to either:
-  (a) <project>/docs/feedback/<slug>.md  — project convention
-  (b) ~/.claude/projects/<slug>/memory/feedback_<slug>.md  — your personal preference
+  (a) <project>/AGENTS.md  — project convention
+  (b) ~/.claude/CLAUDE.md  — your cross-project personal preference
 
 The friction was: "<one-line summary>"
 Which fits better?
