@@ -91,7 +91,12 @@ Invokes `agent-harness-skill` bootstrap for a specific artefact:
 | Would another project benefit from the same fix? | yes | `skill-update` |
 | Does the friction reveal a missing capability category? | yes | `new-skill` |
 
-When two destinations are plausible, ask the user.
+**Prefer the broadest useful scope.** Read the table top-to-bottom but bias
+*upward in reach*: `skill-update`/`new-skill` (shared with everyone) › project
+`AGENTS.md` (shared with the repo) › global `~/.claude/CLAUDE.md` (personal).
+Only narrow when escalation would be wrong (the lesson is genuinely personal or
+repo-specific). Never project-local memory. See "Scope escalation" in
+`classification-heuristic.md`. When the *fit* is truly ambiguous, ask the user.
 
 ## See also
 

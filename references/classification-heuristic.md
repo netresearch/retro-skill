@@ -38,10 +38,34 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | **B12** assumption without asking | `skill-update` (spec-driven-development trigger description) | `user-memory` |
 | **B13** context re-discovery | `project-rule` (improve AGENTS.md) | `skill-update` (agent-rules-skill) |
 | **B14** doc drift | `skill-update` (context7-skill trigger) | `project-rule` (pin lib version) |
+| **B15** skill trigger-coverage gap | `skill-update` (sharpen the missed skill's `description`/trigger words) | `new-skill` (no skill covered it) / `skill-update` B3 (skill fired but under-performed) |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
 | **C3** memory drift | `skill-update` (skill should reference memory) | — |
 | **C4** skill update ineffective | `skill-update` (previous fix was wrong) | — |
+
+## Scope escalation — prefer the broadest useful destination
+
+Knowledge is only as valuable as the breadth of reach where it applies. When a
+finding could legitimately land at more than one scope, **escalate to the
+broadest destination that still fits**, in this order:
+
+1. **`skill-update` / `new-skill`** — reusable across every project and every
+   teammate who has the skill. *Default here* whenever the lesson generalizes
+   beyond the current repo (a tool gotcha, a workflow step, a weak trigger).
+2. **`project-rule` → `<project>/AGENTS.md`** — committed, versioned, shared
+   with everyone working that repo. Use when the lesson is real but genuinely
+   specific to this project.
+3. **`user-memory` → `~/.claude/CLAUDE.md`** — only when the lesson is a
+   *personal* preference/style that does not belong to any repo or skill.
+
+**Never** project-local memory (`~/.claude/projects/<slug>/memory/`, a project
+`CLAUDE.md`, or `docs/feedback/`) — it shares with no one and is cwd-scoped.
+
+Only narrow a step when escalation would be *wrong* — i.e. the knowledge truly
+doesn't generalize (purely personal → user-rule) or is truly repo-specific
+(→ AGENTS.md). Ask the user only when the *fit* is genuinely ambiguous, not to
+avoid choosing the more-shareable option.
 
 ## Disambiguation prompts
 

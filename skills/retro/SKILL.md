@@ -50,6 +50,13 @@ For these, run `/retro outcome` (post-hoc) or `/retro audit` (cross-session). Ex
 
 2. **LLM enrichment** — Read pre-pass output + relevant transcript excerpts. Add inferential signals (skill capability gaps, wrong skill choice, hallucinations, convention violations, missing skills, repeated mistakes, assumption-without-asking, doc drift). Filter false positives.
 
+2b. **Skill trigger-coverage sweep (B15)** — Run `scripts/find-installed-skills.sh` to get **every** installed skill's `name` + `description`, then in a single reasoning pass ask, for each: *given what this session actually did, should this skill have triggered — and was it invoked?* This is the systematic version of B2/B4 (which only catch a skill the LLM happens to notice). For each skill that should have fired but didn't:
+   - **Weak/missing trigger words** in the skill's `description` → `skill-update` (the highest-value fix: a sharper `description` makes the skill fire for the whole team, every future session).
+   - The right skill *was* invoked but under-performed → `skill-update` (capability gap, B3).
+   - No skill covers the work at all → `new-skill` (B7).
+
+   Keep it bounded: one pass over the compact description list against a session summary — not one call per skill. Standard in `sweep`; exhaustive (with the cross-session window) in `audit` mode. Don't flag a skill whose non-triggering was correct.
+
 3. **Cross-session enrichment (optional)** — If `~/.claude-coach/events.sqlite` present, query for related events. Otherwise scan `~/.claude/projects/<slug>/*.jsonl` for similar friction. Detects: same-friction-again, cross-project patterns, memory drift, ineffective skill updates, follow-up-fix sessions.
 
 3b. **Outcome enrichment (Schicht D — only in `/retro outcome` mode)** — Walk forward from session end: `git log` for revert/amend/supersede on session commits, `gh pr view` for session PRs (closed without merge? major changes requested?), CI history, follow-up sessions referencing this one. Detects: rejected output, retrospective errors, decisions that didn't survive contact with reality.
