@@ -67,8 +67,8 @@ For these, run `/retro outcome` (post-hoc) or `/retro audit` (cross-session). Ex
 8. **User approval** — Present grouped proposals. Approve / reject / edit per proposal.
 
 9. **Materialization** — Per destination:
-   - `user-memory` → write `~/.claude/projects/<slug>/memory/feedback_<slug>.md`
-   - `project-rule` → write `<project>/docs/feedback/<slug>.md` + AGENTS.md index entry
+   - `user-memory` → append a rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file). **Never** `~/.claude/projects/<slug>/memory/` — that dir is cwd-scoped and not loaded globally.
+   - `project-rule` → append a rule to `<project>/AGENTS.md` (not `<project>/CLAUDE.md`, not `docs/feedback/`)
    - `skill-update` → clone source repo (or use existing `~/p/<name>/main/` worktree), branch, commit **with `-s` (DCO sign-off) — without it the PR is BLOCKED even when all checks pass**, push, open PR
    - `new-skill` → invoke `skill-repo` scaffolding
    - `checkpoint` → YAML entry in target skill's `checkpoints.yaml`

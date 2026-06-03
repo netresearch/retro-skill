@@ -193,8 +193,8 @@ Six categories, statically documented in `references/destination-taxonomy.md`.
 
 | Destination | When | Materialization Format |
 |---|---|---|
-| `user-memory` | Personal preference, style, recurring quirk across projects | `~/.claude/projects/<slug>/memory/feedback_<slug>.md` (existing schema: frontmatter `name/description/type/originSessionId` + body Why/How-to-apply) |
-| `project-rule` | Project-specific convention or command | `<project>/docs/feedback/<slug>.md` + AGENTS.md index entry |
+| `user-memory` | Personal preference, style, recurring quirk across projects | Append a titled rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file; not the cwd-scoped `~/.claude/projects/<slug>/memory/`) |
+| `project-rule` | Project-specific convention or command | Append a titled rule to `<project>/AGENTS.md` (not `<project>/CLAUDE.md`, not `docs/feedback/`) |
 | `skill-update` | Existing skill missing instruction or has wrong guidance | PR to skill **source repo** (not cache) via `skill-repo` convention |
 | `new-skill` | Friction is skill-shaped gap, no existing skill matches | Invoke `skill-repo` scaffolding for new repo |
 | `checkpoint` | Mechanically detectable rule, regex/script possible | YAML entry in target skill's `checkpoints.yaml` (via `automated-assessment` schema) |
@@ -208,9 +208,9 @@ Excerpt; full table in `references/classification-heuristic.md`.
 Tool output verbosity        → skill-update on tool-owner skill
                                 (e.g. file-search, data-tools)
 
-User correction (style)      → user-memory (feedback_<slug>.md)
+User correction (style)      → user-memory (~/.claude/CLAUDE.md)
 
-User correction (convention) → project-rule (docs/feedback/<slug>.md)
+User correction (convention) → project-rule (<project>/AGENTS.md)
 
 Skill not triggered          → skill-update (description) OR
                                 agent-harness (delegation map)
@@ -370,7 +370,7 @@ Documented in `references/patch-workflow.md`.
 
 - **NEW** `references/feedback-memory-schema.md`: documents the existing `feedback_<slug>.md` format as canonical project-rule materialization. Frontmatter (`name`, `description`, `type: feedback`, `originSessionId`) + body (`**Why:**`, `**How to apply:**`).
 - **EDIT** `assets/root-thin.md`: optional reference to `docs/feedback/` directory if it exists.
-- **EDIT** `references/output-structure.md`: clarify *AGENTS.md = index, feedback memory = `docs/feedback/<slug>.md`*.
+- **EDIT** `references/output-structure.md`: clarify *project rules live in `<project>/AGENTS.md`* (the routing this PR adopts; superseding the earlier `docs/feedback/<slug>.md` plan).
 
 ### `skill-repo-skill`
 
