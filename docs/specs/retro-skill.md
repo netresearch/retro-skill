@@ -447,9 +447,9 @@ Documented in `references/patch-workflow.md`.
 10. **Patches land in source repo**, never cache
 11. **Evals consulted** when target skill has them
 12. **AH-22 + AH-23** checkpoints green in test repo
-13. **All 14 Schicht-A signals** detected by `detect-mechanical.py`
+13. **All 18 Schicht-A signals** detected by `detect-mechanical.py`
 14. **All 14 Schicht-B signals** in `friction-catalog.md` with prose example each
-15. **All 4 Schicht-C signals** documented with persistence strategy
+15. **All 5 Schicht-C signals** documented with persistence strategy
 
 ## Verification Plan
 
