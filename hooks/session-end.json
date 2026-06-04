@@ -1,6 +1,6 @@
 {
   "$schema": "https://docs.anthropic.com/claude-code/hooks-schema.json",
-  "description": "Optional SessionEnd hook that prints a reminder to run /retro after non-trivial sessions. Off by default — copy to your ~/.claude/hooks/ or <project>/.claude/hooks/ to enable.",
+  "description": "Optional SessionEnd hook that prints a reminder to run /retro after non-trivial sessions. Off by default. To enable, merge this file's `hooks` object into ~/.claude/settings.json (or a project .claude/settings.json) — Claude Code does not load hooks from a ~/.claude/hooks/ directory.",
   "hooks": {
     "SessionEnd": [
       {
@@ -18,7 +18,7 @@
     "input": "SessionEnd hook input is JSON on stdin with a 'transcript_path' field (NOT $CLAUDE_TRANSCRIPT_PATH env var). This command reads stdin and extracts transcript_path via jq.",
     "enable-instructions": "This hook only prints a reminder. To actually invoke /retro automatically, replace the command with a way to invoke the slash command in your client. For Claude Code CLI, this is currently a manual user action — the hook serves as a nudge.",
     "trivial-session-threshold": "1000 words. Adjust as needed.",
-    "off-by-default-rationale": "Auto-running /retro on every session end would burn tokens for trivial sessions. The user opts in by copying this file.",
+    "off-by-default-rationale": "Auto-running /retro on every session end would burn tokens for trivial sessions. The user opts in by merging this hook's `hooks` object into settings.json.",
     "dependencies": "Requires jq (for stdin JSON parsing). The hook silently exits if jq is unavailable or transcript_path is empty/unreadable."
   }
 }
