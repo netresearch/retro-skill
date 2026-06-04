@@ -59,7 +59,7 @@ Different output class from per-session retro. Destinations typically include AD
 
 ### Auto — SessionEnd hook (off by default)
 
-Optional automated trigger. Activate by copying `hooks/session-end.json` to `~/.claude/hooks/` or `<project>/.claude/hooks/`.
+Optional automated trigger. Activate by merging the `hooks` object from `hooks/session-end.json` into `~/.claude/settings.json` (or a project `.claude/settings.json`); Claude Code does not load hooks from a `~/.claude/hooks/` directory.
 
 ```
 Trigger: SessionEnd event
