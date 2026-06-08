@@ -76,7 +76,7 @@ GIT_WORKTREE_ADD_BRANCH = re.compile(
 GIT_ON_BRANCH_OUT = re.compile(
     r"(?:On branch|Switched to(?: a new)? branch '?|Already on '?)(?P<br>[\w./-]+)"
 )
-GIT_COMMIT_OR_PUSH = re.compile(r"\bgit\s+(?:commit|push)\b")
+GIT_COMMIT = re.compile(r"\bgit\s+commit\b")
 # `(?![\w-])` requires main/master as a full token so "main-menu" / "master2"
 # (where `\b` would otherwise match the "main"/"master" prefix) do not fire.
 GIT_PUSH_TO_MAIN = re.compile(
@@ -483,7 +483,10 @@ def signal_main_branch_work(tool_uses) -> list[dict]:
     additions, and branch names echoed in command output. Only fires when we
     *know* the operation is on main (or a push explicitly targets main) — a
     worktree checked out on a feature branch, or a commit message that merely
-    mentions "main", no longer trips this signal.
+    mentions "main", no longer trips this signal. A commit *on* main is the
+    violation; a push only counts when it targets the main branch — pushing a
+    tag or another ref while standing on main (e.g. `git push origin v1.2.3`
+    during a release) is legitimate and does not fire.
     """
     out = []
     on_main = None  # None = unknown; only flag when positively known to be on main
@@ -501,13 +504,17 @@ def signal_main_branch_work(tool_uses) -> list[dict]:
                 on_main = m.group("br") in ("main", "master")
             elif mw:
                 on_main = mw.group("br") in ("main", "master")
-        mob = GIT_ON_BRANCH_OUT.search(result)
-        if mob:
-            on_main = mob.group("br") in ("main", "master")
+        # Take the LAST branch reported in the output, not the first: a block
+        # like `git checkout main && git checkout -b feat` echoes two switches,
+        # and the final one is the branch the next command runs on.
+        branch_lines = list(GIT_ON_BRANCH_OUT.finditer(result))
+        if branch_lines:
+            on_main = branch_lines[-1].group("br") in ("main", "master")
 
-        if GIT_COMMIT_OR_PUSH.search(cmd) and (
-            on_main is True or GIT_PUSH_TO_MAIN.search(cmd)
-        ):
+        # A commit while on main is the violation; a push only counts when it
+        # targets the main branch (a bare push of a tag/other ref is fine).
+        committed_on_main = GIT_COMMIT.search(cmd) and on_main is True
+        if committed_on_main or GIT_PUSH_TO_MAIN.search(cmd):
             out.append(
                 {
                     "signal": "A14",
