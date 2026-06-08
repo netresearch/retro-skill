@@ -4,6 +4,10 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 
 ## Primary mapping
 
+> Run skill discovery first and apply **Scope escalation** (below) before taking
+> any row literally: the named skill in a row is a hint, not a substitute for the
+> owning-skill check. The right owner may be a different (or not-installed) skill.
+
 | Friction signal | Primary destination | Alternate (LLM decides from context) |
 |---|---|---|
 | **A1** tool error | `skill-update` (tool-owner skill) | `user-memory` (if user-specific config issue) |
@@ -30,14 +34,14 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | **B4** skill description mismatch | `skill-update` (description) | — |
 | **B5** hallucination / fact check | `skill-update` (context7 / verification) | `user-memory` |
 | **B6** convention violation | `project-rule` | `skill-update` (project-aware skill) |
-| **B7** missing skill | `new-skill` | — |
+| **B7** missing skill | `new-skill` **only if no catalogue skill covers it**; if one exists but isn't installed, recommend installing it | — |
 | **B8** wrong-destination materialization | `skill-update` (retro-skill itself, or whoever wrote) | — |
 | **B9** repeated mistake in session | `skill-update` (rule was unclear) | `user-memory` |
 | **B10** approval bypassed | `skill-update` (skill should require confirmation) | `harness-artefact` (template) |
 | **B11** plan/spec skipped | `skill-update` (spec-driven-development trigger) | `project-rule` |
 | **B12** assumption without asking | `skill-update` (spec-driven-development trigger description) | `user-memory` |
 | **B13** context re-discovery | `project-rule` (improve AGENTS.md) | `skill-update` (agent-rules-skill) |
-| **B14** doc drift | `skill-update` (context7-skill trigger) | `project-rule` (pin lib version) |
+| **B14** doc drift | `skill-update` — the owning skill (context7-skill for library docs; **skill-repo-skill** if a `SKILL.md`/`plugin.json`/command list drifted — discover first) | `project-rule` |
 | **B15** skill trigger-coverage gap | `skill-update` (sharpen the missed skill's `description`/trigger words) | `new-skill` (no skill covered it) / `skill-update` B3 (skill fired but under-performed) |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
@@ -46,8 +50,18 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 
 ## Scope escalation — prefer the broadest useful destination
 
-Knowledge is only as valuable as the breadth of reach where it applies. When a
-finding could legitimately land at more than one scope, **escalate to the
+Knowledge is only as valuable as the breadth of reach where it applies.
+
+**First, run skill discovery (`scripts/find-org-skills.py`) and check the full
+catalogue — installed *and* available — for a skill that owns this topic.** This
+is mandatory and happens *before* a destination is chosen, not after: without
+the catalogue you cannot route to the right owner — which is exactly how a
+skill-authoring lesson lands in `user-memory` instead of the skill that owns
+skill authoring. If an owning skill exists, default to `skill-update` against it
+(use its `repo_url`) **even if it is not installed locally**, and narrow only
+with cause.
+
+When a finding could still land at more than one scope, **escalate to the
 broadest destination that still fits**, in this order:
 
 1. **`skill-update` / `new-skill`** — reusable across every project and every

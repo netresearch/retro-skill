@@ -1,32 +1,57 @@
 # Skill Discovery
 
-Runtime discovery of installed skills. Used for `skill-update` and `new-skill` destinations to identify the correct target.
+Runtime discovery of **all** skills available to the user — installed *and*
+not-installed. Run it **before** classifying a learning (a mandatory input to
+classification), not only after a destination is already chosen. Discovering
+only installed skills mis-routes a learning to `user-memory`/`project-rule`
+when an org skill already owns it, and proposes a `new-skill` that already
+exists somewhere in the org.
 
-## Search paths (in order)
+## The complete catalogue (primary)
 
-1. `<project>/.claude/skills/` — project-local skills
-2. `~/.claude/skills/` — user-installed skills
-3. `~/.claude/plugins/cache/*/skills/` — marketplace + private plugin skills
-4. `~/.claude/plugins/installed.json` (or equivalent registry) for repo URLs
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/find-org-skills.py
+```
 
-The helper script:
+returns every skill in every configured marketplace — installed or not — as a
+JSON array of `{name, description, repo_url, marketplace, category, installed}`.
+It reads the locally-synced marketplace manifests
+(`~/.claude/plugins/known_marketplaces.json` →
+`<installLocation>/.claude-plugin/marketplace.json`), so it is **offline** and
+**generic**: it covers whatever marketplaces are configured, never a hardcoded
+org. This is the authoritative ownership map.
+
+If no marketplaces are configured (or their manifests aren't synced locally) the
+catalogue is empty — fall back to the installed-only scan below and **say so**:
+coverage is reduced to local installs, so ownership routing and "missing skill"
+detection are best-effort until a marketplace is configured.
+
+## Installed-only detail (secondary)
+
+For installed skills' on-disk paths / git remotes (e.g. to prefer an existing
+worktree when patching):
 
 ```bash
 bash ${CLAUDE_PLUGIN_ROOT}/scripts/find-installed-skills.sh
 ```
 
-returns a JSON array of `{name, path, description, repo_url}` objects.
+returns `{name, path, description, repo_url}` for skills under
+`<project>/.claude/skills/`, `~/.claude/skills/`, and the plugin cache.
 
 ## Match heuristic
 
-1. Read each `SKILL.md` frontmatter `description` field
-2. LLM matches the friction topic against descriptions
-3. Outcome:
-   - **1 match** → propose `skill-update` against that skill
-   - **multiple matches** → ask user with disambiguation prompt
-   - **no match** → propose `new-skill`
+Match the friction topic against the **full catalogue** `description` fields
+(installed + available), not just installed skills:
 
-Cache discovered skills per session to avoid re-scanning.
+- **1 match, installed** → `skill-update` against that skill (use its `repo_url`)
+- **1 match, available but not installed** → `skill-update` against its
+  `repo_url`, *and* surface that the skill exists org-wide but isn't installed
+  here (recommend installing it — a teammate may simply be missing it)
+- **multiple matches** → ask the user with a disambiguation prompt
+- **no match anywhere in the catalogue** → propose `new-skill` (a confident
+  conclusion now: the whole org catalogue was checked, not just local installs)
+
+Cache the catalogue per session to avoid re-scanning.
 
 ## Repo URL extraction
 
@@ -83,13 +108,15 @@ If discovery fails (no manifest, no git remote, no user input):
 
 ## Performance
 
-- Cache skill list per session (`~/.cache/retro-skill/discovered-<session>.json`)
-- Lazy-read SKILL.md only on first match attempt
-- Keyword pre-filter before LLM match (skip skills with descriptions clearly unrelated)
-- Hard cap on number of skills considered: 50 (prefer most-recently-modified)
+- The catalogue is a single JSON read with descriptions inline — no per-skill
+  `SKILL.md` reads are needed to match.
+- Cache the catalogue per session (`~/.cache/retro-skill/catalogue-<session>.json`)
+- The catalogue can hold hundreds of skills across marketplaces — keyword/
+  category pre-filter before the LLM match, don't feed all descriptions at once.
 
 ## See also
 
-- `scripts/find-installed-skills.sh` — Mechanical helper
+- `scripts/find-org-skills.py` — full catalogue (installed + available)
+- `scripts/find-installed-skills.sh` — installed-only detail (paths, git remotes)
 - `references/patch-workflow.md` — What to do after a skill is matched
 - `references/eval-integration.md` — Using evals for context
