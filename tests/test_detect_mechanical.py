@@ -216,6 +216,40 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_not_signal(evs, "A14")
 
+    def test_A14_tag_push_on_main_does_not_fire(self):
+        # Pushing a release tag while standing on main is not branch work.
+        evs = tool_use_pair(
+            "c", "Bash", {"command": "git checkout main"}, "Already on 'main'"
+        )
+        evs += tool_use_pair(
+            "u1",
+            "Bash",
+            {"command": "git tag -s v1.2.3 -m v1.2.3 && git push origin v1.2.3"},
+            "new tag",
+        )
+        self.assert_not_signal(evs, "A14")
+
+    def test_A14_push_to_main_branch_fires(self):
+        # Pushing to the main branch itself is still a violation.
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "git push origin HEAD:main"}, "done"
+        )
+        self.assert_signal(evs, "A14")
+
+    def test_A14_checkout_main_then_feature_branch_does_not_fire(self):
+        # A block that switches to main then creates a feature branch ends on
+        # the feature branch; the final switch wins, so a later commit is fine.
+        evs = tool_use_pair(
+            "c",
+            "Bash",
+            {"command": "git checkout main && git checkout -b feat/x"},
+            "Switched to branch 'main'\nSwitched to a new branch 'feat/x'",
+        )
+        evs += tool_use_pair(
+            "u1", "Bash", {"command": "git commit -m wip"}, "1 file changed"
+        )
+        self.assert_not_signal(evs, "A14")
+
     def test_A2_retry_cluster(self):
         evs = []
         for i in range(3):
