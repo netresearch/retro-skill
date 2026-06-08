@@ -9,6 +9,7 @@ Usage:
     python3 scan-cross-session.py --pattern "<keyword or phrase>" [--days 30] [--project <slug>]
     python3 scan-cross-session.py --user-correction-summary [--days 7]
 """
+
 from __future__ import annotations
 
 import argparse
@@ -26,7 +27,9 @@ CORRECTION_PATTERNS = re.compile(
 )
 
 
-def session_files(projects_dir: Path, project_slug: str | None, days: int) -> list[tuple[Path, str]]:
+def session_files(
+    projects_dir: Path, project_slug: str | None, days: int
+) -> list[tuple[Path, str]]:
     """Return list of (jsonl_path, project_slug) within the last N days."""
     cutoff = datetime.now() - timedelta(days=days)
     out = []
@@ -80,17 +83,25 @@ def cmd_pattern(args, files) -> int:
     for path, proj in files:
         for txt in extract_user_texts(path):
             if pattern.search(txt):
-                hits[proj].append({
-                    "session": path.name,
-                    "snippet": txt[:300],
-                })
+                hits[proj].append(
+                    {
+                        "session": path.name,
+                        "snippet": txt[:300],
+                    }
+                )
                 break  # one hit per session is enough for cross-session signal
-    print(json.dumps({
-        "pattern": args.pattern,
-        "days": args.days,
-        "projects_with_matches": len(hits),
-        "matches": dict(hits),
-    }, indent=2, ensure_ascii=False))
+    print(
+        json.dumps(
+            {
+                "pattern": args.pattern,
+                "days": args.days,
+                "projects_with_matches": len(hits),
+                "matches": dict(hits),
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
     return 0
 
 
@@ -119,7 +130,8 @@ def cmd_correction_summary(args, files) -> int:
         ],
         "by_project_top5": {
             proj: [{"snippet": k, "count": cnt} for k, cnt in c.most_common(5)]
-            for proj, c in corrections_by_project.items() if c
+            for proj, c in corrections_by_project.items()
+            if c
         },
     }
     print(json.dumps(output, indent=2, ensure_ascii=False))
@@ -132,12 +144,19 @@ def main() -> int:
     parser.add_argument("--project", help="Specific project slug (e.g. -home-sme-p)")
     parser.add_argument("--days", type=int, default=30)
     parser.add_argument("--pattern", help="Search for keyword/phrase in user messages")
-    parser.add_argument("--user-correction-summary", action="store_true",
-                        help="Summarize correction patterns across sessions")
+    parser.add_argument(
+        "--user-correction-summary",
+        action="store_true",
+        help="Summarize correction patterns across sessions",
+    )
     args = parser.parse_args()
 
     if not args.projects_dir.exists():
-        print(json.dumps({"available": False, "reason": f"not found: {args.projects_dir}"}))
+        print(
+            json.dumps(
+                {"available": False, "reason": f"not found: {args.projects_dir}"}
+            )
+        )
         return 0
 
     files = session_files(args.projects_dir, args.project, args.days)
