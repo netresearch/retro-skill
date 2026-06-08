@@ -1,8 +1,9 @@
 # Pre-commit hooks — embodies the CI/Hook Parity Principle for this repo.
 #
-# Every hook below ALSO runs in CI (via the reusable validate.yml workflow
-# from netresearch/skill-repo-skill). CI is the authoritative backstop;
-# local hooks are pinned by `rev:` and Renovate bumps them automatically.
+# The validation hooks below also run in CI via the reusable validate.yml
+# workflow from netresearch/skill-repo-skill, wired up in
+# .github/workflows/validate.yml. CI is the authoritative backstop; local
+# hooks are pinned by `rev:` and Renovate bumps them automatically.
 #
 # See netresearch/agent-harness-skill references/enforcement-mechanisms.md
 # for the CI/Hook Parity Principle in full.

@@ -8,11 +8,11 @@ installed or schema differs.
 Usage:
     python3 extract-coach-events.py [--since "30 days ago"] [--db PATH]
 """
+
 from __future__ import annotations
 
 import argparse
 import json
-import os
 import sqlite3
 import sys
 from datetime import datetime, timedelta
@@ -34,8 +34,12 @@ def parse_since(s: str) -> datetime | None:
             except ValueError:
                 return None
             unit = parts[1].lower().rstrip("s")
-            delta_map = {"day": timedelta(days=n), "hour": timedelta(hours=n),
-                         "week": timedelta(weeks=n), "minute": timedelta(minutes=n)}
+            delta_map = {
+                "day": timedelta(days=n),
+                "hour": timedelta(hours=n),
+                "week": timedelta(weeks=n),
+                "minute": timedelta(minutes=n),
+            }
             delta = delta_map.get(unit)
             return datetime.now() - delta if delta else None
     try:
@@ -67,11 +71,18 @@ def main() -> int:
     try:
         # Discover schema — Coach versions may differ
         cur = conn.cursor()
-        tables = [r[0] for r in cur.execute(
-            "SELECT name FROM sqlite_master WHERE type='table'"
-        ).fetchall()]
+        tables = [
+            r[0]
+            for r in cur.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            ).fetchall()
+        ]
         if "events" not in tables:
-            print(json.dumps({"available": False, "reason": f"no events table; tables={tables}"}))
+            print(
+                json.dumps(
+                    {"available": False, "reason": f"no events table; tables={tables}"}
+                )
+            )
             return 0
 
         # Introspect columns
@@ -80,7 +91,14 @@ def main() -> int:
         select_cols = ", ".join(cols)
         sql = f"SELECT {select_cols} FROM events"
         params: list = []
-        ts_col = next((c for c in cols if "time" in c.lower() or "date" in c.lower() or "ts" in c.lower()), None)
+        ts_col = next(
+            (
+                c
+                for c in cols
+                if "time" in c.lower() or "date" in c.lower() or "ts" in c.lower()
+            ),
+            None,
+        )
         if since and ts_col:
             sql += f" WHERE {ts_col} >= ?"
             params.append(since.isoformat())
@@ -89,13 +107,20 @@ def main() -> int:
 
         rows = [dict(zip(cols, r)) for r in cur.execute(sql, params).fetchall()]
 
-        print(json.dumps({
-            "available": True,
-            "db": str(args.db),
-            "columns": cols,
-            "event_count": len(rows),
-            "events": rows,
-        }, indent=2, default=str, ensure_ascii=False))
+        print(
+            json.dumps(
+                {
+                    "available": True,
+                    "db": str(args.db),
+                    "columns": cols,
+                    "event_count": len(rows),
+                    "events": rows,
+                },
+                indent=2,
+                default=str,
+                ensure_ascii=False,
+            )
+        )
         return 0
     finally:
         conn.close()

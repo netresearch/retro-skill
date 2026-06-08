@@ -1,0 +1,19 @@
+name: Validate
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    # Reusable skill-validation workflow: runs validate-skill, markdownlint
+    # (honoring .markdownlint.jsonc), yamllint, plugin/SKILL version parity,
+    # ShellCheck, ruff, and checkpoint-schema checks — the CI half of the
+    # CI/Hook Parity Principle declared in .pre-commit-config.yaml.
+    uses: netresearch/skill-repo-skill/.github/workflows/validate.yml@7f3af49c089a60ba15672ead5f25bf120e55deda # main
