@@ -59,17 +59,32 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scan-cross-session.py --pattern "<fingerpr
 
 ## Phase 4: Classification
 
-Map each finding to one of six destinations using `references/classification-heuristic.md`. When uncertain, ask the user.
+Run **Phase 5 skill discovery first** — the catalogue of all skills (installed
+*and* available) is a required input to classification, not a consequence of it.
+Then map each finding to one of six destinations using
+`references/classification-heuristic.md`, checking the catalogue for an owning
+skill before any narrower destination. When uncertain, ask the user.
 
 ## Phase 5: Skill Discovery
 
-For `skill-update` / `new-skill` destinations:
+Run up front, for **every** candidate learning (not only once a destination is
+chosen) — discover the full catalogue:
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/find-installed-skills.sh
+python3 ${CLAUDE_PLUGIN_ROOT}/scripts/find-org-skills.py
 ```
 
-Match the friction topic against SKILL.md `description` frontmatter. If multiple matches → ask user. If no match → propose `new-skill`.
+Returns every skill in every configured marketplace — installed or not —
+`{name, description, repo_url, marketplace, installed}` (offline, generic). Match
+the friction topic against the catalogue `description` fields:
+
+- match → `skill-update` against the owning skill's `repo_url` (even if not
+  installed locally — note it's available-not-installed so it can be installed)
+- multiple matches → ask the user
+- no catalogue match → `new-skill`
+
+For installed skills' on-disk paths / git remotes when patching, also:
+`bash ${CLAUDE_PLUGIN_ROOT}/scripts/find-installed-skills.sh`.
 
 ## Phase 6: Eval Consultation
 

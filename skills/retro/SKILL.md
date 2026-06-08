@@ -2,7 +2,7 @@
 name: retro
 description: "Use when a Claude Code session ends, when a specific friction needs fixing, when promoting accumulated local memory upward, or for periodic cross-session audits — to detect friction and materialize learnings into the right destination. Triggers: /retro, 'retrospective', 'review the session', 'fix this skill', 'promote memory', 'audit the architecture'."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
-compatibility: "Requires python3 (pre-pass, cross-session + memory scans), jq (skill discovery), gh and/or glab (PR creation)."
+compatibility: "Requires python3 (pre-pass, scans, skill discovery), jq (installed-skill helper + manifests), gh and/or glab (PR creation)."
 metadata:
   author: Netresearch DTT GmbH
   version: "0.4.0"
@@ -42,9 +42,10 @@ Detail per mode in `references/workflow.md`; full pipeline + commands in
    `scripts/scan-memory-inventory.py`).
 2. LLM enrichment — add inferential signals; filter false positives.
 3. Cross-session enrichment (optional) — Coach `events.sqlite` or JSONL scan.
-4. Classify to one destination (`classification-heuristic.md`), biasing to the
-   broadest useful scope; never project-local memory.
-5. Skill discovery — `scripts/find-installed-skills.sh`; match by description.
+4. Discover skills — `scripts/find-org-skills.py` (installed + org catalogue);
+   find the owning skill first.
+5. Classify (`classification-heuristic.md`) to the broadest useful scope; never
+   project-local memory.
 6. Eval consultation — read a matched skill's `evals/`; propose a TDD stub.
 7. Proposal generation — prose Why + How-to-apply, grouped, ≤10.
 8. Approval — approve / edit / reject per proposal.
