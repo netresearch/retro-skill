@@ -31,7 +31,10 @@ file**, `~/.claude/CLAUDE.md`. Append a short, titled rule:
 recalled when the cwd resolves to that same project slug, so it is *not* a
 global memory at all. It silently fragments "personal preferences" across
 projects (the failure this skill exists to surface). Global rules go in
-`~/.claude/CLAUDE.md`; nothing else is reliably loaded everywhere.
+`~/.claude/CLAUDE.md`; nothing else is reliably loaded everywhere. The
+`/retro promote` mode exists to drain memories already written to this
+cwd-scoped location upward into the correct destination — see
+`references/promote-mode.md`.
 
 ### 2. `project-rule` — append a rule to `<project>/AGENTS.md`
 

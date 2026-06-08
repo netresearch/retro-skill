@@ -1,6 +1,6 @@
 # Workflow
 
-The three modes of `/retro` and how they share the underlying pipeline.
+The modes of `/retro` and how they share the underlying pipeline.
 
 ## Modes
 
@@ -57,6 +57,22 @@ Use case: quarterly or monthly system health check
 
 Different output class from per-session retro. Destinations typically include ADR creation/update (via project-rule).
 
+### Promote — `/retro promote`
+
+Inventory the already-written memory **stock** (all project slugs) and re-home
+each note upward, instead of detecting session friction.
+
+```
+Input: filesystem inventory of ~/.claude/projects/<slug>/memory/*.md (ALL slugs)
+Output: C3/B8 findings -> the same classify -> materialize pipeline
+Use case: drain accumulated local memory upward; empty the silo
+```
+
+Reads the stock, not the session flow. Reuses the scope-escalation rule
+(skill-update > project-rule > user-memory; never project-local memory) and
+drains the source LAST, only after the upward write is verified. Full detail:
+`references/promote-mode.md`.
+
 ### Auto — SessionEnd hook (off by default)
 
 Optional automated trigger. Activate by merging the `hooks` object from `hooks/session-end.json` into `~/.claude/settings.json` (or a project `.claude/settings.json`); Claude Code does not load hooks from a `~/.claude/hooks/` directory.
@@ -72,7 +88,7 @@ Currently the hook only prints a reminder; invoking slash commands from hooks va
 
 ## Shared pipeline
 
-All five modes use the same underlying flow (with mode-specific Schicht selection):
+All six modes use the same underlying flow (with mode-specific Schicht selection):
 
 ```
 1. Mechanical pre-pass (Schicht A)
@@ -100,6 +116,13 @@ Differences between modes:
 | 3c (constitutional E) | No | No | No | **Primary** | No |
 | 4-10 | Same | Same (fewer findings) | D-focused | E-focused | Same |
 | 11 (report) | Detailed | Targeted | Outcome-table | Architectural-table | Reminder only |
+
+**Promote** substitutes Phase 1 with `scripts/scan-memory-inventory.py` (a
+filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
+2/2b/3/3b/3c, runs Phases 4–10, and adds a verified **materialize-then-drain**
+post-step to Phase 9 — drain via `scan-memory-inventory.py drain <path>` only
+after the upward write is confirmed (tombstone move, never `rm`). The Phase-11
+report gains a "Source drained?" column.
 
 ## Efficiency targets
 
@@ -149,6 +172,16 @@ User can always:
 - Reject all proposals
 - Run `/retro` again with `--no-cross-session` (if implemented) for faster mode
 - Materialize manually after /retro shows proposals (no approval, just inspect output)
+
+## Honest limitations
+
+retro detects friction observable in or near the session (Sweep / Spotlight) or
+in the stored backlog (Promote). It does **not** detect: silent badness
+(architecturally wrong but friction-free choices); external signals (customer
+complaints, prod alerts, Slack / Jira / Sentry); slow constitutional drift
+without `audit`; or outcomes the agent never saw (a reverted commit or rejected
+PR is seen, an unspoken "the customer hated it" is not). For those, run
+`/retro outcome` (post-hoc) or `/retro audit` (cross-session).
 
 ## See also
 

@@ -13,6 +13,7 @@ Analyze the current session for friction patterns and materialize learnings into
 /retro "<problem description>"        Spotlight — focus on one issue
 /retro outcome [session-id|--since N] Outcome — post-hoc review of past session(s)
 /retro audit [--scope X]              Audit — cross-session architectural review
+/retro promote [--scope cwd|all]      Promote — re-home accumulated local memory upward
 ```
 
 ## Phase 1: Mechanical Pre-Pass
@@ -155,3 +156,39 @@ Requires latency. Don't run within 24h of the session — most D signals haven't
 - Output class is "architectural finding", not friction
 - Destinations skew toward `project-rule` (new ADR or AGENTS.md update) and `harness-artefact` (enforcement hook)
 - Cadence: monthly or quarterly. Tech-lead actor.
+
+## Promote Mode
+
+```
+/retro promote                       # cwd-scoped memory store
+/retro promote --scope all           # every slug holding a memory/ dir
+```
+
+Re-homes already-written local memory (the **stock**, not the session flow)
+upward into its correct destination, draining the source once the upward write
+is confirmed. Full detail in `references/promote-mode.md`.
+
+- **Phase 1 is substituted** by `scripts/scan-memory-inventory.py` — a
+  filesystem inventory of `~/.claude/projects/<slug>/memory/*.md`, not a
+  transcript:
+
+  ```bash
+  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scan-memory-inventory.py \
+    --scope cwd --output-format json
+  ```
+
+- Skip Phases 2, 2b, 3b, 3c (no transcript) — announce the skip in one line
+- Phases 4–10 run verbatim; destination skew is **upward** per scope-escalation
+  (skill-update › project-rule › user-memory), **never** project-local memory
+- Phase 8 adds a mandatory default-**N** warning on every `project-rule` /
+  `skill-update` proposal: "promoting this makes it team-visible; source is
+  currently private"
+- **Phase 9 gains a post-step:** after the upward write is *verified* (rule text
+  re-read, or PR URL returned), drain the source via
+  `scan-memory-inventory.py drain <path> --expect-sha256 <sha>` — a tombstone
+  move to `.promoted/` plus a `MEMORY.md` prune, **never** `rm`. On verify
+  failure, keep the source. For `skill-update`, drain only after the PR is opened.
+- Phase 10 report gains a **Source drained?** column
+  (`tombstoned` / `kept — verify failed` / `kept — source changed`)
+- The scanner is read-only; if `--scope cwd` finds nothing, retry `--scope all`
+  (the real stock often lives under a sibling slug)

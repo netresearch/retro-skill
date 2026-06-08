@@ -27,6 +27,7 @@ jobs:
           python3 -m py_compile scripts/detect-mechanical.py
           python3 -m py_compile scripts/extract-coach-events.py
           python3 -m py_compile scripts/scan-cross-session.py
+          python3 -m py_compile scripts/scan-memory-inventory.py
 
       - name: Bash syntax check
         run: bash -n scripts/find-installed-skills.sh
