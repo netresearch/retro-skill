@@ -1,0 +1,14 @@
+{
+  // markdownlint-cli2 config. The hook was bumped (Renovate) to a ruleset
+  // stricter than this repo's established prose conventions; these disables
+  // encode the repo's deliberate style. Genuine content defects (e.g. MD056
+  // broken tables) are fixed in the content, not disabled here.
+  "MD007": false, // ul-indent: nested list indentation is not standardized
+  "MD013": false, // line-length: docs use long prose lines and wide tables
+  "MD022": false, // blanks-around-headings: not enforced across existing docs
+  "MD029": false, // ol-prefix: ordered-list numbering style is not enforced
+  "MD031": false, // blanks-around-fences: compact fenced blocks are intentional
+  "MD032": false, // blanks-around-lists: compact lists are intentional
+  "MD040": false, // fenced-code-language: usage/output blocks are plain by design
+  "MD060": false  // table-column-style: new rule; existing tables predate it
+}

@@ -139,7 +139,7 @@ Fast, deterministic, regex/count-based. Runs before LLM pass to reduce token cos
 | **Tool output verbosity** | `len(tool_result) > X` without subsequent filter call | Token waste, wrong tool (`cat` vs `head`, full Read vs Range) |
 | **Tool call count vs task** | Total tool calls / user messages ratio | Inefficiency for simple task |
 | **Sequential vs parallel** | Multiple independent calls in serial blocks | Performance waste |
-| **User correction phrases** | Regex: `^(no|nein|stop|don't|wrong|NEIN|nicht so)`, ALL CAPS, `!!!` | Classic friction |
+| **User correction phrases** | Regex: `^(no\|nein\|stop\|don't\|wrong\|NEIN\|nicht so)`, ALL CAPS, `!!!` | Classic friction |
 | **Prompt repetition** | Semantic similarity of user messages within N turns | Assistant didn't understand |
 | **Prompt sequence repetition** | n-gram match (n=2..5) over user message sequence | Workflow ripe for snippet/command |
 | **Tool sequence repetition** | n-gram match over tool_use names + arg templates | Composition opportunity, skill instruction gap |
