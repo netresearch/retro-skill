@@ -41,7 +41,7 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | **B15** skill trigger-coverage gap | `skill-update` (sharpen the missed skill's `description`/trigger words) | `new-skill` (no skill covered it) / `skill-update` B3 (skill fired but under-performed) |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
-| **C3** memory drift | `skill-update` (skill should reference memory) | — |
+| **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`user-memory` (LLM picks from `current_location` + content) |
 | **C4** skill update ineffective | `skill-update` (previous fix was wrong) | — |
 
 ## Scope escalation — prefer the broadest useful destination
