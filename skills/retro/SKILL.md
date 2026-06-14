@@ -1,6 +1,6 @@
 ---
 name: retro
-description: "Use when a Claude Code session ends, when a specific friction needs fixing, when promoting accumulated local memory upward, or for periodic cross-session audits — to detect friction and materialize learnings into the right destination. Triggers: /retro, 'retrospective', 'review the session', 'fix this skill', 'promote memory', 'audit the architecture'."
+description: "Use when a Claude Code session ends, a friction needs fixing, local memory needs promoting upward, or for cross-session audits — detect friction and materialize learnings into the right destination. Triggers: /retro, 'retrospective', 'review the session', 'fix this skill', 'prune a skill rule', 'promote memory', 'audit the architecture'."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires python3 (pre-pass, scans, skill discovery), jq (installed-skill helper + manifests), gh and/or glab (PR creation)."
 metadata:

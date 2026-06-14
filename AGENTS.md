@@ -13,6 +13,8 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `scripts/find-installed-skills.sh` — Skill discovery helper
 - `scripts/extract-coach-events.py` — Optional Coach data reader
 - `scripts/scan-cross-session.py` — Cross-session JSONL scanner (Schicht-C fallback)
+- `scripts/validate-evals.py` — Validates retro's own eval scenarios (RT-40..42)
+- `evals/` — retro's own classification evals (LLM-graded fixtures; see `evals/README.md`)
 - `docs/specs/retro-skill.md` — Mirror of authoritative spec
 
 ## Commands

@@ -81,6 +81,35 @@ doesn't generalize (purely personal → user-rule) or is truly repo-specific
 (→ AGENTS.md). Ask the user only when the *fit* is genuinely ambiguous, not to
 avoid choosing the more-shareable option.
 
+## Instruction pruning — removal is a valid skill-update
+
+`skill-update` covers three edit shapes, not two: **add**, **replace**, and
+**remove**. retro tends to *add*; many skills degrade through accretion, not
+through missing rules. When an instruction is the *cause* of friction — it is
+obsolete, too broad, duplicated, or contradicted elsewhere — prefer **removing**
+it over stacking another exception on top.
+
+Prefer removal when the desired behaviour is already covered by:
+
+- another instruction in the same skill,
+- a reference file,
+- a mechanical `checkpoint`,
+- repo-local `AGENTS.md`.
+
+Prefer **replace** (not remove) only when deletion would open a real capability
+gap. The **evidence** for a removal is the covering location you cite (the other
+instruction / reference / checkpoint / rule) — *not* a measured A/B rollout or a
+generated "proof" eval. retro proposes the bounded removal, the human approves it
+at the gate, and the source-repo PR review decides. A pruning proposal
+materializes as an ordinary `skill-update` PR whose diff happens to be a deletion
+(see `patch-workflow.md`).
+
+Signals that often resolve to a prune rather than an add: **B14** (doc drift —
+the instruction references something gone), **C4** (a prior skill update was
+itself wrong), **B8** (a rule lives in the wrong place). When two instructions
+conflict, reconcile by removing/superseding the stale side; if the conflict spans
+reference files, propose the reference/taxonomy cleanup first.
+
 ## Disambiguation prompts
 
 When two destinations are plausible, ask the user with concrete framing:

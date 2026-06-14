@@ -80,6 +80,12 @@ diff and check:
 - Any "do X then Y" sequence is coherent (no step that contradicts a prior step).
 - The root cause in the commit/PR body is one you **verified**, not inferred — if
   you didn't confirm it, say "suspected" rather than asserting it.
+- **Prefer deletion over exception.** If the friction is caused by an obsolete or
+  harmful instruction, a `skill-update` may be a pure *removal* diff — don't add a
+  new exception alongside the bad rule (see `classification-heuristic.md` →
+  "Instruction pruning"). Cite where the behaviour is already covered.
+- **Reject wording-only churn.** If an edit only rephrases without changing
+  behaviour, drop it — it is noise the next retro will re-flag.
 
 Observed failure: a retro shipped a self-contradictory `--force-with-lease`
 recipe and a contradictory escaping example; both were caught only by an
