@@ -78,3 +78,21 @@ mechanical:
     target: docs/specs/retro-skill.md
     severity: warning
     desc: "Spec mirror exists for traceability"
+
+  - id: RT-40
+    type: file_exists
+    target: scripts/validate-evals.py
+    severity: error
+    desc: "Eval validator script exists"
+
+  - id: RT-41
+    type: command
+    pattern: "python3 -m py_compile scripts/validate-evals.py"
+    severity: error
+    desc: "Eval validator script is syntactically valid Python"
+
+  - id: RT-42
+    type: command
+    pattern: "python3 scripts/validate-evals.py"
+    severity: error
+    desc: "Retro's own eval scenarios are present (>=5) and well-formed (id/trigger/expected/negative_expected)"

@@ -173,6 +173,10 @@ User can always:
 - Run `/retro` again with `--no-cross-session` (if implemented) for faster mode
 - Materialize manually after /retro shows proposals (no approval, just inspect output)
 
+A rejected skill-update edit is recorded in `~/.claude/retro/rejected-edits.md`
+(target skill · edit summary · reason · date) and suppressed in later sessions,
+so the same rejected edit is not proposed again.
+
 ## Honest limitations
 
 retro detects friction observable in or near the session (Sweep / Spotlight) or

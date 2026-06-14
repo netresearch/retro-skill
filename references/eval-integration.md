@@ -27,6 +27,11 @@ This distinguishes:
 - **Skill bug** — eval covers the case, behavior diverged → fix the skill or the eval
 - **Skill gap** — eval doesn't cover the case → add capability AND eval
 
+When a skill-update proposal cites eval evidence, it cites evals that **already
+exist** (read) — never a fabricated "without-skill / with-skill" comparison retro
+did not run. retro analyzes one real session in one pass; it does not re-execute
+tasks to score them.
+
 ### 2. TDD stub for skill-update
 
 When proposing a `skill-update` and no eval covers the friction area, propose an eval stub alongside the fix:
@@ -86,6 +91,20 @@ scenarios:
 ```
 
 `/retro` does not enforce a format — it adapts to what each skill uses.
+
+## retro's own evals (dogfooding)
+
+retro ships its **own** `evals/` directory testing its **own** classification
+behaviour — skill-bug vs skill-gap, when to prune, when to propose nothing. These
+are repo-scoped fixtures (see `evals/README.md`), validated for well-formedness by
+`scripts/validate-evals.py` and gated by checkpoints RT-40–RT-42.
+
+This is the one place retro uses a small, fixed local schema
+(`id` / `trigger` / `expected` / `negative_expected`). It applies **only** to
+retro's own evals and does **not** change the rule above: when *reading other
+skills'* evals, retro stays schema-free and tolerant. Running
+`/retro "fix the retro skill"` reads these fixtures as classification context,
+exactly like any other skill's evals.
 
 ## Limitations
 

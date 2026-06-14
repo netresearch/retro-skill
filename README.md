@@ -118,7 +118,7 @@ Every finding routes to exactly one destination:
 |---|---|---|
 | `user-memory` | A personal, cross-project preference | Append a titled rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file) |
 | `project-rule` | A convention for *this* project | Append a titled rule to `<project>/AGENTS.md` |
-| `skill-update` | An existing skill is wrong, weak, or under-triggering | Open a PR against the skill's **source repo** (never the plugin cache) |
+| `skill-update` | An existing skill is wrong, weak, under-triggering, or carries an obsolete instruction (removal is a valid edit) | Open a PR against the skill's **source repo** (never the plugin cache) |
 | `new-skill` | A skill-shaped gap no skill covers | Scaffold a brand-new skill repo via the `skill-repo` convention |
 | `checkpoint` | A mechanical check worth gating on | Add a YAML entry to the target skill's `checkpoints.yaml` |
 | `harness-artefact` | A repo-infrastructure gap | Bootstrap a hook / CI / template via `agent-harness` |
@@ -132,7 +132,7 @@ The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — la
 3. **Cross-session enrichment (layer C, optional)** — if `~/.claude-coach/events.sqlite` exists, query it; otherwise scan `~/.claude/projects/<slug>/*.jsonl`. **5** signals: same-friction-again, cross-project pattern, memory drift, ineffective skill update, follow-up-fix session.
 4. **Classification** — map each finding to one of the six destinations (`references/classification-heuristic.md`).
 5. **Skill discovery (runtime)** — `scripts/find-installed-skills.sh` matches the friction topic against each `SKILL.md` description and resolves the source-repo URL.
-6. **Eval consultation** — if the matched skill has an `evals/` directory, read it for context and propose an eval stub (TDD style).
+6. **Eval consultation** — if the matched skill has an `evals/` directory, read it for context and propose an eval stub (TDD style). retro ships its **own** `evals/` testing its classification, validated by `scripts/validate-evals.py`.
 7. **Proposal generation** — per finding: a *Why* paragraph and a *How-to-apply* paragraph, grouped by destination, ≤10 items.
 8. **Per-proposal approval** — approve / edit / reject, one decision per materialization.
 9. **Materialization** — per-destination convention. PRs use Conventional Commits with DCO sign-off (`git commit -s`; without it the PR is **BLOCKED** even when all checks pass), preserve GPG signing, and require per-private-repo confirmation.
@@ -205,12 +205,18 @@ retro-skill/
 │   ├── patch-workflow.md
 │   ├── eval-integration.md
 │   └── workflow.md
+├── evals/                        # retro's own classification evals (dogfood)
+│   ├── README.md
+│   └── *.md                      # validated by scripts/validate-evals.py
 ├── scripts/
 │   ├── detect-mechanical.py      # layer-A pre-pass
 │   ├── find-installed-skills.sh  # runtime skill discovery
 │   ├── extract-coach-events.py   # optional Coach data reader
-│   └── scan-cross-session.py     # layer-C JSONL fallback
-├── tests/test_detect_mechanical.py
+│   ├── scan-cross-session.py     # layer-C JSONL fallback
+│   └── validate-evals.py         # validates retro's own evals (RT-40..42)
+├── tests/
+│   ├── test_detect_mechanical.py
+│   └── test_validate_evals.py
 ├── docs/specs/retro-skill.md     # authoritative specification
 ├── .github/workflows/            # lint.yml, release.yml
 ├── AGENTS.md

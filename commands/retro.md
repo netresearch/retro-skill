@@ -88,7 +88,7 @@ For installed skills' on-disk paths / git remotes when patching, also:
 
 ## Phase 6: Eval Consultation
 
-If matched skill has `evals/` directory: read evals for context. If proposing a skill-update, also propose an eval stub (TDD style) when no existing eval covers the area.
+If matched skill has `evals/` directory: read evals for context. If proposing a skill-update, also propose an eval stub (TDD style) when no existing eval covers the area. If the matched skill is **retro itself**, its own `evals/` apply — they test retro's classification (see `references/eval-integration.md`).
 
 ## Phase 7: Proposal Generation
 
@@ -98,12 +98,27 @@ Per finding, generate prose:
 
 Group proposals by destination. Show ≤10 items.
 
+For **skill-update** proposals, also include a **Skill instruction delta**:
+
+- **Current instruction(s):** the exact line(s) being changed or removed.
+- **Proposed edit:** add / replace / **remove** (removal is valid — see
+  `references/classification-heuristic.md` → "Instruction pruning").
+- **Why bounded:** what the edit does *not* touch.
+
+Cite eval evidence only when an eval **already** covers the area (read, never a
+fabricated "without-skill / with-skill" comparison — retro runs one pass and does
+not re-execute tasks). Before listing a skill-update edit, read
+`~/.claude/retro/rejected-edits.md` (if present) and **suppress any edit already
+recorded there** — do not re-propose what the user has already rejected.
+
 ## Phase 8: User Approval
 
 Present grouped proposals. Per item:
 - ✅ Approve → materialize
 - ✏️ Edit → modify before materializing
-- ❌ Reject → skip
+- ❌ Reject → skip, and for a skill-update edit append a one-line entry to
+  `~/.claude/retro/rejected-edits.md` (target skill · edit summary · reason ·
+  date) so it is not re-proposed in a later session
 
 ## Phase 9: Materialization
 

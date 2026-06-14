@@ -29,6 +29,7 @@ jobs:
           python3 -m py_compile scripts/scan-cross-session.py
           python3 -m py_compile scripts/scan-memory-inventory.py
           python3 -m py_compile scripts/find-org-skills.py
+          python3 -m py_compile scripts/validate-evals.py
 
       - name: Bash syntax check
         run: bash -n scripts/find-installed-skills.sh
