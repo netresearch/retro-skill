@@ -89,7 +89,7 @@ finding belongs in github-project's gh-CLI reference, though its description say
 only "GitHub repository setup and platform-specific features"). For any
 tool / platform / workflow finding, before concluding "no owning skill" and
 falling back to `project-rule` or `user-memory`, you **MUST open the top 1–2
-candidate skills** — their `SKILL.md` and `references/` files — and check for a
+candidate skills** (inferred from the skill name, category, or domain) — their `SKILL.md` and `references/` files — and check for a
 fitting section. Only after that content check fails is `new-skill` (or a
 narrower destination) correct.
 
