@@ -83,6 +83,16 @@ the friction topic against the catalogue `description` fields:
 - multiple matches → ask the user
 - no catalogue match → `new-skill`
 
+A description-level **no-match is not conclusive**. One-line descriptions
+routinely under-state what a skill owns (e.g. a "GHCR package deletion scopes"
+finding belongs in github-project's gh-CLI reference, though its description says
+only "GitHub repository setup and platform-specific features"). For any
+tool / platform / workflow finding, before concluding "no owning skill" and
+falling back to `project-rule` or `user-memory`, you **MUST open the top 1–2
+candidate skills** — their `SKILL.md` and `references/` files — and check for a
+fitting section. Only after that content check fails is `new-skill` (or a
+narrower destination) correct.
+
 For installed skills' on-disk paths / git remotes when patching, also:
 `bash ${CLAUDE_PLUGIN_ROOT}/scripts/find-installed-skills.sh`.
 
