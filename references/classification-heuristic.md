@@ -59,7 +59,9 @@ the catalogue you cannot route to the right owner — which is exactly how a
 skill-authoring lesson lands in `user-memory` instead of the skill that owns
 skill authoring. If an owning skill exists, default to `skill-update` against it
 (use its `repo_url`) **even if it is not installed locally**, and narrow only
-with cause.
+with cause. "No owning skill" must be confirmed by inspecting the top candidate
+skills' **contents** (`SKILL.md` + `references/`), not just their one-line
+descriptions — descriptions under-state ownership; memory is the last resort.
 
 When a finding could still land at more than one scope, **escalate to the
 broadest destination that still fits**, in this order:
