@@ -40,26 +40,26 @@ retro-skill/
 ├── README.md
 ├── LICENSE-MIT
 ├── LICENSE-CC-BY-SA-4.0
-├── skills/retro/
+├── skills/retro/                 (self-contained skill subtree — ships via npx-skills)
 │   ├── SKILL.md
-│   └── checkpoints.yaml          (own quality gates)
+│   ├── checkpoints.yaml          (own quality gates)
+│   ├── references/
+│   │   ├── friction-catalog.md       (Schichten A/B/C)
+│   │   ├── destination-taxonomy.md   (6 categories)
+│   │   ├── classification-heuristic.md (friction → destination)
+│   │   ├── skill-discovery.md        (where + how to find skills)
+│   │   ├── patch-workflow.md         (source-repo, not cache)
+│   │   ├── eval-integration.md       (how evals inform retro)
+│   │   └── workflow.md               (sweep + spotlight + auto modes)
+│   └── scripts/
+│       ├── detect-mechanical.py      (Schicht A pre-pass)
+│       ├── find-installed-skills.sh  (mechanical discovery helper)
+│       ├── extract-coach-events.py   (optional — reads ~/.claude-coach/ if present)
+│       └── scan-cross-session.py     (fallback for Schicht C if Coach absent)
 ├── commands/
 │   └── retro.md                  (slash command definition)
 ├── hooks/
 │   └── session-end.json          (off by default)
-├── references/
-│   ├── friction-catalog.md       (Schichten A/B/C)
-│   ├── destination-taxonomy.md   (6 categories)
-│   ├── classification-heuristic.md (friction → destination)
-│   ├── skill-discovery.md        (where + how to find skills)
-│   ├── patch-workflow.md         (source-repo, not cache)
-│   ├── eval-integration.md       (how evals inform retro)
-│   └── workflow.md               (sweep + spotlight + auto modes)
-├── scripts/
-│   ├── detect-mechanical.py      (Schicht A pre-pass)
-│   ├── find-installed-skills.sh  (mechanical discovery helper)
-│   ├── extract-coach-events.py   (optional — reads ~/.claude-coach/ if present)
-│   └── scan-cross-session.py     (fallback for Schicht C if Coach absent)
 └── docs/specs/
     └── retro-skill.md            (mirror of this spec post-bootstrap)
 ```
@@ -99,7 +99,7 @@ Plus optional auto-trigger via SessionEnd hook (off by default; user opts in).
    - Identifies: "same friction again", cross-project patterns, memory drift
 
 5. Classification per finding → 1 of 6 destinations
-   - Uses references/classification-heuristic.md
+   - Uses skills/retro/references/classification-heuristic.md
 
 6. For each finding, resolve target:
    - skill-update / new-skill: invoke Skill Discovery
@@ -128,7 +128,7 @@ Plus optional auto-trigger via SessionEnd hook (off by default; user opts in).
 
 ## Friction Detection Catalog
 
-### Schicht A — Mechanical Pre-Pass (`scripts/detect-mechanical.py`)
+### Schicht A — Mechanical Pre-Pass (`skills/retro/scripts/detect-mechanical.py`)
 
 Fast, deterministic, regex/count-based. Runs before LLM pass to reduce token cost.
 
@@ -189,7 +189,7 @@ Not detectable from a single session. Optional Coach-events read; otherwise sess
 
 ## Destination Taxonomy
 
-Six categories, statically documented in `references/destination-taxonomy.md`.
+Six categories, statically documented in `skills/retro/references/destination-taxonomy.md`.
 
 | Destination | When | Materialization Format |
 |---|---|---|
@@ -202,7 +202,7 @@ Six categories, statically documented in `references/destination-taxonomy.md`.
 
 ## Classification Heuristic (Friction → Destination)
 
-Excerpt; full table in `references/classification-heuristic.md`.
+Excerpt; full table in `skills/retro/references/classification-heuristic.md`.
 
 ```
 Tool output verbosity        → skill-update on tool-owner skill
@@ -250,7 +250,7 @@ Doc drift                    → skill-update on context7-skill trigger
 
 ## Skill Discovery (Runtime)
 
-Documented in `references/skill-discovery.md`.
+Documented in `skills/retro/references/skill-discovery.md`.
 
 **Search paths (in order):**
 
@@ -290,7 +290,7 @@ Mitigates accidental leak of patches into wrong/public repos.
 
 ## Patch Workflow (Source Repo, Never Cache)
 
-Documented in `references/patch-workflow.md`.
+Documented in `skills/retro/references/patch-workflow.md`.
 
 **Core rule:** patches always target the source repo. Cache (`~/.claude/plugins/cache/`) is overwritten on plugin update; edits there are lost.
 

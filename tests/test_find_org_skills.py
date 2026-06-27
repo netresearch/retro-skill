@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Unit tests for scripts/find-org-skills.py (org+installed skill discovery)."""
+"""Unit tests for skills/retro/scripts/find-org-skills.py (org+installed skill discovery)."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _load():
-    path = REPO_ROOT / "scripts" / "find-org-skills.py"
+    path = REPO_ROOT / "skills" / "retro" / "scripts" / "find-org-skills.py"
     spec = importlib.util.spec_from_file_location("find_org_skills", path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

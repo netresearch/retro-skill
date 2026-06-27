@@ -127,18 +127,18 @@ Every finding routes to exactly one destination:
 
 The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — layer A/B/C/D). The deterministic layer runs first to cut token cost; the LLM is always the primary classifier.
 
-1. **Mechanical pre-pass (layer A)** — `scripts/detect-mechanical.py` parses the transcript for exactly **18** deterministic signals (A1–A18): tool errors, retry clusters, output verbosity, tool-call inefficiency, sequential-vs-parallel, user-correction phrases, prompt/prompt-sequence/tool-sequence repetition, skill-reminder-vs-invoke, wrong-tool choice, re-read-same-file, skipped verification, work on `main`/`master`, bot attribution in commits, outdated-tool warnings, upstream failure, and permission re-approval. Deterministic; it does **not** classify.
+1. **Mechanical pre-pass (layer A)** — `skills/retro/scripts/detect-mechanical.py` parses the transcript for exactly **18** deterministic signals (A1–A18): tool errors, retry clusters, output verbosity, tool-call inefficiency, sequential-vs-parallel, user-correction phrases, prompt/prompt-sequence/tool-sequence repetition, skill-reminder-vs-invoke, wrong-tool choice, re-read-same-file, skipped verification, work on `main`/`master`, bot attribution in commits, outdated-tool warnings, upstream failure, and permission re-approval. Deterministic; it does **not** classify.
 2. **LLM enrichment (layer B)** — adds **14** inferential signals (wrong skill choice, skill capability gap, hallucination, convention violation, missing skill, repeated mistake, assumption-without-asking, doc drift, …) and filters layer-A false positives. Includes a trigger-coverage sweep over every installed skill's description.
 3. **Cross-session enrichment (layer C, optional)** — if `~/.claude-coach/events.sqlite` exists, query it; otherwise scan `~/.claude/projects/<slug>/*.jsonl`. **5** signals: same-friction-again, cross-project pattern, memory drift, ineffective skill update, follow-up-fix session.
-4. **Classification** — map each finding to one of the six destinations (`references/classification-heuristic.md`).
-5. **Skill discovery (runtime)** — `scripts/find-installed-skills.sh` matches the friction topic against each `SKILL.md` description and resolves the source-repo URL.
-6. **Eval consultation** — if the matched skill has an `evals/` directory, read it for context and propose an eval stub (TDD style). retro ships its **own** `evals/` testing its classification, validated by `scripts/validate-evals.py`.
+4. **Classification** — map each finding to one of the six destinations (`skills/retro/references/classification-heuristic.md`).
+5. **Skill discovery (runtime)** — `skills/retro/scripts/find-installed-skills.sh` matches the friction topic against each `SKILL.md` description and resolves the source-repo URL.
+6. **Eval consultation** — if the matched skill has an `evals/` directory, read it for context and propose an eval stub (TDD style). retro ships its **own** evals under `skills/retro/evals/` testing its classification, validated by `skills/retro/scripts/validate-evals.py`.
 7. **Proposal generation** — per finding: a *Why* paragraph and a *How-to-apply* paragraph, grouped by destination, ≤10 items.
 8. **Per-proposal approval** — approve / edit / reject, one decision per materialization.
 9. **Materialization** — per-destination convention. PRs use Conventional Commits with DCO sign-off (`git commit -s`; without it the PR is **BLOCKED** even when all checks pass), preserve GPG signing, and require per-private-repo confirmation.
 10. **Report** — a summary table of created PRs and written files.
 
-The full signal catalog lives in [`references/friction-catalog.md`](references/friction-catalog.md).
+The full signal catalog lives in [`skills/retro/references/friction-catalog.md`](skills/retro/references/friction-catalog.md).
 
 ## How it stays safe
 
@@ -192,28 +192,28 @@ Do not rename the file to `hooks/hooks.json` — that would make Claude Code aut
 
 ```text
 retro-skill/
-├── skills/retro/
-│   ├── SKILL.md              # main skill definition (the four modes)
-│   └── checkpoints.yaml      # skill quality gates
-├── commands/retro.md         # /retro slash command
-├── hooks/session-end.json    # optional auto-trigger (off by default)
-├── references/               # 7 reference docs
-│   ├── friction-catalog.md
-│   ├── destination-taxonomy.md
-│   ├── classification-heuristic.md
-│   ├── skill-discovery.md
-│   ├── patch-workflow.md
-│   ├── eval-integration.md
-│   └── workflow.md
-├── evals/                        # retro's own classification evals (dogfood)
-│   ├── README.md
-│   └── *.md                      # validated by scripts/validate-evals.py
-├── scripts/
-│   ├── detect-mechanical.py      # layer-A pre-pass
-│   ├── find-installed-skills.sh  # runtime skill discovery
-│   ├── extract-coach-events.py   # optional Coach data reader
-│   ├── scan-cross-session.py     # layer-C JSONL fallback
-│   └── validate-evals.py         # validates retro's own evals (RT-40..42)
+├── skills/retro/                     # the self-contained skill subtree (ships via npx-skills)
+│   ├── SKILL.md                  # main skill definition (the four modes)
+│   ├── checkpoints.yaml          # skill quality gates
+│   ├── references/               # 7 reference docs
+│   │   ├── friction-catalog.md
+│   │   ├── destination-taxonomy.md
+│   │   ├── classification-heuristic.md
+│   │   ├── skill-discovery.md
+│   │   ├── patch-workflow.md
+│   │   ├── eval-integration.md
+│   │   └── workflow.md
+│   ├── evals/                    # retro's own classification evals (dogfood)
+│   │   ├── README.md
+│   │   └── *.md                  # validated by skills/retro/scripts/validate-evals.py
+│   └── scripts/
+│       ├── detect-mechanical.py      # layer-A pre-pass
+│       ├── find-installed-skills.sh  # runtime skill discovery
+│       ├── extract-coach-events.py   # optional Coach data reader
+│       ├── scan-cross-session.py     # layer-C JSONL fallback
+│       └── validate-evals.py         # validates retro's own evals (RT-40..42)
+├── commands/retro.md             # /retro slash command (Claude Code plugin only)
+├── hooks/session-end.json        # optional auto-trigger (off by default)
 ├── tests/
 │   ├── test_detect_mechanical.py
 │   └── test_validate_evals.py
@@ -238,7 +238,7 @@ retro-skill/
 | [automated-assessment-skill](https://github.com/netresearch/automated-assessment-skill) | Checkpoint YAML schema for `checkpoint` materialization |
 | [claude-coach-plugin](https://github.com/netresearch/claude-coach-plugin) | Optional, read-only layer-C data source |
 
-Deeper reading: the authoritative spec at [`docs/specs/retro-skill.md`](docs/specs/retro-skill.md), the [`references/`](references/) docs, and [`AGENTS.md`](AGENTS.md).
+Deeper reading: the authoritative spec at [`docs/specs/retro-skill.md`](docs/specs/retro-skill.md), the [`skills/retro/references/`](skills/retro/references/) docs, and [`AGENTS.md`](AGENTS.md).
 
 ## Contributing
 
