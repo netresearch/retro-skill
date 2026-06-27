@@ -1,4 +1,4 @@
-"""Smoke tests for scripts/detect-mechanical.py.
+"""Smoke tests for skills/retro/scripts/detect-mechanical.py.
 
 Builds tiny synthetic JSONL transcripts and asserts the detector fires the
 expected signal. Not exhaustive — one synthetic case per implemented signal.
@@ -14,9 +14,9 @@ from pathlib import Path
 
 
 def load_detect_module():
-    """Import scripts/detect-mechanical.py despite its hyphenated filename."""
+    """Import skills/retro/scripts/detect-mechanical.py despite its hyphenated filename."""
     repo_root = Path(__file__).resolve().parent.parent
-    src = repo_root / "scripts" / "detect-mechanical.py"
+    src = repo_root / "skills" / "retro" / "scripts" / "detect-mechanical.py"
     spec = importlib.util.spec_from_file_location("detect_mechanical", src)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

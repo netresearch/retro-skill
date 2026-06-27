@@ -8,13 +8,13 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/checkpoints.yaml` — Skill quality gates
 - `commands/retro.md` — `/retro` slash command definition
 - `hooks/session-end.json` — Optional auto-trigger hook (off by default)
-- `references/` — Friction catalog, destination taxonomy, classification heuristic, skill discovery, patch workflow, eval integration, workflow modes
-- `scripts/detect-mechanical.py` — Schicht-A pre-pass (mechanical friction detection)
-- `scripts/find-installed-skills.sh` — Skill discovery helper
-- `scripts/extract-coach-events.py` — Optional Coach data reader
-- `scripts/scan-cross-session.py` — Cross-session JSONL scanner (Schicht-C fallback)
-- `scripts/validate-evals.py` — Validates retro's own eval scenarios (RT-40..42)
-- `evals/` — retro's own classification evals (LLM-graded fixtures; see `evals/README.md`)
+- `skills/retro/references/` — Friction catalog, destination taxonomy, classification heuristic, skill discovery, patch workflow, eval integration, workflow modes
+- `skills/retro/scripts/detect-mechanical.py` — Schicht-A pre-pass (mechanical friction detection)
+- `skills/retro/scripts/find-installed-skills.sh` — Skill discovery helper
+- `skills/retro/scripts/extract-coach-events.py` — Optional Coach data reader
+- `skills/retro/scripts/scan-cross-session.py` — Cross-session JSONL scanner (Schicht-C fallback)
+- `skills/retro/scripts/validate-evals.py` — Validates retro's own eval scenarios (RT-40..42)
+- `skills/retro/evals/` — retro's own classification evals (LLM-graded fixtures; see `skills/retro/evals/README.md`)
 - `docs/specs/retro-skill.md` — Mirror of authoritative spec
 
 ## Commands

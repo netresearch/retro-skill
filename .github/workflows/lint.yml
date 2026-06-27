@@ -24,20 +24,20 @@ jobs:
 
       - name: Python compile check
         run: |
-          python3 -m py_compile scripts/detect-mechanical.py
-          python3 -m py_compile scripts/extract-coach-events.py
-          python3 -m py_compile scripts/scan-cross-session.py
-          python3 -m py_compile scripts/scan-memory-inventory.py
-          python3 -m py_compile scripts/find-org-skills.py
-          python3 -m py_compile scripts/validate-evals.py
+          python3 -m py_compile skills/retro/scripts/detect-mechanical.py
+          python3 -m py_compile skills/retro/scripts/extract-coach-events.py
+          python3 -m py_compile skills/retro/scripts/scan-cross-session.py
+          python3 -m py_compile skills/retro/scripts/scan-memory-inventory.py
+          python3 -m py_compile skills/retro/scripts/find-org-skills.py
+          python3 -m py_compile skills/retro/scripts/validate-evals.py
 
       - name: Bash syntax check
-        run: bash -n scripts/find-installed-skills.sh
+        run: bash -n skills/retro/scripts/find-installed-skills.sh
 
       - name: ShellCheck
         uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
         with:
-          scandir: ./scripts
+          scandir: ./skills/retro/scripts
           additional_files: ./hooks/session-end.json
         continue-on-error: true
 

@@ -149,7 +149,7 @@ def main(argv: list[str] | None = None) -> int:
         "--evals-dir",
         type=Path,
         default=None,
-        help="Path to the evals/ directory (default: <repo>/evals).",
+        help="Path to the evals/ directory (default: <skill-dir>/evals).",
     )
     parser.add_argument(
         "--min-scenarios",

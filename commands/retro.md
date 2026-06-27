@@ -21,7 +21,7 @@ Analyze the current session for friction patterns and materialize learnings into
 Run the deterministic friction detector against the session transcript:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/detect-mechanical.py \
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py \
   --transcript-file ~/.claude/projects/<slug>/<session-id>.jsonl \
   --output-format json
 ```
@@ -41,20 +41,20 @@ For each pre-pass candidate, validate against the conversational context. Add in
 - Assumption-without-asking patterns
 - Doc drift
 
-See `references/friction-catalog.md` Schicht B for the full list.
+See `skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
 ## Phase 3: Cross-Session (Optional)
 
 If `~/.claude-coach/events.sqlite` exists:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/extract-coach-events.py --since "30 days ago"
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/extract-coach-events.py --since "30 days ago"
 ```
 
 Otherwise fall back to JSONL scan:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scan-cross-session.py --pattern "<fingerprint>"
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>"
 ```
 
 ## Phase 4: Classification
@@ -62,7 +62,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scan-cross-session.py --pattern "<fingerpr
 Run **Phase 5 skill discovery first** — the catalogue of all skills (installed
 *and* available) is a required input to classification, not a consequence of it.
 Then map each finding to one of six destinations using
-`references/classification-heuristic.md`, checking the catalogue for an owning
+`skills/retro/references/classification-heuristic.md`, checking the catalogue for an owning
 skill before any narrower destination. When uncertain, ask the user.
 
 ## Phase 5: Skill Discovery
@@ -71,7 +71,7 @@ Run up front, for **every** candidate learning (not only once a destination is
 chosen) — discover the full catalogue:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/find-org-skills.py
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-org-skills.py
 ```
 
 Returns every skill in every configured marketplace — installed or not —
@@ -94,11 +94,11 @@ fitting section. Only after that content check fails is `new-skill` (or a
 narrower destination) correct.
 
 For installed skills' on-disk paths / git remotes when patching, also:
-`bash ${CLAUDE_PLUGIN_ROOT}/scripts/find-installed-skills.sh`.
+`bash ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-installed-skills.sh`.
 
 ## Phase 6: Eval Consultation
 
-If matched skill has `evals/` directory: read evals for context. If proposing a skill-update, also propose an eval stub (TDD style) when no existing eval covers the area. If the matched skill is **retro itself**, its own `evals/` apply — they test retro's classification (see `references/eval-integration.md`).
+If matched skill has `evals/` directory: read evals for context. If proposing a skill-update, also propose an eval stub (TDD style) when no existing eval covers the area. If the matched skill is **retro itself**, its own `evals/` apply — they test retro's classification (see `skills/retro/references/eval-integration.md`).
 
 ## Phase 7: Proposal Generation
 
@@ -112,7 +112,7 @@ For **skill-update** proposals, also include a **Skill instruction delta**:
 
 - **Current instruction(s):** the exact line(s) being changed or removed.
 - **Proposed edit:** add / replace / **remove** (removal is valid — see
-  `references/classification-heuristic.md` → "Instruction pruning").
+  `skills/retro/references/classification-heuristic.md` → "Instruction pruning").
 - **Why bounded:** what the edit does *not* touch.
 
 Cite eval evidence only when an eval **already** covers the area (read, never a
@@ -132,7 +132,7 @@ Present grouped proposals. Per item:
 
 ## Phase 9: Materialization
 
-Per destination, follow `references/patch-workflow.md` and the destination-specific convention. **Patches go to source repos, never to cache.**
+Per destination, follow `skills/retro/references/patch-workflow.md` and the destination-specific convention. **Patches go to source repos, never to cache.**
 
 For each created PR / file:
 - Use Conventional Commits format
@@ -206,14 +206,14 @@ Requires latency. Don't run within 24h of the session — most D signals haven't
 
 Re-homes already-written local memory (the **stock**, not the session flow)
 upward into its correct destination, draining the source once the upward write
-is confirmed. Full detail in `references/promote-mode.md`.
+is confirmed. Full detail in `skills/retro/references/promote-mode.md`.
 
-- **Phase 1 is substituted** by `scripts/scan-memory-inventory.py` — a
+- **Phase 1 is substituted** by `skills/retro/scripts/scan-memory-inventory.py` — a
   filesystem inventory of `~/.claude/projects/<slug>/memory/*.md`, not a
   transcript:
 
   ```bash
-  python3 ${CLAUDE_PLUGIN_ROOT}/scripts/scan-memory-inventory.py \
+  python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py \
     --scope cwd --output-format json
   ```
 

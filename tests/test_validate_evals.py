@@ -1,4 +1,4 @@
-"""Unit tests for scripts/validate-evals.py.
+"""Unit tests for skills/retro/scripts/validate-evals.py.
 
 Each test builds its own tiny synthetic ``evals/`` directory in a temp dir (no
 shared fixture) and asserts the validator accepts well-formed scenarios and
@@ -14,9 +14,9 @@ from pathlib import Path
 
 
 def load_validator():
-    """Import scripts/validate-evals.py despite its hyphenated filename."""
+    """Import skills/retro/scripts/validate-evals.py despite its hyphenated filename."""
     repo_root = Path(__file__).resolve().parent.parent
-    src = repo_root / "scripts" / "validate-evals.py"
+    src = repo_root / "skills" / "retro" / "scripts" / "validate-evals.py"
     spec = importlib.util.spec_from_file_location("validate_evals", src)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

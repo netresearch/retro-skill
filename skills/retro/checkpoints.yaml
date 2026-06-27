@@ -21,19 +21,19 @@ mechanical:
 
   - id: RT-03
     type: file_exists
-    target: scripts/detect-mechanical.py
+    target: skills/retro/scripts/detect-mechanical.py
     severity: error
     desc: "Mechanical pre-pass script exists"
 
   - id: RT-04
     type: command
-    pattern: "python3 -m py_compile scripts/detect-mechanical.py"
+    pattern: "python3 -m py_compile skills/retro/scripts/detect-mechanical.py"
     severity: error
     desc: "Mechanical pre-pass script is syntactically valid Python"
 
   - id: RT-05
     type: file_exists
-    target: scripts/find-installed-skills.sh
+    target: skills/retro/scripts/find-installed-skills.sh
     severity: error
     desc: "Skill discovery helper exists"
 
@@ -45,19 +45,19 @@ mechanical:
 
   - id: RT-06
     type: command
-    pattern: "bash -n scripts/find-installed-skills.sh"
+    pattern: "bash -n skills/retro/scripts/find-installed-skills.sh"
     severity: error
     desc: "Skill discovery script is syntactically valid bash"
 
   - id: RT-10
     type: file_exists
-    target: "{references/friction-catalog.md,references/destination-taxonomy.md,references/classification-heuristic.md}"
+    target: "{skills/retro/references/friction-catalog.md,skills/retro/references/destination-taxonomy.md,skills/retro/references/classification-heuristic.md}"
     severity: error
     desc: "Core reference docs exist (catalog, taxonomy, heuristic)"
 
   - id: RT-11
     type: file_exists
-    target: "{references/skill-discovery.md,references/patch-workflow.md,references/workflow.md}"
+    target: "{skills/retro/references/skill-discovery.md,skills/retro/references/patch-workflow.md,skills/retro/references/workflow.md}"
     severity: error
     desc: "Workflow reference docs exist (discovery, patch, workflow)"
 
@@ -81,18 +81,18 @@ mechanical:
 
   - id: RT-40
     type: file_exists
-    target: scripts/validate-evals.py
+    target: skills/retro/scripts/validate-evals.py
     severity: error
     desc: "Eval validator script exists"
 
   - id: RT-41
     type: command
-    pattern: "python3 -m py_compile scripts/validate-evals.py"
+    pattern: "python3 -m py_compile skills/retro/scripts/validate-evals.py"
     severity: error
     desc: "Eval validator script is syntactically valid Python"
 
   - id: RT-42
     type: command
-    pattern: "python3 scripts/validate-evals.py"
+    pattern: "python3 skills/retro/scripts/validate-evals.py"
     severity: error
     desc: "Retro's own eval scenarios are present (>=5) and well-formed (id/trigger/expected/negative_expected)"

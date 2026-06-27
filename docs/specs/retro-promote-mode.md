@@ -33,8 +33,8 @@ work happens. retro is currently blind to it.
 
 | | |
 |---|---|
-| **NEW** | `scripts/scan-memory-inventory.py` (read-only scan + `drain` subcommand), `tests/test_scan_memory_inventory.py`, `references/promote-mode.md` |
-| **EDIT (small)** | `commands/retro.md` (mode section), `references/classification-heuristic.md` (C3 row), `references/destination-taxonomy.md` (forward pointer), `.github/workflows/lint.yml` (compile check), `skills/retro/SKILL.md` (terse mode stub — see Precondition) |
+| **NEW** | `skills/retro/scripts/scan-memory-inventory.py` (read-only scan + `drain` subcommand), `tests/test_scan_memory_inventory.py`, `skills/retro/references/promote-mode.md` |
+| **EDIT (small)** | `commands/retro.md` (mode section), `skills/retro/references/classification-heuristic.md` (C3 row), `skills/retro/references/destination-taxonomy.md` (forward pointer), `.github/workflows/lint.yml` (compile check), `skills/retro/SKILL.md` (terse mode stub — see Precondition) |
 | **NO CHANGE** | `.claude-plugin/plugin.json` (declares only skills; commands are convention-discovered), the six destinations (promote invents none) |
 | **OUT** | Tombstone-purge housekeeping, `.serena/memories` ingestion, external-feedback ingestion |
 
@@ -47,7 +47,7 @@ work happens. retro is currently blind to it.
 A new front-end that replaces Phases 1–3 (transcript detection) with a
 filesystem inventory and reuses Phases 4–10 unchanged.
 
-### Scan script — `scripts/scan-memory-inventory.py`
+### Scan script — `skills/retro/scripts/scan-memory-inventory.py`
 
 Read-only by construction; stdlib-only; emits the `detect-mechanical.py`
 envelope so Phases 4–10 consume it as-is.
