@@ -6,7 +6,7 @@ trigger: "A busy session with ~14 friction items (push rejected, phpstan-after-p
 expected:
   - surface BOTH friction-free learnings as findings even though neither produced an error, retry, or correction — the hard-won technique as B16 and the review lesson as B18
   - grade each reusable-learning finding at least `important`, not `nice-to-have`
-  - retain both learnings within the >=10-proposal cap (reserve slots so friction does not crowd them out)
+  - retain both learnings within the ≤10-proposal cap (reserve slots so friction does not crowd them out)
   - route both to `skill-update` against the owning skill (jira skill; SonarCloud/php skill)
 negative_expected:
   - return 10 friction proposals and zero learnings because friction filled the cap

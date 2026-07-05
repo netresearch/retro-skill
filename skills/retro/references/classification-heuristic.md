@@ -144,7 +144,7 @@ top reusable-learning findings (B16–B18) survive the trim. Friction findings a
 usually more numerous and easier to grade high; without this rule a busy session
 returns 10 friction items and zero learnings, silently dropping exactly the
 knowledge the second class exists to capture. If learnings must still be dropped
-for space, say so in the Phase-11 report rather than dropping them silently.
+for space, say so in the Phase-10 report rather than dropping them silently.
 
 ## See also
 
