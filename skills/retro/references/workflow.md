@@ -40,12 +40,16 @@ Examples:
 
 ### Outcome — `/retro outcome [session-id|--since N]`
 
-Replay a past session through the lens of what happened to its output afterwards.
+Replay a past session through the lens of what happened to its output afterwards
+— **good or bad**.
 
 ```
 Input: past session id (or all sessions within --since window)
-Output: Schicht D findings (commits reverted, PRs rejected, etc.) for that session
-Use case: monthly look-back at decisions that didn't survive contact with reality
+Output: Schicht D findings — failures to learn from (D1–D10: reverted, rejected,
+        CI-broken) AND durable successes to codify (D11: merged, unreverted,
+        CI-green changes whose approach generalizes → skill-update)
+Use case: monthly look-back — both what didn't survive contact with reality and
+          what did and should become the default
 ```
 
 Requires latency. Don't run within 24h of the session. Best run with `--since 30d` for the previous month.

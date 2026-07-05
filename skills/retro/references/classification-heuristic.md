@@ -133,7 +133,7 @@ Which fits better?
 Severity is set during classification, not during detection:
 
 - `critical` — Recurring (C-layer match) OR caused upstream failure (A17) OR user-visible bug
-- `important` — User correction phrase present (A6) OR known rule violated (A15) OR a **reusable-learning finding** (B16–B18): knowledge a future agent will otherwise re-derive is *important* by definition — never auto-grade a genuine learning `nice-to-have`
+- `important` — User correction phrase present (A6) OR known rule violated (A15) OR a **reusable-learning finding** (B16–B18, or D11 durable-improvement in outcome mode): knowledge a future agent will otherwise re-derive is *important* by definition — never auto-grade a genuine learning `nice-to-have`
 - `nice-to-have` — Efficiency / style / convention (most other cases)
 
 Use severity to rank proposals in the output. Higher severity first.

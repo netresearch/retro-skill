@@ -215,13 +215,27 @@ Faster and uses fewer tokens than a full sweep.
 /retro outcome --since 30d           # All sessions in last 30 days
 ```
 
+Outcome mode reviews **what happened to the output — good OR bad**, not failures
+only. It has two jobs, co-equal:
+
+- **Learn from failure** — output that was reverted, rejected, or broke CI
+  (D1–D10) → fix the process so it does not recur.
+- **Codify success** — a change that **survived** (merged, unreverted, CI-green;
+  **D11**) is a validated statement of "this is the way." Where its approach
+  generalizes and isn't in a skill, propagate it so future generated code follows
+  it. This is the "every stuck commit is a statement" case: durability, confirmed
+  by latency, is what upgrades a commit from hypothesis to codifiable rule.
+
+Steps:
+
 - Skip Phases 1 and 2 (the session is in the past; mechanical pre-pass on a stale transcript is low value)
 - Phase 3 runs against the target session(s)
-- **Phase 3b is the primary detection step:** walk forward from session end with `git log`, `gh pr view`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D10).
+- **Phase 3b is the primary detection step:** walk forward from session end with `git log`, `gh pr view`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D11) — both the failures **and** the durable successes.
 - Phase 3c may also fire if the window is large
-- Phases 4–10 proceed; Destinations skew toward `user-memory` (personal pattern) and `skill-update` (skill should learn from outcome)
+- Phases 4–10 proceed; destinations skew toward `skill-update` — the skill should learn both what to avoid (D1–D10) and what to codify (D11) — and `user-memory` for personal patterns
+- Guard D11 with the same generalizability filter as B16–B18: a local, one-off change that merged cleanly is **not** a learning; codifying it is noise
 
-Requires latency. Don't run within 24h of the session — most D signals haven't manifested yet.
+Requires latency. Don't run within 24h of the session — most D signals (including D11's "survived the window") haven't manifested yet.
 
 ## Audit Mode
 

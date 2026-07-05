@@ -28,7 +28,7 @@ External-feedback ingestion (Sentry, Jira, monitoring) is out of v0.1 scope — 
 | A — Mechanical | 18 | 18 (all of A1–A18) |
 | B — LLM inference | 18 | LLM-driven (no separate code); B16–B18 are reusable-learning signals |
 | C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
-| D — Outcome | 10 | Planned for v0.1.x |
+| D — Outcome | 11 | Planned for v0.1.x; D11 is the positive (codify-success) signal |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
 
 Schicht A is feature-complete. See `references/destination-taxonomy.md` for what each signal class routes to.
@@ -111,7 +111,17 @@ Not detectable from a single session. Optional Coach-events read; otherwise sess
 
 ## Schicht D — Outcome (Post-Session, requires latency)
 
-What happened to the session's output **after** it left the session? These signals require waiting (days to weeks) before they become reliable. Best run periodically via `/retro outcome --since 30d`, not at session end.
+What happened to the session's output **after** it left the session — good OR
+bad? These signals require waiting (days to weeks) before they become reliable.
+Best run periodically via `/retro outcome --since 30d`, not at session end.
+
+D1–D10 are **failure** signals (output that didn't survive). **D11 is the
+positive mirror:** output that *did* survive is a validated statement of "this is
+the way," and its generalizable approach should be codified so future generated
+code follows it. A commit is a hypothesis at commit time; it becomes a reliable
+"new way" only once it is merged, unreverted, and CI-green — which is exactly what
+latency-gated outcome mode confirms. (This mirrors the Schicht B fix: just as the
+sweep was friction-only, outcome was failure-only.)
 
 | # | Signal | Detection | Hint at |
 |---|---|---|---|
@@ -125,12 +135,14 @@ What happened to the session's output **after** it left the session? These signa
 | D8 | Regression in test suite | Test that passed at session end now fails on a later commit | Output regressed |
 | D9 | Code reverted in same file within 30 days | Diff-based: session's net contribution to file is largely undone | Output not durable |
 | D10 | External tracker mention (out-of-scope marker) | Issue/PR/Slack reference using session commit/PR ID (requires external integration; v0.2+) | Output had external impact |
+| **D11** | **Durable improvement (positive)** | Session's change **survived** the window: merged (`gh pr view --json mergedAt,reviewDecision`), **not** reverted or superseded (inverse of D1/D2/D9), CI green (`gh run list --commit $sha --json conclusion`) — AND its approach generalizes but is not yet in any skill | Output is validated by surviving contact with reality → **codify the approach** so future generated code follows it → `skill-update` |
 
 ### When NOT to use Schicht D
 
 - Session is too recent (< 24h) — most D signals haven't had time to manifest
 - Session was a refactor or doc-only change — D2/D9 fire spuriously
 - Working on a long-lived feature branch — `git log --grep="revert"` is noisy
+- Change is **local / specific with no transferable approach** — D11 must NOT fire; codifying a one-off is exactly the noise the generalizability filter exists to stop (see B16–B18: "would a future agent re-derive this?")
 
 D mode is best for **monthly retros over a 30-day window**, not real-time.
 
