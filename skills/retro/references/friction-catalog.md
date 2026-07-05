@@ -1,6 +1,14 @@
 # Friction Catalog
 
-All friction signals retro-skill detects, organized in four layers (Schichten) by detection mechanism and a fifth (constitutional) for cross-session architectural analysis.
+All signals retro-skill detects, organized in four layers (Schichten) by
+detection mechanism and a fifth (constitutional) for cross-session architectural
+analysis.
+
+Despite the name, this catalog covers **two classes**: *friction* (things that
+went wrong) and *reusable learnings* (knowledge that went right but is not
+captured anywhere — Schicht B, signals B16–B18). Both are first-class retro
+findings; a signal-free stretch of a session can still carry a learning worth
+propagating.
 
 ## Scope and honest limitations
 
@@ -18,7 +26,7 @@ External-feedback ingestion (Sentry, Jira, monitoring) is out of v0.1 scope — 
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
 | A — Mechanical | 18 | 18 (all of A1–A18) |
-| B — LLM inference | 14 | LLM-driven (no separate code) |
+| B — LLM inference | 18 | LLM-driven (no separate code); B16–B18 are reusable-learning signals |
 | C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
 | D — Outcome | 10 | Planned for v0.1.x |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
@@ -71,6 +79,23 @@ Requires conversational context understanding. The LLM reads pre-pass output + r
 | B13 | Context re-discovery | Assistant re-explored repo structure already documented in AGENTS.md |
 | B14 | Doc drift | Assistant used outdated API/library version when context7 would have helped |
 | B15 | Skill trigger-coverage gap | A **systematic** pass (not opportunistic): load *every* installed skill's `description` via `scripts/find-installed-skills.sh`, then judge — given what this session actually did — which skills *should* have triggered but were never invoked. Each miss whose root cause is weak/missing trigger words → `skill-update` to that skill's `description`. (B2/B4 are the opportunistic, single-skill version; B15 is the exhaustive sweep across the whole inventory. See the trigger-coverage step in `SKILL.md`.) |
+
+### Reusable-learning signals (B16–B18) — scan even when nothing went wrong
+
+These are **positive** signals: the session produced knowledge worth propagating,
+with **no** friction to trigger it. The mechanical pre-pass cannot see them (there
+is no error, retry, or correction to count), so they exist only as LLM-inference
+signals and must be looked for deliberately. The discriminator is *"would a future
+agent re-derive this, and is it already in the owning skill?"* — not *"did
+something go wrong?"* Grade them **at least `important`** (see
+`classification-heuristic.md` → Severity) so they are not crowded out under the
+≤10-proposal cap.
+
+| # | Signal | Hint at |
+|---|---|---|
+| B16 | Hard-won technique | A non-obvious command / flag / endpoint / API / workflow the session figured out — even cleanly and first-try — that is NOT in the owning skill. Root cause: real digging was needed. → `skill-update` |
+| B17 | Proactive improvement | A better approach identified *during* the work (not prompted by a correction) — a cleaner pattern, a faster tool, a simpler structure worth codifying. → `skill-update` |
+| B18 | Review-issue learning | A generalizable lesson from a code-review comment (given OR received) — a reviewer taught a rule that applies beyond the current diff. → `skill-update` (or `project-rule` if genuinely repo-specific) |
 
 ## Schicht C — Cross-Session
 

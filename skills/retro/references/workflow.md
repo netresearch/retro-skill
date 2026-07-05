@@ -6,11 +6,16 @@ The modes of `/retro` and how they share the underlying pipeline.
 
 ### Sweep — `/retro` (no arguments)
 
-Full session analysis. Use at end of session or when friction has accumulated.
+Full session analysis. Use at end of session — whether or not friction
+accumulated. The sweep captures **both** classes: friction *and* reusable
+learnings (hard-won techniques, proactive improvements, code-review lessons;
+Schicht B, B16–B18). A session that went smoothly is not exempt — it still owes
+its learnings.
 
 ```
 Input: entire current session transcript
 Output: ≤10 actionable proposals grouped by destination
+        (friction + reusable-learnings; learnings protected from cap crowd-out)
 Use case: explicit end-of-session retrospective
 Token cost: highest (full transcript pass)
 ```
@@ -131,7 +136,7 @@ report gains a "Source drained?" column.
 | LLM passes per `/retro` | 1 | No multi-round polling |
 | `detect-mechanical.py` invocations | 1 | Capture the JSON once, post-process the saved output; never re-run the detector just to reshape/bucket its output (a full second transcript scan for nothing) |
 | Tool calls for skill discovery | ≤5 | Cached per session |
-| Proposals presented | ≤10 | Not 1011 (Coach anti-pattern) |
+| Proposals presented | ≤10 | Not 1011 (Coach anti-pattern); reserve slots for top reusable-learnings so friction can't crowd them all out |
 | Total token cost vs Coach baseline | Dramatically below | TBD after first measurement |
 | Setup time before first proposal | <30 seconds | Mechanical pre-pass + discovery cache |
 
@@ -179,9 +184,12 @@ so the same rejected edit is not proposed again.
 
 ## Honest limitations
 
-retro detects friction observable in or near the session (Sweep / Spotlight) or
-in the stored backlog (Promote). It does **not** detect: silent badness
-(architecturally wrong but friction-free choices); external signals (customer
+retro detects friction *and* reusable learnings observable in or near the session
+(Sweep / Spotlight) or in the stored backlog (Promote). A learning is detectable
+only when it surfaced in the session (a technique the agent worked out, an
+improvement it named, a review comment it received); retro does **not** detect:
+silent badness (architecturally wrong but friction-free choices the agent never
+recognized as a learning); external signals (customer
 complaints, prod alerts, Slack / Jira / Sentry); slow constitutional drift
 without `audit`; or outcomes the agent never saw (a reverted commit or rejected
 PR is seen, an unspoken "the customer hated it" is not). For those, run

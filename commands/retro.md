@@ -1,10 +1,21 @@
 ---
-description: "Session retrospection — detect friction, classify into destinations, materialize approved learnings"
+description: "Session retrospection — detect friction AND reusable learnings, classify into destinations, materialize approved learnings"
 ---
 
 # /retro — Session Retrospective
 
-Analyze the current session for friction patterns and materialize learnings into the correct destination.
+A retrospective captures **two equally-weighted classes**, and every run scans
+for BOTH:
+
+1. **Friction** — things that went wrong (errors, corrections, retries,
+   violations, inefficiencies).
+2. **Reusable knowledge that went RIGHT but is not captured anywhere yet** — a
+   learning worth propagating so nobody re-derives it. It leaves no error signal,
+   so you must look for it deliberately; a smooth session is **not** an empty
+   retro.
+
+Analyze the current session for both, then classify and materialize into the
+correct destination.
 
 ## Usage
 
@@ -30,7 +41,10 @@ Output is a structured list of candidate findings. Read this before scanning the
 
 ## Phase 2: LLM Enrichment
 
-For each pre-pass candidate, validate against the conversational context. Add inferential findings the pre-pass cannot catch:
+For each pre-pass candidate, validate against the conversational context. Add
+inferential findings the pre-pass cannot catch — in **both** classes below.
+
+### Friction findings
 
 - Wrong skill choice (Skill X triggered, Skill Y would have fit better)
 - Skill capability gap (skill triggered, lacked sub-task guidance)
@@ -40,6 +54,24 @@ For each pre-pass candidate, validate against the conversational context. Add in
 - Repeated mistakes within same session
 - Assumption-without-asking patterns
 - Doc drift
+
+### Reusable-learning findings (scan even when nothing went wrong)
+
+The pre-pass is friction-only; these leave no error signal, so surface them here
+or they are lost. A clean session still owes these findings.
+
+- **Hard-won technique (B16):** a non-obvious command, flag, endpoint, or
+  workflow the session figured out — even cleanly, first try — that is NOT in the
+  owning skill. Root cause: "we had to dig this out." → `skill-update`.
+- **Proactive improvement (B17):** a better approach identified during the work
+  (not as a correction). → `skill-update`.
+- **Review-issue learning (B18):** a generalizable lesson from a code-review
+  comment (given OR received) — a reviewer taught a rule that applies beyond this
+  diff. → `skill-update` (or `project-rule` if repo-specific).
+
+For each learning ask: **"Would a future agent re-derive this, and does an
+existing skill already say it?"** If re-derivable and not covered → it is a
+finding.
 
 See `skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
@@ -106,7 +138,15 @@ Per finding, generate prose:
 - **Why:** 1-2 paragraphs explaining the friction and its root cause
 - **How to apply:** 1-2 paragraphs describing the concrete fix
 
-Group proposals by destination. Show ≤10 items.
+Group proposals by destination. Show ≤10 items, ranked by severity (see
+`skills/retro/references/classification-heuristic.md` → "Severity inference").
+
+**Do not let friction crowd out learnings.** When more than 10 candidates exist
+and the list is trimmed to fit, reserve slots so the top reusable-learning
+findings (B16–B18) survive — a friction-free learning is graded *at least*
+`important`, never auto-`nice-to-have`, precisely so it is not the first thing
+dropped. A retro that returns 10 friction items and zero learnings on a session
+that produced learnings has failed its second class.
 
 For **skill-update** proposals, also include a **Skill instruction delta**:
 
