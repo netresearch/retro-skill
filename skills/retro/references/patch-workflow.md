@@ -86,11 +86,27 @@ diff and check:
   "Instruction pruning"). Cite where the behaviour is already covered.
 - **Reject wording-only churn.** If an edit only rephrases without changing
   behaviour, drop it — it is noise the next retro will re-flag.
+- **Run the target skill's own gates locally — reading the diff is not enough.**
+  Before pushing, run the destination repo's validator (`skill-repo`'s
+  `validate-skill.sh`: SKILL.md word cap, frontmatter, structure), its linters,
+  and any script self-tests. A structural gate like the 500-word SKILL.md limit
+  fails in CI, never in a re-read — and note SKILL.md often sits *at* the cap, so
+  put new prose in a reference file, not SKILL.md.
+- **Change every occurrence of a recurring rule in one pass.** When the fix is a
+  policy stated in more than one place (a SKILL.md step, a reference section, a
+  script header/output), grep the term and update all of them together, then
+  confirm no file still states the old rule. Reactive one-spot edits leave the
+  skill contradicting itself.
 
-Observed failure: a retro shipped a self-contradictory `--force-with-lease`
-recipe and a contradictory escaping example; both were caught only by an
-external reviewer, and a wrong "main lags origin" root cause was caught only by
-the user. A 30-second self-review of the diff would have caught all three.
+Observed failures: a retro shipped a self-contradictory `--force-with-lease`
+recipe and a contradictory escaping example, both caught only by an external
+reviewer, plus a wrong "main lags origin" root cause that only the user caught. A
+later retro broke the target's Skill Validation CI (the SKILL.md edit went over
+the 500-word cap, invisible to a diff read), and a policy change patched one spot
+at a time, leaving a SKILL.md step contradicting its own reference across several
+review rounds until the user demanded it be done in one coherent pass. A
+30-second self-review plus running the target's validator would have caught all
+of these.
 
 ## PR creation
 
