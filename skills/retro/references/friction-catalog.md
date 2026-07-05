@@ -1,6 +1,14 @@
 # Friction Catalog
 
-All friction signals retro-skill detects, organized in four layers (Schichten) by detection mechanism and a fifth (constitutional) for cross-session architectural analysis.
+All signals retro-skill detects, organized in four layers (Schichten) by
+detection mechanism and a fifth (constitutional) for cross-session architectural
+analysis.
+
+Despite the name, this catalog covers **two classes**: *friction* (things that
+went wrong) and *reusable learnings* (knowledge that went right but is not
+captured anywhere — Schicht B, signals B16–B18). Both are first-class retro
+findings; a signal-free stretch of a session can still carry a learning worth
+propagating.
 
 ## Scope and honest limitations
 
@@ -18,9 +26,9 @@ External-feedback ingestion (Sentry, Jira, monitoring) is out of v0.1 scope — 
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
 | A — Mechanical | 18 | 18 (all of A1–A18) |
-| B — LLM inference | 14 | LLM-driven (no separate code) |
+| B — LLM inference | 18 | LLM-driven (no separate code); B16–B18 are reusable-learning signals |
 | C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
-| D — Outcome | 10 | Planned for v0.1.x |
+| D — Outcome | 11 | Planned for v0.1.x; D11 is the positive (codify-success) signal |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
 
 Schicht A is feature-complete. See `references/destination-taxonomy.md` for what each signal class routes to.
@@ -72,6 +80,23 @@ Requires conversational context understanding. The LLM reads pre-pass output + r
 | B14 | Doc drift | Assistant used outdated API/library version when context7 would have helped |
 | B15 | Skill trigger-coverage gap | A **systematic** pass (not opportunistic): load *every* installed skill's `description` via `scripts/find-installed-skills.sh`, then judge — given what this session actually did — which skills *should* have triggered but were never invoked. Each miss whose root cause is weak/missing trigger words → `skill-update` to that skill's `description`. (B2/B4 are the opportunistic, single-skill version; B15 is the exhaustive sweep across the whole inventory. See the trigger-coverage step in `SKILL.md`.) |
 
+### Reusable-learning signals (B16–B18) — scan even when nothing went wrong
+
+These are **positive** signals: the session produced knowledge worth propagating,
+with **no** friction to trigger it. The mechanical pre-pass cannot see them (there
+is no error, retry, or correction to count), so they exist only as LLM-inference
+signals and must be looked for deliberately. The discriminator is *"would a future
+agent re-derive this, and is it already in the owning skill?"* — not *"did
+something go wrong?"* Grade them **at least `important`** (see
+`classification-heuristic.md` → Severity) so they are not crowded out under the
+≤10-proposal cap.
+
+| # | Signal | Hint at |
+|---|---|---|
+| B16 | Hard-won technique | A non-obvious command / flag / endpoint / API / workflow the session figured out — even cleanly and first-try — that is NOT in the owning skill. Root cause: real digging was needed. → `skill-update` |
+| B17 | Proactive improvement | A better approach identified *during* the work (not prompted by a correction) — a cleaner pattern, a faster tool, a simpler structure worth codifying. → `skill-update` |
+| B18 | Review-issue learning | A generalizable lesson from a code-review comment (given OR received) — a reviewer taught a rule that applies beyond the current diff. → `skill-update` (or `project-rule` if genuinely repo-specific) |
+
 ## Schicht C — Cross-Session
 
 Not detectable from a single session. Optional Coach-events read; otherwise session-file scan.
@@ -86,7 +111,17 @@ Not detectable from a single session. Optional Coach-events read; otherwise sess
 
 ## Schicht D — Outcome (Post-Session, requires latency)
 
-What happened to the session's output **after** it left the session? These signals require waiting (days to weeks) before they become reliable. Best run periodically via `/retro outcome --since 30d`, not at session end.
+What happened to the session's output **after** it left the session — good OR
+bad? These signals require waiting (days to weeks) before they become reliable.
+Best run periodically via `/retro outcome --since 30d`, not at session end.
+
+D1–D10 are **failure** signals (output that didn't survive). **D11 is the
+positive mirror:** output that *did* survive is a validated statement of "this is
+the way," and its generalizable approach should be codified so future generated
+code follows it. A commit is a hypothesis at commit time; it becomes a reliable
+"new way" only once it is merged, unreverted, and CI-green — which is exactly what
+latency-gated outcome mode confirms. (This mirrors the Schicht B fix: just as the
+sweep was friction-only, outcome was failure-only.)
 
 | # | Signal | Detection | Hint at |
 |---|---|---|---|
@@ -100,12 +135,14 @@ What happened to the session's output **after** it left the session? These signa
 | D8 | Regression in test suite | Test that passed at session end now fails on a later commit | Output regressed |
 | D9 | Code reverted in same file within 30 days | Diff-based: session's net contribution to file is largely undone | Output not durable |
 | D10 | External tracker mention (out-of-scope marker) | Issue/PR/Slack reference using session commit/PR ID (requires external integration; v0.2+) | Output had external impact |
+| **D11** | **Durable improvement (positive)** | Session's change **survived** the window: merged (`gh pr view --json mergedAt,reviewDecision`), **not** reverted or superseded (inverse of D1/D2/D9), CI green (`gh run list --commit $sha --json conclusion`) — AND its approach generalizes but is not yet in any skill | Output is validated by surviving contact with reality → **codify the approach** so future generated code follows it → `skill-update` |
 
 ### When NOT to use Schicht D
 
 - Session is too recent (< 24h) — most D signals haven't had time to manifest
 - Session was a refactor or doc-only change — D2/D9 fire spuriously
 - Working on a long-lived feature branch — `git log --grep="revert"` is noisy
+- Change is **local / specific with no transferable approach** — D11 must NOT fire; codifying a one-off is exactly the noise the generalizability filter exists to stop (see B16–B18: "would a future agent re-derive this?")
 
 D mode is best for **monthly retros over a 30-day window**, not real-time.
 

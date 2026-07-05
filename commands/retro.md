@@ -1,10 +1,21 @@
 ---
-description: "Session retrospection — detect friction, classify into destinations, materialize approved learnings"
+description: "Session retrospection — detect friction AND reusable learnings, classify into destinations, materialize approved learnings"
 ---
 
 # /retro — Session Retrospective
 
-Analyze the current session for friction patterns and materialize learnings into the correct destination.
+A retrospective captures **two equally-weighted classes**, and every run scans
+for BOTH:
+
+1. **Friction** — things that went wrong (errors, corrections, retries,
+   violations, inefficiencies).
+2. **Reusable knowledge that went RIGHT but is not captured anywhere yet** — a
+   learning worth propagating so nobody re-derives it. It leaves no error signal,
+   so you must look for it deliberately; a smooth session is **not** an empty
+   retro.
+
+Analyze the current session for both, then classify and materialize into the
+correct destination.
 
 ## Usage
 
@@ -30,7 +41,10 @@ Output is a structured list of candidate findings. Read this before scanning the
 
 ## Phase 2: LLM Enrichment
 
-For each pre-pass candidate, validate against the conversational context. Add inferential findings the pre-pass cannot catch:
+For each pre-pass candidate, validate against the conversational context. Add
+inferential findings the pre-pass cannot catch — in **both** classes below.
+
+### Friction findings
 
 - Wrong skill choice (Skill X triggered, Skill Y would have fit better)
 - Skill capability gap (skill triggered, lacked sub-task guidance)
@@ -40,6 +54,24 @@ For each pre-pass candidate, validate against the conversational context. Add in
 - Repeated mistakes within same session
 - Assumption-without-asking patterns
 - Doc drift
+
+### Reusable-learning findings (scan even when nothing went wrong)
+
+The pre-pass is friction-only; these leave no error signal, so surface them here
+or they are lost. A clean session still owes these findings.
+
+- **Hard-won technique (B16):** a non-obvious command, flag, endpoint, or
+  workflow the session figured out — even cleanly, first try — that is NOT in the
+  owning skill. Root cause: "we had to dig this out." → `skill-update`.
+- **Proactive improvement (B17):** a better approach identified during the work
+  (not as a correction). → `skill-update`.
+- **Review-issue learning (B18):** a generalizable lesson from a code-review
+  comment (given OR received) — a reviewer taught a rule that applies beyond this
+  diff. → `skill-update` (or `project-rule` if repo-specific).
+
+For each learning ask: **"Would a future agent re-derive this, and does an
+existing skill already say it?"** If re-derivable and not covered → it is a
+finding.
 
 See `skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
@@ -106,7 +138,15 @@ Per finding, generate prose:
 - **Why:** 1-2 paragraphs explaining the friction and its root cause
 - **How to apply:** 1-2 paragraphs describing the concrete fix
 
-Group proposals by destination. Show ≤10 items.
+Group proposals by destination. Show ≤10 items, ranked by severity (see
+`skills/retro/references/classification-heuristic.md` → "Severity inference").
+
+**Do not let friction crowd out learnings.** When more than 10 candidates exist
+and the list is trimmed to fit, reserve slots so the top reusable-learning
+findings (B16–B18) survive — a friction-free learning is graded *at least*
+`important`, never auto-`nice-to-have`, precisely so it is not the first thing
+dropped. A retro that returns 10 friction items and zero learnings on a session
+that produced learnings has failed its second class.
 
 For **skill-update** proposals, also include a **Skill instruction delta**:
 
@@ -175,13 +215,27 @@ Faster and uses fewer tokens than a full sweep.
 /retro outcome --since 30d           # All sessions in last 30 days
 ```
 
+Outcome mode reviews **what happened to the output — good OR bad**, not failures
+only. It has two jobs, co-equal:
+
+- **Learn from failure** — output that was reverted, rejected, or broke CI
+  (D1–D10) → fix the process so it does not recur.
+- **Codify success** — a change that **survived** (merged, unreverted, CI-green;
+  **D11**) is a validated statement of "this is the way." Where its approach
+  generalizes and isn't in a skill, propagate it so future generated code follows
+  it. This is the "every stuck commit is a statement" case: durability, confirmed
+  by latency, is what upgrades a commit from hypothesis to codifiable rule.
+
+Steps:
+
 - Skip Phases 1 and 2 (the session is in the past; mechanical pre-pass on a stale transcript is low value)
 - Phase 3 runs against the target session(s)
-- **Phase 3b is the primary detection step:** walk forward from session end with `git log`, `gh pr view`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D10).
+- **Phase 3b is the primary detection step:** walk forward from session end with `git log`, `gh pr view`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D11) — both the failures **and** the durable successes.
 - Phase 3c may also fire if the window is large
-- Phases 4–10 proceed; Destinations skew toward `user-memory` (personal pattern) and `skill-update` (skill should learn from outcome)
+- Phases 4–10 proceed; destinations skew toward `skill-update` — the skill should learn both what to avoid (D1–D10) and what to codify (D11) — and `user-memory` for personal patterns
+- Guard D11 with the same generalizability filter as B16–B18: a local, one-off change that merged cleanly is **not** a learning; codifying it is noise
 
-Requires latency. Don't run within 24h of the session — most D signals haven't manifested yet.
+Requires latency. Don't run within 24h of the session — most D signals (including D11's "survived the window") haven't manifested yet.
 
 ## Audit Mode
 

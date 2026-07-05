@@ -43,6 +43,9 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | **B13** context re-discovery | `project-rule` (improve AGENTS.md) | `skill-update` (agent-rules-skill) |
 | **B14** doc drift | `skill-update` — the owning skill (context7-skill for library docs; **skill-repo-skill** if a `SKILL.md`/`plugin.json`/command list drifted — discover first) | `project-rule` |
 | **B15** skill trigger-coverage gap | `skill-update` (sharpen the missed skill's `description`/trigger words) | `new-skill` (no skill covered it) / `skill-update` B3 (skill fired but under-performed) |
+| **B16** hard-won technique | `skill-update` (add the command/flag/endpoint to the owning skill) | `new-skill` (no owning skill) |
+| **B17** proactive improvement | `skill-update` (codify the better approach) | `project-rule` (repo-specific) |
+| **B18** review-issue learning | `skill-update` (generalize the review lesson) | `project-rule` (genuinely repo-specific) |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
 | **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`user-memory` (LLM picks from `current_location` + content) |
@@ -130,10 +133,18 @@ Which fits better?
 Severity is set during classification, not during detection:
 
 - `critical` — Recurring (C-layer match) OR caused upstream failure (A17) OR user-visible bug
-- `important` — User correction phrase present (A6) OR known rule violated (A15)
+- `important` — User correction phrase present (A6) OR known rule violated (A15) OR a **reusable-learning finding** (B16–B18, or D11 durable-improvement in outcome mode): knowledge a future agent will otherwise re-derive is *important* by definition — never auto-grade a genuine learning `nice-to-have`
 - `nice-to-have` — Efficiency / style / convention (most other cases)
 
 Use severity to rank proposals in the output. Higher severity first.
+
+**Cap protection — friction must not crowd out learnings.** When there are more
+than 10 candidates and the list is trimmed to the ≤10 cap, reserve slots so the
+top reusable-learning findings (B16–B18) survive the trim. Friction findings are
+usually more numerous and easier to grade high; without this rule a busy session
+returns 10 friction items and zero learnings, silently dropping exactly the
+knowledge the second class exists to capture. If learnings must still be dropped
+for space, say so in the Phase-10 report rather than dropping them silently.
 
 ## See also
 
