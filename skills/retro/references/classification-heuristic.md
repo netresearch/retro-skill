@@ -104,7 +104,14 @@ Prefer removal when the desired behaviour is already covered by:
 Prefer **replace** (not remove) only when deletion would open a real capability
 gap. The **evidence** for a removal is the covering location you cite (the other
 instruction / reference / checkpoint / rule) — *not* a measured A/B rollout or a
-generated "proof" eval. retro proposes the bounded removal, the human approves it
+generated "proof" eval. **Open and read that location before citing it, and
+confirm it covers the *same* mechanism** — a similar-sounding adjacent one is not
+coverage. This applies equally when *dropping a fresh candidate* as
+"already covered / redundant": read the target skill section first. (Observed
+failure: a retro dropped a real learning — the per-release Contributors row is
+driven by `mentions_count` — as "redundant" by conflating it with the *commit-based
+repo contributor graph*, an adjacent mechanism the target skill didn't actually
+document; the user overrode it.) retro proposes the bounded removal, the human approves it
 at the gate, and the source-repo PR review decides. A pruning proposal
 materializes as an ordinary `skill-update` PR whose diff happens to be a deletion
 (see `patch-workflow.md`).
