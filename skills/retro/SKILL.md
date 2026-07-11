@@ -13,8 +13,8 @@ allowed-tools: Bash(python3:*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) 
 # Retro — LLM-driven Session Retrospection
 
 One efficient LLM pass over a session (or the stored memory backlog) detects
-**friction and reusable learnings** (a technique, improvement, or review lesson),
-classifies each into one of six destinations, and materializes approved ones.
+**friction and reusable learnings**, classifies each into one of six
+destinations, and materializes approved ones.
 
 **Core principle:** No silent writes — every materialization needs explicit
 per-proposal approval.
@@ -42,8 +42,7 @@ Detail per mode in `references/workflow.md`; full pipeline + commands in
 2. LLM enrichment — inferential signals, both classes (friction + learnings
    B16–B18); filter false positives.
 3. Cross-session enrichment (optional) — Coach `events.sqlite` or JSONL scan.
-4. Discover skills — `scripts/find-org-skills.py` (installed + org catalogue);
-   find the owning skill first.
+4. Discover skills — `scripts/find-org-skills.py` (installed + org catalogue).
 5. Classify (`classification-heuristic.md`) to the broadest useful scope; never
    project-local memory.
 6. Eval consultation — read a matched skill's `evals/`; propose a TDD stub.
@@ -54,6 +53,9 @@ Detail per mode in `references/workflow.md`; full pipeline + commands in
 10. Report.
 
 ## Boundaries
+
+**Scope:** session-end/cross-session analysis + skill-PR routing (coach: live
+in-session capture, `/coach` commands).
 
 **Always:** LLM is primary classifier. Patches go to source repos, never the
 cache. Per-private-repo confirmation. Conventional Commits. DCO sign-off
