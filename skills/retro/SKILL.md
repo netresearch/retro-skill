@@ -54,7 +54,7 @@ Detail per mode in `references/workflow.md`; full pipeline + commands in
 
 ## Boundaries
 
-**Scope:** session-end/cross-session analysis + skill-PR routing (coach: live
+**Scope:** session-end/cross-session analysis + skill-PR routing (Coach: live
 in-session capture, `/coach` commands).
 
 **Always:** LLM is primary classifier. Patches go to source repos, never the
