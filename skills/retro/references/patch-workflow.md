@@ -151,7 +151,7 @@ Finding: <friction signal id> — <one-line description>
 
 The Symptom/Cause/Required behavior/Verification fields follow the canonical
 failure-pattern schema defined in `skill-repo-skill`'s
-`references/materialization-contract.md` — do not redefine the schema here.
+[skills/skill-repo/references/materialization-contract.md](https://github.com/netresearch/skill-repo-skill/blob/main/skills/skill-repo/references/materialization-contract.md) — do not redefine the schema here.
 
 ## Per-private-repo confirmation
 
@@ -170,7 +170,7 @@ For `new-skill` destination:
 
 1. Confirm name with user (kebab-case)
 2. Confirm target org (default: same org as similar existing skills)
-3. Invoke `skill-repo-skill` scaffolding (see its `references/materialization-contract.md`)
+3. Invoke `skill-repo-skill` scaffolding (see its [skills/skill-repo/references/materialization-contract.md](https://github.com/netresearch/skill-repo-skill/blob/main/skills/skill-repo/references/materialization-contract.md))
 4. Initial commit includes:
    - Standard scaffolding (plugin.json, composer.json, licenses, README, AGENTS.md)
    - One reference doc covering the friction pattern
@@ -195,5 +195,5 @@ At end of `/retro`, output a table:
 
 - `references/skill-discovery.md` — How targets are identified
 - `references/destination-taxonomy.md` — Materialization formats per destination
-- [skill-repo-skill/references/materialization-contract.md](https://github.com/netresearch/skill-repo-skill/blob/main/skills/skill-repo/references/materialization-contract.md) — Canonical failure-pattern schema
+- [skill-repo-skill/skills/skill-repo/references/materialization-contract.md](https://github.com/netresearch/skill-repo-skill/blob/main/skills/skill-repo/references/materialization-contract.md) — Canonical failure-pattern schema
 - User memory: `feedback_preserve-commit-signing`, `feedback_merge-strategy`
