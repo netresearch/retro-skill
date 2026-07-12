@@ -25,7 +25,6 @@ jobs:
       - name: Python compile check
         run: |
           python3 -m py_compile skills/retro/scripts/detect-mechanical.py
-          python3 -m py_compile skills/retro/scripts/extract-coach-events.py
           python3 -m py_compile skills/retro/scripts/scan-cross-session.py
           python3 -m py_compile skills/retro/scripts/scan-memory-inventory.py
           python3 -m py_compile skills/retro/scripts/find-org-skills.py

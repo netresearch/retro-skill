@@ -54,8 +54,7 @@ retro-skill/
 │   └── scripts/
 │       ├── detect-mechanical.py      (Schicht A pre-pass)
 │       ├── find-installed-skills.sh  (mechanical discovery helper)
-│       ├── extract-coach-events.py   (optional — reads ~/.claude-coach/ if present)
-│       └── scan-cross-session.py     (fallback for Schicht C if Coach absent)
+│       └── scan-cross-session.py     (Schicht C cross-session scanner)
 ├── commands/
 │   └── retro.md                  (slash command definition)
 ├── hooks/
@@ -303,7 +302,7 @@ Documented in `skills/retro/references/patch-workflow.md`.
    a. ~/p/<skill-name>/main/ exists as worktree AND is clean → use it
       (matches user's setup, enables manual follow-up)
    b. Else: clone fresh into /tmp/retro-workspace/<skill>/
-   
+
 3. Branch: feat/retro-<short-slug>
    - Slug derived from finding title
 

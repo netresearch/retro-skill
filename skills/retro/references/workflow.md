@@ -151,13 +151,13 @@ or substitutes an ad-hoc step for the prescribed script — **say so in one line
 with the reason:
 
 ```
-Phase 3 (cross-session): skipped — no ~/.claude-coach/events.sqlite and a single-project session.
+Phase 3 (cross-session): skipped — single-project session, no cross-session pattern found.
 Phase 5 (skill discovery): used `find … SKILL.md | grep` instead of find-installed-skills.sh because <reason>.
 ```
 
 Silent skips make the Phase-11 report read as "all phases ran" when they did
 not — which is itself a friction signal a future retro will (correctly) flag.
-Prefer the prescribed scripts (`find-installed-skills.sh`, `extract-coach-events.py`)
+Prefer the prescribed scripts (`find-installed-skills.sh`, `scan-cross-session.py`)
 over ad-hoc substitutes; reach for an ad-hoc step only when the script genuinely
 cannot serve, and announce it when you do.
 
@@ -165,7 +165,6 @@ cannot serve, and announce it when you do.
 
 | Issue | Fallback |
 |---|---|
-| Coach data missing | JSONL scan fallback for Schicht C |
 | JSONL scan slow | Limit to current project's sessions, last 30 days |
 | Skill discovery returns no matches | Propose `new-skill` instead |
 | Source repo URL unresolvable | Ask user; offer local-edit fallback |

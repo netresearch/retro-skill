@@ -77,13 +77,7 @@ See `skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
 ## Phase 3: Cross-Session (Optional)
 
-If `~/.claude-coach/events.sqlite` exists:
-
-```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/extract-coach-events.py --since "30 days ago"
-```
-
-Otherwise fall back to JSONL scan:
+Scan session JSONL across projects for related friction:
 
 ```bash
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>"

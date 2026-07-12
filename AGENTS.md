@@ -11,8 +11,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/references/` — Friction catalog, destination taxonomy, classification heuristic, skill discovery, patch workflow, eval integration, workflow modes
 - `skills/retro/scripts/detect-mechanical.py` — Schicht-A pre-pass (mechanical friction detection)
 - `skills/retro/scripts/find-installed-skills.sh` — Skill discovery helper
-- `skills/retro/scripts/extract-coach-events.py` — Optional Coach data reader
-- `skills/retro/scripts/scan-cross-session.py` — Cross-session JSONL scanner (Schicht-C fallback)
+- `skills/retro/scripts/scan-cross-session.py` — Cross-session JSONL scanner (Schicht-C)
 - `skills/retro/scripts/validate-evals.py` — Validates retro's own eval scenarios (RT-40..42)
 - `skills/retro/evals/` — retro's own classification evals (LLM-graded fixtures; see `skills/retro/evals/README.md`)
 - `docs/specs/retro-skill.md` — Mirror of authoritative spec
@@ -39,7 +38,6 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `agent-rules-skill` — defines feedback-memory schema for project-rule materialization
 - `skill-repo-skill` — defines PR/branch convention for skill-update materialization
 - `automated-assessment-skill` — defines YAML schema for checkpoint materialization
-- `claude-coach-plugin` — optional Schicht-C data source (read-only)
 
 ## See also
 
