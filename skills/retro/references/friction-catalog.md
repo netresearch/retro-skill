@@ -12,7 +12,7 @@ propagating.
 
 ## Scope and honest limitations
 
-This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, and cross-session JSONL/Coach data.
+This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, and cross-session JSONL data.
 
 **It does NOT detect:**
 - Architectural choices that are wrong but "work" (no friction signal)
@@ -99,11 +99,11 @@ something go wrong?"* Grade them **at least `important`** (see
 
 ## Schicht C — Cross-Session
 
-Not detectable from a single session. Optional Coach-events read; otherwise session-file scan.
+Not detectable from a single session. Session-file scan across projects.
 
 | # | Signal | Hint at | Source |
 |---|---|---|---|
-| C1 | Same friction again | Same correction across multiple sessions — memory didn't stick | Coach events OR JSONL scan |
+| C1 | Same friction again | Same correction across multiple sessions — memory didn't stick | Multi-session JSONL scan |
 | C2 | Cross-project pattern | Same friction class in N≥2 projects | Multi-session JSONL grouped by project |
 | C3 | Memory drift | `feedback_*.md` exists but assistant violated it anyway → skill needs it more prominently | JSONL diff against memory files |
 | C4 | Skill update ineffective | Previous PR to skill X, same bug returned afterward | Git log of skill repo + JSONL |
@@ -177,7 +177,7 @@ Each source needs an integration. Track interest before implementing.
 
 - **Pre-pass output is structured JSON** consumed by the LLM in Schicht B. The LLM doesn't re-scan the transcript for A-signals.
 - **False positives are expected** in Schicht A; B filters them.
-- **Schicht C is optional**. Absence of Coach data triggers JSONL fallback; absence of multi-session history just means C-signals stay empty.
+- **Schicht C is optional**. It scans session JSONL across projects; absence of multi-session history just means C-signals stay empty.
 - **Schicht D requires latency.** Don't run at session end; run monthly with `--since 30d`.
 - **Schicht E (audit mode) requires longer horizon.** Quarterly cadence; tech-lead actor.
 - **Severity grading happens during classification**, not detection. A single A1 (tool error) might be trivial or critical depending on context — the LLM decides during enrichment.

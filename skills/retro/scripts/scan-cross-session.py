@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-scan-cross-session.py — fallback Schicht-C data source when Coach absent.
+scan-cross-session.py — Schicht-C cross-session data source.
 
 Scans Claude Code session JSONL files across projects to find similar friction
 patterns. Used to detect "same friction again" and "cross-project pattern" signals.

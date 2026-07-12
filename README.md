@@ -129,7 +129,7 @@ The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — la
 
 1. **Mechanical pre-pass (layer A)** — `skills/retro/scripts/detect-mechanical.py` parses the transcript for exactly **18** deterministic signals (A1–A18): tool errors, retry clusters, output verbosity, tool-call inefficiency, sequential-vs-parallel, user-correction phrases, prompt/prompt-sequence/tool-sequence repetition, skill-reminder-vs-invoke, wrong-tool choice, re-read-same-file, skipped verification, work on `main`/`master`, bot attribution in commits, outdated-tool warnings, upstream failure, and permission re-approval. Deterministic; it does **not** classify.
 2. **LLM enrichment (layer B)** — adds **14** inferential signals (wrong skill choice, skill capability gap, hallucination, convention violation, missing skill, repeated mistake, assumption-without-asking, doc drift, …) and filters layer-A false positives. Includes a trigger-coverage sweep over every installed skill's description.
-3. **Cross-session enrichment (layer C, optional)** — if `~/.claude-coach/events.sqlite` exists, query it; otherwise scan `~/.claude/projects/<slug>/*.jsonl`. **5** signals: same-friction-again, cross-project pattern, memory drift, ineffective skill update, follow-up-fix session.
+3. **Cross-session enrichment (layer C, optional)** — scans `~/.claude/projects/<slug>/*.jsonl` across projects via `scripts/scan-cross-session.py`. **5** signals: same-friction-again, cross-project pattern, memory drift, ineffective skill update, follow-up-fix session.
 4. **Classification** — map each finding to one of the six destinations (`skills/retro/references/classification-heuristic.md`).
 5. **Skill discovery (runtime)** — `skills/retro/scripts/find-installed-skills.sh` matches the friction topic against each `SKILL.md` description and resolves the source-repo URL.
 6. **Eval consultation** — if the matched skill has an `evals/` directory, read it for context and propose an eval stub (TDD style). retro ships its **own** evals under `skills/retro/evals/` testing its classification, validated by `skills/retro/scripts/validate-evals.py`.
@@ -209,8 +209,7 @@ retro-skill/
 │   └── scripts/
 │       ├── detect-mechanical.py      # layer-A pre-pass
 │       ├── find-installed-skills.sh  # runtime skill discovery
-│       ├── extract-coach-events.py   # optional Coach data reader
-│       ├── scan-cross-session.py     # layer-C JSONL fallback
+│       ├── scan-cross-session.py     # layer-C JSONL scanner
 │       └── validate-evals.py         # validates retro's own evals (RT-40..42)
 ├── commands/retro.md             # /retro slash command (Claude Code plugin only)
 ├── hooks/session-end.json        # optional auto-trigger (off by default)
@@ -236,7 +235,6 @@ retro-skill/
 | [agent-rules-skill](https://github.com/netresearch/agent-rules-skill) | Feedback-memory schema for `project-rule` materialization |
 | [skill-repo-skill](https://github.com/netresearch/skill-repo-skill) | PR/branch convention for `skill-update`; scaffolding for `new-skill` |
 | [automated-assessment-skill](https://github.com/netresearch/automated-assessment-skill) | Checkpoint YAML schema for `checkpoint` materialization |
-| [claude-coach-plugin](https://github.com/netresearch/claude-coach-plugin) | Optional, read-only layer-C data source |
 
 Deeper reading: the authoritative spec at [`docs/specs/retro-skill.md`](docs/specs/retro-skill.md), the [`skills/retro/references/`](skills/retro/references/) docs, and [`AGENTS.md`](AGENTS.md).
 

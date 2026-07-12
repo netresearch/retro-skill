@@ -41,7 +41,7 @@ Detail per mode in `references/workflow.md`; full pipeline + commands in
    `scripts/scan-memory-inventory.py`).
 2. LLM enrichment — inferential signals, both classes (friction + learnings
    B16–B18); filter false positives.
-3. Cross-session enrichment (optional) — Coach `events.sqlite` or JSONL scan.
+3. Cross-session enrichment (optional) — JSONL scan via `scripts/scan-cross-session.py`.
 4. Discover skills — `scripts/find-org-skills.py` (installed + org catalogue).
 5. Classify (`classification-heuristic.md`) to the broadest useful scope; never
    project-local memory.
@@ -54,8 +54,7 @@ Detail per mode in `references/workflow.md`; full pipeline + commands in
 
 ## Boundaries
 
-**Scope:** session-end/cross-session analysis + skill-PR routing (Coach: live
-in-session capture, `/coach` commands).
+**Scope:** session-end/cross-session analysis + skill-PR routing.
 
 **Always:** LLM is primary classifier. Patches go to source repos, never the
 cache. Per-private-repo confirmation. Conventional Commits. DCO sign-off
