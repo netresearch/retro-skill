@@ -21,8 +21,7 @@ per-proposal approval.
 
 ## Modes
 
-Detail per mode in `references/workflow.md`; full pipeline + commands in
-`commands/retro.md`.
+Detail per mode, and the shared pipeline, in `references/workflow.md`.
 
 - **`/retro`** — Sweep: the whole current session.
 - **`/retro "<problem>"`** — Spotlight: one described issue.
