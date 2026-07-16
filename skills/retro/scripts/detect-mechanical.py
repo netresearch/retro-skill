@@ -178,19 +178,78 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+# Turns that carry the "user" role but were not typed by a human: harness
+# task/system notifications, scheduled-wakeup re-fired prompts (each firing
+# repeats the same /loop or continuation prompt verbatim), slash-command
+# expansions, and teammate messages. Counting them as user input floods A6
+# (user corrections) and A7 (prompt repetition) with self-inflicted noise in
+# loop-heavy sessions.
+_SYNTHETIC_USER_MARKERS = (
+    "<task-notification>",
+    "[SYSTEM NOTIFICATION",
+    "<system-reminder>",
+    "<command-message>",
+    "<teammate-message",
+    "<agent-message",
+)
+
+
+def _is_synthetic_user_text(text: str) -> bool:
+    head = text.lstrip()[:400]
+    return any(marker in head for marker in _SYNTHETIC_USER_MARKERS)
+
+
 def extract_user_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
+    events = list(events)
     out = []
+    # Prompts the assistant scheduled itself (ScheduleWakeup) come back as
+    # verbatim user turns on every firing. Map prompt -> earliest scheduling
+    # event index: only occurrences AFTER that index are re-firings — a human
+    # may well have typed the same text originally (the /loop pattern).
+    wakeup_prompts: dict[str, int] = {}
+    for j, ev in enumerate(events):
+        if ev.get("type") != "assistant":
+            continue
+        content = (ev.get("message") or {}).get("content")
+        if not isinstance(content, list):
+            continue
+        for block in content:
+            if (
+                isinstance(block, dict)
+                and block.get("type") == "tool_use"
+                and block.get("name") == "ScheduleWakeup"
+            ):
+                prompt = (block.get("input") or {}).get("prompt")
+                if isinstance(prompt, str) and prompt.strip():
+                    wakeup_prompts.setdefault(prompt.strip(), j)
     for i, ev in enumerate(events):
         if ev.get("type") != "user":
             continue
+        # The harness stamps synthetic user turns (slash-command expansions,
+        # scheduled-wakeup re-firings, meta notifications) with isMeta: true —
+        # the authoritative discriminator where present. The marker/prompt
+        # checks below remain as fallback for transcripts predating the flag.
+        if ev.get("isMeta"):
+            continue
         msg = ev.get("message", {})
         content = msg.get("content")
+        texts = []
         if isinstance(content, str):
-            out.append((i, content))
+            texts.append(content)
         elif isinstance(content, list):
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text":
-                    out.append((i, block.get("text", "")))
+                    texts.append(block.get("text", ""))
+        # A slash-command expansion delivers the static command template as a
+        # sibling text block of the <command-message> marker — if any block
+        # in the message is synthetic, the whole message is.
+        if any(_is_synthetic_user_text(t) for t in texts):
+            continue
+        for text in texts:
+            scheduled_at = wakeup_prompts.get(text.strip())
+            if scheduled_at is not None and i > scheduled_at:
+                continue
+            out.append((i, text))
     return out
 
 
