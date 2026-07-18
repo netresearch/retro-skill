@@ -99,6 +99,20 @@ Currently the hook only prints a reminder; invoking slash commands from hooks va
 
 All six modes use the same underlying flow (with mode-specific Schicht selection):
 
+The mechanical pre-pass requires the session transcript path — it is NOT
+auto-discovered. Derive it from the cwd's project slug (dots and slashes become
+dashes) and take the newest JSONL:
+
+```bash
+SLUG="$(pwd | tr '/.' '--')"
+TF="$(ls -t ~/.claude/projects/${SLUG}/*.jsonl | head -1)"
+python3 scripts/detect-mechanical.py --transcript-file "$TF" --output-format json
+```
+
+On a repeat `/retro` within one session, filter findings to turns after the
+previous retro — earlier signals were already proposed and must not be
+re-presented.
+
 ```
 1. Mechanical pre-pass (Schicht A)
 2. LLM enrichment (Schicht B)
