@@ -137,12 +137,36 @@ sweep was friction-only, outcome was failure-only.)
 | D10 | External tracker mention (out-of-scope marker) | Issue/PR/Slack reference using session commit/PR ID (requires external integration; v0.2+) | Output had external impact |
 | **D11** | **Durable improvement (positive)** | Session's change **survived** the window: merged (`gh pr view --json mergedAt,reviewDecision`), **not** reverted or superseded (inverse of D1/D2/D9), CI green (`gh run list --commit $sha --json conclusion`) — AND its approach generalizes but is not yet in any skill | Output is validated by surviving contact with reality → **codify the approach** so future generated code follows it → `skill-update` |
 
+### Stale-open is not an outcome
+
+Read the diff, not the metadata. A PR/MR that is **still open and old** is
+*undecided*, not rejected. It is
+neither D3 (closed without merge) nor a failure signal — and it must never be
+classified "obsolete" from metadata alone. Age, a `has_conflicts` flag, and a
+title keyword ("migration", "drop X") are **identical** for a dead change and
+for a *blocked cleanup change* that is exactly what should land once its
+precondition is met. The difference lives only in the diff and in the current
+state of the target branch.
+
+Before calling any stale-open artefact obsolete:
+
+1. **Read its diff.** What would merging it actually do?
+2. **Read the target branch now.** Does `main` already contain what the diff
+   would do? Only then is it genuinely obsolete → propose closing it.
+3. **Otherwise it is blocked, not dead.** The classification is "blocked", and
+   the useful question is *by what* — surface the precondition, do not propose a
+   close.
+
+A migration-completion or cleanup PR is the textbook trap: it looks abandoned
+and is in fact the finish line waiting on a cutover.
+
 ### When NOT to use Schicht D
 
 - Session is too recent (< 24h) — most D signals haven't had time to manifest
 - Session was a refactor or doc-only change — D2/D9 fire spuriously
 - Working on a long-lived feature branch — `git log --grep="revert"` is noisy
 - Change is **local / specific with no transferable approach** — D11 must NOT fire; codifying a one-off is exactly the noise the generalizability filter exists to stop (see B16–B18: "would a future agent re-derive this?")
+- A PR/MR is **open and stale** — that is not a D-signal at all; see [Stale-open is not an outcome](#stale-open-is-not-an-outcome) above before proposing to close it
 
 D mode is best for **monthly retros over a 30-day window**, not real-time.
 
