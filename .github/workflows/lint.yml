@@ -1,5 +1,15 @@
 name: lint
 
+# Python compile + unit tests via the shared skill-repo-skill reusable.
+# The reusable provides no interpreter of its own (no setup-python, no
+# `uv python install`), so the test command consumes the matrix value
+# explicitly via `uv run --python "$PYTHON_VERSION"`.
+#
+# Shell, YAML, Markdown, ruff and workflow linting for this repo run in
+# .github/workflows/validate.yml (netresearch/skill-repo-skill validate.yml),
+# which already ShellChecks every *.sh at -S error and schema-validates
+# skills/retro/checkpoints.yaml.
+
 on:
   pull_request:
     branches: [main]
@@ -7,85 +17,16 @@ on:
     branches: [main]
   workflow_dispatch: {}
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
-  lint:
-    name: Lint scripts, JSON, YAML
-    runs-on: ubuntu-latest
-    steps:
-      - name: Harden runner
-        uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.13.1
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5.0.1
-
-      - name: Python compile check
-        run: |
-          python3 -m py_compile skills/retro/scripts/detect-mechanical.py
-          python3 -m py_compile skills/retro/scripts/scan-cross-session.py
-          python3 -m py_compile skills/retro/scripts/scan-memory-inventory.py
-          python3 -m py_compile skills/retro/scripts/find-org-skills.py
-          python3 -m py_compile skills/retro/scripts/validate-evals.py
-
-      - name: Bash syntax check
-        run: bash -n skills/retro/scripts/find-installed-skills.sh
-
-      - name: ShellCheck
-        uses: ludeeus/action-shellcheck@00cae500b08a931fb5698e11e79bfbd38e612a38 # 2.0.0
-        with:
-          scandir: ./skills/retro/scripts
-          additional_files: ./hooks/session-end.json
-        continue-on-error: true
-
-      - name: JSON validate
-        run: |
-          jq -e . hooks/session-end.json > /dev/null
-          jq -e . .claude-plugin/plugin.json > /dev/null
-          jq -e . composer.json > /dev/null
-
-      - name: YAML validate
-        run: |
-          python3 -c "import yaml; yaml.safe_load(open('skills/retro/checkpoints.yaml'))"
-
-      - name: Run unit tests
-        run: python3 -m unittest discover -s tests -v
-
-  dco:
-    name: DCO
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request'
-    steps:
-      - name: Harden runner
-        uses: step-security/harden-runner@a5ad31d6a139d249332a2605b85202e8c0b78450 # v2.13.1
-        with:
-          egress-policy: audit
-
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v5.0.1
-        with:
-          fetch-depth: 0
-          # Check out the actual PR head commit, not the ephemeral merge commit
-          ref: ${{ github.event.pull_request.head.sha }}
-
-      - name: Check DCO sign-off
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          set -euo pipefail
-          missing=0
-          # Only inspect commits that belong to this PR (base..head), not the
-          # synthetic merge commit GitHub creates for actions/checkout.
-          for sha in $(git rev-list "${BASE_SHA}..${HEAD_SHA}"); do
-            if ! git log -1 --pretty=%B "$sha" | grep -qE '^Signed-off-by: .+ <.+@.+>'; then
-              echo "::error::Commit $sha is missing Signed-off-by trailer"
-              missing=$((missing + 1))
-            fi
-          done
-          if [ $missing -gt 0 ]; then
-            echo "Add --signoff to your commits or run: git rebase --signoff main"
-            exit 1
-          fi
-          echo "All commits have DCO sign-off"
+  test:
+    name: Python
+    # Union of the called workflow's job permissions (bandit, test): contents: read.
+    uses: netresearch/skill-repo-skill/.github/workflows/ci-python.yml@main
+    permissions:
+      contents: read
+    with:
+      test-command: |
+        uv run --python "$PYTHON_VERSION" python -m py_compile skills/retro/scripts/*.py
+        uv run --python "$PYTHON_VERSION" python -m unittest discover -s tests -v
