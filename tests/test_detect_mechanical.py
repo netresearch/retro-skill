@@ -265,6 +265,24 @@ class TestSchichtA(unittest.TestCase):
         evs = [user_msg("no, that's wrong")]
         self.assert_signal(evs, "A6")
 
+    def test_A6_german_line_start_opener(self):
+        evs = [user_msg("Falsch, das gehört da nicht hin")]
+        self.assert_signal(evs, "A6")
+
+    def test_A6_german_midline_correction_phrase(self):
+        # Mid-sentence correction the anchored EN openers would miss.
+        evs = [user_msg("du hast da wieder die harten Umbrüche drin, raus damit")]
+        self.assert_signal(evs, "A6")
+
+    def test_A6_german_sei_genau(self):
+        evs = [user_msg("bitte sei genau und nicht so schludrig")]
+        self.assert_signal(evs, "A6")
+
+    def test_A6_ordinary_german_prose_does_not_fire(self):
+        # Benign request containing no correction marker must not trip A6.
+        evs = [user_msg("Bitte den Cache leeren und die Seite neu bauen")]
+        self.assert_not_signal(evs, "A6")
+
     def test_A7_prompt_repetition(self):
         evs = [
             user_msg("please run the tests now"),

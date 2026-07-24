@@ -42,9 +42,25 @@ from pathlib import Path
 from typing import Any, Iterable
 
 
+# Line-start correction openers (EN + DE). Anchored so a mid-sentence "no" /
+# "nicht" inside ordinary prose does not trip the signal.
 CORRECTION_PATTERNS = re.compile(
-    r"^\s*(no\b|nein\b|stop\b|don't\b|wrong\b|NEIN\b|nicht so\b)",
+    r"^\s*(no\b|nope\b|nah\b|stop\b|don't\b|wrong\b|"
+    r"nein\b|n[oö]\b|nicht\b|nicht so\b|falsch\b|quatsch\b|unsinn\b|"
+    r"doch nicht\b|warum\b|wieso\b|weshalb\b|manno?\b|mann\b)",
     re.IGNORECASE | re.MULTILINE,
+)
+# Strong correction phrases that signal friction wherever they appear in the
+# message, not only at line start — German-speaking users correct mid-sentence
+# far more than the anchored EN openers catch. Curated to stay low-false-positive.
+STRONG_CORRECTION_PHRASES = re.compile(
+    r"(so nicht\b|nicht schon wieder\b|schon wieder\b|wieder drin\b|"
+    r"raus damit\b|endlich mal\b|mal merken\b|was soll das\b|"
+    r"das ist (?:so )?nicht\b|stimmt (?:so )?nicht\b|"
+    r"mach(?:'s| es| das)?(?: doch)? selber\b|"
+    r"sei (?:bitte )?(?:mal )?(?:genau|vorsichtig|gr[uü]ndlich)\b|"
+    r"nicht analog\b)",
+    re.IGNORECASE,
 )
 ALL_CAPS_RUN = re.compile(r"[A-ZÄÖÜ]{4,}")
 MULTIPLE_EXCLAIM = re.compile(r"!{3,}")
@@ -365,7 +381,7 @@ def signal_verbose_results(tool_uses) -> list[dict]:
 def signal_user_corrections(user_texts) -> list[dict]:
     out = []
     for i, text in user_texts:
-        if CORRECTION_PATTERNS.search(text):
+        if CORRECTION_PATTERNS.search(text) or STRONG_CORRECTION_PHRASES.search(text):
             out.append(
                 {
                     "signal": "A6",
