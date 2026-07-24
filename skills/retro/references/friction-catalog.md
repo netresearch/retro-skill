@@ -44,7 +44,7 @@ Fast, deterministic, regex/count-based. Runs before LLM pass to reduce token cos
 | A3 | Tool output verbosity | `len(tool_result) > X` without subsequent filter | Token waste, wrong tool (cat vs head, full Read vs Range) |
 | A4 | Tool call count vs task | Total tool calls / user messages ratio above threshold | Inefficiency for simple task |
 | A5 | Sequential vs parallel | Multiple independent calls serial in separate blocks | Performance waste |
-| A6 | User correction phrases | Regex: `^(no\|nein\|stop\|don't\|wrong\|NEIN\|nicht so)`, ALL CAPS, `!!!` | Classic friction |
+| A6 | User correction phrases | Line-start openers (EN + DE: `no\|nope\|stop\|don't\|wrong\|nein\|nicht\|falsch\|quatsch\|warum\|wieso\|manno` …) **plus** curated mid-line DE phrases (`raus damit`, `endlich mal`, `so nicht`, `mach … selber`, `sei genau` …), ALL CAPS, `!!!` | Classic friction — DE speakers correct mid-sentence, which line-anchored EN openers miss |
 | A7 | Prompt repetition | Semantic similarity of user messages within N turns | Assistant didn't understand |
 | A8 | Prompt sequence repetition | n-gram match (n=2..5) over user message sequence | Workflow ripe for snippet/command |
 | A9 | Tool sequence repetition | n-gram match over tool_use names + arg templates | Composition opportunity, skill instruction gap |
