@@ -31,7 +31,7 @@ def session_files(
     projects_dir: Path, project_slug: str | None, days: int
 ) -> list[tuple[Path, str]]:
     """Return list of (jsonl_path, project_slug) within the last N days."""
-    cutoff = datetime.now() - timedelta(days=days)
+    cutoff = datetime.now() - timedelta(days=days)  # noqa: DTZ005 -- naive local time, compared against naive file mtimes below
     out = []
     if project_slug:
         candidates = [projects_dir / project_slug]
@@ -42,7 +42,7 @@ def session_files(
             continue
         for f in proj_dir.glob("*.jsonl"):
             try:
-                mtime = datetime.fromtimestamp(f.stat().st_mtime)
+                mtime = datetime.fromtimestamp(f.stat().st_mtime)  # noqa: DTZ006 -- naive local time, compared against naive cutoff above
             except OSError:
                 continue
             if mtime >= cutoff:

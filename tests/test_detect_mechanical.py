@@ -27,7 +27,7 @@ detect = load_detect_module()
 
 
 def write_jsonl(events: list[dict]) -> Path:
-    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)
+    tmp = tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False)  # noqa: SIM115 -- path returned for later use; caller unlinks
     for ev in events:
         tmp.write(json.dumps(ev) + "\n")
     tmp.close()
@@ -87,7 +87,7 @@ class TestSchichtA(unittest.TestCase):
             assistant_texts = detect.extract_assistant_texts(events_loaded)
             tool_uses = detect.extract_tool_uses(events_loaded)
             findings = []
-            for sid, func in detect.SIGNAL_FUNCS.items():
+            for func in detect.SIGNAL_FUNCS.values():
                 if func in (
                     detect.signal_user_corrections,
                     detect.signal_prompt_repetition,
@@ -528,7 +528,7 @@ class TestHelpers(unittest.TestCase):
         result = detect.extract_tool_uses(events)
         self.assertEqual(len(result), 1)
         self.assertEqual(len(result[0]), 5)
-        i, name, inp, res, is_error = result[0]
+        _i, name, _inp, _res, is_error = result[0]
         self.assertEqual(name, "Read")
         self.assertFalse(is_error)
 
