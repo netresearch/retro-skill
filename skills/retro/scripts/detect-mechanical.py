@@ -33,14 +33,15 @@ Signals implemented (Schicht A — full catalog):
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import re
 import shlex
 import sys
 from collections import Counter, defaultdict
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Iterable
-
+from typing import Any
 
 # Line-start correction openers (EN + DE). Anchored so a mid-sentence "no" /
 # "nicht" inside ordinary prose does not trip the signal.
@@ -535,7 +536,7 @@ def signal_reread_same_file(tool_uses) -> list[dict]:
         # Check if there was an Edit between any two consecutive reads
         edit_turns = sorted(edits.get(path, []))
         suspicious = False
-        for a, b in zip(read_turns, read_turns[1:]):
+        for a, b in itertools.pairwise(read_turns):
             if not any(a < e < b for e in edit_turns):
                 suspicious = True
                 break
@@ -873,7 +874,7 @@ def signal_permission_reapproval(
     for prefix, turns in grouped.items():
         if len(turns) < A18_MIN_OCCURRENCES:
             continue
-        gaps = [b - a for a, b in zip(turns, turns[1:])]
+        gaps = [b - a for a, b in itertools.pairwise(turns)]
         if not gaps:
             continue
         gaps_sorted = sorted(gaps)
