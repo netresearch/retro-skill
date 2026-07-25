@@ -4,9 +4,11 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 
 ## Primary mapping
 
-> Run skill discovery first and apply **Scope escalation** (below) before taking
-> any row literally: the named skill in a row is a hint, not a substitute for the
-> owning-skill check. The right owner may be a different (or not-installed) skill.
+> Run skill discovery first and apply **Routing — enforceability first, then
+> reach** (below) before taking any row literally: the named skill in a row is a
+> hint, not a substitute for the owning-skill check, and a row naming a prose
+> destination does not rule out a gate. The right owner may be a different (or
+> not-installed) skill.
 
 | Friction signal | Primary destination | Alternate (LLM decides from context) |
 |---|---|---|
@@ -51,7 +53,50 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`user-memory` (LLM picks from `current_location` + content) |
 | **C4** skill update ineffective | `skill-update` (previous fix was wrong) | — |
 
-## Scope escalation — prefer the broadest useful destination
+## Routing — enforceability first, then reach
+
+Two axes decide a destination, in this order. Axis 1 asks whether the rule can
+be *enforced*; axis 2 asks how far the remainder should *reach*.
+
+### Axis 1 — enforceability: a gate outranks a sentence
+
+An instruction depends on the reader following it. A check fails the build when
+they don't. Ask first whether the finding is expressible as a gate, and only
+then where the prose belongs.
+
+`agent-harness-skill/references/enforcement-mechanisms.md` grades the ten
+enforcement instruments by strength, server-side down to convention-based. Its
+load-bearing rule transfers directly to retro's routing: *"when CI catches a
+mechanical issue that a hook could have caught, the absence of the hook is the
+bug. Strengthen the harness rather than asking the operator to be more
+careful."* Substitute "prose rule" for "operator" and that is this axis.
+
+Three tiers, strongest first:
+
+1. **Mechanical gate** — the rule is a pattern, an exit code, or a file check →
+   `checkpoint` (`mechanical:`) or `harness-artefact` (hook / CI job / linter
+   rule / ruleset). Take this tier whenever it is available at all.
+2. **LLM review** — checkable, but by judgment rather than pattern matching →
+   `checkpoint` (`llm_reviews:`; see
+   `automated-assessment-skill/references/learning-derived-checkpoints.md`,
+   which owns the mechanical-vs-llm_reviews split).
+3. **Prose instruction** — the rule needs context weighed at the time of use →
+   `skill-update` / `project-rule` / `user-memory`.
+
+Most B16–B18 reusable learnings land in tier 3 legitimately; do not contort a
+judgment lesson into a brittle regex to reach tier 1. The test is whether a
+check could have *failed* on the friction as it actually occurred.
+
+**A gate reaches one repo; prose reaches every repo the skill touches.** The two
+axes therefore pull against each other. Where a mechanical gate is possible,
+resolve it this way: the gate goes into the repo where the friction happened,
+and the prose that accompanies it is the *recipe for installing that gate
+elsewhere* — carried by the owning skill — not a restatement of the rule the
+gate already enforces. A repo that cannot host the gate (no CI, foreign repo,
+no analyzer) falls back to tier 3 for that repo only; that fallback is not a
+reason to skip the gate where it is possible.
+
+### Axis 2 — reach: prefer the broadest useful destination
 
 Knowledge is only as valuable as the breadth of reach where it applies.
 

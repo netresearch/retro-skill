@@ -78,28 +78,52 @@ Example:
 ### 6. `harness-artefact` — Bootstrap
 
 Invokes `agent-harness-skill` bootstrap for a specific artefact:
-- pre-commit hook (lefthook / captainhook / husky)
+- pre-commit hook (lefthook / captainhook / husky / pre-commit)
+- linter or static-analysis rule — a new ESLint/PHPStan/golangci-lint rule, a
+  raised analyzer level, a `.yamllint.yml` rule, `fail_level: error` on a
+  reviewdog action. Ships where the analyzer already runs, so it needs no new
+  instrument; often the cheapest gate available.
+- CI workflow file, or a job/step added to an existing one
+- branch protection / ruleset — server-side, the only instrument nobody bypasses
 - PR or MR template
-- CI workflow file
 - AGENTS.md / docs/ scaffolding
+
+Choose the instrument by enforcement strength, not by convenience:
+`agent-harness-skill/references/enforcement-mechanisms.md` ranks all ten from
+server-side to convention-based, and requires **CI/hook parity** — every fast,
+deterministic check in CI must also run as a pre-commit hook. A proposal that
+adds a CI check meeting the fast-check definition without the matching hook is
+half-materialized.
 
 ## Choosing between adjacent destinations
 
 | Question | Answer | Pick |
 |---|---|---|
-| Is the rule mechanical (regex / script)? | yes | `checkpoint` |
-| Is the rule mechanical but enforces a workflow gate? | yes | `harness-artefact` (pre-commit / CI) |
+| Is the rule mechanical (regex / script)? | yes | `checkpoint` (`mechanical:`) |
+| Is the rule mechanical but enforces a workflow gate? | yes | `harness-artefact` (pre-commit / CI / linter rule) |
+| Is it checkable but by judgment, not by pattern? | yes | `checkpoint` (`llm_reviews:`) |
 | Is it a permanent personal preference? | yes | `user-memory` |
 | Is it specific to this project? | yes | `project-rule` |
 | Would another project benefit from the same fix? | yes | `skill-update` |
 | Does the friction reveal a missing capability category? | yes | `new-skill` |
 
-**Prefer the broadest useful scope.** Read the table top-to-bottom but bias
-*upward in reach*: `skill-update`/`new-skill` (shared with everyone) › project
-`AGENTS.md` (shared with the repo) › global `~/.claude/CLAUDE.md` (personal).
+**Two axes, in order: enforceability, then reach.** Read the table
+top-to-bottom — the first three rows are the enforceability axis and they come
+first on purpose. A gate that fails the build outranks a sentence that asks for
+care, so route to `checkpoint`/`harness-artefact` whenever the friction is one a
+check could have failed on.
+
+For whatever remains prose, bias *upward in reach*: `skill-update`/`new-skill`
+(shared with everyone) › project `AGENTS.md` (shared with the repo) › global
+`~/.claude/CLAUDE.md` (personal). The two axes pull against each other — a gate
+lands in one repo, a skill reaches all of them — so where a gate is possible,
+the prose that belongs beside it is the *recipe for installing that gate
+elsewhere*, not a restatement of the rule the gate already enforces.
+
 Only narrow when escalation would be wrong (the lesson is genuinely personal or
-repo-specific). Never project-local memory. See "Scope escalation" in
-`classification-heuristic.md`. When the *fit* is truly ambiguous, ask the user.
+repo-specific). Never project-local memory. See "Routing — enforceability first,
+then reach" in `classification-heuristic.md`. When the *fit* is truly ambiguous,
+ask the user.
 
 ## See also
 
