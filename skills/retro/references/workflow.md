@@ -154,7 +154,7 @@ report gains a "Source drained?" column.
 | LLM passes per `/retro` | 1 | No multi-round polling |
 | `detect-mechanical.py` invocations | 1 | Capture the JSON once, post-process the saved output; never re-run the detector just to reshape/bucket its output (a full second transcript scan for nothing) |
 | Tool calls for skill discovery | ≤5 | Cached per session |
-| Proposals presented | ≤10 | Not 1011 (Coach anti-pattern); reserve slots for top reusable-learnings so friction can't crowd them all out |
+| Proposals presented | ≤10 | Not 1011 (Coach anti-pattern); reserve slots for top reusable-learnings so friction can't crowd them all out. A gate+propagation pair (`destination-taxonomy.md`, "Paired materialization") counts as **one** |
 | Total token cost vs Coach baseline | Dramatically below | TBD after first measurement |
 | Setup time before first proposal | <30 seconds | Mechanical pre-pass + discovery cache |
 

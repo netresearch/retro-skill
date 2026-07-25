@@ -89,12 +89,18 @@ check could have *failed* on the friction as it actually occurred.
 
 **A gate reaches one repo; prose reaches every repo the skill touches.** The two
 axes therefore pull against each other. Where a mechanical gate is possible,
-resolve it this way: the gate goes into the repo where the friction happened,
-and the prose that accompanies it is the *recipe for installing that gate
-elsewhere* — carried by the owning skill — not a restatement of the rule the
-gate already enforces. A repo that cannot host the gate (no CI, foreign repo,
-no analyzer) falls back to tier 3 for that repo only; that fallback is not a
-reason to skip the gate where it is possible.
+resolve it as a **pair**: the gate goes into the repo where the friction
+happened, and the prose that accompanies it is the *recipe for installing that
+gate elsewhere* — carried by the owning skill — not a restatement of the rule
+the gate already enforces. The pair is one proposal with one approval and counts
+once against the ≤10 cap; `destination-taxonomy.md` ("Paired materialization")
+owns the binding rules.
+
+A repo that cannot host the gate (no CI, no analyzer, a repo the user does not
+control) falls back to tier 3 for that repo only. That fallback is not a reason
+to skip the gate where it *is* possible, and a skill instructing an agent is not
+equivalent to a gate failing a build — it is the weaker tier, chosen because the
+stronger one is unavailable.
 
 ### Axis 2 — reach: prefer the broadest useful destination
 

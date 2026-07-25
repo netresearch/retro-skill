@@ -264,7 +264,15 @@ At end of `/retro`, output a table:
 | 1 | user-memory | wrote | ~/.claude/projects/.../feedback_X.md | ✓ |
 | 2 | skill-update | opened PR | github.com/.../foo-skill#42 | ✓ |
 | 3 | checkpoint | edited | bar-skill/checkpoints.yaml (AH-12) | ✓ pending push |
+| 4a | harness-artefact | opened PR | github.com/.../app#77 (lefthook.yml) | ✓ |
+| 4b | skill-update | opened PR | github.com/.../baz-skill#12 (install recipe) | ✓ |
+| 5 | harness-artefact | manual | branch protection — command emitted, not applied | ⚠ user action |
 ```
+
+A paired materialization (`destination-taxonomy.md`, "Paired materialization")
+occupies two rows sharing one number, as `4a`/`4b` above — one approval, two
+artefacts, each with its own status so a half-failed pair stays visible.
+Server-side instruments are reported `manual`; they are never applied by retro.
 
 ## See also
 

@@ -1,6 +1,9 @@
 # Destination Taxonomy
 
-Every friction finding maps to exactly one of six destinations. Each destination owns a specific materialization format defined by a specialist skill.
+Every friction finding maps to one of six destinations — or, in the single
+bounded exception below ("Paired materialization"), to a gate plus the prose
+that propagates it. Each destination owns a specific materialization format
+defined by a specialist skill.
 
 ## The Six
 
@@ -128,6 +131,38 @@ Only narrow when escalation would be wrong (the lesson is genuinely personal or
 repo-specific). Never project-local memory. See "Routing — enforceability first,
 then reach" in `classification-heuristic.md`. When the *fit* is truly ambiguous,
 ask the user.
+
+## Paired materialization — the one exception to "one destination"
+
+When a finding is enforceable in the repo it occurred in *and* the same gate
+belongs in sibling repos, it materializes as a **pair**:
+
+| Part | Destination | Content |
+|---|---|---|
+| Gate | `harness-artefact` or `checkpoint` | The check, in the repo the friction happened in |
+| Propagation | `skill-update` | The recipe for installing that gate, in the skill that owns the topic |
+
+Rules, all binding:
+
+- **A pair is one proposal, approved once, and counts as one against the ≤10
+  cap.** Splitting it into two proposals allows the prose half to be approved
+  while the gate half is rejected — which reproduces the exact failure the
+  enforceability axis exists to prevent.
+- **The approval line names both targets**, because they are usually two
+  different repos and one of them is not the repo the user is standing in:
+  `harness-artefact → <repo> (lefthook.yml) + skill-update → <skill> (install recipe)`.
+- **The propagation half must not restate the rule.** It carries how to add the
+  gate and how to tell whether a repo already has it. If the prose you are
+  writing would still make sense with the gate deleted, it is a restatement —
+  drop it and ship the gate alone.
+- **Two parts maximum.** No three-part materializations. If a finding seems to
+  need a third, it is more than one finding.
+- **Both parts appear as separate rows in the Phase-11 report**, so a pair that
+  half-fails is visible rather than reported as done.
+
+Pair only when propagation is real. A gate that is meaningful in exactly one
+repo — a project-specific path, a one-off migration guard — is a plain
+`harness-artefact` with no second half.
 
 ## See also
 
