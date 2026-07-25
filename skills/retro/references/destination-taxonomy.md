@@ -1,6 +1,9 @@
 # Destination Taxonomy
 
-Every friction finding maps to exactly one of six destinations. Each destination owns a specific materialization format defined by a specialist skill.
+Every friction finding maps to one of six destinations — or, in the single
+bounded exception below ("Paired materialization"), to a gate plus the prose
+that propagates it. Each destination owns a specific materialization format
+defined by a specialist skill.
 
 ## The Six
 
@@ -78,28 +81,88 @@ Example:
 ### 6. `harness-artefact` — Bootstrap
 
 Invokes `agent-harness-skill` bootstrap for a specific artefact:
-- pre-commit hook (lefthook / captainhook / husky)
+- pre-commit hook (lefthook / captainhook / husky / pre-commit)
+- linter or static-analysis rule — a new ESLint/PHPStan/golangci-lint rule, a
+  raised analyzer level, a `.yamllint.yml` rule, `fail_level: error` on a
+  reviewdog action. Ships where the analyzer already runs, so it needs no new
+  instrument; often the cheapest gate available.
+- CI workflow file, or a job/step added to an existing one
+- branch protection / ruleset — server-side, the only instrument nobody bypasses
 - PR or MR template
-- CI workflow file
 - AGENTS.md / docs/ scaffolding
+
+Materialization mechanics — target-repo selection, verify-before-bootstrap,
+CI/hook parity, and why server-side rules cannot be a PR — are in
+`references/patch-workflow.md` ("Harness artefacts").
+
+Choose the instrument by enforcement strength, not by convenience:
+`agent-harness-skill/references/enforcement-mechanisms.md` ranks all ten from
+server-side to convention-based, and requires **CI/hook parity** — every fast,
+deterministic check in CI must also run as a pre-commit hook. A proposal that
+adds a CI check meeting the fast-check definition without the matching hook is
+half-materialized.
 
 ## Choosing between adjacent destinations
 
 | Question | Answer | Pick |
 |---|---|---|
-| Is the rule mechanical (regex / script)? | yes | `checkpoint` |
-| Is the rule mechanical but enforces a workflow gate? | yes | `harness-artefact` (pre-commit / CI) |
+| Is the rule mechanical (regex / script)? | yes | `checkpoint` (`mechanical:`) |
+| Is the rule mechanical but enforces a workflow gate? | yes | `harness-artefact` (pre-commit / CI / linter rule) |
+| Is it checkable but by judgment, not by pattern? | yes | `checkpoint` (`llm_reviews:`) |
 | Is it a permanent personal preference? | yes | `user-memory` |
 | Is it specific to this project? | yes | `project-rule` |
 | Would another project benefit from the same fix? | yes | `skill-update` |
 | Does the friction reveal a missing capability category? | yes | `new-skill` |
 
-**Prefer the broadest useful scope.** Read the table top-to-bottom but bias
-*upward in reach*: `skill-update`/`new-skill` (shared with everyone) › project
-`AGENTS.md` (shared with the repo) › global `~/.claude/CLAUDE.md` (personal).
+**Two axes, in order: enforceability, then reach.** Read the table
+top-to-bottom — the first three rows are the enforceability axis and they come
+first on purpose. A gate that fails the build outranks a sentence that asks for
+care, so route to `checkpoint`/`harness-artefact` whenever the friction is one a
+check could have failed on.
+
+For whatever remains prose, bias *upward in reach*: `skill-update`/`new-skill`
+(shared with everyone) › project `AGENTS.md` (shared with the repo) › global
+`~/.claude/CLAUDE.md` (personal). The two axes pull against each other — a gate
+lands in one repo, a skill reaches all of them — so where a gate is possible,
+the prose that belongs beside it is the *recipe for installing that gate
+elsewhere*, not a restatement of the rule the gate already enforces.
+
 Only narrow when escalation would be wrong (the lesson is genuinely personal or
-repo-specific). Never project-local memory. See "Scope escalation" in
-`classification-heuristic.md`. When the *fit* is truly ambiguous, ask the user.
+repo-specific). Never project-local memory. See "Routing — enforceability first,
+then reach" in `classification-heuristic.md`. When the *fit* is truly ambiguous,
+ask the user.
+
+## Paired materialization — the one exception to "one destination"
+
+When a finding is enforceable in the repo it occurred in *and* the same gate
+belongs in sibling repos, it materializes as a **pair**:
+
+| Part | Destination | Content |
+|---|---|---|
+| Gate | `harness-artefact` or `checkpoint` | The check, in the repo the friction happened in |
+| Propagation | `skill-update` | The recipe for installing that gate, in the skill that owns the topic |
+
+Rules, all binding:
+
+- **A pair is one proposal, approved once, and counts as one against the ≤10
+  cap.** Splitting it into two proposals allows the prose half to be approved
+  while the gate half is rejected — which reproduces the exact failure the
+  enforceability axis exists to prevent.
+- **The approval line names both targets**, because they are usually two
+  different repos and one of them is not the repo the user is standing in:
+  `harness-artefact → <repo> (lefthook.yml) + skill-update → <skill> (install recipe)`.
+- **The propagation half must not restate the rule.** It carries how to add the
+  gate and how to tell whether a repo already has it. If the prose you are
+  writing would still make sense with the gate deleted, it is a restatement —
+  drop it and ship the gate alone.
+- **Two parts maximum.** No three-part materializations. If a finding seems to
+  need a third, it is more than one finding.
+- **Both parts appear as separate rows in the Phase-11 report**, so a pair that
+  half-fails is visible rather than reported as done.
+
+Pair only when propagation is real. A gate that is meaningful in exactly one
+repo — a project-specific path, a one-off migration guard — is a plain
+`harness-artefact` with no second half.
 
 ## See also
 

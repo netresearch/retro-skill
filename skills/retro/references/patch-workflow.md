@@ -1,6 +1,9 @@
 # Patch Workflow
 
-How `/retro` materializes `skill-update` and `new-skill` destinations.
+How `/retro` materializes the repo-patching destinations: `skill-update`,
+`new-skill` (both against a *skill source repo*), and `harness-artefact`
+(against the *target repo where the friction happened*). See
+"Harness artefacts" below for what differs in the third case.
 
 ## Core rule
 
@@ -164,6 +167,78 @@ This will push to a private host. Proceed? [y/N]
 
 Decision is remembered for the (session, repo URL) pair.
 
+## Harness artefacts — target repo, not skill repo
+
+`harness-artefact` (destination 6) patches the repo the friction happened in.
+Everything above still applies — branch naming, Conventional Commits, DCO
+sign-off, signing, no `--no-verify`, self-review, PR body — with five
+differences.
+
+### 1. Target selection
+
+The target is the repo the session was working in, not a skill repo. Skill
+discovery does not apply; there is nothing to look up. The instrument is chosen
+by enforcement strength, not convenience — see
+`agent-harness-skill/references/enforcement-mechanisms.md`, which ranks all ten
+from server-side to convention-based.
+
+That repo is usually **dirty**, because the session just worked in it. Do not
+stash and do not commit unrelated work. Add a worktree off the same repo and
+patch there:
+
+```bash
+git -C <repo>/.bare worktree add ../feat-retro-<slug> -b feat/retro-<slug> origin/<default-branch>
+```
+
+Fall back to the /tmp clone rule above if the repo is not worktree-shaped. Never
+patch a repo the user did not work in during the session without asking.
+
+### 2. Verify before bootstrapping
+
+`agent-harness-skill` requires **verify first, bootstrap second**. Before
+proposing any artefact, check whether it already exists —
+`agent-harness-skill/scripts/verify-harness.sh` reports this, and
+`agent-harness-skill/checkpoints.yaml` (`AH-*`) names the exact file globs. A
+hook config, a CI workflow, and a PR template are almost never absent outright;
+the real finding is usually that the existing one does not cover this check.
+
+Extend the existing artefact. Never overwrite a hook config or a workflow file
+with a template — that silently drops whatever the team already enforces.
+
+### 3. CI/hook parity is part of the materialization
+
+If the proposed artefact is a CI check meeting the fast-check definition
+(deterministic, under ~5s, no external dependencies — see
+`enforcement-mechanisms.md`), the same command must also land in the repo's
+pre-commit hook config, in the **same PR**. A CI check without the matching hook
+is a half-materialized proposal; say so rather than shipping the half.
+
+The reverse does not hold: a hook may exist without a CI counterpart only when
+the check cannot run in CI at all, which is rare.
+
+### 4. Server-side instruments are not a PR
+
+Branch protection and rulesets are the only instruments nobody bypasses, and
+they are an API call, not a file. They cannot be materialized as a patch and
+must never be applied silently. Emit the command for the user to run and mark
+the row `manual` in the Phase-11 report:
+
+```bash
+gh api -X PUT repos/<owner>/<repo>/branches/<branch>/protection --input <spec>.json
+```
+
+State what the rule would enforce and what it would block. The user runs it.
+
+### 5. Linter and analyzer rules
+
+A new rule in a linter the repo already runs needs no new instrument and no new
+file — it is a config edit (`phpstan.neon` level, an ESLint rule entry, a
+`.yamllint.yml` rule, `fail_level: error` on a reviewdog action). Prefer it over
+a new hook or workflow whenever the analyzer is already wired in.
+
+Verify the rule actually fires on the friction as it occurred before proposing
+it. A rule that does not reproduce the failure is not a gate.
+
 ## New-skill workflow
 
 For `new-skill` destination:
@@ -189,7 +264,15 @@ At end of `/retro`, output a table:
 | 1 | user-memory | wrote | ~/.claude/projects/.../feedback_X.md | ✓ |
 | 2 | skill-update | opened PR | github.com/.../foo-skill#42 | ✓ |
 | 3 | checkpoint | edited | bar-skill/checkpoints.yaml (AH-12) | ✓ pending push |
+| 4a | harness-artefact | opened PR | github.com/.../app#77 (lefthook.yml) | ✓ |
+| 4b | skill-update | opened PR | github.com/.../baz-skill#12 (install recipe) | ✓ |
+| 5 | harness-artefact | manual | branch protection — command emitted, not applied | ⚠ user action |
 ```
+
+A paired materialization (`destination-taxonomy.md`, "Paired materialization")
+occupies two rows sharing one number, as `4a`/`4b` above — one approval, two
+artefacts, each with its own status so a half-failed pair stays visible.
+Server-side instruments are reported `manual`; they are never applied by retro.
 
 ## See also
 
