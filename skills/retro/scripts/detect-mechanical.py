@@ -96,8 +96,12 @@ GIT_ON_BRANCH_OUT = re.compile(
 GIT_COMMIT = re.compile(r"\bgit\s+commit\b")
 # `(?![\w-])` requires main/master as a full token so "main-menu" / "master2"
 # (where `\b` would otherwise match the "main"/"master" prefix) do not fire.
+# `[^\n;&|]*` stops at a shell command separator so the match stays inside the
+# `git push` invocation itself: `git push | tail && git log origin/main..HEAD`
+# mentions main in a *later, read-only* command, and spanning into it flagged
+# an ordinary feature-branch push as work on main.
 GIT_PUSH_TO_MAIN = re.compile(
-    r"\bgit\s+push\b[^\n]*\b(?:HEAD:)?(?:main|master)(?![\w-])"
+    r"\bgit\s+push\b[^\n;&|]*\b(?:HEAD:)?(?:main|master)(?![\w-])"
 )
 
 # A1: textual error markers, used as a fallback only when the harness `is_error`

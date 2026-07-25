@@ -236,6 +236,34 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_signal(evs, "A14")
 
+    def test_A14_push_then_chained_log_of_main_does_not_fire(self):
+        # A feature-branch push chained with a read-only command that mentions
+        # main (`git log origin/main..HEAD`) is not work on main. The match must
+        # stay inside the `git push` invocation and not run past `|` or `&&`.
+        evs = tool_use_pair(
+            "c",
+            "Bash",
+            {"command": "git checkout -b feat/x"},
+            "Switched to a new branch 'feat/x'",
+        )
+        evs += tool_use_pair(
+            "u1",
+            "Bash",
+            {
+                "command": "git push 2>&1 | tail -2 && git log --oneline origin/main..HEAD"
+            },
+            "branch 'feat/x' set up to track",
+        )
+        self.assert_not_signal(evs, "A14")
+
+    def test_A14_push_to_main_chained_with_another_command_fires(self):
+        # The separator guard must not swallow a real violation: main is inside
+        # the push invocation here, before the `&&`.
+        evs = tool_use_pair(
+            "u1", "Bash", {"command": "git push origin main && echo done"}, "done"
+        )
+        self.assert_signal(evs, "A14")
+
     def test_A14_checkout_main_then_feature_branch_does_not_fire(self):
         # A block that switches to main then creates a feature branch ends on
         # the feature branch; the final switch wins, so a later commit is fine.
