@@ -88,6 +88,10 @@ Invokes `agent-harness-skill` bootstrap for a specific artefact:
 - PR or MR template
 - AGENTS.md / docs/ scaffolding
 
+Materialization mechanics — target-repo selection, verify-before-bootstrap,
+CI/hook parity, and why server-side rules cannot be a PR — are in
+`references/patch-workflow.md` ("Harness artefacts").
+
 Choose the instrument by enforcement strength, not by convenience:
 `agent-harness-skill/references/enforcement-mechanisms.md` ranks all ten from
 server-side to convention-based, and requires **CI/hook parity** — every fast,
