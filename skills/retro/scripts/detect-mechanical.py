@@ -139,6 +139,16 @@ A4_MIN_TOOL_USES = 20  # skip tiny sessions
 # A5: read-only / independent tools that benefit from batching
 A5_PARALLELIZABLE_TOOLS = {"Read", "Glob", "Grep", "Bash"}
 A5_MIN_SERIAL_RUN = 3  # >=3 calls in separate assistant turns
+A19_MIN_COUNT = 8  # one command shape this often is a script, not a habit
+C6_MIN_VIOLATIONS = 3  # a written rule tripped this often needs a gate
+# Signal -> phrases that indicate a matching rule already exists in the
+# always-loaded instructions.
+C6_RULE_KEYWORDS = {
+    "A11": ["structured file", "jq", "yq", "dasel", "never grep"],
+    "A14": ["feature branch", "never work on main"],
+    "A15": ["bot attribution", "co-authored-by", "generated with"],
+    "A13": ["without pasted command output", "verification", "evidence before"],
+}
 
 # A11: tool-misuse patterns — shlex tokenization to handle quoted regex/sed bodies
 # (e.g. `sed -i 's|a|b|g' file.json`) and to distinguish piped from terminal cat.
@@ -323,6 +333,180 @@ def extract_tool_uses(events: Iterable[dict]) -> list[tuple[int, str, dict, str,
     return out
 
 
+# --- command shape -----------------------------------------------------------
+# Grouping by tool NAME is blind in a Bash-dominated session: every shell call
+# collapses to "Bash", so 61 identical `gh pr view` probes look like one busy
+# tool. The catalog has always promised "same tool + similar args"; this is the
+# args half. A shape keeps the program and its subcommands and drops every
+# value, so `gh pr view 120 --repo x --json state` and `gh pr view 7 --json url`
+# share the shape `gh pr view`.
+
+_SHELL_NOISE = {
+    "if",
+    "then",
+    "else",
+    "elif",
+    "fi",
+    "for",
+    "do",
+    "done",
+    "while",
+    "until",
+    "case",
+    "esac",
+    "function",
+    "return",
+    "exit",
+    "local",
+    "export",
+    "set",
+    "echo",
+    "printf",
+    "cd",
+    "true",
+    "false",
+    "test",
+    "[",
+    "[[",
+    "]]",
+    "exec",
+    "source",
+    ".",
+    "read",
+    "shift",
+    "eval",
+}
+# Wrappers do not identify the work — the command they wrap does. Skipping the
+# whole segment on seeing one hides the probe entirely: `timeout 300 gh api ...`
+# counted as "timeout", `sudo gh pr view` as nothing at all.
+_WRAPPERS = {"env", "sudo", "command", "time", "timeout", "nohup", "nice", "stdbuf"}
+# Only these git subcommands leave the machine; git status/log/diff are local.
+_REMOTE_GIT = {"fetch", "pull", "push", "clone", "ls-remote", "remote", "submodule"}
+
+
+def is_remote_shape(shape: str) -> bool:
+    """True when the shape leaves the machine — a round trip worth counting."""
+    parts = shape.split()
+    prog = parts[0]
+    if prog == "git":
+        return len(parts) > 1 and parts[1] in _REMOTE_GIT
+    return prog in _REMOTE_PREFIX
+
+
+_VALUEISH = re.compile(r"""^(-|/|\.|~|\$|\d|['"])""")
+# Statement separators inside one shell string: ; newline || && | $( `
+SEGMENT_SPLIT = re.compile(r"[;\n]|\|\||&&|\||\$\(|`")
+
+
+HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", re.DOTALL | re.MULTILINE)
+
+# Local text plumbing. Repeating these is a pipeline, not a probe worth
+# wrapping in a script; wrong-tool use is A11's job, verbosity is A3's.
+_PLUMBING = {
+    "head",
+    "tail",
+    "cat",
+    "grep",
+    "sed",
+    "awk",
+    "wc",
+    "sort",
+    "uniq",
+    "cut",
+    "tr",
+    "xargs",
+    "find",
+    "ls",
+    "mkdir",
+    "rm",
+    "cp",
+    "mv",
+    "chmod",
+    "touch",
+    "basename",
+    "dirname",
+    "sha256sum",
+    "base64",
+    "diff",
+    "tee",
+    "jq",
+    "yq",
+}
+# Anything that leaves the machine: each call is a round trip and a token cost.
+_REMOTE_PREFIX = (
+    "gh",
+    "glab",
+    "curl",
+    "wget",
+    "git",
+    "docker",
+    "ssh",
+    "uvx",
+    "npm",
+    "composer",
+)
+
+
+def command_shapes(cmd: str) -> list[str]:
+    """Every distinct program+subcommand shape invoked in one shell string."""
+    cmd = HEREDOC.sub(" ", cmd or "")
+    shapes: list[str] = []
+    for seg in re.split(SEGMENT_SPLIT, cmd or ""):
+        toks = seg.strip().split()
+        # Peel leading VAR=value assignments and wrapper commands (with their own
+        # flags and numeric arguments) until the real program is in front.
+        peeled = True
+        while peeled and toks:
+            peeled = False
+            while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
+                toks.pop(0)
+                peeled = True
+            if toks and toks[0].split("/")[-1] in _WRAPPERS:
+                toks.pop(0)
+                peeled = True
+                while toks and (
+                    toks[0].startswith("-") or re.match(r"^\d+[smhd]?$", toks[0])
+                ):
+                    toks.pop(0)
+        if not toks:
+            continue
+        prog = toks[0].split("/")[-1]
+        # A bare "/" or a trailing slash leaves prog empty; an empty shape would
+        # crash every consumer that splits it.
+        if not prog or prog in _SHELL_NOISE or _VALUEISH.match(prog):
+            continue
+        # git subcommands are single-level: everything after `git push` is an
+        # argument, so `git push origin` and `git push` must not split apart.
+        # gh/glab/docker nest two deep (`gh pr view`, `docker compose up`).
+        depth = 1 if prog == "git" else 2
+        parts = [prog]
+        for t in toks[1 : 1 + depth]:
+            if _VALUEISH.match(t) or "=" in t:
+                break
+            if not re.match(r"^[a-z][a-z0-9:_-]*$", t):
+                break
+            parts.append(t)
+        shape = " ".join(parts)
+        if shape not in shapes:
+            shapes.append(shape)
+    return shapes
+
+
+def shape_of(name: str, inp: dict) -> list[str]:
+    """Shapes for any tool use. Non-Bash tools are already one shape each."""
+    if name == "Bash":
+        return command_shapes((inp or {}).get("command", ""))
+    return [name]
+
+
+def shape_histogram(tool_uses) -> dict[str, list[int]]:
+    hist: dict[str, list[int]] = defaultdict(list)
+    for i, name, inp, _result, _err in tool_uses:
+        for sh in shape_of(name, inp):
+            hist[sh].append(i)
+    return hist
+
+
 def signal_tool_errors(tool_uses) -> list[dict]:
     out = []
     for i, name, inp, result, is_error in tool_uses:
@@ -346,9 +530,9 @@ def signal_tool_errors(tool_uses) -> list[dict]:
 
 def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list[dict]:
     out = []
-    by_tool: dict[str, list[int]] = defaultdict(list)
-    for i, name, inp, result, is_error in tool_uses:
-        by_tool[name].append(i)
+    # Grouped by command shape: "Bash three times" says nothing, "gh pr view
+    # three times in five turns" is the finding.
+    by_tool = shape_histogram(tool_uses)
     for name, turns in by_tool.items():
         if len(turns) < 3:
             continue
@@ -671,10 +855,23 @@ def signal_tool_count_vs_task(tool_uses, user_texts) -> list[dict]:
     n_msgs = len({i for i, _ in user_texts}) or 1
     ratio = n_tools / n_msgs
     if n_tools >= A4_MIN_TOOL_USES and ratio >= A4_RATIO_THRESHOLD:
+        # A bare ratio is not a proposal: it says "a lot happened" without
+        # naming what to mechanize. Carry the dominant command shapes so the
+        # finding points at something that can become a script.
+        hist = shape_histogram(tool_uses)
+        top = sorted(
+            (
+                (sh, len(t))
+                for sh, t in hist.items()
+                if len(t) >= 3 and sh.split()[0] not in _PLUMBING
+            ),
+            key=lambda kv: -kv[1],
+        )[:10]
         return [
             {
                 "signal": "A4",
                 "name": "tool_call_inefficiency_ratio",
+                "top_shapes": [{"shape": sh, "count": c} for sh, c in top],
                 "tool_uses": n_tools,
                 "user_messages": n_msgs,
                 "ratio": round(ratio, 2),
@@ -898,6 +1095,124 @@ def signal_permission_reapproval(
     return out
 
 
+def signal_repeated_probe(tool_uses, min_count: int = A19_MIN_COUNT) -> list[dict]:
+    """A19: one command shape invoked many times — a script waiting to happen.
+
+    Read-only probes are the expensive case: each one costs a round trip and
+    tokens, and the same derived answer is recomputed from scratch every time.
+    The finding names the shape and the count so the proposal can be concrete
+    ("wrap these in a script") instead of "you used many tools".
+    """
+    out = []
+    hist = shape_histogram(tool_uses)
+    for shape, turns in sorted(hist.items(), key=lambda kv: -len(kv[1])):
+        if len(turns) < min_count:
+            continue
+        prog = shape.split()[0]
+        if prog in _PLUMBING:
+            continue  # pipeline noise, not a probe
+        remote = is_remote_shape(shape)
+        span = turns[-1] - turns[0]
+        out.append(
+            {
+                "signal": "A19",
+                "name": "repeated_command_shape",
+                "shape": shape,
+                "count": len(turns),
+                "first_turn": turns[0],
+                "last_turn": turns[-1],
+                "span_turns": span,
+                "remote": remote,
+                "hint": (
+                    f"`{shape}` ran {len(turns)}x across {span} turns — a single "
+                    "script that returns the whole answer (and the next valid "
+                    "action) removes the repetition. Route to harness-artefact "
+                    "or a skill script, not to prose."
+                ),
+            }
+        )
+    return out
+
+
+def signal_wait_loop_inefficiency(tool_uses) -> list[dict]:
+    """A20: polling that waits for everything instead of the first actionable event.
+
+    `until [ pending == 0 ]` learns nothing until the slowest job finishes, long
+    after the first failure was visible and fixable — and the user is left
+    asking for status. A loop that exits on the first actionable state is the
+    fix; this surfaces the ones that do not.
+    """
+    out = []
+    for i, name, inp, _result, _err in tool_uses:
+        if name != "Bash":
+            continue
+        cmd = (inp or {}).get("command", "") or ""
+        if not re.search(r"\b(until|while)\b", cmd) or "sleep" not in cmd:
+            continue
+        # "waits for everything" = the loop exits only when a backlog counter
+        # reaches zero. The counter and the comparison are usually far apart —
+        # the count is computed inside a nested $( ... --jq ... ) — so proximity
+        # matching misses almost all of them; presence of both is the signal.
+        counts_backlog = re.search(r"\b(pending|in_progress|queued|running)\b", cmd)
+        compares_zero = re.search(r"(==|=|-eq)\s*[\"']?0[\"']?", cmd)
+        terminal = bool(counts_backlog and compares_zero)
+        out.append(
+            {
+                "signal": "A20",
+                "name": "wait_loop_terminal_condition" if terminal else "wait_loop",
+                "turn": i,
+                "waits_for_everything": terminal,
+                "snippet": cmd[:180],
+                "hint": (
+                    "Loop waits for every check to settle. Return on the first "
+                    "actionable event instead (a failure, a thread needing an "
+                    "answer, the required checks concluding) and report progress "
+                    "while waiting."
+                )
+                if terminal
+                else "Polling loop — check whether it can exit on the first actionable state.",
+            }
+        )
+    return out
+
+
+def signal_rule_exists_but_violated(findings, rules_text: str) -> list[dict]:
+    """C6: a written rule was violated repeatedly anyway — mechanize it.
+
+    When a rule already exists in the always-loaded instructions and the session
+    still trips it N times, another sentence will not help: the same prose has
+    already failed. The answer is a hook or a check that makes the violation
+    impossible, which is a harness-artefact, not a skill-update.
+    """
+    if not rules_text:
+        return []
+    out = []
+    by_sig: dict[str, int] = defaultdict(int)
+    for f in findings:
+        by_sig[f.get("signal", "")] += 1
+    for sig, keywords in C6_RULE_KEYWORDS.items():
+        n = by_sig.get(sig, 0)
+        if n < C6_MIN_VIOLATIONS:
+            continue
+        if not any(k.lower() in rules_text.lower() for k in keywords):
+            continue
+        out.append(
+            {
+                "signal": "C6",
+                "name": "written_rule_violated_repeatedly",
+                "violated_signal": sig,
+                "occurrences": n,
+                "hint": (
+                    f"{sig} fired {n}x while a matching rule is already present in "
+                    "the always-loaded instructions. Prose has demonstrably not "
+                    "worked — propose a mechanical gate (PreToolUse hook, "
+                    "checkpoint, CI check), not another rule."
+                ),
+            }
+        )
+    return out
+
+
 SIGNAL_FUNCS = {
     "A1": signal_tool_errors,
     "A2": signal_retry_clusters,
@@ -917,6 +1232,9 @@ SIGNAL_FUNCS = {
     "A16": signal_outdated_tool,
     "A17": signal_upstream_failure,
     "A18": signal_permission_reapproval,
+    "A19": signal_repeated_probe,
+    "A20": signal_wait_loop_inefficiency,
+    "C6": signal_rule_exists_but_violated,
 }
 
 
@@ -958,8 +1276,36 @@ def main() -> int:
             findings.extend(func(tool_uses, user_texts))
         elif func is signal_skipped_verification:
             findings.extend(func(assistant_texts, tool_uses))
+        elif func is signal_rule_exists_but_violated:
+            continue  # runs last, needs the other findings
         else:
             findings.extend(func(tool_uses))
+
+    if "C6" in selected:
+        # C6 counts how often OTHER signals fired. Selecting it alone would
+        # silently report "no violations" — an empty result that reads like a
+        # clean bill of health. Compute its dependencies regardless of the
+        # --signals filter, without adding them to the reported findings.
+        dep_findings = list(findings)
+        for dep in C6_RULE_KEYWORDS:
+            if dep in selected:
+                continue
+            fn = SIGNAL_FUNCS.get(dep)
+            if fn is None:
+                continue
+            dep_findings.extend(
+                fn(assistant_texts, tool_uses)
+                if fn is signal_skipped_verification
+                else fn(tool_uses)
+            )
+        findings_for_c6 = dep_findings
+        rules = ""
+        for cand in (Path.home() / ".claude" / "CLAUDE.md",):
+            try:
+                rules = cand.read_text(encoding="utf-8")
+            except OSError:
+                pass
+        findings.extend(signal_rule_exists_but_violated(findings_for_c6, rules))
 
     summary = {
         "transcript": str(args.transcript_file),

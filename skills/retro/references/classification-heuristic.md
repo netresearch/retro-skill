@@ -13,14 +13,14 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | Friction signal | Primary destination | Alternate (LLM decides from context) |
 |---|---|---|
 | **A1** tool error | `skill-update` (tool-owner skill) | `user-memory` (if user-specific config issue) |
-| **A2** tool retry cluster | `skill-update` (tool-owner) | `user-memory` |
+| **A2** tool retry cluster | `harness-artefact` / skill **script** — the shape is known, wrap it | `skill-update` (tool-owner) |
 | **A3** tool output verbosity | `skill-update` (tool-owner: file-search, data-tools) | `user-memory` |
-| **A4** too many tool calls | `skill-update` (workflow guidance) | `user-memory` |
+| **A4** too many tool calls | `harness-artefact` / skill **script** for the shapes in `top_shapes` | `skill-update` (workflow guidance) |
 | **A5** sequential vs parallel | `skill-update` (workflow skill) | — |
 | **A6** user correction phrase | `user-memory` (style) OR `project-rule` (convention) | LLM reads correction content to decide |
 | **A7** prompt repetition | `skill-update` (description didn't match) | `agent-rules-skill` PR (AGENTS.md unclear) |
 | **A8** prompt sequence repetition | Snippet/Custom Command OR `skill-update` (workflow) | `new-skill` if pattern is rich |
-| **A9** tool sequence repetition | `skill-update` (composition guidance) | `new-skill` |
+| **A9** tool sequence repetition | `harness-artefact` / skill **script** | `skill-update` (composition guidance) |
 | **A10** skill in reminder vs invoke | `skill-update` (description or trigger words) | `harness-artefact` (delegation map) |
 | **A11** wrong tool choice | `skill-update` (tool-owner skill) | `user-memory` |
 | **A12** re-read same file | `skill-update` (workflow / context retention) | — |
@@ -30,6 +30,8 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | **A16** outdated tool warning | `skill-update` (tool-owner, version bump) | `user-memory` (user's setup outdated) |
 | **A17** upstream failure | `harness-artefact` (pre-commit hook) OR `skill-update` (verification step) OR `checkpoint` (mechanical check) OR `project-rule` | LLM picks based on what would have caught it |
 | **A18** permission re-approval | `user-memory` + invoke `update-config` skill | — |
+| **A19** repeated command shape | `harness-artefact` / skill **script** that returns the whole answer in one call | `skill-update` only if a script already exists and was not used |
+| **A20** wait-loop inefficiency | `harness-artefact` — a watch that returns on the first actionable event | `user-memory` (waiting discipline) |
 | **B1** output quality mismatch | `user-memory` (preference) OR `skill-update` (output style) | — |
 | **B2** wrong skill choice | `skill-update` (description of unused skill) | — |
 | **B3** skill capability gap | `skill-update` (add guidance) | `new-skill` if gap is large |
@@ -52,6 +54,7 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
 | **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`user-memory` (LLM picks from `current_location` + content) |
 | **C4** skill update ineffective | `skill-update` (previous fix was wrong) | — |
+| **C6** written rule violated repeatedly | `harness-artefact` (hook/checkpoint that makes the violation impossible) | never another prose rule — that is what already failed |
 
 ## Routing — enforceability first, then reach
 

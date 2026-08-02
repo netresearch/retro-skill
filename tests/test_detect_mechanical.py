@@ -79,7 +79,7 @@ class TestSchichtA(unittest.TestCase):
             unexpected_signal, signals, f"unexpected {unexpected_signal} in {signals}"
         )
 
-    def _run_all(self, events: list[dict]) -> set:
+    def _run_all(self, events: list[dict], rules_text: str = "") -> set:
         path = write_jsonl(events)
         try:
             events_loaded = detect.load_jsonl(path)
@@ -100,8 +100,15 @@ class TestSchichtA(unittest.TestCase):
                     findings.extend(func(tool_uses, user_texts))
                 elif func is detect.signal_skipped_verification:
                     findings.extend(func(assistant_texts, tool_uses))
+                elif func is detect.signal_rule_exists_but_violated:
+                    # Schicht C: takes the accumulated findings plus the rules
+                    # text, not tool_uses. Run last, like main() does.
+                    continue
                 else:
                     findings.extend(func(tool_uses))
+            findings.extend(
+                detect.signal_rule_exists_but_violated(findings, rules_text)
+            )
             return {f["signal"] for f in findings}
         finally:
             path.unlink(missing_ok=True)
@@ -279,10 +286,25 @@ class TestSchichtA(unittest.TestCase):
         self.assert_not_signal(evs, "A14")
 
     def test_A2_retry_cluster(self):
+        # Same command shape, differing arguments — the "similar args" half the
+        # catalog has always described.
         evs = []
         for i in range(3):
-            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": "echo hi"}, "hi"))
+            evs.extend(
+                tool_use_pair(
+                    f"u{i}", "Bash", {"command": f"gh pr view {i} --json state"}, "{}"
+                )
+            )
         self.assert_signal(evs, "A2")
+
+    def test_A2_distinct_commands_do_not_cluster(self):
+        # Three unrelated shell calls are a session, not a retry cluster.
+        # Grouping by tool name alone made this fire on almost every transcript.
+        cmds = ["gh pr view 1", "git status", "docker ps"]
+        evs = []
+        for i, c in enumerate(cmds):
+            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": c}, "ok"))
+        self.assert_not_signal(evs, "A2")
 
     def test_A3_verbose_output(self):
         big = "x" * 10000
@@ -563,3 +585,104 @@ class TestHelpers(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestMechanizableWaste(unittest.TestCase):
+    """A19/A20/C6 — the signals that route to a tool rather than a paragraph."""
+
+    def _findings(self, events, sig, rules_text=""):
+        path = write_jsonl(events)
+        try:
+            loaded = detect.load_jsonl(path)
+            tool_uses = detect.extract_tool_uses(loaded)
+            if sig == "A19":
+                return detect.signal_repeated_probe(tool_uses)
+            if sig == "A20":
+                return detect.signal_wait_loop_inefficiency(tool_uses)
+            base = detect.signal_wrong_tool_choice(tool_uses)
+            return detect.signal_rule_exists_but_violated(base, rules_text)
+        finally:
+            path.unlink(missing_ok=True)
+
+    def test_A19_repeated_remote_probe_fires(self):
+        evs = []
+        for i in range(9):
+            evs.extend(
+                tool_use_pair(f"u{i}", "Bash", {"command": f"gh pr view {i}"}, "{}")
+            )
+        out = self._findings(evs, "A19")
+        shapes = {f["shape"]: f for f in out}
+        self.assertIn("gh pr view", shapes)
+        self.assertEqual(shapes["gh pr view"]["count"], 9)
+        self.assertTrue(shapes["gh pr view"]["remote"])
+
+    def test_A19_ignores_text_plumbing(self):
+        evs = []
+        for i in range(12):
+            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": f"head -{i} f"}, ""))
+        self.assertEqual(self._findings(evs, "A19"), [])
+
+    def test_A19_ignores_heredoc_bodies(self):
+        # Document lines inside a heredoc are not commands; counting them
+        # produced shapes like "EOF".
+        body = "cat > f <<'EOF'\ngh pr view 1\ngh pr view 2\nEOF"
+        evs = []
+        for i in range(9):
+            evs.extend(tool_use_pair(f"u{i}", "Bash", {"command": body}, ""))
+        shapes = {f["shape"] for f in self._findings(evs, "A19")}
+        self.assertNotIn("EOF", shapes)
+        self.assertNotIn("gh pr view", shapes)
+
+    def test_A20_terminal_wait_is_flagged(self):
+        cmd = (
+            'until [ "$(gh pr checks 1 --json bucket '
+            '--jq \'[.[]|select(.bucket=="pending")]|length\')" = "0" ]; '
+            "do sleep 30; done"
+        )
+        out = self._findings(tool_use_pair("u", "Bash", {"command": cmd}, ""), "A20")
+        self.assertEqual(len(out), 1)
+        self.assertTrue(out[0]["waits_for_everything"])
+
+    def test_A20_plain_command_does_not_fire(self):
+        evs = tool_use_pair("u", "Bash", {"command": "gh pr checks 1"}, "")
+        self.assertEqual(self._findings(evs, "A20"), [])
+
+    def test_C6_fires_only_when_a_matching_rule_exists(self):
+        evs = []
+        for i in range(4):
+            evs.extend(
+                tool_use_pair(
+                    f"u{i}", "Bash", {"command": f"grep foo conf{i}.yaml"}, ""
+                )
+            )
+        with_rule = self._findings(evs, "C6", "never grep on a structured file")
+        self.assertTrue(any(f["violated_signal"] == "A11" for f in with_rule))
+        self.assertEqual(self._findings(evs, "C6", "unrelated prose"), [])
+
+    def test_A19_unwraps_wrapper_commands(self):
+        # timeout/sudo/env/time must not become the shape — the wrapped
+        # command is the probe. `timeout 300 gh api ...` counted as "timeout".
+        import importlib
+
+        del importlib  # keep linters quiet; module already loaded above
+        for cmd, want in (
+            ("timeout 300 gh api repos/x", "gh api"),
+            ("sudo gh pr view 1", "gh pr view"),
+            ("env FOO=1 gh pr view 2", "gh pr view"),
+            ("nice -n 5 docker ps", "docker ps"),
+        ):
+            self.assertEqual(detect.command_shapes(cmd), [want], cmd)
+
+    def test_remote_flag_scoped_to_network_git(self):
+        self.assertTrue(detect.is_remote_shape("git push"))
+        self.assertTrue(detect.is_remote_shape("git fetch"))
+        self.assertFalse(detect.is_remote_shape("git status"))
+        self.assertFalse(detect.is_remote_shape("git log"))
+        self.assertTrue(detect.is_remote_shape("gh api"))
+
+    def test_git_subcommand_depth_is_one(self):
+        # `git push origin main` and `git push` are the same probe.
+        self.assertEqual(detect.command_shapes("git push origin main"), ["git push"])
+        self.assertEqual(detect.command_shapes("git push"), ["git push"])
+        # gh nests two deep.
+        self.assertEqual(detect.command_shapes("gh pr view 1"), ["gh pr view"])
