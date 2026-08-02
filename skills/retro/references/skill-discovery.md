@@ -73,10 +73,22 @@ If matched skill has `evals/` directory:
 
 ```
 <skill-root>/evals/
-├── *.md          # Eval scenarios
-├── *.yaml        # Eval configurations
+├── evals.json    # Eval scenarios — the common case by a wide margin
+├── *.md          # Eval scenarios (retro's own layout; rare elsewhere)
 └── results/      # Optional historical results
 ```
+
+`evals/` is not always at the repo root — skills that ship under `skills/<name>/`
+usually keep it at `skills/<name>/evals/`. Look in both places, and do not
+conclude a skill has no evals from a single miss.
+
+Measured across the skill repos on a working machine — 34 repos, 50 eval
+directories: 45 hold `*.json`, 3 hold `*.md`, and **none** hold YAML. A discovery
+pass that greps for `*.yaml` finds nothing anywhere and silently skips the
+eval-consultation step.
+
+Match on content, not filename: 44 of those directories use `evals.json` and one
+uses `comprehensive-evals.json`.
 
 Read evals during classification for context. See `references/eval-integration.md`.
 

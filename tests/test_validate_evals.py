@@ -65,6 +65,41 @@ class ValidateEvalsTest(unittest.TestCase):
         (directory / "README.md").write_text("# not a scenario", encoding="utf-8")
         self.assertEqual(validator.validate(directory, min_scenarios=5), [])
 
+    def test_json_layout_is_named_instead_of_counted_as_empty(self):
+        directory = self._dir()
+        (directory / "evals.json").write_text(
+            '{"skill_name": "other", "evals": [{"id": 1}]}', encoding="utf-8"
+        )
+        problems = validator.validate(directory, min_scenarios=5)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("holds JSON evals", problems[0])
+        self.assertIn("repo-scoped", problems[0])
+        self.assertNotIn("too few scenarios", problems[0])
+
+    def test_unrelated_json_is_not_mistaken_for_an_eval_corpus(self):
+        directory = self._dir()
+        (directory / "package.json").write_text(
+            '{"name": "some-repo", "version": "1.0.0"}', encoding="utf-8"
+        )
+        problems = validator.validate(directory, min_scenarios=5)
+        self.assertEqual(problems, ["too few scenarios: found 0, need >= 5"])
+
+    def test_json_layout_is_recognised_under_any_filename(self):
+        directory = self._dir()
+        (directory / "comprehensive-evals.json").write_text(
+            '[{"name": "a", "prompt": "b"}]', encoding="utf-8"
+        )
+        problems = validator.validate(directory, min_scenarios=5)
+        self.assertEqual(len(problems), 1)
+        self.assertIn("holds JSON evals", problems[0])
+
+    def test_markdown_scenarios_win_over_a_stray_json_file(self):
+        directory = self._dir()
+        for i in range(5):
+            write_scenario(directory, f"scenario-{i}")
+        (directory / "config.json").write_text("{}", encoding="utf-8")
+        self.assertEqual(validator.validate(directory, min_scenarios=5), [])
+
     def test_too_few_scenarios(self):
         directory = self._dir()
         for i in range(3):
