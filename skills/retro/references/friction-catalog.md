@@ -57,6 +57,8 @@ Fast, deterministic, regex/count-based. Runs before LLM pass to reduce token cos
 | A16 | Outdated tool warning | "deprecated", "is now", "use X instead" patterns in stderr | Out-of-date knowledge |
 | A17 | Upstream failure | `git push` fails on pre-receive, `gh pr checks` fails post-push, post-commit lint fail | Pre-push verification gap (shift-left) |
 | A18 | Permission re-approval | Same permission prompt approved ≥3× in session | Allowlist needed |
+| A19 | Repeated command shape | One program+subcommand shape invoked >=8x (plumbing excluded, remote calls flagged) | The same derived answer recomputed by hand — script candidate |
+| A20 | Wait-loop inefficiency | `until`/`while` + `sleep` polling, flagged when it exits only on a backlog counter reaching zero | Learns nothing until the slowest job ends; the first failure was workable much earlier |
 
 ## Schicht B — LLM Inference
 
@@ -107,6 +109,7 @@ Not detectable from a single session. Session-file scan across projects.
 | C2 | Cross-project pattern | Same friction class in N≥2 projects | Multi-session JSONL grouped by project |
 | C3 | Memory drift | `feedback_*.md` exists but assistant violated it anyway → skill needs it more prominently | JSONL diff against memory files |
 | C4 | Skill update ineffective | Previous PR to skill X, same bug returned afterward | Git log of skill repo + JSONL |
+| C6 | Written rule violated repeatedly | A signal fired >=3x while a matching rule already exists in the always-loaded instructions | Prose has demonstrably failed — needs a mechanical gate |
 | C5 | Follow-up-fix session | A later session exists primarily to fix what an earlier session broke (mentions earlier commits, works on same files within 7 days with reverting edits, or `git revert` of earlier commits) | Cross-session JSONL + git log |
 
 ## Schicht D — Outcome (Post-Session, requires latency)
