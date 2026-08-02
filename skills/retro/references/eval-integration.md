@@ -8,10 +8,13 @@ After a skill is matched for `skill-update` destination, check if it has `evals/
 
 ```
 <skill-root>/evals/
-├── *.md          # Eval scenarios (Markdown, possibly with frontmatter)
-├── *.yaml        # Eval configurations
+├── evals.json    # Eval scenarios — the common case by a wide margin
+├── *.md          # Eval scenarios (retro's own layout; rare elsewhere)
 └── results/      # Optional historical results
 ```
+
+Check `skills/<name>/evals/` too — skills that ship under a `skills/` directory
+usually keep their evals beside them rather than at the repo root.
 
 If yes, read evals before generating the proposal.
 
@@ -69,7 +72,23 @@ Only do this when:
 
 ## Eval format (lightweight, no enforced schema)
 
-Different skills may use different eval formats. `/retro` reads them as text and gives the content to the LLM for context. Common patterns:
+Different skills may use different eval formats. `/retro` reads them as text and gives the content to the LLM for context.
+
+In practice almost every skill repo uses a single `evals/evals.json`, in one of
+two container shapes. Both hold the same kind of record, so read whichever key is
+present rather than assuming one:
+
+```json
+[ { "name": "…", "prompt": "…", "assertions": [ "…" ] } ]
+```
+
+```json
+{ "skill_name": "…",
+  "evals": [ { "id": 1, "name": "…", "prompt": "…", "expected_output": "…" } ] }
+```
+
+The Markdown-with-frontmatter form below is retro's own layout and is rare
+elsewhere:
 
 ```markdown
 ---
@@ -80,17 +99,9 @@ expected: <expected behavior>
 <optional explanation>
 ```
 
-Or YAML-based:
-
-```yaml
-scenarios:
-  - name: <name>
-    given: <context>
-    when: <user input>
-    then: <expected behavior>
-```
-
-`/retro` does not enforce a format — it adapts to what each skill uses.
+`/retro` does not enforce a format — it adapts to what each skill uses. Read the
+file before assuming a shape: a top-level array and an object with an `evals` key
+are both current, and a repo may name the file something other than `evals.json`.
 
 ## retro's own evals (dogfooding)
 

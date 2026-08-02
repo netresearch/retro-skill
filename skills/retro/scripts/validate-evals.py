@@ -16,6 +16,7 @@ Exit 0 if every scenario is well-formed, 1 otherwise.
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -85,6 +86,31 @@ def _scenario_files(evals_dir: Path) -> list[Path]:
     return sorted(p for p in evals_dir.glob("*.md") if p.name.lower() != "readme.md")
 
 
+def _looks_like_shared_json_layout(evals_dir: Path) -> bool:
+    """True if the directory carries the JSON eval layout other skill repos use.
+
+    Recognised by container shape rather than filename: an array of objects, or
+    an object with an ``evals`` array. Filename would be the wrong test — of 45
+    eval directories on one machine, 44 use ``evals.json`` and one uses
+    ``comprehensive-evals.json`` — and mere presence of *any* ``*.json`` would
+    claim a ``package.json`` as an eval corpus.
+
+    Used only to explain an empty Markdown inventory. The file is parsed far
+    enough to recognise the container and no further: reading, counting and
+    validating JSON evals belongs to skill-repo-skill's ``validate-evals.sh``.
+    """
+    for path in sorted(evals_dir.glob("*.json")):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, list) and data and all(isinstance(x, dict) for x in data):
+            return True
+        if isinstance(data, dict) and isinstance(data.get("evals"), list):
+            return True
+    return False
+
+
 def _is_nonempty_strlist(value: object) -> bool:
     return (
         isinstance(value, list) and bool(value) and all(str(x).strip() for x in value)
@@ -133,6 +159,18 @@ def validate(evals_dir: Path, min_scenarios: int) -> list[str]:
         return [f"evals directory not found: {evals_dir}"]
 
     files = _scenario_files(evals_dir)
+    if not files and _looks_like_shared_json_layout(evals_dir):
+        return [
+            (
+                f"{evals_dir} holds JSON evals, not retro's Markdown scenarios. "
+                "This validator is repo-scoped: it checks retro's OWN evals only, "
+                "so pointing it at another skill's evals/ reports an empty "
+                "inventory no matter how many scenarios are in there. "
+                "Validate the shared JSON layout with skill-repo-skill's "
+                "validate-evals.sh instead."
+            )
+        ]
+
     errors: list[str] = []
     if len(files) < min_scenarios:
         errors.append(f"too few scenarios: found {len(files)}, need >= {min_scenarios}")
