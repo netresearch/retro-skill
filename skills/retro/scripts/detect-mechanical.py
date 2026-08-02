@@ -369,10 +369,6 @@ _SHELL_NOISE = {
     "[",
     "[[",
     "]]",
-    "time",
-    "sudo",
-    "env",
-    "command",
     "exec",
     "source",
     ".",
@@ -380,6 +376,23 @@ _SHELL_NOISE = {
     "shift",
     "eval",
 }
+# Wrappers do not identify the work — the command they wrap does. Skipping the
+# whole segment on seeing one hides the probe entirely: `timeout 300 gh api ...`
+# counted as "timeout", `sudo gh pr view` as nothing at all.
+_WRAPPERS = {"env", "sudo", "command", "time", "timeout", "nohup", "nice", "stdbuf"}
+# Only these git subcommands leave the machine; git status/log/diff are local.
+_REMOTE_GIT = {"fetch", "pull", "push", "clone", "ls-remote", "remote", "submodule"}
+
+
+def is_remote_shape(shape: str) -> bool:
+    """True when the shape leaves the machine — a round trip worth counting."""
+    parts = shape.split()
+    prog = parts[0]
+    if prog == "git":
+        return len(parts) > 1 and parts[1] in _REMOTE_GIT
+    return prog in _REMOTE_PREFIX
+
+
 _VALUEISH = re.compile(r"""^(-|/|\.|~|\$|\d|['"])""")
 # Statement separators inside one shell string: ; newline || && | $( `
 SEGMENT_SPLIT = re.compile(r"[;\n]|\|\||&&|\||\$\(|`")
@@ -440,9 +453,21 @@ def command_shapes(cmd: str) -> list[str]:
     shapes: list[str] = []
     for seg in re.split(SEGMENT_SPLIT, cmd or ""):
         toks = seg.strip().split()
-        # drop leading VAR=value assignments
-        while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
-            toks.pop(0)
+        # Peel leading VAR=value assignments and wrapper commands (with their own
+        # flags and numeric arguments) until the real program is in front.
+        peeled = True
+        while peeled and toks:
+            peeled = False
+            while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
+                toks.pop(0)
+                peeled = True
+            if toks and toks[0].split("/")[-1] in _WRAPPERS:
+                toks.pop(0)
+                peeled = True
+                while toks and (
+                    toks[0].startswith("-") or re.match(r"^\d+[smhd]?$", toks[0])
+                ):
+                    toks.pop(0)
         if not toks:
             continue
         prog = toks[0].split("/")[-1]
@@ -450,8 +475,12 @@ def command_shapes(cmd: str) -> list[str]:
         # crash every consumer that splits it.
         if not prog or prog in _SHELL_NOISE or _VALUEISH.match(prog):
             continue
+        # git subcommands are single-level: everything after `git push` is an
+        # argument, so `git push origin` and `git push` must not split apart.
+        # gh/glab/docker nest two deep (`gh pr view`, `docker compose up`).
+        depth = 1 if prog == "git" else 2
         parts = [prog]
-        for t in toks[1:3]:
+        for t in toks[1 : 1 + depth]:
             if _VALUEISH.match(t) or "=" in t:
                 break
             if not re.match(r"^[a-z][a-z0-9:_-]*$", t):
@@ -1082,7 +1111,7 @@ def signal_repeated_probe(tool_uses, min_count: int = A19_MIN_COUNT) -> list[dic
         prog = shape.split()[0]
         if prog in _PLUMBING:
             continue  # pipeline noise, not a probe
-        remote = prog in _REMOTE_PREFIX
+        remote = is_remote_shape(shape)
         span = turns[-1] - turns[0]
         out.append(
             {

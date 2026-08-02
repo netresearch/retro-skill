@@ -658,3 +658,31 @@ class TestMechanizableWaste(unittest.TestCase):
         with_rule = self._findings(evs, "C6", "never grep on a structured file")
         self.assertTrue(any(f["violated_signal"] == "A11" for f in with_rule))
         self.assertEqual(self._findings(evs, "C6", "unrelated prose"), [])
+
+    def test_A19_unwraps_wrapper_commands(self):
+        # timeout/sudo/env/time must not become the shape — the wrapped
+        # command is the probe. `timeout 300 gh api ...` counted as "timeout".
+        import importlib
+
+        del importlib  # keep linters quiet; module already loaded above
+        for cmd, want in (
+            ("timeout 300 gh api repos/x", "gh api"),
+            ("sudo gh pr view 1", "gh pr view"),
+            ("env FOO=1 gh pr view 2", "gh pr view"),
+            ("nice -n 5 docker ps", "docker ps"),
+        ):
+            self.assertEqual(detect.command_shapes(cmd), [want], cmd)
+
+    def test_remote_flag_scoped_to_network_git(self):
+        self.assertTrue(detect.is_remote_shape("git push"))
+        self.assertTrue(detect.is_remote_shape("git fetch"))
+        self.assertFalse(detect.is_remote_shape("git status"))
+        self.assertFalse(detect.is_remote_shape("git log"))
+        self.assertTrue(detect.is_remote_shape("gh api"))
+
+    def test_git_subcommand_depth_is_one(self):
+        # `git push origin main` and `git push` are the same probe.
+        self.assertEqual(detect.command_shapes("git push origin main"), ["git push"])
+        self.assertEqual(detect.command_shapes("git push"), ["git push"])
+        # gh nests two deep.
+        self.assertEqual(detect.command_shapes("gh pr view 1"), ["gh pr view"])
