@@ -589,6 +589,12 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_not_signal(evs, "A14")
 
+    def test_A14_wrapped_git_still_counts(self):
+        """`sudo git push origin main` is a push to main."""
+        for cmd in ("sudo git push origin main", "env git push origin main"):
+            evs = tool_use_pair("u1", "Bash", {"command": cmd}, "ok")
+            self.assert_signal(evs, "A14")
+
     def test_A14_status_header_sets_the_branch(self):
         """`On branch main` is the commonest way the branch appears in output."""
         evs = tool_use_pair("s", "Bash", {"command": "git status"}, "On branch main")

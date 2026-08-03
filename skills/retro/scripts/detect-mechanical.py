@@ -74,8 +74,10 @@ OUTDATED_TOOL = re.compile(
     re.IGNORECASE,
 )
 GIT_BRANCH_MAIN = re.compile(r"\b(?:main|master)\b")
-# `(?:(?!-[bc]\b)-\S+\s+)*` skips flags that come before the branch-creating
-# one: `git checkout -q -b feat` creates a branch just as `git checkout -b feat`
+# Each alternative skips the flags that come before its branch-creating one via
+# its own negative lookahead (`(?!-b\b)` / `(?!-c\b)`), so the `*` cannot eat the
+# flag it is looking for: `git checkout -q -b feat` creates a branch just as
+# `git checkout -b feat`
 # does, but without this the switch went unrecognised and the tracked branch
 # stayed on whatever was checked out before it.
 GIT_CHECKOUT_B = re.compile(
@@ -521,10 +523,24 @@ def git_segments(cmd: str) -> list[str]:
     segments = []
     for seg in split_segments(HEREDOC.sub(" ", cmd or "")):
         toks = seg.strip().split()
-        while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
-            toks.pop(0)
+        # Peel assignments and wrappers, exactly as command_shapes does — without
+        # this, `sudo git push origin main` and `timeout 60 git commit` stop
+        # being git operations and the signal goes quiet on real violations.
+        peeled = True
+        while peeled and toks:
+            peeled = False
+            while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
+                toks.pop(0)
+                peeled = True
+            if toks and toks[0].split("/")[-1] in _WRAPPERS:
+                toks.pop(0)
+                peeled = True
+                while toks and (
+                    toks[0].startswith("-") or re.match(r"^\d+[smhd]?$", toks[0])
+                ):
+                    toks.pop(0)
         if toks and toks[0].split("/")[-1] == "git":
-            segments.append(seg)
+            segments.append(" ".join(toks))
     return segments
 
 
