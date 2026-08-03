@@ -727,3 +727,18 @@ class TestMechanizableWaste(unittest.TestCase):
             detect.command_shapes('echo "$(git rev-parse HEAD)"'), ["git rev-parse"]
         )
         self.assertEqual(detect.command_shapes('X="`git describe`"'), ["git describe"])
+
+    def test_command_after_a_substitution_is_not_lost(self):
+        """Closing `$( )` must return to the command that wrapped it."""
+        self.assertEqual(
+            detect.command_shapes('FOO="$(git rev-parse HEAD)" gh pr view 1'),
+            ["git rev-parse", "gh pr view"],
+        )
+        self.assertEqual(
+            detect.command_shapes("X=$(git describe) && gh pr create"),
+            ["git describe", "gh pr create"],
+        )
+        self.assertEqual(
+            detect.command_shapes('echo "$(git log -1)" | gh pr comment 1'),
+            ["git log", "gh pr comment"],
+        )

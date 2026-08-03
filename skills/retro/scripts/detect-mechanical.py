@@ -441,8 +441,24 @@ def split_segments(cmd: str) -> list[str]:
                     flush()
                     i += 2 if ch == "$" else 1
                     continue
+                # Closing the substitution returns to the command that wrapped
+                # it, which has to be examined on its own: without this,
+                # `FOO="$(git rev-parse HEAD)" gh pr view 1` reported only the
+                # inner `git rev-parse` and lost `gh pr view` entirely.
+                if ch == ")":
+                    flush()
+                    i += 1
+                    continue
             if ch == quote:
                 quote = None
+                # After a substitution flushed, the closing quote would open the
+                # next segment and be tokenised as its program. It carries no
+                # information there, so drop it; elsewhere it is kept, because a
+                # leading quote is what marks a token as a value rather than a
+                # subcommand.
+                if not buf:
+                    i += 1
+                    continue
             buf.append(ch)
             i += 1
             continue
@@ -467,6 +483,10 @@ def split_segments(cmd: str) -> list[str]:
         if cmd.startswith("$(", i):
             flush()
             i += 2
+            continue
+        if ch == ")":
+            flush()
+            i += 1
             continue
         buf.append(ch)
         i += 1
