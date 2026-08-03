@@ -375,7 +375,13 @@ _SHELL_NOISE = {
     "read",
     "shift",
     "eval",
+    "continue",
+    "break",
 }
+# A program name, to reject the shell syntax that survives segmentation: a
+# comment (`# note`), a case arm (`*)`), a brace (`{ echo`, `}`), arithmetic
+# (`(m+1))`). Those were reported as commands nobody ran.
+_PROGRAM_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_.+-]*$")
 # Wrappers do not identify the work — the command they wrap does. Skipping the
 # whole segment on seeing one hides the probe entirely: `timeout 300 gh api ...`
 # counted as "timeout", `sudo gh pr view` as nothing at all.
@@ -394,8 +400,79 @@ def is_remote_shape(shape: str) -> bool:
 
 
 _VALUEISH = re.compile(r"""^(-|/|\.|~|\$|\d|['"])""")
-# Statement separators inside one shell string: ; newline || && | $( `
-SEGMENT_SPLIT = re.compile(r"[;\n]|\|\||&&|\||\$\(|`")
+
+
+def split_segments(cmd: str) -> list[str]:
+    """Split one shell string on separators that sit OUTSIDE quotes.
+
+    A regex split treats every `|`, `;` and newline as a separator, including
+    the ones inside a quoted argument. That turns the pipes of a jq program
+    (`--jq '[.[]|select(.x)] | length'`) and the newlines of an inline script
+    (`python3 -c "import yaml\\nprint(x)"`) into statement boundaries, and the
+    first word of each fragment is then reported as a command that was never
+    run — `select(.x)]`, `length'`, `import yaml`.
+
+    Shell rules decide what still separates inside quotes: nothing does inside
+    single quotes, and inside double quotes only command substitution (`$(`
+    and a backtick) opens a new command.
+    """
+    segments: list[str] = []
+    buf: list[str] = []
+    quote: str | None = None
+    i = 0
+    cmd = cmd or ""
+
+    def flush() -> None:
+        segments.append("".join(buf))
+        buf.clear()
+
+    while i < len(cmd):
+        ch = cmd[i]
+        if quote:
+            if quote == '"':
+                if ch == "\\" and i + 1 < len(cmd):
+                    buf.append(ch)
+                    buf.append(cmd[i + 1])
+                    i += 2
+                    continue
+                # Command substitution is the one thing that still starts a
+                # command inside double quotes.
+                if cmd.startswith("$(", i) or ch == "`":
+                    flush()
+                    i += 2 if ch == "$" else 1
+                    continue
+            if ch == quote:
+                quote = None
+            buf.append(ch)
+            i += 1
+            continue
+
+        if ch in "'\"":
+            quote = ch
+            buf.append(ch)
+            i += 1
+            continue
+        if ch in ";\n`":
+            flush()
+            i += 1
+            continue
+        if cmd.startswith("&&", i) or cmd.startswith("||", i):
+            flush()
+            i += 2
+            continue
+        if ch == "|":
+            flush()
+            i += 1
+            continue
+        if cmd.startswith("$(", i):
+            flush()
+            i += 2
+            continue
+        buf.append(ch)
+        i += 1
+
+    flush()
+    return segments
 
 
 HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", re.DOTALL | re.MULTILINE)
@@ -451,7 +528,7 @@ def command_shapes(cmd: str) -> list[str]:
     """Every distinct program+subcommand shape invoked in one shell string."""
     cmd = HEREDOC.sub(" ", cmd or "")
     shapes: list[str] = []
-    for seg in re.split(SEGMENT_SPLIT, cmd or ""):
+    for seg in split_segments(cmd):
         toks = seg.strip().split()
         # Peel leading VAR=value assignments and wrapper commands (with their own
         # flags and numeric arguments) until the real program is in front.
@@ -474,6 +551,8 @@ def command_shapes(cmd: str) -> list[str]:
         # A bare "/" or a trailing slash leaves prog empty; an empty shape would
         # crash every consumer that splits it.
         if not prog or prog in _SHELL_NOISE or _VALUEISH.match(prog):
+            continue
+        if not _PROGRAM_NAME.match(prog):
             continue
         # git subcommands are single-level: everything after `git push` is an
         # argument, so `git push origin` and `git push` must not split apart.
