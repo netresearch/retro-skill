@@ -686,3 +686,59 @@ class TestMechanizableWaste(unittest.TestCase):
         self.assertEqual(detect.command_shapes("git push"), ["git push"])
         # gh nests two deep.
         self.assertEqual(detect.command_shapes("gh pr view 1"), ["gh pr view"])
+
+    def test_quoted_separators_are_not_statement_boundaries(self):
+        """A pipe inside a jq program is jq syntax, not a second command."""
+        self.assertEqual(
+            detect.command_shapes(
+                "gh pr checks 329 --repo x/y --json bucket "
+                """--jq '[.[]|select(.bucket=="pending")] | length'"""
+            ),
+            ["gh pr checks"],
+        )
+        self.assertEqual(
+            detect.command_shapes(
+                """gh api repos/x/y --jq '.s[] | select(.c|startswith("cov"))'"""
+            ),
+            ["gh api"],
+        )
+
+    def test_newlines_inside_an_inline_script_are_not_boundaries(self):
+        """`python3 -c "..."` is one command, not one per line of the script."""
+        self.assertEqual(
+            detect.command_shapes('/usr/bin/python3 -c "\nimport yaml\nprint(1)\n"'),
+            ["python3"],
+        )
+
+    def test_real_separators_still_split(self):
+        self.assertEqual(
+            detect.command_shapes("git status && git push"), ["git status", "git push"]
+        )
+        self.assertEqual(
+            detect.command_shapes("gh run list | head -3"), ["gh run list", "head"]
+        )
+        self.assertEqual(
+            detect.command_shapes("cat f.txt | jq -r '.a|.b'"), ["cat", "jq"]
+        )
+
+    def test_command_substitution_inside_double_quotes_still_counts(self):
+        """`$(...)` and backticks do expand inside double quotes."""
+        self.assertEqual(
+            detect.command_shapes('echo "$(git rev-parse HEAD)"'), ["git rev-parse"]
+        )
+        self.assertEqual(detect.command_shapes('X="`git describe`"'), ["git describe"])
+
+    def test_command_after_a_substitution_is_not_lost(self):
+        """Closing `$( )` must return to the command that wrapped it."""
+        self.assertEqual(
+            detect.command_shapes('FOO="$(git rev-parse HEAD)" gh pr view 1'),
+            ["git rev-parse", "gh pr view"],
+        )
+        self.assertEqual(
+            detect.command_shapes("X=$(git describe) && gh pr create"),
+            ["git describe", "gh pr create"],
+        )
+        self.assertEqual(
+            detect.command_shapes('echo "$(git log -1)" | gh pr comment 1'),
+            ["git log", "gh pr comment"],
+        )
