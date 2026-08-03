@@ -74,8 +74,14 @@ OUTDATED_TOOL = re.compile(
     re.IGNORECASE,
 )
 GIT_BRANCH_MAIN = re.compile(r"\b(?:main|master)\b")
+# `(?:(?!-[bc]\b)-\S+\s+)*` skips flags that come before the branch-creating
+# one: `git checkout -q -b feat` creates a branch just as `git checkout -b feat`
+# does, but without this the switch went unrecognised and the tracked branch
+# stayed on whatever was checked out before it.
 GIT_CHECKOUT_B = re.compile(
-    r"git\s+checkout\s+-b\b|git\s+switch\s+-c\b|git\s+worktree\s+add\s+-b\b"
+    r"git\s+checkout\s+(?:(?!-b\b)-\S+\s+)*-b\b"
+    r"|git\s+switch\s+(?:(?!-c\b)-\S+\s+)*-c\b"
+    r"|git\s+worktree\s+add\s+(?:(?!-b\b)-\S+\s+)*-b\b"
 )
 # A14 branch-state tracking: a checkout/switch to a named branch, a worktree
 # added on an existing branch, or a branch reported in command output. Used to
@@ -90,8 +96,11 @@ GIT_SWITCH_TO = re.compile(
 GIT_WORKTREE_ADD_BRANCH = re.compile(
     r"\bgit\s+worktree\s+add\s+(?:-[^\s;&|]+\s+)*\S+\s+(?P<br>[^\s;&|-][^\s;&|]*)"
 )
+# `On branch` is followed by a space, the other two by an optional quote. The
+# missing `\s+` meant the `git status` header — the most common way a branch
+# appears in output — never set the tracked branch at all.
 GIT_ON_BRANCH_OUT = re.compile(
-    r"(?:On branch|Switched to(?: a new)? branch '?|Already on '?)(?P<br>[\w./-]+)"
+    r"(?:On branch\s+|Switched to(?: a new)? branch '?|Already on '?)(?P<br>[\w./-]+)"
 )
 GIT_COMMIT = re.compile(r"\bgit\s+commit\b")
 # `(?![\w-])` requires main/master as a full token so "main-menu" / "master2"
@@ -497,6 +506,28 @@ def split_segments(cmd: str) -> list[str]:
 
 HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", re.DOTALL | re.MULTILINE)
 
+
+def git_segments(cmd: str) -> list[str]:
+    """The statements in `cmd` that actually invoke git.
+
+    Matching a pattern like `git push … main` against the raw command string
+    also matches the *words* `git push` wherever they appear as data — in a
+    replacement string, a documentation example, a script being written. That
+    is how editing this file made A14 report "worked on main" seven times for
+    commands that ran no git at all. Segmenting first (quote-aware) and keeping
+    only the segments whose program is git leaves the pattern nothing to
+    misread.
+    """
+    segments = []
+    for seg in split_segments(HEREDOC.sub(" ", cmd or "")):
+        toks = seg.strip().split()
+        while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
+            toks.pop(0)
+        if toks and toks[0].split("/")[-1] == "git":
+            segments.append(seg)
+    return segments
+
+
 # Local text plumbing. Repeating these is a pipeline, not a probe worth
 # wrapping in a script; wrong-tool use is A11's job, verbosity is A3's.
 _PLUMBING = {
@@ -876,8 +907,13 @@ def signal_main_branch_work(tool_uses) -> list[dict]:
 
         # A commit while on main is the violation; a push only counts when it
         # targets the main branch (a bare push of a tag/other ref is fine).
-        committed_on_main = GIT_COMMIT.search(cmd) and on_main is True
-        if committed_on_main or GIT_PUSH_TO_MAIN.search(cmd):
+        # Both are matched against the segments that really invoke git, so the
+        # words `git push … main` sitting in data do not count as either.
+        git_segs = git_segments(cmd)
+        committed_on_main = (
+            any(GIT_COMMIT.search(seg) for seg in git_segs) and on_main is True
+        )
+        if committed_on_main or any(GIT_PUSH_TO_MAIN.search(seg) for seg in git_segs):
             out.append(
                 {
                     "signal": "A14",
