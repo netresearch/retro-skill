@@ -74,8 +74,16 @@ OUTDATED_TOOL = re.compile(
     re.IGNORECASE,
 )
 GIT_BRANCH_MAIN = re.compile(r"\b(?:main|master)\b")
+# Each alternative skips the flags that come before its branch-creating one via
+# its own negative lookahead (`(?!-b\b)` / `(?!-c\b)`), so the `*` cannot eat the
+# flag it is looking for: `git checkout -q -b feat` creates a branch just as
+# `git checkout -b feat`
+# does, but without this the switch went unrecognised and the tracked branch
+# stayed on whatever was checked out before it.
 GIT_CHECKOUT_B = re.compile(
-    r"git\s+checkout\s+-b\b|git\s+switch\s+-c\b|git\s+worktree\s+add\s+-b\b"
+    r"git\s+checkout\s+(?:(?!-b\b)-\S+\s+)*-b\b"
+    r"|git\s+switch\s+(?:(?!-c\b)-\S+\s+)*-c\b"
+    r"|git\s+worktree\s+add\s+(?:(?!-b\b)-\S+\s+)*-b\b"
 )
 # A14 branch-state tracking: a checkout/switch to a named branch, a worktree
 # added on an existing branch, or a branch reported in command output. Used to
@@ -90,8 +98,11 @@ GIT_SWITCH_TO = re.compile(
 GIT_WORKTREE_ADD_BRANCH = re.compile(
     r"\bgit\s+worktree\s+add\s+(?:-[^\s;&|]+\s+)*\S+\s+(?P<br>[^\s;&|-][^\s;&|]*)"
 )
+# `On branch` is followed by a space, the other two by an optional quote. The
+# missing `\s+` meant the `git status` header — the most common way a branch
+# appears in output — never set the tracked branch at all.
 GIT_ON_BRANCH_OUT = re.compile(
-    r"(?:On branch|Switched to(?: a new)? branch '?|Already on '?)(?P<br>[\w./-]+)"
+    r"(?:On branch\s+|Switched to(?: a new)? branch '?|Already on '?)(?P<br>[\w./-]+)"
 )
 GIT_COMMIT = re.compile(r"\bgit\s+commit\b")
 # `(?![\w-])` requires main/master as a full token so "main-menu" / "master2"
@@ -497,6 +508,92 @@ def split_segments(cmd: str) -> list[str]:
 
 HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", re.DOTALL | re.MULTILINE)
 
+
+ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+# Wrapper options that take a separate value. Dropping the flag but leaving its
+# argument hides the program behind it: `sudo -u root git push` peeled to
+# `root git push`, whose first token is not git, so the operation vanished.
+# `--flag=value` needs no entry here — it is one token.
+_WRAPPER_VALUE_FLAGS = {
+    "sudo": {
+        "-u",
+        "--user",
+        "-g",
+        "--group",
+        "-p",
+        "--prompt",
+        "-h",
+        "--host",
+        "-r",
+        "--role",
+        "-t",
+        "--type",
+        "-C",
+        "--close-from",
+    },
+    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
+    "timeout": {"-s", "--signal", "-k", "--kill-after"},
+    "nice": {"-n", "--adjustment"},
+    "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
+}
+
+
+def _drop_wrapper_args(toks: list[str], wrapper: str) -> None:
+    """Consume a wrapper's own flags, values included, in place."""
+    takes_value = _WRAPPER_VALUE_FLAGS.get(wrapper, set())
+    while toks:
+        tok = toks[0]
+        if tok.startswith("-"):
+            toks.pop(0)
+            if tok in takes_value and toks and not toks[0].startswith("-"):
+                toks.pop(0)
+            continue
+        if re.match(r"^\d+[smhd]?$", tok):  # `timeout 60`
+            toks.pop(0)
+            continue
+        return
+
+
+def peel_to_program(toks: list[str]) -> list[str]:
+    """Drop leading VAR=value assignments and wrapper commands, in place order.
+
+    `env FOO=1 sudo -u x timeout 60 git push` is a git operation; the wrappers
+    and their own flags say nothing about the work. Shared by command_shapes()
+    and git_segments() so the two cannot drift — a copy of this loop in the
+    latter is what made `sudo git push origin main` stop counting.
+    """
+    peeled = True
+    while peeled and toks:
+        peeled = False
+        while toks and ASSIGNMENT.match(toks[0]):
+            toks.pop(0)
+            peeled = True
+        if toks and toks[0].split("/")[-1] in _WRAPPERS:
+            wrapper = toks.pop(0).split("/")[-1]
+            peeled = True
+            _drop_wrapper_args(toks, wrapper)
+    return toks
+
+
+def git_segments(cmd: str) -> list[str]:
+    """The statements in `cmd` that actually invoke git.
+
+    Matching a pattern like `git push … main` against the raw command string
+    also matches the *words* `git push` wherever they appear as data — in a
+    replacement string, a documentation example, a script being written. That
+    is how editing this file made A14 report "worked on main" seven times for
+    commands that ran no git at all. Segmenting first (quote-aware) and keeping
+    only the segments whose program is git leaves the pattern nothing to
+    misread.
+    """
+    segments = []
+    for seg in split_segments(HEREDOC.sub(" ", cmd or "")):
+        toks = peel_to_program(seg.strip().split())
+        if toks and toks[0].split("/")[-1] == "git":
+            segments.append(" ".join(toks))
+    return segments
+
+
 # Local text plumbing. Repeating these is a pipeline, not a probe worth
 # wrapping in a script; wrong-tool use is A11's job, verbosity is A3's.
 _PLUMBING = {
@@ -549,22 +646,7 @@ def command_shapes(cmd: str) -> list[str]:
     cmd = HEREDOC.sub(" ", cmd or "")
     shapes: list[str] = []
     for seg in split_segments(cmd):
-        toks = seg.strip().split()
-        # Peel leading VAR=value assignments and wrapper commands (with their own
-        # flags and numeric arguments) until the real program is in front.
-        peeled = True
-        while peeled and toks:
-            peeled = False
-            while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
-                toks.pop(0)
-                peeled = True
-            if toks and toks[0].split("/")[-1] in _WRAPPERS:
-                toks.pop(0)
-                peeled = True
-                while toks and (
-                    toks[0].startswith("-") or re.match(r"^\d+[smhd]?$", toks[0])
-                ):
-                    toks.pop(0)
+        toks = peel_to_program(seg.strip().split())
         if not toks:
             continue
         prog = toks[0].split("/")[-1]
@@ -876,8 +958,13 @@ def signal_main_branch_work(tool_uses) -> list[dict]:
 
         # A commit while on main is the violation; a push only counts when it
         # targets the main branch (a bare push of a tag/other ref is fine).
-        committed_on_main = GIT_COMMIT.search(cmd) and on_main is True
-        if committed_on_main or GIT_PUSH_TO_MAIN.search(cmd):
+        # Both are matched against the segments that really invoke git, so the
+        # words `git push … main` sitting in data do not count as either.
+        git_segs = git_segments(cmd)
+        committed_on_main = (
+            any(GIT_COMMIT.search(seg) for seg in git_segs) and on_main is True
+        )
+        if committed_on_main or any(GIT_PUSH_TO_MAIN.search(seg) for seg in git_segs):
             out.append(
                 {
                     "signal": "A14",

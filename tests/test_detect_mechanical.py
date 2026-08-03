@@ -566,6 +566,54 @@ class TestSchichtA(unittest.TestCase):
         finally:
             path.unlink(missing_ok=True)
 
+    def test_A14_git_words_in_data_are_not_a_git_operation(self):
+        """`git push … main` written into a file is not a push to main."""
+        evs = tool_use_pair(
+            "u1",
+            "Bash",
+            {"command": "python3 -c \"s = 'git push origin main'\""},
+            "ok",
+        )
+        self.assert_not_signal(evs, "A14")
+
+    def test_A14_flags_before_dash_b_still_create_a_branch(self):
+        """`git checkout -q -b feat` creates a branch just as `-b feat` does."""
+        evs = tool_use_pair(
+            "c",
+            "Bash",
+            {"command": "git checkout -q main && git checkout -q -b feat/x"},
+            "Switched to a new branch 'feat/x'",
+        )
+        evs += tool_use_pair(
+            "u1", "Bash", {"command": "git commit -m wip"}, "1 file changed"
+        )
+        self.assert_not_signal(evs, "A14")
+
+    def test_A14_wrapped_git_still_counts(self):
+        """`sudo git push origin main` is a push to main."""
+        for cmd in ("sudo git push origin main", "env git push origin main"):
+            evs = tool_use_pair("u1", "Bash", {"command": cmd}, "ok")
+            self.assert_signal(evs, "A14")
+
+    def test_A14_wrapper_flag_values_do_not_hide_git(self):
+        """`sudo -u root git push origin main` is still a push to main."""
+        for cmd in (
+            "sudo -u root git push origin main",
+            "env -u GIT_DIR git push origin main",
+            "timeout -s KILL 60 git push origin main",
+            "nice -n 10 git push origin main",
+        ):
+            evs = tool_use_pair("u1", "Bash", {"command": cmd}, "ok")
+            self.assert_signal(evs, "A14")
+
+    def test_A14_status_header_sets_the_branch(self):
+        """`On branch main` is the commonest way the branch appears in output."""
+        evs = tool_use_pair("s", "Bash", {"command": "git status"}, "On branch main")
+        evs += tool_use_pair(
+            "u1", "Bash", {"command": "git commit -m wip"}, "1 file changed"
+        )
+        self.assert_signal(evs, "A14")
+
 
 class TestHelpers(unittest.TestCase):
     def test_extract_user_texts_handles_string_content(self):
