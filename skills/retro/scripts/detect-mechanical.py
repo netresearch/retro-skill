@@ -510,6 +510,48 @@ HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", re.DOTALL | re.MULTILIN
 
 
 ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+# Wrapper options that take a separate value. Dropping the flag but leaving its
+# argument hides the program behind it: `sudo -u root git push` peeled to
+# `root git push`, whose first token is not git, so the operation vanished.
+# `--flag=value` needs no entry here — it is one token.
+_WRAPPER_VALUE_FLAGS = {
+    "sudo": {
+        "-u",
+        "--user",
+        "-g",
+        "--group",
+        "-p",
+        "--prompt",
+        "-h",
+        "--host",
+        "-r",
+        "--role",
+        "-t",
+        "--type",
+        "-C",
+        "--close-from",
+    },
+    "env": {"-u", "--unset", "-C", "--chdir", "-S", "--split-string"},
+    "timeout": {"-s", "--signal", "-k", "--kill-after"},
+    "nice": {"-n", "--adjustment"},
+    "stdbuf": {"-i", "--input", "-o", "--output", "-e", "--error"},
+}
+
+
+def _drop_wrapper_args(toks: list[str], wrapper: str) -> None:
+    """Consume a wrapper's own flags, values included, in place."""
+    takes_value = _WRAPPER_VALUE_FLAGS.get(wrapper, set())
+    while toks:
+        tok = toks[0]
+        if tok.startswith("-"):
+            toks.pop(0)
+            if tok in takes_value and toks and not toks[0].startswith("-"):
+                toks.pop(0)
+            continue
+        if re.match(r"^\d+[smhd]?$", tok):  # `timeout 60`
+            toks.pop(0)
+            continue
+        return
 
 
 def peel_to_program(toks: list[str]) -> list[str]:
@@ -527,12 +569,9 @@ def peel_to_program(toks: list[str]) -> list[str]:
             toks.pop(0)
             peeled = True
         if toks and toks[0].split("/")[-1] in _WRAPPERS:
-            toks.pop(0)
+            wrapper = toks.pop(0).split("/")[-1]
             peeled = True
-            while toks and (
-                toks[0].startswith("-") or re.match(r"^\d+[smhd]?$", toks[0])
-            ):
-                toks.pop(0)
+            _drop_wrapper_args(toks, wrapper)
     return toks
 
 

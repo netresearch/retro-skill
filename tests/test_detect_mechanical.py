@@ -595,6 +595,17 @@ class TestSchichtA(unittest.TestCase):
             evs = tool_use_pair("u1", "Bash", {"command": cmd}, "ok")
             self.assert_signal(evs, "A14")
 
+    def test_A14_wrapper_flag_values_do_not_hide_git(self):
+        """`sudo -u root git push origin main` is still a push to main."""
+        for cmd in (
+            "sudo -u root git push origin main",
+            "env -u GIT_DIR git push origin main",
+            "timeout -s KILL 60 git push origin main",
+            "nice -n 10 git push origin main",
+        ):
+            evs = tool_use_pair("u1", "Bash", {"command": cmd}, "ok")
+            self.assert_signal(evs, "A14")
+
     def test_A14_status_header_sets_the_branch(self):
         """`On branch main` is the commonest way the branch appears in output."""
         evs = tool_use_pair("s", "Bash", {"command": "git status"}, "On branch main")
