@@ -509,6 +509,33 @@ def split_segments(cmd: str) -> list[str]:
 HEREDOC = re.compile(r"<<-?\s*['\"]?(\w+)['\"]?.*?^\1$", re.DOTALL | re.MULTILINE)
 
 
+ASSIGNMENT = re.compile(r"^[A-Za-z_]\w*=")
+
+
+def peel_to_program(toks: list[str]) -> list[str]:
+    """Drop leading VAR=value assignments and wrapper commands, in place order.
+
+    `env FOO=1 sudo -u x timeout 60 git push` is a git operation; the wrappers
+    and their own flags say nothing about the work. Shared by command_shapes()
+    and git_segments() so the two cannot drift — a copy of this loop in the
+    latter is what made `sudo git push origin main` stop counting.
+    """
+    peeled = True
+    while peeled and toks:
+        peeled = False
+        while toks and ASSIGNMENT.match(toks[0]):
+            toks.pop(0)
+            peeled = True
+        if toks and toks[0].split("/")[-1] in _WRAPPERS:
+            toks.pop(0)
+            peeled = True
+            while toks and (
+                toks[0].startswith("-") or re.match(r"^\d+[smhd]?$", toks[0])
+            ):
+                toks.pop(0)
+    return toks
+
+
 def git_segments(cmd: str) -> list[str]:
     """The statements in `cmd` that actually invoke git.
 
@@ -522,23 +549,7 @@ def git_segments(cmd: str) -> list[str]:
     """
     segments = []
     for seg in split_segments(HEREDOC.sub(" ", cmd or "")):
-        toks = seg.strip().split()
-        # Peel assignments and wrappers, exactly as command_shapes does — without
-        # this, `sudo git push origin main` and `timeout 60 git commit` stop
-        # being git operations and the signal goes quiet on real violations.
-        peeled = True
-        while peeled and toks:
-            peeled = False
-            while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
-                toks.pop(0)
-                peeled = True
-            if toks and toks[0].split("/")[-1] in _WRAPPERS:
-                toks.pop(0)
-                peeled = True
-                while toks and (
-                    toks[0].startswith("-") or re.match(r"^\d+[smhd]?$", toks[0])
-                ):
-                    toks.pop(0)
+        toks = peel_to_program(seg.strip().split())
         if toks and toks[0].split("/")[-1] == "git":
             segments.append(" ".join(toks))
     return segments
@@ -596,22 +607,7 @@ def command_shapes(cmd: str) -> list[str]:
     cmd = HEREDOC.sub(" ", cmd or "")
     shapes: list[str] = []
     for seg in split_segments(cmd):
-        toks = seg.strip().split()
-        # Peel leading VAR=value assignments and wrapper commands (with their own
-        # flags and numeric arguments) until the real program is in front.
-        peeled = True
-        while peeled and toks:
-            peeled = False
-            while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
-                toks.pop(0)
-                peeled = True
-            if toks and toks[0].split("/")[-1] in _WRAPPERS:
-                toks.pop(0)
-                peeled = True
-                while toks and (
-                    toks[0].startswith("-") or re.match(r"^\d+[smhd]?$", toks[0])
-                ):
-                    toks.pop(0)
+        toks = peel_to_program(seg.strip().split())
         if not toks:
             continue
         prog = toks[0].split("/")[-1]
