@@ -277,6 +277,29 @@ class DrainTest(unittest.TestCase):
         self.assertIn("other.md", index)
 
 
+class PruneIndexLineTest(unittest.TestCase):
+    def test_sole_link_drops_line(self):
+        self.assertIsNone(smi._prune_index_line("- [x](a.md) — hook\n", "a.md"))
+
+    def test_grouped_line_keeps_siblings(self):
+        line = "- **CI hygiene**: [one](a.md) · [two](b.md) (@-note) · [three](c.md)\n"
+        self.assertEqual(
+            smi._prune_index_line(line, "b.md"),
+            "- **CI hygiene**: [one](a.md) · [three](c.md)\n",
+        )
+
+    def test_grouped_drain_via_cmd(self):
+        root, memory = _make_root()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        path = _write(memory, "b.md", FEEDBACK)
+        _write(memory, "MEMORY.md", "- **G**: [one](a.md) · [two](b.md)\n")
+        res = _run_drain(path, root)
+        self.assertEqual(res["rc"], 0)
+        index = (memory / "MEMORY.md").read_text(encoding="utf-8")
+        self.assertIn("[one](a.md)", index)
+        self.assertNotIn("b.md", index)
+
+
 GLOBAL_RULES = """# Personal Preferences
 
 - always be nice

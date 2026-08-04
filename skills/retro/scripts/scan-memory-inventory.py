@@ -322,6 +322,36 @@ def _print_text(envelope: dict[str, Any]) -> None:
         print(f"  [{f['signal']}] {f['title']} <- {f['source_path']}")
 
 
+INDEX_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
+
+
+def _prune_index_line(line: str, name: str) -> str | None:
+    """Remove one note's entry from an index line; None drops the whole line.
+
+    MEMORY.md lines are often grouped bullets holding several links separated
+    by " · " — dropping the whole line on a match would take the sibling
+    entries' links with it (observed: a drain of one note removed a 8-link
+    group line). Only when the target link is the line's sole link does the
+    line itself go.
+    """
+    links = INDEX_LINK.findall(line)
+    target = f"]({name})"
+    if sum(target in link for link in links) == len(links):
+        return None
+    if " · " not in line:
+        return None
+    eol = "\n" if line.endswith("\n") else ""
+    content = line.rstrip("\n")
+    prefix, sep, rest = content.partition(": ")
+    if not sep or target in prefix:
+        prefix, rest = "", content
+        sep = ""
+    segments = [s for s in rest.split(" · ") if target not in s]
+    if not segments:
+        return None
+    return prefix + sep + " · ".join(segments) + eol
+
+
 def cmd_drain(args) -> int:
     path: Path = args.path
     try:
@@ -377,13 +407,16 @@ def cmd_drain(args) -> int:
     index_path = memory_dir / INDEX_FILE
     index_pruned = False
     if index_path.is_file():
-        kept = [
-            line
-            for line in index_path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines(keepends=True)
-            if f"]({resolved.name})" not in line
-        ]
+        kept = []
+        for line in index_path.read_text(encoding="utf-8", errors="replace").splitlines(
+            keepends=True
+        ):
+            if f"]({resolved.name})" not in line:
+                kept.append(line)
+                continue
+            pruned = _prune_index_line(line, resolved.name)
+            if pruned is not None:
+                kept.append(pruned)
         index_path.write_text("".join(kept), encoding="utf-8")
         index_pruned = True
 
