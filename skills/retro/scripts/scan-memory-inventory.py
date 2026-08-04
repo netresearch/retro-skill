@@ -20,9 +20,18 @@ content_sha256 used as both an idempotency key and a drain race-check.
 Promote checks ALL memories: by default every project slug under the memory
 root is scanned, not just the current one.
 
+A second opt-in source (--include-global-rules) enumerates the `## ` sections
+of the always-loaded global rules file (~/.claude/CLAUDE.md) as C2
+cross-project-pattern findings, so rules that outgrew the personal scope can be
+promoted into the owning skill. This source is scan-only: the `drain`
+subcommand keeps refusing anything outside a <slug>/memory/ store — a
+global-rule drain is an approval-gated agent edit that removes the section
+only after the upward write is verified (see references/promote-mode.md).
+
 Usage:
     python3 scan-memory-inventory.py [--project SLUG] [--memory-root PATH] \
         [--include-flagged-locations] [--project-dir PATH] \
+        [--include-global-rules] [--global-rules-file PATH] \
         [--output-format json|text]
     python3 scan-memory-inventory.py drain PATH [--memory-root PATH] [--expect-sha256 HEX]
 """
@@ -191,6 +200,69 @@ def _flagged_findings(cwd: Path) -> list[dict[str, Any]]:
     return findings
 
 
+def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
+    """Opt-in C2 findings: one per `## ` section of the global rules file.
+
+    The global rules file is a *destination* for personal preferences, so it is
+    never scanned by default (re-promoting a correct destination loops). The
+    opt-in exists for the one legitimate upward move out of it: a rule whose
+    content generalizes beyond the person — a tool gotcha, a workflow recipe,
+    domain facts — belongs in the owning skill (team-shared), and this source
+    surfaces each section so the classifier can judge it. Always-on behavioral
+    rules must NOT leave the file (a skill loads only on trigger); that filter
+    is the classifier's call, not this scanner's.
+    """
+    if not rules_file.is_file():
+        return []
+    try:
+        text = rules_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    findings: list[dict[str, Any]] = []
+    lines = text.splitlines(keepends=True)
+    section_start: int | None = None
+    title = ""
+    offset = 0
+    spans: list[tuple[str, int, int]] = []
+    for line in lines:
+        if line.startswith("## "):
+            if section_start is not None:
+                spans.append((title, section_start, offset))
+            section_start = offset
+            title = line[3:].strip()
+        elif line.startswith("# ") and section_start is not None:
+            spans.append((title, section_start, offset))
+            section_start = None
+        offset += len(line)
+    if section_start is not None:
+        spans.append((title, section_start, offset))
+    for title, start, end in spans:
+        # Hash the exact slice, un-normalized — same race-check semantics as the
+        # raw-byte hashing of memory files (a whitespace-only edit is an edit).
+        raw_section = text[start:end]
+        section = raw_section.strip()
+        body = section.partition("\n")[2].strip()
+        if not body:
+            continue
+        findings.append(
+            {
+                "signal": "C2",
+                "name": "cross_project_pattern",
+                "source_path": str(rules_file),
+                "section_title": title,
+                "content_sha256": hashlib.sha256(
+                    raw_section.encode("utf-8")
+                ).hexdigest(),
+                "title": title,
+                "description": body.splitlines()[0][:200],
+                "why": _extract_section(body, WHY_MARKER) or "",
+                "how_to_apply": _extract_section(body, HOWTO_MARKER) or "",
+                "current_location": "global-claude-md",
+            }
+        )
+    return findings
+
+
 def cmd_scan(args) -> int:
     memory_root: Path = args.memory_root
     slug_dirs = _iter_slug_dirs(memory_root, args.project)
@@ -217,6 +289,9 @@ def cmd_scan(args) -> int:
     if args.include_flagged_locations:
         project_dir = Path(args.project_dir) if args.project_dir else Path(os.getcwd())
         findings.extend(_flagged_findings(project_dir))
+
+    if getattr(args, "include_global_rules", False):
+        findings.extend(_global_rules_findings(args.global_rules_file))
 
     if not findings and not any(s["present"] for s in slugs_scanned):
         envelope: dict[str, Any] = {
@@ -250,6 +325,36 @@ def _print_text(envelope: dict[str, Any]) -> None:
         print(f"slug {s['slug']}: {s['items']} item(s){flag}")
     for f in envelope.get("findings", []):
         print(f"  [{f['signal']}] {f['title']} <- {f['source_path']}")
+
+
+INDEX_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
+
+
+def _prune_index_line(line: str, name: str) -> str | None:
+    """Remove one note's entry from an index line; None drops the whole line.
+
+    MEMORY.md lines are often grouped bullets holding several links separated
+    by " · " — dropping the whole line on a match would take the sibling
+    entries' links with it (observed: a drain of one note removed a 8-link
+    group line). Only when the target link is the line's sole link does the
+    line itself go.
+    """
+    links = INDEX_LINK.findall(line)
+    target = f"]({name})"
+    if sum(target in link for link in links) == len(links):
+        return None
+    if " · " not in line:
+        return None
+    eol = "\n" if line.endswith("\n") else ""
+    content = line.rstrip("\n")
+    prefix, sep, rest = content.partition(": ")
+    if not sep or target in prefix:
+        prefix, rest = "", content
+        sep = ""
+    segments = [s for s in rest.split(" · ") if target not in s]
+    if not segments:
+        return None
+    return prefix + sep + " · ".join(segments) + eol
 
 
 def cmd_drain(args) -> int:
@@ -307,13 +412,16 @@ def cmd_drain(args) -> int:
     index_path = memory_dir / INDEX_FILE
     index_pruned = False
     if index_path.is_file():
-        kept = [
-            line
-            for line in index_path.read_text(
-                encoding="utf-8", errors="replace"
-            ).splitlines(keepends=True)
-            if f"]({resolved.name})" not in line
-        ]
+        kept = []
+        for line in index_path.read_text(encoding="utf-8", errors="replace").splitlines(
+            keepends=True
+        ):
+            if f"]({resolved.name})" not in line:
+                kept.append(line)
+                continue
+            pruned = _prune_index_line(line, resolved.name)
+            if pruned is not None:
+                kept.append(pruned)
         index_path.write_text("".join(kept), encoding="utf-8")
         index_pruned = True
 
@@ -346,6 +454,19 @@ def main() -> int:
         default=None,
         help="Project dir checked for deprecated local rule stores "
         "(with --include-flagged-locations); default cwd",
+    )
+    parser.add_argument(
+        "--include-global-rules",
+        action="store_true",
+        help="Also emit one C2 finding per `## ` section of the global rules "
+        "file, so rules that outgrew the personal scope can be promoted "
+        "into the owning skill (scan-only; drain stays an agent edit)",
+    )
+    parser.add_argument(
+        "--global-rules-file",
+        type=Path,
+        default=Path.home() / ".claude" / "CLAUDE.md",
+        help="Global rules file scanned by --include-global-rules",
     )
     parser.add_argument("--output-format", choices=["json", "text"], default="json")
 

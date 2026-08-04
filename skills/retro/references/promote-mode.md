@@ -33,12 +33,37 @@ same envelope shape as `detect-mechanical.py`, so Phases 4–10 consume it as-is
 | `<slug>/memory/MEMORY.md` | — | Read as the index; pruned on drain, never itself a finding |
 | `<slug>/memory/.promoted/*.md` | — | Tombstones (already drained) — skipped, never re-emitted |
 | `<project>/CLAUDE.md`, `docs/feedback/*.md` | `B8` wrong_destination | **Opt-in** via `--include-flagged-locations` |
+| `~/.claude/CLAUDE.md`, one finding per `##` section | `C2` cross_project_pattern | **Opt-in** via `--include-global-rules` — see "Draining the global rules file" |
 
 **Excluded by construction** (never part of the scan surface — the scanner only
 globs `<slug>/memory/*.md`, so these are never enumerated in the first place):
-`~/.claude/CLAUDE.md` and `<project>/AGENTS.md` (correct *destinations*, not
-sources — re-promoting them loops), and `.serena/memories/*.md` (project-overview
+`~/.claude/CLAUDE.md` unless `--include-global-rules` is passed and
+`<project>/AGENTS.md` always (they are correct *destinations* — re-promoting
+them by default loops), and `.serena/memories/*.md` (project-overview
 context, not behaviour rules — would pollute global memory).
+
+### Draining the global rules file (`--include-global-rules`)
+
+The global rules file is where personal preferences *land*, so it is not a
+default source. It still accumulates a second kind of content: learned rules
+whose substance is team-usable procedure or domain fact (a CLI gotcha, a
+release recipe, an API trap). Those reach more people as a `skill-update` than
+as private prose, and this opt-in surfaces each `##` section so the classifier
+can judge it. Three binding rules:
+
+1. **Always-on behavior never leaves the file.** A skill loads only when
+   triggered. Rules that must hold in every turn — bans, tone rules,
+   assumption-marking, verification discipline — are not promotable to a
+   skill; at most they *pair* with an enforcement gate (hook/checkpoint) while
+   the prose stays. When in doubt, the section stays.
+2. **Two-direction test.** Promote a section only when BOTH hold: the content
+   generalizes beyond this user, AND losing it from always-loaded context is
+   safe because the owning skill reliably triggers when the content matters.
+3. **Drain is an agent edit, not the `drain` subcommand.** The subcommand
+   refuses paths outside `<slug>/memory/` by design. After the skill PR is
+   verified to exist, remove the section from the rules file with an ordinary
+   approval-gated edit, re-checking the scan's `content_sha256` against the
+   section text first (same race-check semantics). One section per edit.
 
 Each finding carries the source note's verbatim `**Why:**` / `**How to apply:**`
 prose, its `origin_session_id`, a `current_location` tag (the load-bearing
@@ -53,6 +78,40 @@ enumerates every slug that has a `memory/` dir. The scanner **always** reports
 than a silent skip — this guards the worktree-vs-parent slug split (the real
 stock often lives under a sibling slug). If `cwd` finds nothing, re-run with
 `--scope all`.
+
+## Batch semantics — a proposal absorbs notes, the cap counts proposals
+
+A backlog drain meets hundreds of notes; per-note proposals under the ≤10 cap
+would spread one drain across dozens of sessions. In promote mode a **proposal
+is destination-shaped, not note-shaped**: one proposal = one materialization
+target (one skill PR, one AGENTS.md append), absorbing every scanned note that
+classifies to it. Rules:
+
+- The proposal lists every absorbed note by path, with its `content_sha256`.
+  Approval of the proposal approves the set; the user can strike individual
+  notes from the list.
+- One proposal counts once against the ≤10 cap regardless of how many notes it
+  absorbs.
+- Drain stays per-note: each absorbed note is drained individually (verified
+  materialization first), so a partially-landed proposal leaves the
+  unmaterialized notes in place.
+
+## Verify before promoting — stale facts and paraphrase duplicates
+
+Two checks run at Phase 7, before a note enters a proposal:
+
+- **Stale-check.** A `reference`-type note records what was true when written.
+  Before promoting one, verify its load-bearing claim against reality (does
+  the path/flag/endpoint/version still exist?). A stale note is proposed for
+  **tombstone-only drain** (no upward write), clearly labeled.
+- **Paraphrase dedup.** `content_sha256` catches identical text, not the same
+  rule reworded — and stock notes are often already duplicated into
+  `~/.claude/CLAUDE.md` or the target skill. Read the *target* location and
+  compare mechanisms (not titles): if the target already covers the same
+  mechanism, the note is proposed for tombstone-only drain with the covering
+  location cited; if the target covers an adjacent mechanism only, promote and
+  say what is genuinely new. This is the same read-the-target rule as
+  "Instruction pruning" in `classification-heuristic.md`.
 
 ## Materialize-then-drain (Phase 9)
 

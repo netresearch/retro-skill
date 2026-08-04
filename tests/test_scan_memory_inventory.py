@@ -63,6 +63,8 @@ def _run_scan(**kwargs) -> dict:
         memory_root=kwargs["memory_root"],
         include_flagged_locations=kwargs.get("include_flagged_locations", False),
         project_dir=kwargs.get("project_dir"),
+        include_global_rules=kwargs.get("include_global_rules", False),
+        global_rules_file=kwargs.get("global_rules_file", Path("/nonexistent")),
         output_format=kwargs.get("output_format", "json"),
     )
     buf = io.StringIO()
@@ -273,6 +275,97 @@ class DrainTest(unittest.TestCase):
         index = (self.memory / "MEMORY.md").read_text(encoding="utf-8")
         self.assertNotIn("feedback_x.md", index)
         self.assertIn("other.md", index)
+
+
+class PruneIndexLineTest(unittest.TestCase):
+    def test_sole_link_drops_line(self):
+        self.assertIsNone(smi._prune_index_line("- [x](a.md) — hook\n", "a.md"))
+
+    def test_grouped_line_keeps_siblings(self):
+        line = "- **CI hygiene**: [one](a.md) · [two](b.md) (@-note) · [three](c.md)\n"
+        self.assertEqual(
+            smi._prune_index_line(line, "b.md"),
+            "- **CI hygiene**: [one](a.md) · [three](c.md)\n",
+        )
+
+    def test_grouped_drain_via_cmd(self):
+        root, memory = _make_root()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        path = _write(memory, "b.md", FEEDBACK)
+        _write(memory, "MEMORY.md", "- **G**: [one](a.md) · [two](b.md)\n")
+        res = _run_drain(path, root)
+        self.assertEqual(res["rc"], 0)
+        index = (memory / "MEMORY.md").read_text(encoding="utf-8")
+        self.assertIn("[one](a.md)", index)
+        self.assertNotIn("b.md", index)
+
+
+GLOBAL_RULES = """# Personal Preferences
+
+- always be nice
+
+## Signed Git Commits - MANDATORY
+- WHEN: Creating git commits
+- ALWAYS: Use explicit `-S` and `--signoff` flags
+- **Why:** signing may silently fail in subprocess environments
+
+## Empty Section
+
+# Learned Rules
+
+## CI Re-runs Replay Same Commit
+- WHEN: Re-running failed CI workflows after pushing a fix
+- DO: Push the fix first, then re-run the LATEST run
+"""
+
+
+class GlobalRulesSourceTest(unittest.TestCase):
+    def setUp(self):
+        self.root, self.memory = _make_root()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        self.rules = self.root / "CLAUDE.md"
+        self.rules.write_text(GLOBAL_RULES, encoding="utf-8")
+
+    def test_off_by_default(self):
+        _write(self.memory, "feedback_x.md", FEEDBACK)
+        res = _run_scan(memory_root=self.root, global_rules_file=self.rules)
+        locations = {f["current_location"] for f in res["json"]["findings"]}
+        self.assertNotIn("global-claude-md", locations)
+
+    def test_emits_one_c2_per_nonempty_section(self):
+        res = _run_scan(
+            memory_root=self.root,
+            include_global_rules=True,
+            global_rules_file=self.rules,
+        )
+        c2 = [
+            f
+            for f in res["json"]["findings"]
+            if f["current_location"] == "global-claude-md"
+        ]
+        titles = [f["title"] for f in c2]
+        self.assertEqual(
+            titles,
+            ["Signed Git Commits - MANDATORY", "CI Re-runs Replay Same Commit"],
+        )
+        for f in c2:
+            self.assertEqual(f["signal"], "C2")
+            self.assertEqual(f["source_path"], str(self.rules))
+            self.assertTrue(f["content_sha256"])
+        self.assertIn("silently fail", c2[0]["why"])
+
+    def test_missing_rules_file_is_not_an_error(self):
+        res = _run_scan(
+            memory_root=self.root,
+            include_global_rules=True,
+            global_rules_file=self.root / "absent.md",
+        )
+        self.assertEqual(res["rc"], 0)
+
+    def test_drain_refuses_global_rules_file(self):
+        res = _run_drain(self.rules, self.root)
+        self.assertEqual(res["rc"], 2)
+        self.assertTrue(self.rules.is_file())
 
 
 if __name__ == "__main__":
