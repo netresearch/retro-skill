@@ -81,6 +81,13 @@ Example:
 ### 6. `harness-artefact` — Bootstrap
 
 Invokes `agent-harness-skill` bootstrap for a specific artefact:
+- **agent-harness hook** — a Claude Code `PreToolUse`/`Stop` hook wired in
+  `~/.claude/settings.json` (deny or systemMessage nudge). This is the
+  instrument for rules the *agent* keeps violating across every repo — a
+  merge gate on `gh pr merge`, a deny on hand-rolled poll loops. Reach is one
+  machine/user, not a team; when the same gate belongs to teammates, pair it
+  with a `skill-update` carrying the install recipe (script + settings.json
+  wiring), per "Paired materialization" below.
 - pre-commit hook (lefthook / captainhook / husky / pre-commit)
 - linter or static-analysis rule — a new ESLint/PHPStan/golangci-lint rule, a
   raised analyzer level, a `.yamllint.yml` rule, `fail_level: error` on a

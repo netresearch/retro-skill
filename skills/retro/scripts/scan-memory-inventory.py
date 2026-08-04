@@ -20,9 +20,18 @@ content_sha256 used as both an idempotency key and a drain race-check.
 Promote checks ALL memories: by default every project slug under the memory
 root is scanned, not just the current one.
 
+A second opt-in source (--include-global-rules) enumerates the `## ` sections
+of the always-loaded global rules file (~/.claude/CLAUDE.md) as C2
+cross-project-pattern findings, so rules that outgrew the personal scope can be
+promoted into the owning skill. This source is scan-only: the `drain`
+subcommand keeps refusing anything outside a <slug>/memory/ store — a
+global-rule drain is an approval-gated agent edit that removes the section
+only after the upward write is verified (see references/promote-mode.md).
+
 Usage:
     python3 scan-memory-inventory.py [--project SLUG] [--memory-root PATH] \
         [--include-flagged-locations] [--project-dir PATH] \
+        [--include-global-rules] [--global-rules-file PATH] \
         [--output-format json|text]
     python3 scan-memory-inventory.py drain PATH [--memory-root PATH] [--expect-sha256 HEX]
 """
@@ -191,6 +200,64 @@ def _flagged_findings(cwd: Path) -> list[dict[str, Any]]:
     return findings
 
 
+def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
+    """Opt-in C2 findings: one per `## ` section of the global rules file.
+
+    The global rules file is a *destination* for personal preferences, so it is
+    never scanned by default (re-promoting a correct destination loops). The
+    opt-in exists for the one legitimate upward move out of it: a rule whose
+    content generalizes beyond the person — a tool gotcha, a workflow recipe,
+    domain facts — belongs in the owning skill (team-shared), and this source
+    surfaces each section so the classifier can judge it. Always-on behavioral
+    rules must NOT leave the file (a skill loads only on trigger); that filter
+    is the classifier's call, not this scanner's.
+    """
+    if not rules_file.is_file():
+        return []
+    try:
+        text = rules_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    findings: list[dict[str, Any]] = []
+    lines = text.splitlines(keepends=True)
+    section_start: int | None = None
+    title = ""
+    offset = 0
+    spans: list[tuple[str, int, int]] = []
+    for line in lines:
+        if line.startswith("## "):
+            if section_start is not None:
+                spans.append((title, section_start, offset))
+            section_start = offset
+            title = line[3:].strip()
+        elif line.startswith("# ") and section_start is not None:
+            spans.append((title, section_start, offset))
+            section_start = None
+        offset += len(line)
+    if section_start is not None:
+        spans.append((title, section_start, offset))
+    for title, start, end in spans:
+        section = text[start:end].strip()
+        body = section.partition("\n")[2].strip()
+        if not body:
+            continue
+        findings.append(
+            {
+                "signal": "C2",
+                "name": "cross_project_pattern",
+                "source_path": str(rules_file),
+                "section_title": title,
+                "content_sha256": hashlib.sha256(section.encode("utf-8")).hexdigest(),
+                "title": title,
+                "description": body.splitlines()[0][:200],
+                "why": _extract_section(body, WHY_MARKER) or "",
+                "how_to_apply": _extract_section(body, HOWTO_MARKER) or "",
+                "current_location": "global-claude-md",
+            }
+        )
+    return findings
+
+
 def cmd_scan(args) -> int:
     memory_root: Path = args.memory_root
     slug_dirs = _iter_slug_dirs(memory_root, args.project)
@@ -217,6 +284,9 @@ def cmd_scan(args) -> int:
     if args.include_flagged_locations:
         project_dir = Path(args.project_dir) if args.project_dir else Path(os.getcwd())
         findings.extend(_flagged_findings(project_dir))
+
+    if getattr(args, "include_global_rules", False):
+        findings.extend(_global_rules_findings(args.global_rules_file))
 
     if not findings and not any(s["present"] for s in slugs_scanned):
         envelope: dict[str, Any] = {
@@ -346,6 +416,19 @@ def main() -> int:
         default=None,
         help="Project dir checked for deprecated local rule stores "
         "(with --include-flagged-locations); default cwd",
+    )
+    parser.add_argument(
+        "--include-global-rules",
+        action="store_true",
+        help="Also emit one C2 finding per `## ` section of the global rules "
+        "file, so rules that outgrew the personal scope can be promoted "
+        "into the owning skill (scan-only; drain stays an agent edit)",
+    )
+    parser.add_argument(
+        "--global-rules-file",
+        type=Path,
+        default=Path.home() / ".claude" / "CLAUDE.md",
+        help="Global rules file scanned by --include-global-rules",
     )
     parser.add_argument("--output-format", choices=["json", "text"], default="json")
 
