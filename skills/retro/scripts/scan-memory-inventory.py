@@ -237,7 +237,10 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
     if section_start is not None:
         spans.append((title, section_start, offset))
     for title, start, end in spans:
-        section = text[start:end].strip()
+        # Hash the exact slice, un-normalized — same race-check semantics as the
+        # raw-byte hashing of memory files (a whitespace-only edit is an edit).
+        raw_section = text[start:end]
+        section = raw_section.strip()
         body = section.partition("\n")[2].strip()
         if not body:
             continue
@@ -247,7 +250,9 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
                 "name": "cross_project_pattern",
                 "source_path": str(rules_file),
                 "section_title": title,
-                "content_sha256": hashlib.sha256(section.encode("utf-8")).hexdigest(),
+                "content_sha256": hashlib.sha256(
+                    raw_section.encode("utf-8")
+                ).hexdigest(),
                 "title": title,
                 "description": body.splitlines()[0][:200],
                 "why": _extract_section(body, WHY_MARKER) or "",
