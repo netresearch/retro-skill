@@ -136,14 +136,14 @@ When evals are absent: `/retro` operates normally, just without this context sou
 Shelling out to `claude -p` inside an active Claude Code session (an A/B "with vs without skill" harness, an optimizer's target) inherits this session's plugins, whose SessionStart hooks inject their banner into the nested context — weak tasks echo it into the output and contaminate any scorer. Verified isolation that keeps auth and removes the leak:
 
 ```bash
-CLEAN=/tmp/eval-claude-home
-mkdir -p "$CLEAN" && chmod 700 "$CLEAN"
+CLEAN=$(mktemp -d)                      # per-run dir — never a fixed /tmp path
+trap 'rm -rf "$CLEAN"' EXIT             # credentials must not outlive the run
 cp ~/.claude/.credentials.json "$CLEAN/" && chmod 600 "$CLEAN/.credentials.json"
 printf '%s\n' '{"hasCompletedOnboarding": true}' > "$CLEAN/settings.json"
-CLAUDE_CONFIG_DIR=$CLEAN claude -p --output-format json --disable-slash-commands "…" < /dev/null
+CLAUDE_CONFIG_DIR="$CLEAN" claude -p --output-format json --disable-slash-commands "…" < /dev/null
 ```
 
-What does NOT work (tested): `--bare` drops auth ("Not logged in"); `--settings '{"hooks":{}}'` and an empty `--plugin-dir` do not stop plugin SessionStart hooks. Export `CLAUDE_CONFIG_DIR` before launching the harness so every nested call is clean; feed stdin from `/dev/null` to skip the CLI's stdin wait.
+What does NOT work (tested): `--bare` drops auth ("Not logged in"); `--settings '{"hooks":{}}'` and an empty `--plugin-dir` do not stop plugin SessionStart hooks. Prefixing `CLAUDE_CONFIG_DIR="$CLEAN"` isolates that one process; `export CLAUDE_CONFIG_DIR="$CLEAN"` before launching a harness isolates every nested `claude` call it spawns — use the export form for multi-call harnesses. Feed stdin from `/dev/null` to skip the CLI's stdin wait.
 
 ## Eval-oracle design: the eval is the lever, and a wrong eval makes optimization harmful
 
