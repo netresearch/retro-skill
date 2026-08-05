@@ -64,6 +64,12 @@ can judge it. Three binding rules:
    verified to exist, remove the section from the rules file with an ordinary
    approval-gated edit, re-checking the scan's `content_sha256` against the
    section text first (same race-check semantics). One section per edit.
+   Section-removal is markdown surgery and boundary regexes are FENCE-BLIND: a
+   `#`-anchored section-heading boundary also matches `#` comment lines inside code
+   fences, leaving orphaned section tails (observed live). Remove sections
+   fence-aware (track ``` state, or operate on a parsed structure), and verify
+   afterwards that fences are balanced and the section count dropped by exactly
+   the number removed.
 
 Each finding carries the source note's verbatim `**Why:**` / `**How to apply:**`
 prose, its `origin_session_id`, a `current_location` tag (the load-bearing
@@ -71,6 +77,8 @@ evidence the LLM reads at Phase 4), and a `content_sha256` used as both an
 idempotency key and a drain race-check.
 
 ### Scope
+
+`--project` with a leading-dash slug needs the equals form (`--project=-home-user-projects`) — argparse consumes the bare form as an option and errors "expected one argument".
 
 `--scope cwd` (default) scans only the slug derived from the cwd; `--scope all`
 enumerates every slug that has a `memory/` dir. The scanner **always** reports
@@ -92,6 +100,10 @@ classifies to it. Rules:
   notes from the list.
 - One proposal counts once against the ≤10 cap regardless of how many notes it
   absorbs.
+- The mechanical halves of a materialization repeat identically per proposal —
+  use `scripts/materialize-pr.sh` (`start` = fetch + fresh worktree off the
+  default branch; `finish` = stage ONLY named files, signed commit, push, PR
+  via `--body-file`) instead of hand-typing the sequence dozens of times.
 - Drain stays per-note: each absorbed note is drained individually (verified
   materialization first), so a partially-landed proposal leaves the
   unmaterialized notes in place.
