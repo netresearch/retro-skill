@@ -175,10 +175,40 @@ Prefer the prescribed scripts (`find-installed-skills.sh`, `scan-cross-session.p
 over ad-hoc substitutes; reach for an ad-hoc step only when the script genuinely
 cannot serve, and announce it when you do.
 
+## Delegating a phase to subagents
+
+Phases 1–3 over a large stock (Promote meets hundreds of notes) are worth
+fanning out. Two constraints decide whether the fan-out returns anything:
+
+**Ask for findings as text; write the file yourself.** Whether an agent may
+write a report file is not something you can assume. In one promote run the two
+agents dispatched directly wrote their reports fine, while the four *they* in
+turn dispatched were refused — each reported "the Write tool blocked creation of
+the report file, findings must be returned as text" and delivered its findings
+as its final message instead. The discriminator was not established; the lesson
+does not depend on it. An orchestrator that hands out "write your batch to
+`report_batch_NN.md`" and then waits is betting on a capability it never
+checked, and loses silently: the children finish, the files never appear, and
+the absence is indistinguishable from work still in progress. Same defect class
+as a poll loop with no failure branch — an outcome that *cannot* arrive is read
+as one that has *not yet* arrived. Text always works, so make text the contract.
+
+**A finished agent does not get more thorough by being poked.** Before nudging
+or re-dispatching, check whether the result already landed somewhere else (a
+task notification to the orchestrator, a sibling's message). Re-dispatching a
+completed agent restarts it at full cost and returns the same answer.
+
+Keep verification claims attributable: require each batch to return the command
+and its output per finding, not a count. A batch that reports "2 stale" without
+naming them cannot be merged into the report, and asking for the detail
+afterwards costs a second round.
+
 ## Failure modes and graceful degradation
 
 | Issue | Fallback |
 |---|---|
+| Subagent reports its report file was blocked | Have it return findings as text; do not re-dispatch |
+| Batch returns counts without evidence | Re-ask for the table; do not enter counts on trust |
 | JSONL scan slow | Limit to current project's sessions, last 30 days |
 | Skill discovery returns no matches | Propose `new-skill` instead |
 | Source repo URL unresolvable | Ask user; offer local-edit fallback |
