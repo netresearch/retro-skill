@@ -180,14 +180,18 @@ cannot serve, and announce it when you do.
 Phases 1–3 over a large stock (Promote meets hundreds of notes) are worth
 fanning out. Two constraints decide whether the fan-out returns anything:
 
-**Never ask a subagent for a report file.** The harness blocks subagents from
-writing report/summary/findings `.md` files — they must return their findings as
-their final message. An orchestrator that hands out "write your batch to
-`report_batch_NN.md`" waits forever: the children finish, the files never
-appear, and the absence is indistinguishable from work still in progress. Ask
-for the findings as text and write the file yourself. This is the same defect
-class as a poll loop with no failure branch — an outcome that cannot arrive is
-read as one that has not arrived yet.
+**Ask for findings as text; write the file yourself.** Whether an agent may
+write a report file is not something you can assume. In one promote run the two
+agents dispatched directly wrote their reports fine, while the four *they* in
+turn dispatched were refused — each reported "the Write tool blocked creation of
+the report file, findings must be returned as text" and delivered its findings
+as its final message instead. The discriminator was not established; the lesson
+does not depend on it. An orchestrator that hands out "write your batch to
+`report_batch_NN.md`" and then waits is betting on a capability it never
+checked, and loses silently: the children finish, the files never appear, and
+the absence is indistinguishable from work still in progress. Same defect class
+as a poll loop with no failure branch — an outcome that *cannot* arrive is read
+as one that has *not yet* arrived. Text always works, so make text the contract.
 
 **A finished agent does not get more thorough by being poked.** Before nudging
 or re-dispatching, check whether the result already landed somewhere else (a
@@ -203,7 +207,7 @@ afterwards costs a second round.
 
 | Issue | Fallback |
 |---|---|
-| Subagent cannot write its report file | Expected — have it return findings as text |
+| Subagent reports its report file was blocked | Have it return findings as text; do not re-dispatch |
 | Batch returns counts without evidence | Re-ask for the table; do not enter counts on trust |
 | JSONL scan slow | Limit to current project's sessions, last 30 days |
 | Skill discovery returns no matches | Propose `new-skill` instead |
