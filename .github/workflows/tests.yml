@@ -1,0 +1,20 @@
+name: Tests
+
+# Runs this repo's test suite via the skill-repo-skill reusable.
+#
+# The four suites under tests/ existed and passed, and no workflow executed
+# them: lint, validate and release never touch tests/. A test nothing runs is
+# not a gate — it only looks like one.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions: {}
+
+jobs:
+  tests:
+    uses: netresearch/skill-repo-skill/.github/workflows/tests.yml@main
+    permissions:
+      contents: read
