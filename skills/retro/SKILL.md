@@ -41,7 +41,7 @@ Detail per mode, and the shared pipeline, in `references/workflow.md`.
 2. LLM enrichment — inferential signals, both classes (friction + learnings
    B16–B18); filter false positives.
 3. Cross-session enrichment (optional) — JSONL scan via `scripts/scan-cross-session.py`.
-4. Discover skills — `scripts/find-org-skills.py` (installed + org catalogue).
+4. Discover skills — `scripts/find-org-skills.py` — **and** the worked-in repo's harness (`project-harness-inspection.md`). Both, or only skill-shaped answers.
 5. Classify (`classification-heuristic.md`) to the broadest useful scope; never
    project-local memory.
 6. Eval consultation — read a matched skill's `evals/`; propose a TDD stub.
