@@ -119,6 +119,7 @@ re-presented.
 3. Cross-session enrichment (Schicht C, optional)
 4. Classification → 6 destinations
 5. Skill discovery (for skill-update / new-skill)
+5b. Project-harness inspection (for project-rule / harness-artefact)
 6. Eval consultation (when present)
 7. Proposal generation (prose Why + How-to-apply)
 8. Grouped presentation to user
@@ -134,6 +135,7 @@ Differences between modes:
 | 1 (mechanical A) | Full transcript | Argument-filtered turns | Skipped (past session) | Skipped | Full transcript |
 | 2 (LLM enrich B) | Full transcript | Argument-focused | Past session highlights | Cross-session prose | Full transcript |
 | 2b (trigger-coverage B15) | Yes | Only the argument's skill area | Skipped | **Exhaustive** (whole inventory) | Yes |
+| 5b (project harness) | Yes | Only the argument's surface | Skipped | **Primary** (with E) | Yes |
 | 3 (cross-session C) | Yes | Yes (filtered) | Yes | Yes (wider window) | Yes |
 | 3b (outcome D) | No | No | **Primary** | Some | No |
 | 3c (constitutional E) | No | No | No | **Primary** | No |
@@ -247,4 +249,5 @@ PR is seen, an unspoken "the customer hated it" is not). For those, run
 - `references/friction-catalog.md` — What is detected
 - `references/destination-taxonomy.md` — Where it goes
 - `references/classification-heuristic.md` — How it's routed
+- `references/project-harness-inspection.md` — What the worked-in repo could gate
 - Spec: `docs/specs/retro-skill.md`
