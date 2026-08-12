@@ -99,6 +99,28 @@ the gate already enforces. The pair is one proposal with one approval and counts
 once against the ≤10 cap; `destination-taxonomy.md` ("Paired materialization")
 owns the binding rules.
 
+**Calibrate a tier-1 gate against the transcript before proposing it.** The
+transcript is a ready-made corpus of real commands, so the firing rate is
+measurable rather than arguable: extract the tool inputs, run the candidate
+predicate over them, and report the count. Two numbers make the proposal
+reviewable — how often it fires, and whether the friction that prompted it is
+among the hits.
+
+```
+6 of 296 Bash calls (2.0 %), and the incident itself is one of them
+```
+
+The first draft of that same rule fired 7 times; the extra hit was a false
+positive (`git branch -D`, a write, matched a read-only pattern) and naming it
+is what narrowed the rule. A gate nobody can silence gets tuned out, which
+leaves the friction unguarded *and* costs a hook — so an uncalibrated tier-1
+proposal is weaker than an honest tier-3 one.
+
+The accompanying test must contain cases that **must not** fire, not only cases
+that must: a test that only proves the gate speaks cannot show it can stay
+quiet, and a gate that always fires is indistinguishable from one that is
+broken.
+
 A repo that cannot host the gate (no CI, no analyzer, a repo the user does not
 control) falls back to tier 3 for that repo only. That fallback is not a reason
 to skip the gate where it *is* possible, and a skill instructing an agent is not

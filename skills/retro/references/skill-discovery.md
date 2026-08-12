@@ -38,6 +38,22 @@ bash ${CLAUDE_PLUGIN_ROOT}/scripts/find-installed-skills.sh
 returns `{name, path, description, repo_url}` for skills under
 `<project>/.claude/skills/`, `~/.claude/skills/`, and the plugin cache.
 
+**Do not content-check against these paths.** The plugin cache keeps every
+version it has ever installed side by side, and this script emits one row per
+copy, so `| head -1` hands you whichever the scan hit first — routinely an old
+one. Reading a stale copy makes the retro report gaps that were closed
+versions ago:
+
+```bash
+ls ~/.claude/plugins/cache/<marketplace>/<skill>/
+# 1.3.0  1.3.9  1.3.10  1.4.0   → head -1 gave 1.3.0, source was at 1.3.9
+```
+
+For the Phase 5 content check (and for every patch), read the **source repo** —
+an existing clone under `~/p/<skill>-skill/`, or a fresh clone of `repo_url`
+after `git fetch`. Use the cached paths only to learn *that* a skill is
+installed and where its remote points.
+
 ## Match heuristic
 
 Match the friction topic against the **full catalogue** `description` fields
@@ -114,6 +130,7 @@ If discovery fails (no manifest, no git remote, no user input):
 | Skill in `~/.claude/skills/<name>/` with no git remote | User-local; ask "edit locally, or scaffold new repo?" |
 | Skill in `<project>/.claude/skills/` | Patch goes to project repo (not skill repo) |
 | Cache diverged from source (manual hack) | Show diff, ask user before proceeding |
+| Several cached versions of one skill | Never content-check the cache — read the source repo (see "Installed-only detail") |
 | Private repo unauthenticated | Graceful failure with instruction |
 | Source URL unresolvable | Ask user; offer scaffolding fallback |
 | User's git worktree dirty | Skip worktree, use /tmp clone |
