@@ -28,7 +28,7 @@ External-feedback ingestion (Sentry, Jira, monitoring) is out of v0.1 scope — 
 | A — Mechanical | 18 | 18 (all of A1–A18) |
 | B — LLM inference | 18 | LLM-driven (no separate code); B16–B18 are reusable-learning signals |
 | C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
-| D — Outcome | 11 | Planned for v0.1.x; D11 is the positive (codify-success) signal |
+| D — Outcome | 12 | Planned for v0.1.x; D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
 
 Schicht A is feature-complete. See `references/destination-taxonomy.md` for what each signal class routes to.
@@ -143,6 +143,7 @@ sweep was friction-only, outcome was failure-only.)
 | D9 | Code reverted in same file within 30 days | Diff-based: session's net contribution to file is largely undone | Output not durable |
 | D10 | External tracker mention (out-of-scope marker) | Issue/PR/Slack reference using session commit/PR ID (requires external integration; v0.2+) | Output had external impact |
 | **D11** | **Durable improvement (positive)** | Session's change **survived** the window: merged (`gh pr view --json mergedAt,reviewDecision`), **not** reverted or superseded (inverse of D1/D2/D9), CI green (`gh run list --commit $sha --json conclusion`) — AND its approach generalizes but is not yet in any skill | Output is validated by surviving contact with reality → **codify the approach** so future generated code follows it → `skill-update` |
+| **D12** | **Superseded temporary copy (positive/cleanup)** | A `canonical-source` upstream PR tracked by a labelled temporary copy (authority label + upstream PR/issue link + `Learning-Id`, per `destination-taxonomy.md` §7) **merged** during the window (`gh pr view <url> --json state,mergedAt`), while the skill still carries the copy | The fact now lives with its canonical owner → **prune the copy to a reference** (+ agent-specific delta) → `skill-update` (prune); find the copy via its `Learning-Id` |
 
 ### Stale-open is not an outcome
 

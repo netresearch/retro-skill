@@ -43,6 +43,14 @@ Examples:
 ## Commit conventions
 
 - **Conventional Commits format:** `<type>(<scope>): <summary>`
+- **`Learning-Id:` trailer** in every retro materialization commit: a stable
+  id minted at Phase 7 per finding (`retro-YYYYMMDD-<slug>`, e.g.
+  `retro-20260814-copilot-quota-monthly`). The same id goes into the PR body,
+  a materialized checkpoint's `learning_id:` field, and an eval stub's
+  frontmatter. It is the provenance chain: `git log --grep 'Learning-Id:'`
+  and a grep over `checkpoints.yaml` recover every artefact a finding
+  produced — which is what makes a landed learning traceable, and prunable
+  when superseded (D12).
   - Types: `feat`, `fix`, `docs`, `refactor`, `chore`
 - **DCO sign-off (required).** Commit with `git commit -s` so a `Signed-off-by:`
   trailer matching the commit author is added. Netresearch skill repos enforce
@@ -136,6 +144,7 @@ If `$GITLAB_HOST` is set, omit `--hostname`.
 
 `/retro` session on <date>: <session-id>
 Finding: <friction signal id> — <one-line description>
+Learning-Id: <retro-YYYYMMDD-slug>
 
 - **Symptom:** <what was observed going wrong>
 - **Cause:** <root cause, not the trigger>

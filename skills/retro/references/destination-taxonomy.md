@@ -74,9 +74,12 @@ Example:
 - id: <skill-prefix>-<number>
   type: regex|file_exists|command
   target: <path>
-  value: <pattern>
+  pattern: <pattern>
   severity: error|warning|info
   desc: "<what the check enforces>"
+  provenance: regression          # authority class; see the schema reference
+  source: <session/issue/PR where the failure was observed>
+  learning_id: retro-YYYYMMDD-<slug>   # provenance chain back to the finding
 ```
 
 ### 6. `harness-artefact` — Bootstrap
@@ -120,8 +123,10 @@ handbook.
   below).
 - If the owner cannot take the fix now (no contribution path, upstream gap),
   fall back to a **labelled temporary copy** in the skill: authority class,
-  link to the upstream issue/PR, and an explicit prune trigger for a later
-  `/retro audit --scope skill` reconciliation.
+  the upstream issue/PR link, and the finding's `Learning-Id`. That triple is
+  the prune trigger: `/retro outcome` detects the merged upstream PR (**D12**)
+  and proposes reducing the copy to a reference; `/retro audit --scope skill`
+  catches whatever outcome mode missed.
 - An upstream PR is an **outward-facing artefact in a foreign project**:
   confirm the exact target and text with the user before posting. Nothing is
   posted silently.

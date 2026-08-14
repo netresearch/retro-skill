@@ -46,8 +46,10 @@ Replay a past session through the lens of what happened to its output afterwards
 ```
 Input: past session id (or all sessions within --since window)
 Output: Schicht D findings — failures to learn from (D1–D10: reverted, rejected,
-        CI-broken) AND durable successes to codify (D11: merged, unreverted,
-        CI-green changes whose approach generalizes → skill-update)
+        CI-broken), durable successes to codify (D11: merged, unreverted,
+        CI-green changes whose approach generalizes → skill-update), and
+        superseded temporary copies to prune (D12: a tracked canonical-source
+        upstream PR merged → prune the skill's labelled copy to a reference)
 Use case: monthly look-back — both what didn't survive contact with reality and
           what did and should become the default
 ```
@@ -65,6 +67,12 @@ Use case: quarterly or monthly system health check
 ```
 
 Different output class from per-session retro. Destinations typically include ADR creation/update (via project-rule).
+
+With `--scope skill`, run the mechanical drift pre-pass first:
+`scripts/check-upstream-sources.py --skill-dir <repo>` probes every
+`[upstream]`-labelled link and every checkpoint `source:` URL (dead links →
+B14 candidates; a failed probe is transport, never "gone") and flags
+checkpoint `verified:` dates older than the max age for an LLM re-read.
 
 With `--scope skill`, the audit is also a **reconciliation** pass: classify the
 skill's existing content by authority (upstream / code / org policy /
