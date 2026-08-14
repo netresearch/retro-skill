@@ -13,7 +13,7 @@
 
 ## Objective
 
-Provide LLM-driven session retrospection as a reusable skill (`/retro`). Detect friction directly from the session transcript, classify into 6 destinations, materialize with per-proposal user approval. Replace the unused Coach approval pipeline with a single efficient pass.
+Provide LLM-driven session retrospection as a reusable skill (`/retro`). Detect friction directly from the session transcript, classify into 7 destinations (authority-first: who owns the truth), materialize with per-proposal user approval. Replace the unused Coach approval pipeline with a single efficient pass.
 
 ## Anlass (Why Now)
 
@@ -47,7 +47,7 @@ retro-skill/
 │   ├── checkpoints.yaml          (own quality gates)
 │   ├── references/
 │   │   ├── friction-catalog.md       (Schichten A/B/C)
-│   │   ├── destination-taxonomy.md   (6 categories)
+│   │   ├── destination-taxonomy.md   (7 categories)
 │   │   ├── classification-heuristic.md (friction → destination)
 │   │   ├── skill-discovery.md        (where + how to find skills)
 │   │   ├── patch-workflow.md         (source-repo, not cache)
@@ -99,7 +99,7 @@ Plus optional auto-trigger via SessionEnd hook (off by default; user opts in).
    - Else: scan ~/.claude/projects/<slug>/*.jsonl for similar friction
    - Identifies: "same friction again", cross-project patterns, memory drift
 
-5. Classification per finding → 1 of 6 destinations
+5. Classification per finding → 1 of 7 destinations (authority axis first)
    - Uses skills/retro/references/classification-heuristic.md
 
 6. For each finding, resolve target:
@@ -190,7 +190,7 @@ Not detectable from a single session. Optional Coach-events read; otherwise sess
 
 ## Destination Taxonomy
 
-Six categories, statically documented in `skills/retro/references/destination-taxonomy.md`.
+Seven categories, statically documented in `skills/retro/references/destination-taxonomy.md`.
 
 | Destination | When | Materialization Format |
 |---|---|---|
@@ -200,6 +200,7 @@ Six categories, statically documented in `skills/retro/references/destination-ta
 | `new-skill` | Friction is skill-shaped gap, no existing skill matches | Invoke `skill-repo` scaffolding for new repo |
 | `checkpoint` | Mechanically detectable rule, regex/script possible | YAML entry in target skill's `checkpoints.yaml` (via `automated-assessment` schema) |
 | `harness-artefact` | Repo missing hook / CI / template | Invoke `agent-harness` bootstrap for specific artefact (pre-commit hook, PR template, CI workflow) |
+| `canonical-source` | Fact's canonical owner is an artefact outside the agent system (upstream docs, code, schema, handbook) | PR/patch to the owning artefact; involved skill keeps reference + agent-specific delta |
 
 ## Classification Heuristic (Friction → Destination)
 
@@ -458,7 +459,7 @@ Documented in `skills/retro/references/patch-workflow.md`.
 |---|---|---|
 | Discovery finds skills in 4 paths | mechanical | `find-installed-skills.sh` against synthetic test layout |
 | Mechanical pre-pass detects all Schicht-A signals | mechanical | unit test: synthetic transcript with each signal, assert detection |
-| Classification covers 6 destinations | manual | test sessions with known friction patterns |
+| Classification covers 7 destinations | manual | test sessions with known friction patterns |
 | Token budget held | mechanical | telemetry per `/retro` run, fail CI if regression |
 | Materialization smoke per destination | manual | one friction per destination → one materialization |
 | Private-repo confirmation triggers | mechanical | mock run with `git.netresearch.de` URL |
@@ -482,7 +483,7 @@ All resolved during Phase-1 elicitation.
 | Q4 | Coach fate | Keep as optional data source, not modified |
 | Q5 | New skill home | New repo `netresearch/retro-skill` |
 | Q6 | Commands | `/retro` (sweep + spotlight via argument) + optional SessionEnd hook |
-| Q7 | Routing contract necessity | Static taxonomy (6 destinations) + dynamic skill discovery — best of both |
+| Q7 | Routing contract necessity | Static taxonomy (7 destinations) + dynamic skill discovery — best of both |
 | Q8 | Skill name | `retro` (not `compound-engineering`, not `skill-ratchet` — too narrow/buzzy) |
 | Q9 | Spotlight granularity | Single command with optional argument; no separate `/fix-skill` |
 | Q10 | Discovery scope | Auto-discovery including private; per-PR confirmation gates leak risk |

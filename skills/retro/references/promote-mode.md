@@ -18,9 +18,12 @@ Project-local memory (`~/.claude/projects/<slug>/memory/`, a project
 no one, and invisible from any other slug. A note written while `cwd` resolved
 to `-home-sme` is never recalled while working in `-home-sme-p-retro-skill`.
 Promote drains that silo into the shareable destinations the taxonomy already
-defines, in priority order: **skill-update › project-rule (`AGENTS.md`) ›
-user-memory (`~/.claude/CLAUDE.md`)** — see the scope-escalation rule in
-`classification-heuristic.md`.
+defines, in priority order: **canonical-source › skill-update › project-rule
+(`AGENTS.md`) › user-memory (`~/.claude/CLAUDE.md`)** — see the authority axis
+and the scope-escalation rule in `classification-heuristic.md`. A note whose
+substance is a fact owned outside the agent system (upstream docs, code, a
+schema) promotes to that owner; the skill keeps at most a reference plus the
+agent-specific delta.
 
 ## What the scanner reads (and excludes)
 
@@ -168,6 +171,6 @@ proposals are never drained.
 ## See also
 
 - `references/classification-heuristic.md` — the C3/B8 routing and scope-escalation
-- `references/destination-taxonomy.md` — the six destinations
+- `references/destination-taxonomy.md` — the seven destinations
 - `references/workflow.md` — the other modes
 - `docs/specs/retro-promote-mode.md` — full spec

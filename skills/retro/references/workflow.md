@@ -66,6 +66,16 @@ Use case: quarterly or monthly system health check
 
 Different output class from per-session retro. Destinations typically include ADR creation/update (via project-rule).
 
+With `--scope skill`, the audit is also a **reconciliation** pass: classify the
+skill's existing content by authority (upstream / code / org policy /
+agent-evidence — Axis 0 in `classification-heuristic.md`). Content already
+documented by its canonical owner → propose prune-to-reference; content humans
+need that the owner lacks → propose `canonical-source` (upstream PR) paired
+with the skill cleanup. Promote makes ephemeral knowledge durable; reconcile
+moves already-durable knowledge to its rightful owner and dissolves the
+duplicates. A learning system that can only ADD degrades — this is the REMOVE /
+PROMOTE / MERGE half of the loop.
+
 ### Promote — `/retro promote`
 
 Inventory the already-written memory **stock** (all project slugs) and re-home
@@ -117,7 +127,7 @@ re-presented.
 1. Mechanical pre-pass (Schicht A)
 2. LLM enrichment (Schicht B)
 3. Cross-session enrichment (Schicht C, optional)
-4. Classification → 6 destinations
+4. Classification → 7 destinations (authority first)
 5. Skill discovery (for skill-update / new-skill)
 5b. Project-harness inspection (for project-rule / harness-artefact)
 6. Eval consultation (when present)

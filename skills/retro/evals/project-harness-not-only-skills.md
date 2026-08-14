@@ -15,7 +15,7 @@ negative_expected:
 
 # Scenario: the finding belongs to the repo, not to a skill
 
-The six destinations have always covered the worked-in repo — `project-rule`
+The destination taxonomy has always covered the worked-in repo — `project-rule`
 writes `<project>/AGENTS.md`, and `harness-artefact` explicitly targets *"the
 repo the session was working in"*. Coverage is not the failure mode. The failure
 mode is that only skill discovery is mandatory and scripted, so a sweep drifts

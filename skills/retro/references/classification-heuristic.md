@@ -1,14 +1,17 @@
 # Classification Heuristic
 
-Maps friction signals (from `friction-catalog.md`) to one of the six destinations (from `destination-taxonomy.md`).
+Maps friction signals (from `friction-catalog.md`) to one of the seven destinations (from `destination-taxonomy.md`).
 
 ## Primary mapping
 
-> Run skill discovery first and apply **Routing — enforceability first, then
-> reach** (below) before taking any row literally: the named skill in a row is a
-> hint, not a substitute for the owning-skill check, and a row naming a prose
-> destination does not rule out a gate. The right owner may be a different (or
-> not-installed) skill.
+> Run skill discovery first and apply **Routing — authority first, then
+> enforceability, then reach** (below) before taking any row literally: the
+> named skill in a row is a hint, not a substitute for the owning-skill check,
+> and a row naming a prose destination does not rule out a gate. The right
+> owner may be a different (or not-installed) skill — or no skill at all: a
+> fact whose canonical owner is an artefact outside the agent system routes to
+> `canonical-source` regardless of the row (Axis 0 below; B14 and B16–B18 are
+> the main inlets).
 
 | Friction signal | Primary destination | Alternate (LLM decides from context) |
 |---|---|---|
@@ -45,9 +48,9 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | **B11** plan/spec skipped | `skill-update` (spec-driven-development trigger) | `project-rule` |
 | **B12** assumption without asking | `skill-update` (spec-driven-development trigger description) | `user-memory` |
 | **B13** context re-discovery | `project-rule` (improve AGENTS.md) | `skill-update` (agent-rules-skill) |
-| **B14** doc drift | `skill-update` — the owning skill (context7-skill for library docs; **skill-repo-skill** if a `SKILL.md`/`plugin.json`/command list drifted — discover first) | `project-rule` |
+| **B14** doc drift | `skill-update` — the owning skill (context7-skill for library docs; **skill-repo-skill** if a `SKILL.md`/`plugin.json`/command list drifted — discover first) | `canonical-source` (the drifted doc itself is the canonical owner — fix it there) / `project-rule` |
 | **B15** skill trigger-coverage gap | `skill-update` (sharpen the missed skill's `description`/trigger words) | `new-skill` (no skill covered it) / `skill-update` B3 (skill fired but under-performed) |
-| **B16** hard-won technique | `skill-update` (add the command/flag/endpoint to the owning skill) | `new-skill` (no owning skill) |
+| **B16** hard-won technique | `skill-update` (add the command/flag/endpoint to the owning skill) | `canonical-source` (the fact is about the tool itself and its owner is upstream docs/code — Axis 0) / `new-skill` (no owning skill) |
 | **B17** proactive improvement | `skill-update` (codify the better approach) | `project-rule` (repo-specific) |
 | **B18** review-issue learning | `skill-update` (generalize the review lesson) | `project-rule` (genuinely repo-specific) |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
@@ -56,10 +59,53 @@ Maps friction signals (from `friction-catalog.md`) to one of the six destination
 | **C4** skill update ineffective | `skill-update` (previous fix was wrong) | — |
 | **C6** written rule violated repeatedly | `harness-artefact` (hook/checkpoint that makes the violation impossible) | never another prose rule — that is what already failed |
 
-## Routing — enforceability first, then reach
+## Routing — authority first, then enforceability, then reach
 
-Two axes decide a destination, in this order. Axis 1 asks whether the rule can
-be *enforced*; axis 2 asks how far the remainder should *reach*.
+Three axes decide a destination, in this order. Axis 0 asks who should *own*
+the truth; axis 1 asks whether the rule can be *enforced*; axis 2 asks how far
+the remainder should *reach*.
+
+### Axis 0 — authority: who should own this truth?
+
+Do not ask "where can I store this learning?" first — ask "who should own this
+truth?". Many findings are facts about the world, not about agent behaviour,
+and most facts have a canonical owner *outside* the agent system:
+
+| Truth class | Canonical owner | Example |
+|---|---|---|
+| Official standard, product/tool behaviour | Upstream documentation | "guides.xml accepts X" → the tool's official manual |
+| Value derivable from an artefact | The code / manifest / schema itself | a CLI flag → the Command's `configure()`; a version → `ext_emconf.php` |
+| Org-wide process or policy | Handbook / policy doc | escalation path, booking rules |
+| Agent behaviour, agent workflow, observed agent failure mode | **A skill** | "`fullPage` screenshots clip the TYPO3 backend iframe" |
+
+**A skill is the canonical source only for facts about agent behaviour or the
+skill's own procedure.** When the canonical owner is outside the agent system,
+route to `canonical-source` (a PR/patch to the owning artefact — see
+`destination-taxonomy.md` §7); the skill involved keeps at most a *reference*
+to the owner plus the agent-specific delta (navigation, guardrail, observed
+failure mode) — never a copy of the fact.
+
+Why this axis comes first: a duplicated upstream fact hardens locally — a
+checkpoint enforces it, an eval expects it, everything stays green — while
+upstream moves on. The result is **authority drift**: a self-consistent local
+truth that is wrong. The `skill-update` default of B16–B18 is the main inlet
+for this failure, so run the authority check before taking any mapping row
+literally.
+
+Three content grades may live inside a skill, each with its price of entry:
+
+- a **duplicated upstream rule** needs justification and evidence — an
+  observed failure that a mere reference did not prevent;
+- an **agent-specific rule** needs an observed agent failure mode;
+- a **deliberately stricter org policy** must be labelled as org policy,
+  never presented as the upstream standard.
+
+Everything else is removed or turned into a reference. When the canonical
+owner cannot take the fix (no contribution path, upstream gap), the skill may
+carry the fact *temporarily* — labelled with its authority and the upstream
+issue/PR where one exists — and a later `/retro audit --scope skill`
+reconciliation prunes it once upstream lands (see Instruction pruning, and
+"Audit" in `workflow.md`).
 
 ### Axis 1 — enforceability: a gate outranks a sentence
 
@@ -129,7 +175,9 @@ stronger one is unavailable.
 
 ### Axis 2 — reach: prefer the broadest useful destination
 
-Knowledge is only as valuable as the breadth of reach where it applies.
+Knowledge is only as valuable as the breadth of reach where it applies. (Axis 0
+has already routed away facts owned outside the agent system; this axis ranks
+the remaining agent-behaviour prose.)
 
 **First, run skill discovery (`scripts/find-org-skills.py`) and check the full
 catalogue — installed *and* available — for a skill that owns this topic.** This

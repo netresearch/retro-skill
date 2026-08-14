@@ -87,9 +87,11 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --patte
 
 Run **Phase 5 skill discovery first** — the catalogue of all skills (installed
 *and* available) is a required input to classification, not a consequence of it.
-Then map each finding to one of six destinations using
-`skills/retro/references/classification-heuristic.md`, checking the catalogue for an owning
-skill before any narrower destination. When uncertain, ask the user.
+Then map each finding to one of seven destinations using
+`skills/retro/references/classification-heuristic.md` — authority first: a fact
+owned by an artefact outside the agent system (upstream docs, code, schema)
+routes to `canonical-source`, not into a skill — then check the catalogue for
+an owning skill before any narrower destination. When uncertain, ask the user.
 
 ## Phase 5: Skill Discovery
 

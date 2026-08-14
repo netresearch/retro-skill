@@ -13,15 +13,15 @@ allowed-tools: Bash(python3:*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) 
 # Retro — LLM-driven Session Retrospection
 
 One efficient LLM pass over a session (or the stored memory backlog) detects
-**friction and reusable learnings**, classifies each into one of six
+**friction and reusable learnings**, classifies each into one of seven
 destinations, and materializes approved ones.
 
-**Core principle:** No silent writes — every materialization needs explicit
+**Core principle:** No silent writes — every materialization needs
 per-proposal approval.
 
 ## Modes
 
-Detail per mode, and the shared pipeline, in `references/workflow.md`.
+Modes and shared pipeline: `references/workflow.md`.
 
 - **`/retro`** — Sweep: the whole current session.
 - **`/retro "<problem>"`** — Spotlight: one described issue.
@@ -42,8 +42,8 @@ Detail per mode, and the shared pipeline, in `references/workflow.md`.
    B16–B18); filter false positives.
 3. Cross-session enrichment (optional) — JSONL scan via `scripts/scan-cross-session.py`.
 4. Discover skills — `scripts/find-org-skills.py` — **and** the worked-in repo's harness (`project-harness-inspection.md`). Both, or only skill-shaped answers.
-5. Classify (`classification-heuristic.md`) to the broadest useful scope; never
-   project-local memory.
+5. Classify (`classification-heuristic.md`) — authority first (who owns this
+   truth?), then broadest scope; never project-local memory.
 6. Eval consultation — read a matched skill's `evals/`; propose a TDD stub.
 7. Proposal generation — prose Why + How-to-apply, grouped, ≤10; learnings
    survive the trim.
@@ -70,7 +70,7 @@ patch the cache, hardcode a static skill list, `rm` a drained memory (tombstone)
 | File | Purpose |
 |---|---|
 | `references/friction-catalog.md` | All signals: friction + learnings (A/B/C, B16–B18) |
-| `references/destination-taxonomy.md` | The six destinations |
+| `references/destination-taxonomy.md` | The seven destinations |
 | `references/classification-heuristic.md` | Friction → destination mapping |
 | `references/skill-discovery.md` | Finding skills at runtime |
 | `references/patch-workflow.md` | Source-repo patching (never cache) |
