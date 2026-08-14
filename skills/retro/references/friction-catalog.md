@@ -91,7 +91,11 @@ signals and must be looked for deliberately. The discriminator is *"would a futu
 agent re-derive this, and is it already in the owning skill?"* — not *"did
 something go wrong?"* Grade them **at least `important`** (see
 `classification-heuristic.md` → Severity) so they are not crowded out under the
-≤10-proposal cap.
+≤10-proposal cap. The `skill-update` arrows below assume the authority check
+(Axis 0 in `classification-heuristic.md`) has already run: a learning whose
+substance is a fact about the world — tool behaviour, an API, a standard —
+routes to `canonical-source` (the owning docs/code), with the skill keeping
+only a reference plus the agent-specific delta.
 
 | # | Signal | Hint at |
 |---|---|---|

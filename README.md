@@ -1,6 +1,6 @@
 # retro — session retrospectives for Claude Code
 
-**LLM-driven session retrospection for Claude Code agents.** After a session, `/retro` reads the conversation transcript, detects friction, and routes each finding to one of six homes — with per-proposal approval and no silent writes.
+**LLM-driven session retrospection for Claude Code agents.** After a session, `/retro` reads the conversation transcript, detects friction, and routes each finding to one of seven homes — with per-proposal approval and no silent writes.
 
 [![License: MIT AND CC-BY-SA-4.0](https://img.shields.io/badge/License-MIT%20AND%20CC--BY--SA--4.0-blue.svg)](LICENSE-MIT)
 [![lint](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml/badge.svg)](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml)
@@ -16,7 +16,7 @@
 - [Install](#install)
 - [Usage — the four modes](#usage--the-four-modes)
 - [A worked example](#a-worked-example)
-- [The six destinations](#the-six-destinations)
+- [The seven destinations](#the-seven-destinations)
 - [How it works](#how-it-works)
 - [How it stays safe](#how-it-stays-safe)
 - [Honest limitations](#honest-limitations)
@@ -28,7 +28,7 @@
 
 ## What it does
 
-`/retro` analyzes the current Claude Code session directly from the conversation transcript — no continuous background hooks. It detects friction (tool errors, repeated mistakes, skills that should have triggered but didn't, convention violations), classifies each finding into exactly one of six destinations, and materializes the approved learnings. Every write is gated behind explicit per-proposal approval.
+`/retro` analyzes the current Claude Code session directly from the conversation transcript — no continuous background hooks. It detects friction (tool errors, repeated mistakes, skills that should have triggered but didn't, convention violations), classifies each finding into exactly one of seven destinations — asking first *who should own this truth* — and materializes the approved learnings. Every write is gated behind explicit per-proposal approval.
 
 A single sweep returns at most ten actionable proposals, grouped by destination, each with a short *why* and a *how-to-apply*.
 
@@ -74,7 +74,7 @@ composer require netresearch/retro-skill
 | `/retro "<problem>"` | **Spotlight** — focus on one described issue; fewer tokens than a full sweep | Mid-session, for a direct fix |
 | `/retro outcome [session-id\|--since N]` | **Outcome** (layer D) — replay a *past* session through what happened to its output afterwards (reverted commits, rejected PRs, CI failures, follow-up fix sessions) | Periodically, e.g. monthly. **Do not run within 24h of the session** — the outcomes have not landed yet |
 | `/retro audit [--scope project\|repo\|skill]` | **Constitutional audit** — cross-session architectural review (design drift, convention erosion) over weeks/months | Monthly or quarterly health check |
-| `/retro promote` | **Promote** — inventory accumulated project-local memory (all slugs) and re-home each note upward (skill-update › project-rule › user-memory; never project-local memory), draining the source only after the upward write is verified | When local memory has piled up and you want it shared and emptied |
+| `/retro promote` | **Promote** — inventory accumulated project-local memory (all slugs) and re-home each note upward (canonical-source › skill-update › project-rule › user-memory; never project-local memory), draining the source only after the upward write is verified | When local memory has piled up and you want it shared and emptied |
 
 Sweep and Spotlight answer *"what went wrong this session?"*. Outcome and Audit answer *"did our past decisions survive contact with reality?"* and *"is the system still on track?"* — friction that does not show up inside a single session.
 
@@ -110,12 +110,13 @@ Report
 
 Each finding is one approval decision. Nothing is written, no PR is opened, until you say so.
 
-## The six destinations
+## The seven destinations
 
-Every finding routes to exactly one destination:
+Every finding routes to exactly one destination — chosen authority-first: before asking where to *store* a learning, retro asks who should *own* the truth. A fact about the world (tool behaviour, an API, a standard) belongs to its canonical owner outside the agent system; a skill is the canonical source only for agent behaviour and its own procedure:
 
 | Destination | When | Materializes to |
 |---|---|---|
+| `canonical-source` | The fact's canonical owner is an artefact outside the agent system (upstream docs, code, schema, handbook) | Open a PR/patch against the owning artefact; the skill keeps a reference + agent-specific delta |
 | `user-memory` | A personal, cross-project preference | Append a titled rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file) |
 | `project-rule` | A convention for *this* project | Append a titled rule to `<project>/AGENTS.md` |
 | `skill-update` | An existing skill is wrong, weak, under-triggering, or carries an obsolete instruction (removal is a valid edit) | Open a PR against the skill's **source repo** (never the plugin cache) |
@@ -130,7 +131,7 @@ The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — la
 1. **Mechanical pre-pass (layer A)** — `skills/retro/scripts/detect-mechanical.py` parses the transcript for exactly **18** deterministic signals (A1–A18): tool errors, retry clusters, output verbosity, tool-call inefficiency, sequential-vs-parallel, user-correction phrases, prompt/prompt-sequence/tool-sequence repetition, skill-reminder-vs-invoke, wrong-tool choice, re-read-same-file, skipped verification, work on `main`/`master`, bot attribution in commits, outdated-tool warnings, upstream failure, and permission re-approval. Deterministic; it does **not** classify.
 2. **LLM enrichment (layer B)** — adds **14** inferential signals (wrong skill choice, skill capability gap, hallucination, convention violation, missing skill, repeated mistake, assumption-without-asking, doc drift, …) and filters layer-A false positives. Includes a trigger-coverage sweep over every installed skill's description.
 3. **Cross-session enrichment (layer C, optional)** — scans `~/.claude/projects/<slug>/*.jsonl` across projects via `skills/retro/scripts/scan-cross-session.py`. **5** signals: same-friction-again, cross-project pattern, memory drift, ineffective skill update, follow-up-fix session.
-4. **Classification** — map each finding to one of the six destinations (`skills/retro/references/classification-heuristic.md`).
+4. **Classification** — map each finding to one of the seven destinations, authority first (`skills/retro/references/classification-heuristic.md`).
 5. **Skill discovery (runtime)** — `skills/retro/scripts/find-installed-skills.sh` matches the friction topic against each `SKILL.md` description and resolves the source-repo URL.
 6. **Eval consultation** — if the matched skill has an `evals/` directory, read it for context and propose an eval stub (TDD style). retro ships its **own** evals under `skills/retro/evals/` testing its classification, validated by `skills/retro/scripts/validate-evals.py`.
 7. **Proposal generation** — per finding: a *Why* paragraph and a *How-to-apply* paragraph, grouped by destination, ≤10 items.

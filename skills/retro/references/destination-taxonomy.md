@@ -1,11 +1,11 @@
 # Destination Taxonomy
 
-Every friction finding maps to one of six destinations — or, in the single
-bounded exception below ("Paired materialization"), to a gate plus the prose
-that propagates it. Each destination owns a specific materialization format
-defined by a specialist skill.
+Every friction finding maps to one of seven destinations — or, in the bounded
+pair shapes below ("Paired materialization"), to two coupled parts approved as
+one proposal. Each destination owns a specific materialization format defined
+by a specialist skill.
 
-## The Six
+## The Seven
 
 | # | Destination | When | Owner Skill (materialization format) | Storage Location |
 |---|---|---|---|---|
@@ -15,6 +15,7 @@ defined by a specialist skill.
 | 4 | `new-skill` | Friction is skill-shaped gap, no existing skill matches | `skill-repo-skill` (defines scaffolding) | New repo via scaffolding workflow |
 | 5 | `checkpoint` | Mechanically detectable rule, regex/script possible | `automated-assessment-skill` (defines YAML schema) | Entry in target skill's `checkpoints.yaml` |
 | 6 | `harness-artefact` | Repo missing hook / CI / template | `agent-harness-skill` (defines artefact templates) | Hook / CI workflow / PR template in target repo |
+| 7 | `canonical-source` | The fact's canonical owner is an artefact outside the agent system: upstream docs, code, schema, handbook (Axis 0 in `classification-heuristic.md`) | Domain skill's contribution reference (e.g. `typo3-docs`'s `upstream-docs-contribution.md`); mechanics per `patch-workflow.md` | PR/patch to the canonical source (docs repo, defining code, manifest) |
 
 ## Format details
 
@@ -102,6 +103,29 @@ Materialization mechanics — target-repo selection, verify-before-bootstrap,
 CI/hook parity, and why server-side rules cannot be a PR — are in
 `references/patch-workflow.md` ("Harness artefacts").
 
+### 7. `canonical-source` — PR/patch to the owning artefact
+
+For facts whose canonical owner sits outside the agent system (Axis 0 in
+`classification-heuristic.md`): official upstream documentation, the code that
+defines the value (a `configure()` method, a schema, a manifest), an org
+handbook.
+
+- Materialize as a PR/patch **to the owning artefact**, following the owning
+  project's contribution workflow. A domain skill often documents that path
+  (e.g. `typo3-docs`'s `references/upstream-docs-contribution.md`); branch,
+  commit, and sign-off mechanics as in `references/patch-workflow.md`.
+- The skill involved keeps at most a **reference + agent-specific delta**. Any
+  duplicate it already carries is pruned in the same proposal — pair the
+  upstream PR with that `skill-update` cleanup ("Paired materialization"
+  below).
+- If the owner cannot take the fix now (no contribution path, upstream gap),
+  fall back to a **labelled temporary copy** in the skill: authority class,
+  link to the upstream issue/PR, and an explicit prune trigger for a later
+  `/retro audit --scope skill` reconciliation.
+- An upstream PR is an **outward-facing artefact in a foreign project**:
+  confirm the exact target and text with the user before posting. Nothing is
+  posted silently.
+
 Choose the instrument by enforcement strength, not by convenience:
 `agent-harness-skill/references/enforcement-mechanisms.md` ranks all ten from
 server-side to convention-based, and requires **CI/hook parity** — every fast,
@@ -113,6 +137,7 @@ half-materialized.
 
 | Question | Answer | Pick |
 |---|---|---|
+| Is the fact owned by an artefact outside the agent system (official docs / code / schema / handbook)? | yes | `canonical-source` (+ paired `skill-update` reference/cleanup) |
 | Is the rule mechanical (regex / script)? | yes | `checkpoint` (`mechanical:`) |
 | Is the rule mechanical but enforces a workflow gate? | yes | `harness-artefact` (pre-commit / CI / linter rule) |
 | Is it checkable but by judgment, not by pattern? | yes | `checkpoint` (`llm_reviews:`) |
@@ -121,11 +146,13 @@ half-materialized.
 | Would another project benefit from the same fix? | yes | `skill-update` |
 | Does the friction reveal a missing capability category? | yes | `new-skill` |
 
-**Two axes, in order: enforceability, then reach.** Read the table
-top-to-bottom — the first three rows are the enforceability axis and they come
-first on purpose. A gate that fails the build outranks a sentence that asks for
-care, so route to `checkpoint`/`harness-artefact` whenever the friction is one a
-check could have failed on.
+**Three axes, in order: authority, then enforceability, then reach.** Read the
+table top-to-bottom — the first row is the authority axis (who owns the truth),
+the next three rows are the enforceability axis, and they come first on
+purpose. A fact fixed at its owner outranks a local copy; a gate that fails
+the build outranks a sentence that asks for care. Route to
+`checkpoint`/`harness-artefact` whenever the friction is one a check could
+have failed on.
 
 For whatever remains prose, bias *upward in reach*: `skill-update`/`new-skill`
 (shared with everyone) › project `AGENTS.md` (shared with the repo) › global
@@ -139,22 +166,23 @@ repo-specific). Never project-local memory. See "Routing — enforceability firs
 then reach" in `classification-heuristic.md`. When the *fit* is truly ambiguous,
 ask the user.
 
-## Paired materialization — the one exception to "one destination"
+## Paired materialization — the bounded exceptions to "one destination"
 
-When a finding is enforceable in the repo it occurred in *and* the same gate
-belongs in sibling repos, it materializes as a **pair**:
+Two pair shapes are recognized; both materialize as **one proposal with two
+coupled parts**:
 
-| Part | Destination | Content |
+| Pair shape | Part 1 | Part 2 |
 |---|---|---|
-| Gate | `harness-artefact` or `checkpoint` | The check, in the repo the friction happened in |
-| Propagation | `skill-update` | The recipe for installing that gate, in the skill that owns the topic |
+| **Gate + propagation** — the finding is enforceable in the repo it occurred in *and* the same gate belongs in sibling repos | `harness-artefact` or `checkpoint`: the check, in the repo the friction happened in | `skill-update`: the recipe for installing that gate elsewhere, in the skill that owns the topic |
+| **Canonical fix + cleanup** — the fact's owner is outside the agent system *and* a skill currently duplicates or contradicts it | `canonical-source`: PR/patch to the owning artefact | `skill-update`: replace the skill's copy with a reference (+ agent-specific delta) |
 
 Rules, all binding:
 
 - **A pair is one proposal, approved once, and counts as one against the ≤10
-  cap.** Splitting it into two proposals allows the prose half to be approved
-  while the gate half is rejected — which reproduces the exact failure the
-  enforceability axis exists to prevent.
+  cap.** Splitting it into two proposals allows one half to be approved while
+  the other is rejected — a prose rule without its gate reproduces the failure
+  the enforceability axis exists to prevent, and a skill cleanup without its
+  upstream PR deletes knowledge before its new home exists.
 - **The approval line names both targets**, because they are usually two
   different repos and one of them is not the repo the user is standing in:
   `harness-artefact → <repo> (lefthook.yml) + skill-update → <skill> (install recipe)`.
@@ -162,14 +190,20 @@ Rules, all binding:
   gate and how to tell whether a repo already has it. If the prose you are
   writing would still make sense with the gate deleted, it is a restatement —
   drop it and ship the gate alone.
+- **The cleanup half must not keep the fact.** After a canonical-fix pair, the
+  skill states *where the truth lives* plus the agent-specific delta. If the
+  skill text still asserts the fact itself, it is a copy, not a reference.
+  Ordering is materialize-then-drain, as in promote mode: the upstream PR must
+  exist before the skill's copy is reduced to a reference.
 - **Two parts maximum.** No three-part materializations. If a finding seems to
   need a third, it is more than one finding.
 - **Both parts appear as separate rows in the Phase-11 report**, so a pair that
   half-fails is visible rather than reported as done.
 
-Pair only when propagation is real. A gate that is meaningful in exactly one
-repo — a project-specific path, a one-off migration guard — is a plain
-`harness-artefact` with no second half.
+Pair only when the second half is real. A gate that is meaningful in exactly
+one repo — a project-specific path, a one-off migration guard — is a plain
+`harness-artefact` with no second half; an upstream fact no skill currently
+duplicates is a plain `canonical-source` with no second half.
 
 ## See also
 
