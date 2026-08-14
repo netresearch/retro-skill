@@ -289,3 +289,19 @@ Server-side instruments are reported `manual`; they are never applied by retro.
 - `references/destination-taxonomy.md` — Materialization formats per destination
 - [skill-repo-skill/skills/skill-repo/references/materialization-contract.md](https://github.com/netresearch/skill-repo-skill/blob/main/skills/skill-repo/references/materialization-contract.md) — Canonical failure-pattern schema
 - User memory: `feedback_preserve-commit-signing`, `feedback_merge-strategy`
+
+## Bulk / outward materializations: deterministic text, byte verification
+
+When one finding materializes into MANY artefacts (a PR fan-out) or into a
+foreign org, do not let each agent re-type the approved text:
+
+1. Encode the exact approved content in a patch script (anchored inserts
+   with assertions) — the approval covers bytes, not intent.
+2. Agents apply the script mechanically; an assertion failure is returned,
+   never repaired creatively.
+3. A verifier rebuilds base + patch and compares **byte-identical** (sha256)
+   against each pushed head, plus trailers/sign-off — "looks the same" is
+   not verification.
+
+Same materialize-then-verify discipline as promote mode, applied to outward
+writes; nine upstream PRs shipped drift-free this way (2026-08-14).

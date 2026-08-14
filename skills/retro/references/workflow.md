@@ -223,6 +223,13 @@ and its output per finding, not a count. A batch that reports "2 stale" without
 naming them cannot be merged into the report, and asking for the detail
 afterwards costs a second round.
 
+**Fan-out briefs must survive a host restart.** In-process subagents die with
+the host and are not resumable by name — a killed fan-out is re-issued, not
+resumed. Write briefs re-issuable: pin the tree state (SHA) they inspect,
+keep scope deterministic, and commit worktree state before dispatching long
+fan-outs (observed: the same three-agent classification fan-out was killed by
+two restarts and re-ran verbatim only because the briefs were SHA-pinned).
+
 ## Failure modes and graceful degradation
 
 | Issue | Fallback |
