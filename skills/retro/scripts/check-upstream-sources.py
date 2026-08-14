@@ -37,6 +37,7 @@ from __future__ import annotations
 import argparse
 import concurrent.futures
 import datetime as _dt
+import http.client
 import json
 import re
 import ssl
@@ -157,7 +158,8 @@ def probe(url: str, timeout: float) -> tuple[str, int | None, str]:
             if exc.code == 405 and method == "HEAD":
                 continue  # server rejects HEAD; retry as GET
             return "probe_failed", exc.code, f"HTTP {exc.code} (not proof of absence)"
-        except Exception as exc:  # timeout, TLS, DNS — transport, not absence
+        except (OSError, http.client.HTTPException, ValueError) as exc:
+            # timeout, TLS, DNS, malformed URL — transport, not absence
             return "probe_failed", last_status, f"{type(exc).__name__}: {exc}"
     return "probe_failed", last_status, "HEAD and GET both rejected"
 
@@ -228,7 +230,7 @@ def main() -> int:
 
 def stale_findings(candidates: list[dict], max_age_days: int) -> list[dict]:
     out: list[dict] = []
-    today = _dt.date.today()
+    today = _dt.datetime.now(_dt.timezone.utc).date()
     for entry in candidates:
         age = (today - _dt.date.fromisoformat(entry["date"])).days
         if age > max_age_days:
