@@ -170,9 +170,10 @@ broken.
 **When the predicate reads content rather than command shape, the transcript is
 not a wide enough corpus.** A rule matching prose, identifiers or file contents
 will meet text nobody wrote for it, so calibrate against the widest negative
-corpus available — assemble one if it does not exist, for instance every English
-body and reference file in the fleet — not against the documents that motivated
-the gate. A German-prose gate for forge bodies passed calibration on the eight
+corpus available — assemble one if it does not exist, for instance every
+document of the kind the gate inspects across the repositories it will run in —
+not against the documents that motivated the gate. State how the corpus was
+assembled, so the number can be reproduced and the next author can widen it. A German-prose gate for forge bodies passed calibration on the eight
 bodies that caused it while carrying `mit` as a marker: also the licence every
 skill repository names, 18 hits in a 63k-word English corpus that was never
 consulted until a reviewer assembled it.
