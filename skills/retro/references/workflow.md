@@ -119,13 +119,37 @@ All six modes use the same underlying flow (with mode-specific Schicht selection
 
 The mechanical pre-pass requires the session transcript path — it is NOT
 auto-discovered. Derive it from the cwd's project slug (dots and slashes become
-dashes) and take the newest JSONL:
+dashes), then pick the transcript **by content, not by mtime**: several sessions
+can share one slug, so the newest JSONL is frequently somebody else's. Grep the
+candidates, newest first, for a token that only this session contains — a
+distinctive phrase the user typed, a repo or PR number under review — and take
+the first file that matches:
 
 ```bash
 SLUG="$(pwd | tr '/.' '--')"
-TF="$(ls -t ~/.claude/projects/${SLUG}/*.jsonl | head -1)"
+TOKEN='usercentrics-widgets'   # verbatim string unique to THIS conversation
+TF=""
+for f in $(ls -t ~/.claude/projects/${SLUG}/*.jsonl); do
+  if grep -q -- "$TOKEN" "$f"; then TF="$f"; break; fi
+done
+[ -n "$TF" ] || { echo "no transcript matched '$TOKEN' — widen the token"; exit 1; }
 python3 scripts/detect-mechanical.py --transcript-file "$TF" --output-format json
 ```
+
+The loop is deliberately pipe-free: `grep -l … | head -1` exits 141 under
+`pipefail` when `head` closes the pipe early, and `grep -q … && TF=$f` as the
+last command of a loop body aborts under `set -e` on the first non-matching
+candidate. Both fail in the direction that looks like "no transcript found".
+
+Two traps this avoids. **Mtime is a race:** in one measured run, six transcripts
+under the same slug had been written within five minutes of each other, the
+runner-up one minute behind the winner — `ls -t | head -1` would have analysed a
+different session's work and reported it as this one's, with no signal that
+anything was wrong. **The session id is not the filename:** the UUID in the
+task-output path (`/tmp/claude-*/<slug>/<uuid>/tasks/…`) did not match any
+transcript name in the same run, so do not derive the path from it. If the
+grep returns nothing, the token was too specific — never fall back to the
+newest file.
 
 On a repeat `/retro` within one session, filter findings to turns after the
 previous retro — earlier signals were already proposed and must not be
