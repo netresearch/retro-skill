@@ -118,14 +118,78 @@ Currently the hook only prints a reminder; invoking slash commands from hooks va
 All six modes use the same underlying flow (with mode-specific Schicht selection):
 
 The mechanical pre-pass requires the session transcript path — it is NOT
-auto-discovered. Derive it from the cwd's project slug (dots and slashes become
-dashes) and take the newest JSONL:
+auto-discovered, and **whichever way you guess at it, confirm the file by its
+content before analysing it.** The transcript is usually named after the session
+id (`~/.claude/projects/<slug>/<session-id>.jsonl`); when that file exists, it is
+the right answer. It is not always there — measured on one host, 8 of 12 session
+ids had a matching top-level transcript, the rest did not (sub-agent transcripts
+live one level down, under `<uuid>/subagents/*.jsonl`). So treat the id-named
+path as a first guess to be verified, and keep a fallback for when it is absent:
 
 ```bash
-SLUG="$(pwd | tr '/.' '--')"
-TF="$(ls -t ~/.claude/projects/${SLUG}/*.jsonl | head -1)"
-python3 scripts/detect-mechanical.py --transcript-file "$TF" --output-format json
+TOKEN='the exact sentence the user typed'   # see "choosing a token" below
+TF=""
+
+# First guess: the id-named file, accepted only if it also carries the token.
+if [ -n "${SESSION_ID:-}" ]; then
+  CAND=~/.claude/projects/"$(pwd | tr '/.' '--')"/"${SESSION_ID}".jsonl
+  if [ -f "$CAND" ] && grep -qF -- "$TOKEN" "$CAND"; then TF="$CAND"; fi
+fi
+
+# Fallback: slug-independent sweep, newest first.
+if [ -z "$TF" ]; then
+  CANDIDATES="$(find ~/.claude/projects -maxdepth 2 -name '*.jsonl' \
+    -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-)"
+  [ -n "$CANDIDATES" ] || { echo "no transcripts on this host — wrong path or user"; exit 1; }
+  for f in $CANDIDATES; do
+    if grep -qF -- "$TOKEN" "$f"; then TF="$f"; break; fi
+  done
+fi
+[ -n "$TF" ] || { echo "transcripts exist but none contain the token — pick another phrase"; exit 1; }
+python3 "${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py" \
+  --transcript-file "$TF" --output-format json
 ```
+
+Four things in that snippet are load-bearing:
+
+**Search by content, not by mtime.** Several sessions share one project slug, so
+the newest JSONL is frequently somebody else's: in one measured run six
+transcripts under the same slug had been written within five minutes, the
+runner-up one minute behind the winner, and one of them provably belonged to a
+different conversation. `ls -t … | head -1` loses that race silently and every
+downstream finding is then attributed to the wrong session. Newest-first here
+only orders the candidates; the token decides.
+
+**Do not derive the candidate list from `pwd`.** The slug encodes the directory
+the session was *launched* from, not the current one. A session that entered a
+worktree resolves `$(pwd | tr '/.' '--')` to a directory that does not exist —
+verified: from `…/p/retro-skill/fix-transcript-selection` the derived slug misses
+the live transcripts in `-home-sme-p` entirely. The `find` above sidesteps the
+slug; if you do use a slug, take it from the launch directory.
+
+**`grep -qF`, never bare `grep -q`.** The token is prose the user typed, and
+prose contains regex metacharacters. Verified with ugrep 7.5: `grep -q
+'config[0]'` does not match the literal text `config[0]` (it reads as a
+character class), and an unmatched `[` exits 2 — which an `if` reads as "no
+match", sending you to widen a token that was never the problem. `-F` makes it a
+literal.
+
+**The loop is deliberately pipe-free, and the candidate list avoids `ls`.**
+`grep -l … | head -1` exits 141 under `pipefail` when `head` closes the pipe
+early, and `grep -q … && TF=$f` as the last command of a loop body aborts under
+`set -e` on the first non-matching candidate. Both fail in the direction that
+reads as "no transcript found". `ls -t $(find …)` has the opposite failure: when
+`find` matches nothing, `ls` receives no arguments and lists the *current
+directory*, so the empty-candidates guard never fires and the loop greps
+whatever happens to sit in the cwd. `find -printf | sort -rn` yields an empty
+string when there is nothing to find, which is what the guard needs.
+
+*Choosing a token:* a verbatim phrase the **user** typed in this conversation.
+Not a repo name, PR number or ticket key — those are shared by every concurrent
+session working the same thing, which is exactly the collision this procedure
+exists to prevent. The two guards are separate on purpose: an empty candidate
+list means the path or host is wrong, an empty `$TF` means the token is; the
+remedies differ and one message for both sends you fixing the wrong one.
 
 On a repeat `/retro` within one session, filter findings to turns after the
 previous retro — earlier signals were already proposed and must not be

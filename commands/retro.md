@@ -37,6 +37,12 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py \
   --output-format json
 ```
 
+`<session-id>.jsonl` is usually the right file but not always, and the newest
+JSONL under a slug is frequently another session's. Confirm the file contains a
+verbatim phrase from **this** conversation before analysing it — the selection
+procedure, its guards and the reasons behind them are in
+`skills/retro/references/workflow.md` § Shared pipeline.
+
 Output is a structured list of candidate findings. Read this before scanning the transcript yourself — it saves tokens.
 
 ## Phase 2: LLM Enrichment
