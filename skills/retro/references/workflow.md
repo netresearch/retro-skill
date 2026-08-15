@@ -128,13 +128,23 @@ path as a first guess to be verified, and keep a fallback for when it is absent:
 
 ```bash
 TOKEN='the exact sentence the user typed'   # see "choosing a token" below
-CANDIDATES="$(find ~/.claude/projects -maxdepth 2 -name '*.jsonl' \
-  -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-)"
-[ -n "$CANDIDATES" ] || { echo "no transcripts on this host — wrong path or user"; exit 1; }
 TF=""
-for f in $CANDIDATES; do
-  if grep -qF -- "$TOKEN" "$f"; then TF="$f"; break; fi
-done
+
+# First guess: the id-named file, accepted only if it also carries the token.
+if [ -n "${SESSION_ID:-}" ]; then
+  CAND=~/.claude/projects/"$(pwd | tr '/.' '--')"/"${SESSION_ID}".jsonl
+  if [ -f "$CAND" ] && grep -qF -- "$TOKEN" "$CAND"; then TF="$CAND"; fi
+fi
+
+# Fallback: slug-independent sweep, newest first.
+if [ -z "$TF" ]; then
+  CANDIDATES="$(find ~/.claude/projects -maxdepth 2 -name '*.jsonl' \
+    -printf '%T@ %p\n' 2>/dev/null | sort -rn | cut -d' ' -f2-)"
+  [ -n "$CANDIDATES" ] || { echo "no transcripts on this host — wrong path or user"; exit 1; }
+  for f in $CANDIDATES; do
+    if grep -qF -- "$TOKEN" "$f"; then TF="$f"; break; fi
+  done
+fi
 [ -n "$TF" ] || { echo "transcripts exist but none contain the token — pick another phrase"; exit 1; }
 python3 "${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py" \
   --transcript-file "$TF" --output-format json
