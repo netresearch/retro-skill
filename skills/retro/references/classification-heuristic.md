@@ -167,6 +167,24 @@ that must: a test that only proves the gate speaks cannot show it can stay
 quiet, and a gate that always fires is indistinguishable from one that is
 broken.
 
+**When the predicate reads content rather than command shape, the transcript is
+not a wide enough corpus.** A rule matching prose, identifiers or file contents
+will meet text nobody wrote for it, so calibrate against the widest negative
+corpus available — assemble one if it does not exist, for instance every
+document of the kind the gate inspects across the repositories it will run in —
+not against the documents that motivated the gate. State how the corpus was
+assembled, so the number can be reproduced and the next author can widen it. A German-prose gate for forge bodies passed calibration on the eight
+bodies that caused it while carrying `mit` as a marker: also the licence every
+skill repository names, 18 hits in a 63k-word English corpus that was never
+consulted until a reviewer assembled it.
+
+**And the two error directions do not cost the same.** In a gate that only
+warns, a missed case costs a warning nobody got. In a gate that *denies*, a
+false positive blocks legitimate work and gets the gate disabled — so its
+threshold belongs where the negative corpus is silent, not at the edge of the
+positive one. State both numbers in the proposal: what the incident scores, and
+what the loudest negative document scores.
+
 A repo that cannot host the gate (no CI, no analyzer, a repo the user does not
 control) falls back to tier 3 for that repo only. That fallback is not a reason
 to skip the gate where it *is* possible, and a skill instructing an agent is not
