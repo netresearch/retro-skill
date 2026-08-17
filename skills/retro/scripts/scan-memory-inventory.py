@@ -7,7 +7,7 @@ session transcript (the "flow"), this scans the accumulated, cwd-scoped memory
 files (the "stock") that Claude Code's default memory behaviour writes to
 ~/.claude/projects/<slug>/memory/, and emits findings the existing retro
 pipeline (classify -> approve -> materialize) can promote upward to their
-correct destination (skill-update > project-rule > user-memory; never
+correct destination (skill-update > project-rule > personal-rule; never
 project-local memory). A separate `drain` subcommand tombstones a source file
 AFTER its upward write has been confirmed — it never deletes.
 

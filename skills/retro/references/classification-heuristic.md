@@ -15,38 +15,38 @@ Maps friction signals (from `friction-catalog.md`) to one of the seven destinati
 
 | Friction signal | Primary destination | Alternate (LLM decides from context) |
 |---|---|---|
-| **A1** tool error | `skill-update` (tool-owner skill) | `user-memory` (if user-specific config issue) |
+| **A1** tool error | `skill-update` (tool-owner skill) | `personal-rule` (if user-specific config issue) |
 | **A2** tool retry cluster | `harness-artefact` / skill **script** — the shape is known, wrap it | `skill-update` (tool-owner) |
-| **A3** tool output verbosity | `skill-update` (tool-owner: file-search, data-tools) | `user-memory` |
+| **A3** tool output verbosity | `skill-update` (tool-owner: file-search, data-tools) | `personal-rule` |
 | **A4** too many tool calls | `harness-artefact` / skill **script** for the shapes in `top_shapes` | `skill-update` (workflow guidance) |
 | **A5** sequential vs parallel | `skill-update` (workflow skill) | — |
-| **A6** user correction phrase | `user-memory` (style) OR `project-rule` (convention) | LLM reads correction content to decide |
+| **A6** user correction phrase | `personal-rule` (style) OR `project-rule` (convention) | LLM reads correction content to decide |
 | **A7** prompt repetition | `skill-update` (description didn't match) | `agent-rules-skill` PR (AGENTS.md unclear) |
 | **A8** prompt sequence repetition | Snippet/Custom Command OR `skill-update` (workflow) | `new-skill` if pattern is rich |
 | **A9** tool sequence repetition | `harness-artefact` / skill **script** | `skill-update` (composition guidance) |
 | **A10** skill in reminder vs invoke | `skill-update` (description or trigger words) | `harness-artefact` (delegation map) |
-| **A11** wrong tool choice | `skill-update` (tool-owner skill) | `user-memory` |
+| **A11** wrong tool choice | `skill-update` (tool-owner skill) | `personal-rule` |
 | **A12** re-read same file | `skill-update` (workflow / context retention) | — |
 | **A13** skipped verification | `harness-artefact` (PR template) OR `project-rule` (CLAUDE.md) | `skill-update` (skill should require verification step) |
-| **A14** worked on main/master | `harness-artefact` (branch protection / pre-commit) | `user-memory` if user-pattern |
-| **A15** bot attribution in commit | `user-memory` (rule violated) → `skill-update` (skill should know rule) | — |
-| **A16** outdated tool warning | `skill-update` (tool-owner, version bump) | `user-memory` (user's setup outdated) |
+| **A14** worked on main/master | `harness-artefact` (branch protection / pre-commit) | `personal-rule` if user-pattern |
+| **A15** bot attribution in commit | `personal-rule` (rule violated) → `skill-update` (skill should know rule) | — |
+| **A16** outdated tool warning | `skill-update` (tool-owner, version bump) | `personal-rule` (user's setup outdated) |
 | **A17** upstream failure | `harness-artefact` (pre-commit hook) OR `skill-update` (verification step) OR `checkpoint` (mechanical check) OR `project-rule` | LLM picks based on what would have caught it |
-| **A18** permission re-approval | `user-memory` + invoke `update-config` skill | — |
+| **A18** permission re-approval | `personal-rule` + invoke `update-config` skill | — |
 | **A19** repeated command shape | `harness-artefact` / skill **script** that returns the whole answer in one call | `skill-update` only if a script already exists and was not used |
-| **A20** wait-loop inefficiency | `harness-artefact` — a watch that returns on the first actionable event | `user-memory` (waiting discipline) |
-| **B1** output quality mismatch | `user-memory` (preference) OR `skill-update` (output style) | — |
+| **A20** wait-loop inefficiency | `harness-artefact` — a watch that returns on the first actionable event | `personal-rule` (waiting discipline) |
+| **B1** output quality mismatch | `personal-rule` (preference) OR `skill-update` (output style) | — |
 | **B2** wrong skill choice | `skill-update` (description of unused skill) | — |
 | **B3** skill capability gap | `skill-update` (add guidance) | `new-skill` if gap is large |
 | **B4** skill description mismatch | `skill-update` (description) | — |
-| **B5** hallucination / fact check | `skill-update` (context7 / verification) | `user-memory` |
+| **B5** hallucination / fact check | `skill-update` (context7 / verification) | `personal-rule` |
 | **B6** convention violation | `project-rule` | `skill-update` (project-aware skill) |
 | **B7** missing skill | `new-skill` **only if no catalogue skill covers it**; if one exists but isn't installed, recommend installing it | — |
 | **B8** wrong-destination materialization | `skill-update` (retro-skill itself, or whoever wrote) | — |
-| **B9** repeated mistake in session | `skill-update` (rule was unclear) | `user-memory` |
+| **B9** repeated mistake in session | `skill-update` (rule was unclear) | `personal-rule` |
 | **B10** approval bypassed | `skill-update` (skill should require confirmation) | `harness-artefact` (template) |
 | **B11** plan/spec skipped | `skill-update` (spec-driven-development trigger) | `project-rule` |
-| **B12** assumption without asking | `skill-update` (spec-driven-development trigger description) | `user-memory` |
+| **B12** assumption without asking | `skill-update` (spec-driven-development trigger description) | `personal-rule` |
 | **B13** context re-discovery | `project-rule` (improve AGENTS.md) | `skill-update` (agent-rules-skill) |
 | **B14** doc drift | `skill-update` — the owning skill (context7-skill for library docs; **skill-repo-skill** if a `SKILL.md`/`plugin.json`/command list drifted — discover first) | `canonical-source` (the drifted doc itself is the canonical owner — fix it there) / `project-rule` |
 | **B15** skill trigger-coverage gap | `skill-update` (sharpen the missed skill's `description`/trigger words) | `new-skill` (no skill covered it) / `skill-update` B3 (skill fired but under-performed) |
@@ -55,7 +55,7 @@ Maps friction signals (from `friction-catalog.md`) to one of the seven destinati
 | **B18** review-issue learning | `skill-update` (generalize the review lesson) | `project-rule` (genuinely repo-specific) |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
-| **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`user-memory` (LLM picks from `current_location` + content) |
+| **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`personal-rule` (LLM picks from `current_location` + content) |
 | **C4** skill update ineffective | `skill-update` (previous fix was wrong) | — |
 | **C6** written rule violated repeatedly | `harness-artefact` (hook/checkpoint that makes the violation impossible) | never another prose rule — that is what already failed |
 
@@ -130,7 +130,7 @@ Three tiers, strongest first:
    `automated-assessment-skill/references/learning-derived-checkpoints.md`,
    which owns the mechanical-vs-llm_reviews split).
 3. **Prose instruction** — the rule needs context weighed at the time of use →
-   `skill-update` / `project-rule` / `user-memory`.
+   `skill-update` / `project-rule` / `personal-rule`.
 
 Most B16–B18 reusable learnings land in tier 3 legitimately; do not contort a
 judgment lesson into a brittle regex to reach tier 1. The test is whether a
@@ -201,7 +201,7 @@ the remaining agent-behaviour prose.)
 catalogue — installed *and* available — for a skill that owns this topic.** This
 is mandatory and happens *before* a destination is chosen, not after: without
 the catalogue you cannot route to the right owner — which is exactly how a
-skill-authoring lesson lands in `user-memory` instead of the skill that owns
+skill-authoring lesson lands in `personal-rule` instead of the skill that owns
 skill authoring. If an owning skill exists, default to `skill-update` against it
 (use its `repo_url`) **even if it is not installed locally**, and narrow only
 with cause. "No owning skill" must be confirmed by inspecting the top candidate
@@ -217,7 +217,7 @@ broadest destination that still fits**, in this order:
 2. **`project-rule` → `<project>/AGENTS.md`** — committed, versioned, shared
    with everyone working that repo. Use when the lesson is real but genuinely
    specific to this project.
-3. **`user-memory` → `~/.claude/CLAUDE.md`** — only when the lesson is a
+3. **`personal-rule` → `~/.claude/CLAUDE.md`** — only when the lesson is a
    *personal* preference/style that does not belong to any repo or skill.
 
 **Never** project-local memory (`~/.claude/projects/<slug>/memory/`, a project

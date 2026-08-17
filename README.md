@@ -6,7 +6,7 @@
 [![lint](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml/badge.svg)](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml)
 ![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-555.svg)
 
-> Where continuous friction-detection hooks pile up write-only noise nobody triages, `/retro` reads what actually happened and hands you a short list of approved, durable learnings — global memory, project rules, or skill PRs.
+> Where continuous friction-detection hooks pile up write-only noise nobody triages, `/retro` reads what actually happened and hands you a short list of approved, durable learnings — a global rule, project rules, or skill PRs.
 
 ## Contents
 
@@ -74,7 +74,7 @@ composer require netresearch/retro-skill
 | `/retro "<problem>"` | **Spotlight** — focus on one described issue; fewer tokens than a full sweep | Mid-session, for a direct fix |
 | `/retro outcome [session-id\|--since N]` | **Outcome** (layer D) — replay a *past* session through what happened to its output afterwards (reverted commits, rejected PRs, CI failures, follow-up fix sessions) | Periodically, e.g. monthly. **Do not run within 24h of the session** — the outcomes have not landed yet |
 | `/retro audit [--scope project\|repo\|skill]` | **Constitutional audit** — cross-session architectural review (design drift, convention erosion) over weeks/months | Monthly or quarterly health check |
-| `/retro promote` | **Promote** — inventory accumulated project-local memory (all slugs) and re-home each note upward (canonical-source › skill-update › project-rule › user-memory; never project-local memory), draining the source only after the upward write is verified | When local memory has piled up and you want it shared and emptied |
+| `/retro promote` | **Promote** — inventory accumulated project-local memory (all slugs) and re-home each note upward (canonical-source › skill-update › project-rule › personal-rule; never project-local memory), draining the source only after the upward write is verified | When local memory has piled up and you want it shared and emptied |
 
 Sweep and Spotlight answer *"what went wrong this session?"*. Outcome and Audit answer *"did our past decisions survive contact with reality?"* and *"is the system still on track?"* — friction that does not show up inside a single session.
 
@@ -96,7 +96,7 @@ Analyzed session (4200 words). Mechanical pre-pass + LLM enrichment found 3 find
   Why:  You corrected the assistant twice ("we use bun here").
   How:  Append a titled rule to <project>/AGENTS.md.
 
-[user-memory] CLAUDE.md — always fetch before reasoning about origin/<branch>
+[personal-rule] CLAUDE.md — always fetch before reasoning about origin/<branch>
   Why:  A stale ref caused a rejected push, then a forced retry.
   How:  Append a titled rule to ~/.claude/CLAUDE.md.
 
@@ -117,12 +117,14 @@ Every finding routes to exactly one destination — chosen authority-first: befo
 | Destination | When | Materializes to |
 |---|---|---|
 | `canonical-source` | The fact's canonical owner is an artefact outside the agent system (upstream docs, code, schema, handbook) | Open a PR/patch against the owning artefact; the skill keeps a reference + agent-specific delta |
-| `user-memory` | A personal, cross-project preference | Append a titled rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file) |
+| `personal-rule` | A personal, cross-project preference | Append a titled rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file) |
 | `project-rule` | A convention for *this* project | Append a titled rule to `<project>/AGENTS.md` |
 | `skill-update` | An existing skill is wrong, weak, under-triggering, or carries an obsolete instruction (removal is a valid edit) | Open a PR against the skill's **source repo** (never the plugin cache) |
 | `new-skill` | A skill-shaped gap no skill covers | Scaffold a brand-new skill repo via the `skill-repo` convention |
 | `checkpoint` | A mechanical check worth gating on | Add a YAML entry to the target skill's `checkpoints.yaml` |
 | `harness-artefact` | A repo-infrastructure gap | Bootstrap a hook / CI / template via `agent-harness` |
+
+`personal-rule` was called `user-memory` in earlier versions. The old name stays valid as input — a user's phrasing, an older proposal, an archived report — and is always reported back as `personal-rule`. It materializes a durable instruction in the always-loaded global rules file, which is not a memory of past sessions, and the name said otherwise.
 
 ## How it works
 

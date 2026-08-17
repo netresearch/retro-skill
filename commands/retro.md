@@ -99,6 +99,10 @@ owned by an artefact outside the agent system (upstream docs, code, schema)
 routes to `canonical-source`, not into a skill — then check the catalogue for
 an owning skill before any narrower destination. When uncertain, ask the user.
 
+`user-memory` is a deprecated alias of `personal-rule`. Accept it wherever a
+destination arrives as input — the user's phrasing, an older proposal, an
+archived report — and always emit `personal-rule` in proposals and reports.
+
 ## Phase 5: Skill Discovery
 
 Run up front, for **every** candidate learning (not only once a destination is
@@ -122,7 +126,7 @@ routinely under-state what a skill owns (e.g. a "GHCR package deletion scopes"
 finding belongs in github-project's gh-CLI reference, though its description says
 only "GitHub repository setup and platform-specific features"). For any
 tool / platform / workflow finding, before concluding "no owning skill" and
-falling back to `project-rule` or `user-memory`, you **MUST open the top 1–2
+falling back to `project-rule` or `personal-rule`, you **MUST open the top 1–2
 candidate skills** (inferred from the skill name, category, or domain) — their `SKILL.md` and `references/` files — and check for a
 fitting section. Only after that content check fails is `new-skill` (or a
 narrower destination) correct.
@@ -189,7 +193,7 @@ Summary table:
 ```
 | Destination | Action | Target | Status |
 |---|---|---|---|
-| user-memory | wrote | ~/.claude/.../feedback_X.md | ✓ |
+| personal-rule | wrote | ~/.claude/CLAUDE.md | ✓ |
 | skill-update | opened PR | netresearch/typo3-conformance-skill#456 | ✓ |
 | checkpoint | added AH-22 | agent-harness-skill | ✓ |
 ```
@@ -234,7 +238,7 @@ Steps:
 - Phase 3 runs against the target session(s)
 - **Phase 3b is the primary detection step:** walk forward from session end with `git log`, `gh pr view`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the failures, the durable successes, and superseded temporary copies (D12: a tracked canonical-source upstream PR merged → propose pruning the skill's labelled copy).
 - Phase 3c may also fire if the window is large
-- Phases 4–10 proceed; destinations skew toward `skill-update` — the skill should learn both what to avoid (D1–D10) and what to codify (D11) — and `user-memory` for personal patterns
+- Phases 4–10 proceed; destinations skew toward `skill-update` — the skill should learn both what to avoid (D1–D10) and what to codify (D11) — and `personal-rule` for personal patterns
 - Guard D11 with the same generalizability filter as B16–B18: a local, one-off change that merged cleanly is **not** a learning; codifying it is noise
 
 Requires latency. Don't run within 24h of the session — most D signals (including D11's "survived the window") haven't manifested yet.
@@ -275,7 +279,7 @@ is confirmed. Full detail in `skills/retro/references/promote-mode.md`.
 
 - Skip Phases 2, 2b, 3b, 3c (no transcript) — announce the skip in one line
 - Phases 4–10 run verbatim; destination skew is **upward** per scope-escalation
-  (skill-update › project-rule › user-memory), **never** project-local memory
+  (skill-update › project-rule › personal-rule), **never** project-local memory
 - Phase 8 adds a mandatory default-**N** warning on every `project-rule` /
   `skill-update` proposal: "promoting this makes it team-visible; source is
   currently private"

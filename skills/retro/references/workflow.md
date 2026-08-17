@@ -96,7 +96,7 @@ Use case: drain accumulated local memory upward; empty the silo
 ```
 
 Reads the stock, not the session flow. Reuses the scope-escalation rule
-(skill-update > project-rule > user-memory; never project-local memory) and
+(skill-update > project-rule > personal-rule; never project-local memory) and
 drains the source LAST, only after the upward write is verified. Full detail:
 `references/promote-mode.md`.
 

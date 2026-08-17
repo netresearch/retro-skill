@@ -12,7 +12,7 @@
 
 Add a `/retro promote` mode that inventories already-written, cwd-scoped memory
 stores (the accumulated **stock**) and re-homes each note upward to its correct
-destination — `skill-update › project-rule › user-memory`, never project-local
+destination — `skill-update › project-rule › personal-rule`, never project-local
 memory — draining the source only after the upward write is confirmed. It makes
 the taxonomy's existing "never project-local memory" stance actionable on the
 backlog, not merely enforced going forward.
@@ -83,7 +83,7 @@ refused `drain` (path not under a `<slug>/memory/` store, or sha mismatch).
 |---|---|
 | 1 | **Substituted** by `scan-memory-inventory.py` (one invocation) |
 | 2, 2b, 3b, 3c | **Skipped** (no transcript) — announced in one line |
-| 4 Classify | Unchanged; route C3/B8 + `current_location` via scope-escalation; personal content not auto-escalated past user-memory |
+| 4 Classify | Unchanged; route C3/B8 + `current_location` via scope-escalation; personal content not auto-escalated past personal-rule |
 | 5–7 | Unchanged (discovery, eval, proposal — reuse the note's verbatim Why/How) |
 | 8 Approval | Unchanged + mandatory default-**N** team-visibility warning on every project-rule / skill-update proposal |
 | 9 Materialize | Unchanged + **materialize-then-drain** post-step (below) |
@@ -104,7 +104,7 @@ No verified success → no drain. Rejected proposals → never drained.
 | Risk | Control |
 |---|---|
 | Opaque naming | `promote` = what Phases 7–9 do; fits `/retro <verb>` (`dream`/`upsert` rejected) |
-| Personal note → team-visible | Phase 4 no auto-escalate past user-memory; Phase 8 default-N visibility warning |
+| Personal note → team-visible | Phase 4 no auto-escalate past personal-rule; Phase 8 default-N visibility warning |
 | Deletion / data loss | write → verify → drain; reversible tombstone, never `rm`; sha race-check |
 | Over-escalation | Store-class discrimination; destinations + Serena excluded; drain refuses non-`memory/` paths |
 | Blur with `audit` | Distinct input (filesystem stock vs cross-session transcripts) and destination skew |

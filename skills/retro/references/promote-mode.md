@@ -19,7 +19,7 @@ no one, and invisible from any other slug. A note written while `cwd` resolved
 to `-home-sme` is never recalled while working in `-home-sme-p-retro-skill`.
 Promote drains that silo into the shareable destinations the taxonomy already
 defines, in priority order: **canonical-source › skill-update › project-rule
-(`AGENTS.md`) › user-memory (`~/.claude/CLAUDE.md`)** — see the authority axis
+(`AGENTS.md`) › personal-rule (`~/.claude/CLAUDE.md`)** — see the authority axis
 and the scope-escalation rule in `classification-heuristic.md`. A note whose
 substance is a fact owned outside the agent system (upstream docs, code, a
 schema) promotes to that owner; the skill keeps at most a reference plus the
@@ -152,7 +152,7 @@ proposals are never drained.
    reach) and fits the `/retro <verb>` convention. (`dream` / `upsert` rejected.)
 2. **Team-visibility of personal notes.** Two layers: (a) at Phase 4, personal
    content (a `$HOME` path, an "I prefer…" style note) is **not** auto-escalated
-   past user-memory; (b) at Phase 8, every `project-rule` / `skill-update`
+   past personal-rule; (b) at Phase 8, every `project-rule` / `skill-update`
    proposal triggers a mandatory, default-**N** warning stating exactly where it
    becomes team-visible and that the source is currently private. The promotion
    and its paired drain are one approval unit.

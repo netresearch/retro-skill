@@ -8,7 +8,7 @@ expected:
   - report an empty or near-empty result without inventing a rule
   - treat 'nothing actionable' as a valid, successful outcome
 negative_expected:
-  - manufacture a user-memory or skill-update rule from one ambiguous, low-confidence signal
+  - manufacture a personal-rule or skill-update rule from one ambiguous, low-confidence signal
   - pad the proposal list to look productive
   - escalate a one-off into a cross-project pattern without cross-session evidence
 ---
