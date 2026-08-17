@@ -12,7 +12,7 @@ negative_expected:
   - leave the copy in place because "it is labelled" — the label plus merged upstream PR is precisely the prune trigger
   - delete the entire section including the agent-specific delta or the reference (losing knowledge the upstream page does not carry)
   - propose the prune while the upstream PR is still open or was closed unmerged (a hypothesis is not a landed fact)
-  - route to `user-memory` or a new prose rule instead of the owning skill's `skill-update`
+  - route to `personal-rule` or a new prose rule instead of the owning skill's `skill-update`
 ---
 
 # Scenario: a landed upstream PR retires the skill's temporary copy

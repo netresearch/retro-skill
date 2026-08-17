@@ -9,7 +9,7 @@ by a specialist skill.
 
 | # | Destination | When | Owner Skill (materialization format) | Storage Location |
 |---|---|---|---|---|
-| 1 | `user-memory` | Personal preference, style, recurring quirk across projects | retro-skill (appends a rule) | `~/.claude/CLAUDE.md` (the always-loaded global rules file) |
+| 1 | `personal-rule` | Personal preference, style, recurring quirk across projects | retro-skill (appends a rule) | `~/.claude/CLAUDE.md` (the always-loaded global rules file) |
 | 2 | `project-rule` | Project-specific convention or command | retro-skill (appends a rule) | `<project>/AGENTS.md` |
 | 3 | `skill-update` | Existing skill missing instruction or has wrong guidance | `skill-repo-skill` (defines `materialization-contract`) | PR to skill **source repo** (never cache) |
 | 4 | `new-skill` | Friction is skill-shaped gap, no existing skill matches | `skill-repo-skill` (defines scaffolding) | New repo via scaffolding workflow |
@@ -19,7 +19,15 @@ by a specialist skill.
 
 ## Format details
 
-### 1. `user-memory` — append a rule to `~/.claude/CLAUDE.md`
+### 1. `personal-rule` — append a rule to `~/.claude/CLAUDE.md`
+
+> Renamed from `user-memory`. That name is a **deprecated alias**: accept it
+> wherever a destination is read (a user's phrasing, an older proposal, an
+> archived report), and always emit `personal-rule` in output. What this
+> destination materializes is a line in the always-loaded global rules file —
+> a durable *instruction*, not a recollection of past sessions. Calling it
+> memory put it in the same category as the session transcript, which is the
+> one category it is not.
 
 A cross-project personal preference belongs in the **always-loaded global rules
 file**, `~/.claude/CLAUDE.md`. Append a short, titled rule:
@@ -146,7 +154,7 @@ half-materialized.
 | Is the rule mechanical (regex / script)? | yes | `checkpoint` (`mechanical:`) |
 | Is the rule mechanical but enforces a workflow gate? | yes | `harness-artefact` (pre-commit / CI / linter rule) |
 | Is it checkable but by judgment, not by pattern? | yes | `checkpoint` (`llm_reviews:`) |
-| Is it a permanent personal preference? | yes | `user-memory` |
+| Is it a permanent personal preference? | yes | `personal-rule` |
 | Is it specific to this project? | yes | `project-rule` |
 | Would another project benefit from the same fix? | yes | `skill-update` |
 | Does the friction reveal a missing capability category? | yes | `new-skill` |

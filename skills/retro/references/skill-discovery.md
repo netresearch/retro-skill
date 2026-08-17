@@ -3,7 +3,7 @@
 Runtime discovery of **all** skills available to the user — installed *and*
 not-installed. Run it **before** classifying a learning (a mandatory input to
 classification), not only after a destination is already chosen. Discovering
-only installed skills mis-routes a learning to `user-memory`/`project-rule`
+only installed skills mis-routes a learning to `personal-rule`/`project-rule`
 when an org skill already owns it, and proposes a `new-skill` that already
 exists somewhere in the org.
 

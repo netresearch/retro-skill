@@ -63,8 +63,8 @@ Examples:
 - **Pass the message via `-F <file>`, not inline `-m`,** whenever it contains
   quotes, backticks, or other shell-special characters — inline `-m` mangles
   them mid-shell and produces a corrupted or partial commit message.
-- **No bot attribution.** Never add "Generated with Claude Code" or "Co-Authored-By: Claude" — see user memory.
-- **Preserve signing.** Never pass `--no-gpg-sign` or `-c commit.gpgsign=false` — see user memory `feedback_preserve-commit-signing`. (GPG signing and DCO sign-off are independent — you need *both*.)
+- **No bot attribution.** Never add "Generated with Claude Code" or "Co-Authored-By: Claude" — see the user's global rules.
+- **Preserve signing.** Never pass `--no-gpg-sign` or `-c commit.gpgsign=false` — see the user's global rules (`~/.claude/CLAUDE.md`). (GPG signing and DCO sign-off are independent — you need *both*.)
 - **Preserve hooks.** Never pass `--no-verify`. If a hook fails, investigate.
 - **Atomic.** One logical change per commit.
 
@@ -270,7 +270,7 @@ At end of `/retro`, output a table:
 ```
 | # | Destination | Action | Target | Status |
 |---|---|---|---|---|
-| 1 | user-memory | wrote | ~/.claude/projects/.../feedback_X.md | ✓ |
+| 1 | personal-rule | wrote | ~/.claude/CLAUDE.md | ✓ |
 | 2 | skill-update | opened PR | github.com/.../foo-skill#42 | ✓ |
 | 3 | checkpoint | edited | bar-skill/checkpoints.yaml (AH-12) | ✓ pending push |
 | 4a | harness-artefact | opened PR | github.com/.../app#77 (lefthook.yml) | ✓ |

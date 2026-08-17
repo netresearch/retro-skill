@@ -104,7 +104,7 @@ Plus optional auto-trigger via SessionEnd hook (off by default; user opts in).
 
 6. For each finding, resolve target:
    - skill-update / new-skill: invoke Skill Discovery
-   - user-memory: determine memory file path
+   - personal-rule: determine memory file path
    - project-rule: locate project AGENTS.md or docs/feedback/
    - checkpoint: identify target skill's checkpoints.yaml
    - harness-artefact: identify which agent-harness artefact
@@ -194,7 +194,7 @@ Seven categories, statically documented in `skills/retro/references/destination-
 
 | Destination | When | Materialization Format |
 |---|---|---|
-| `user-memory` | Personal preference, style, recurring quirk across projects | Append a titled rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file; not the cwd-scoped `~/.claude/projects/<slug>/memory/`) |
+| `personal-rule` | Personal preference, style, recurring quirk across projects | Append a titled rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file; not the cwd-scoped `~/.claude/projects/<slug>/memory/`) |
 | `project-rule` | Project-specific convention or command | Append a titled rule to `<project>/AGENTS.md` (not `<project>/CLAUDE.md`, not `docs/feedback/`) |
 | `skill-update` | Existing skill missing instruction or has wrong guidance | PR to skill **source repo** (not cache) via `skill-repo` convention |
 | `new-skill` | Friction is skill-shaped gap, no existing skill matches | Invoke `skill-repo` scaffolding for new repo |
@@ -210,7 +210,7 @@ Excerpt; full table in `skills/retro/references/classification-heuristic.md`.
 Tool output verbosity        → skill-update on tool-owner skill
                                 (e.g. file-search, data-tools)
 
-User correction (style)      → user-memory (~/.claude/CLAUDE.md)
+User correction (style)      → personal-rule (~/.claude/CLAUDE.md)
 
 User correction (convention) → project-rule (<project>/AGENTS.md)
 
@@ -221,7 +221,7 @@ Skill not triggered          → skill-update (description) OR
 Wrong tool choice            → skill-update on tool-owner
                                 OR cli-tools-skill (selection heuristic)
 
-Known rule violated          → skill-update — skill is ignoring user-memory
+Known rule violated          → skill-update — skill is ignoring personal-rule
 
 Skipped verification         → harness-artefact (PR-template question)
                                 OR project-rule (CLAUDE.md rule)
@@ -232,19 +232,19 @@ Upstream failure             → harness-artefact (pre-commit hook)
                                 OR project-rule
 
 Outdated tool                → skill-update on tool-owner (version bump)
-                                OR user-memory (user uses outdated setup)
+                                OR personal-rule (user uses outdated setup)
 
 Missing skill                → new-skill via skill-repo
 
 Cross-project pattern        → skill-update (promotion from feedback files)
 
-Permission re-approval       → user-memory + invoke update-config skill
+Permission re-approval       → personal-rule + invoke update-config skill
 
 Context re-discovery         → project-rule — improve AGENTS.md
                                 OR skill-update on agent-rules-skill
 
 Assumption without asking    → skill-update on spec-driven-development
-                                (trigger description) OR user-memory
+                                (trigger description) OR personal-rule
 
 Doc drift                    → skill-update on context7-skill trigger
                                 OR project-rule
@@ -311,8 +311,8 @@ Documented in `skills/retro/references/patch-workflow.md`.
 
 4. Edit + atomic commit per logical change
    - No --no-verify (preserve hooks)
-   - No --no-gpg-sign (preserve user's SSH signing — see user memory)
-   - No bot attribution in commit message (see user memory)
+   - No --no-gpg-sign (preserve user's SSH signing — see the user's global rules)
+   - No bot attribution in commit message (see the user's global rules)
    - Conventional Commits format
 
 5. Push branch + create PR via gh / glab

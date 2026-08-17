@@ -9,7 +9,7 @@ expected:
   - verify the existing artefact first (the `AH-*` globs name the hook-config filenames) and extend `lefthook.yml`, leaving the test-suite entry intact
   - if prose accompanies the gate, it is the recipe for installing the same gate in sibling repos, carried by the owning skill — paired with the gate as one proposal
 negative_expected:
-  - route to `user-memory` or `project-rule` as a reminder to run the linter before pushing
+  - route to `personal-rule` or `project-rule` as a reminder to run the linter before pushing
   - propose the hook without checking whether a hook config already exists, or overwrite `lefthook.yml` with a template and drop the test-suite entry
   - propose a CI-side change when CI already catches this — the gap is the local layer
   - apply the reach ladder first and default to `skill-update` because a skill reaches more repos

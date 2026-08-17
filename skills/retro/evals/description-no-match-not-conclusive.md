@@ -8,7 +8,7 @@ expected:
   - find that github-project owns the gh-CLI reference and classify the finding as skill-update against that owning skill
   - route platform/tool ownership to the owning skill even when its one-line description ("GitHub repository setup and platform-specific features") does not obviously match
 negative_expected:
-  - fall back to user-memory or project-rule because no description string matched
+  - fall back to personal-rule or project-rule because no description string matched
   - classify it as new-skill on the strength of the description-level no-match alone
   - skip inspecting candidate skills' contents and route to memory as the last resort prematurely
 ---
@@ -21,6 +21,6 @@ reference, but its description says only "GitHub repository setup and
 platform-specific features". For any tool / platform / workflow finding, retro
 must open the top candidate skills' `SKILL.md` and `references/` and check for a
 fitting section *before* concluding no skill owns the topic and falling back to
-`project-rule` or `user-memory`. The discriminator is *"did I inspect the
+`project-rule` or `personal-rule`. The discriminator is *"did I inspect the
 candidate skills' contents?"*, not *"did a description string match?"*. Memory
 is the last resort, reached only after a content check fails.
