@@ -49,7 +49,7 @@ Fast, deterministic, regex/count-based. Runs before LLM pass to reduce token cos
 | A8 | Prompt sequence repetition | n-gram match (n=2..5) over user message sequence | Workflow ripe for snippet/command |
 | A9 | Tool sequence repetition | n-gram match over tool_use names + arg templates | Composition opportunity, skill instruction gap |
 | A10 | Skill in reminder vs invoke | `<command-name>` in system reminder, no matching Skill call | Skill not triggered |
-| A11 | Wrong tool choice | `grep` on JSON, `sed` on YAML, `cat` for huge file | Tool-not-used / wrong tool |
+| A11 | Wrong tool choice | `grep` on JSON, `sed` on YAML, `cat` for huge file (not: `tail` on a task output or log, which Read cannot do) | Tool-not-used / wrong tool |
 | A12 | Re-read same file | Read tool same path ≥2× without intervening Edit | Caching opportunity |
 | A13 | Skipped verification | Claim "tests pass" / "fixed" without prior test/build run | Verification skip |
 | A14 | Worked on main/master | Git commands without prior `checkout -b` | Workflow violation |
