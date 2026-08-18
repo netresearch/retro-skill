@@ -28,6 +28,29 @@ If the existing checkout is **dirty** (uncommitted changes), do NOT use it — f
 ~/p/<skill>/main/ has 3 uncommitted changes; using /tmp/retro-workspace/<skill>/ instead.
 ```
 
+## Dedup check: has the fix already landed?
+
+Before authoring anything, search the target repo for the fix already existing —
+the incident that produced this finding was usually also worked by someone else
+(a sibling session, a parallel retro, the maintainer). After fetching, on the
+current default branch:
+
+```bash
+git log --oneline -20 origin/main -- <files the fix would touch>
+git log --grep '<incident keyword>' --oneline origin/main
+gh pr list --repo <owner/repo> --state all --search '<incident keyword>' --limit 10
+```
+
+A duplicate found is a proposal **withdrawn** (or re-scoped to the delta the
+landed fix lacks), not a second PR. Skipping this check does not fail fast — it
+fails at merge time, days later, as a rebase conflict whose main side already
+contains the feature, and the reflexive keep-my-side resolution then *reverts*
+whatever the landed version gained since. Observed 2026-08-18:
+`netresearch/jira-skill` #194, a retro-authored port that an independently
+merged commit (39ed9ce) had superseded with a hardened variant; the PR survived
+five days and two review passes before the conflict exposed it, and preferring
+the PR side would have silently dropped main's mention gate.
+
 ## Branch naming
 
 ```
