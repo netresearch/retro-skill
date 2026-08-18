@@ -161,6 +161,70 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_signal(evs, "A1")
 
+    def test_A11_head_on_repo_file_fires(self):
+        evs = tool_use_pair(
+            "h", "Bash", {"command": "head -60 tests/smoke.sh"}, "#!/usr/bin/env bash"
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_head_on_repo_file_before_semicolon_still_fires(self):
+        # The misuse is the first statement; the call doing something else
+        # afterwards must not hide it.
+        evs = tool_use_pair(
+            "h",
+            "Bash",
+            {"command": "head -60 tests/smoke.sh; echo done"},
+            "#!/usr/bin/env bash",
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_tail_on_background_task_output_does_not_fire(self):
+        # Read addresses files in the project and has no last-N-lines mode;
+        # polling a background task's output with tail is what the harness
+        # gate explicitly permits, so flagging it reports the rule's own
+        # allowance as friction — and feeds C6 with it.
+        evs = tool_use_pair(
+            "t",
+            "Bash",
+            {"command": "tail -20 /tmp/claude-1001/proj/tasks/abc123.output"},
+            "CHECKS EXIT: 0",
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_tail_on_log_then_other_command_does_not_fire(self):
+        evs = tool_use_pair(
+            "t",
+            "Bash",
+            {"command": "tail -3 /var/log/deploy.log; git status --porcelain"},
+            "done",
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_cat_into_a_pipe_does_not_fire(self):
+        evs = tool_use_pair("c", "Bash", {"command": "cat config.txt | wc -l"}, "12")
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_two_reads_in_one_call_count_once(self):
+        # One call is one habit; counting it twice inflates the C6 tally that
+        # decides whether the prose rule has failed.
+        evs = tool_use_pair(
+            "h",
+            "Bash",
+            {"command": "head -5 a.txt; head -5 b.txt"},
+            "…",
+        )
+        path = write_jsonl(evs)
+        try:
+            tool_uses = detect.extract_tool_uses(detect.load_jsonl(path))
+            hits = [
+                f
+                for f in detect.signal_wrong_tool_choice(tool_uses)
+                if f.get("name") == "cat_instead_of_read"
+            ]
+        finally:
+            path.unlink(missing_ok=True)
+        self.assertEqual(len(hits), 1, f"expected one finding, got {hits}")
+
     def test_A14_checkout_main_with_flag_fires(self):
         # Optional flags (e.g. -f) before the branch name must not hide main.
         evs = tool_use_pair(

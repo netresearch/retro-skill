@@ -169,6 +169,16 @@ A11_STRUCTURED_EXT_RE = re.compile(
 A11_STRUCTURED_TOOLS = {"grep", "egrep", "fgrep", "sed", "awk", "gawk"}
 A11_CAT_TOOLS = {"cat", "head", "tail"}
 A11_PIPELINE_OPS = {"|", "||", "&&", ";", ">", ">>", "<"}
+# The Read tool addresses files in the project; it has no last-N-lines mode and
+# is not the way to poll a background task's output, a log, or a scratch file.
+# The harness gate that enforces "Read instead of cat/head/tail" says so
+# explicitly, so flagging those paths reports as friction what the rule permits
+# — and, worse, feeds C6, which reads repeated A11 hits as proof that the prose
+# rule failed and escalates to "propose a mechanical gate". A false positive
+# must not be able to manufacture that escalation.
+A11_CAT_EXEMPT_PATH_RE = re.compile(
+    r"(?:^|/)(?:tmp|var/log|var/tmp|logs?)/|/tasks/|\.(?:log|out|output)$"
+)
 
 # A13: verification-skip claims — tightened to phrases that are unambiguously
 # success assertions, not incidental status notes ("done", "fixed in v2", etc.).
@@ -1105,9 +1115,32 @@ def signal_sequential_parallelizable(tool_uses) -> list[dict]:
 def _tokenize_bash(cmd: str) -> list[str] | None:
     """shlex-tokenize a Bash command. Returns None on unbalanced quotes etc."""
     try:
-        return shlex.split(cmd, posix=True, comments=False)
+        lexer = shlex.shlex(cmd, posix=True, punctuation_chars=True)
+        lexer.whitespace_split = True
+        lexer.commenters = ""
+        return list(lexer)
     except ValueError:
         return None
+
+
+def _split_statements(tokens: list[str]) -> list[list[str]]:
+    """Split a token list into statements at `;`, `&&`, `||` — keeping pipes.
+
+    A pipeline is one statement: `cat f | wc -l` is legitimate use of cat and
+    must stay intact so the caller can see the `|` and skip it.
+    """
+    statements: list[list[str]] = []
+    current: list[str] = []
+    for tok in tokens:
+        if tok in (";", "&&", "||", "&"):
+            if current:
+                statements.append(current)
+            current = []
+        else:
+            current.append(tok)
+    if current:
+        statements.append(current)
+    return statements
 
 
 def _split_pipeline_segments(tokens: list[str]) -> list[list[str]]:
@@ -1176,12 +1209,22 @@ def signal_wrong_tool_choice(tool_uses) -> list[dict]:
             continue
 
         # Misuse 2: cat/head/tail used as the terminal command (no pipe/redirect).
-        if any(tok in A11_PIPELINE_OPS for tok in tokens):
-            continue
-        head = tokens[0]
-        if head in A11_CAT_TOOLS:
-            file_args = [t for t in tokens[1:] if not t.startswith("-")]
-            if file_args:
+        #
+        # Per sub-command, not per Bash call: `head -50 file.py; echo done` is
+        # the misuse even though the call also runs something else, while
+        # bailing on the whole call whenever any operator appears misses it.
+        # A sub-command that pipes or redirects is legitimate use and is
+        # skipped — that is what `cat f | wc -l` is for.
+        for sub in _split_statements(tokens):
+            if not sub or sub[0] not in A11_CAT_TOOLS:
+                continue
+            if any(tok in A11_PIPELINE_OPS for tok in sub):
+                continue
+            head = sub[0]
+            file_args = [t for t in sub[1:] if not t.startswith("-")]
+            if file_args and not all(
+                A11_CAT_EXEMPT_PATH_RE.search(t) for t in file_args
+            ):
                 out.append(
                     {
                         "signal": "A11",
@@ -1192,6 +1235,10 @@ def signal_wrong_tool_choice(tool_uses) -> list[dict]:
                         "snippet": cmd[:200],
                     }
                 )
+                # One finding per Bash call: a call with two such reads is one
+                # habit, and counting it twice inflates the C6 tally that
+                # decides whether prose has failed.
+                break
     return out
 
 
