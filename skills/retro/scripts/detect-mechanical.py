@@ -177,7 +177,11 @@ A11_PIPELINE_OPS = {"|", "||", "&&", ";", ">", ">>", "<"}
 # rule failed and escalates to "propose a mechanical gate". A false positive
 # must not be able to manufacture that escalation.
 A11_CAT_EXEMPT_PATH_RE = re.compile(
-    r"(?:^|/)(?:tmp|var/log|var/tmp|logs?)/|/tasks/|\.(?:log|out|output)$"
+    r"(?:"
+    r"(?:^|/)(?:tmp|var/log|var/tmp|logs?)/"  # a scratch or log directory
+    r"|/tasks/"  # a background task's output
+    r"|\.(?:log|out|output)$"  # an output file by extension
+    r")"
 )
 
 # A13: verification-skip claims — tightened to phrases that are unambiguously
