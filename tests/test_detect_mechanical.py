@@ -410,6 +410,28 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_signal(evs, "A16")
 
+    def test_A16_git_head_is_now_at_is_not_a_deprecation(self):
+        evs = tool_use_pair(
+            "u1",
+            "Bash",
+            {"command": "git worktree add ../x -b x"},
+            "Preparing worktree (new branch 'x')\nHEAD is now at cff1314 Merge branch 'y'",
+        )
+        self.assert_not_signal(evs, "A16")
+
+    def test_A10_builtin_slash_command_does_not_fire(self):
+        evs = [user_msg("<command-name>/clear</command-name>"), user_msg("next")]
+        self.assert_not_signal(evs, "A10")
+
+    def test_A10_inline_expanded_skill_does_not_fire(self):
+        body = "<command-name>/pr-finish</command-name>\n# /pr-finish\n" + ("x" * 1600)
+        evs = [user_msg(body), user_msg("next")]
+        self.assert_not_signal(evs, "A10")
+
+    def test_A10_bare_skill_mention_without_invoke_still_fires(self):
+        evs = [user_msg("<command-name>/some-skill</command-name>"), user_msg("next")]
+        self.assert_signal(evs, "A10")
+
     def test_A17_upstream_failure(self):
         evs = tool_use_pair(
             "u1",

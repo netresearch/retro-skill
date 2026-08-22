@@ -69,10 +69,36 @@ BOT_ATTRIBUTION = re.compile(
     r"(Generated with Claude|Co-Authored-By:\s*Claude|🤖)",
     re.IGNORECASE,
 )
+# `(?<!HEAD )is now`: git prints "HEAD is now at <sha>" on every checkout/worktree
+# add, which is a position report, not a deprecation — it fired seven times in one
+# session before the lookbehind.
 OUTDATED_TOOL = re.compile(
-    r"\b(deprecated|is now|use\s+\S+\s+instead|no longer supported)\b",
+    r"\b(deprecated|(?<!HEAD )is now|use\s+\S+\s+instead|no longer supported)\b",
     re.IGNORECASE,
 )
+#: Slash commands the client handles itself; no Skill call can ever follow them.
+BUILTIN_SLASH_COMMANDS = frozenset(
+    {
+        "/clear",
+        "/compact",
+        "/config",
+        "/cost",
+        "/doctor",
+        "/exit",
+        "/help",
+        "/init",
+        "/login",
+        "/logout",
+        "/memory",
+        "/model",
+        "/quit",
+        "/status",
+    }
+)
+#: A `<command-name>` block whose text body is this long carries the skill content
+#: inline (the client expanded the slash command), so the skill IS in effect without
+#: a Skill tool call.
+INLINE_SKILL_MIN_CHARS = 1500
 GIT_BRANCH_MAIN = re.compile(r"\b(?:main|master)\b")
 # Each alternative skips the flags that come before its branch-creating one via
 # its own negative lookahead (`(?!-b\b)` / `(?!-c\b)`), so the `*` cannot eat the
@@ -876,6 +902,12 @@ def signal_skill_reminder_vs_invoke(events) -> list[dict]:
             text = str(content)
         matches = re.findall(r"<command-name>([^<]+)</command-name>", text)
         if not matches:
+            continue
+        # Built-ins are handled by the client; an expanded slash command arrives with
+        # its full instructions inline — neither is a skill that failed to trigger.
+        if all(m.strip() in BUILTIN_SLASH_COMMANDS for m in matches):
+            continue
+        if len(text) >= INLINE_SKILL_MIN_CHARS:
             continue
         # Look at next 3 events for Skill tool invocation
         invoked = False
