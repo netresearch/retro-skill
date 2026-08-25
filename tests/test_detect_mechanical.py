@@ -707,6 +707,39 @@ class TestHelpers(unittest.TestCase):
         result = detect.extract_user_texts(events)
         self.assertEqual(result, [(0, "hello")])
 
+    def test_extract_user_texts_skips_compact_summary_flag(self):
+        # A compaction-continuation turn carries isCompactSummary: true and a
+        # banner full of exclamation-heavy quoted session content. Counting it
+        # as user input floods A6/A7: one real session produced 3 false A6 and
+        # 1 false A7 from three compaction banners alone.
+        events = [
+            {
+                "type": "user",
+                "isCompactSummary": True,
+                "message": {
+                    "content": "This session is being continued from a previous "
+                    "conversation that ran out of context. The summary: "
+                    'user said "NEVER do X!!" and "ALLES erledigt?"'
+                },
+            },
+            user_msg("real question"),
+        ]
+        result = detect.extract_user_texts(events)
+        self.assertEqual(result, [(1, "real question")])
+
+    def test_extract_user_texts_skips_compact_banner_without_flag(self):
+        # Older transcripts predate the flag; the banner text is the fallback
+        # discriminator, mirroring the isMeta / marker split above it.
+        events = [
+            user_msg(
+                "This session is being continued from a previous conversation "
+                "that ran out of context. The summary below covers ..."
+            ),
+            user_msg("real question"),
+        ]
+        result = detect.extract_user_texts(events)
+        self.assertEqual(result, [(1, "real question")])
+
     def test_extract_tool_uses_returns_5tuple_with_is_error(self):
         events = tool_use_pair("u1", "Read", {"file_path": "/x"}, "ok", is_error=False)
         result = detect.extract_tool_uses(events)
