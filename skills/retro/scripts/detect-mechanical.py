@@ -273,6 +273,11 @@ _SYNTHETIC_USER_MARKERS = (
     "<command-message>",
     "<teammate-message",
     "<agent-message",
+    # Compaction-continuation banner: quotes the session's own emphatic
+    # content back as a "user" turn — 3 false A6 and 1 false A7 from three
+    # banners in one measured session. Fallback for transcripts predating the
+    # isCompactSummary flag handled in extract_user_texts.
+    "This session is being continued from a previous conversation",
 )
 
 
@@ -312,6 +317,11 @@ def extract_user_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
         # the authoritative discriminator where present. The marker/prompt
         # checks below remain as fallback for transcripts predating the flag.
         if ev.get("isMeta"):
+            continue
+        # Compaction summaries carry the user role but are harness-authored
+        # recaps of earlier turns; isCompactSummary is authoritative where
+        # present (the banner marker above covers older transcripts).
+        if ev.get("isCompactSummary"):
             continue
         msg = ev.get("message", {})
         content = msg.get("content")
