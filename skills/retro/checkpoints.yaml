@@ -2,6 +2,9 @@ version: 1
 skill_id: retro
 
 preconditions:
+  - type: file_exists
+    target: skills/retro/SKILL.md
+    desc: "project IS the retro skill repo — RT-* audit its own layout"
   - type: command
     pattern: "python3 --version"
     desc: "python3 available for mechanical pre-pass"
