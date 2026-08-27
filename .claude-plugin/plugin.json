@@ -1,12 +1,13 @@
 {
   "name": "retro",
-  "version": "1.6.0",
+  "version": "1.7.0",
   "description": "LLM-driven session retrospection. Detects friction in agent sessions and materializes learnings into correct destinations (personal rules, project rules, skill PRs, checkpoints, harness artefacts).",
   "author": {
     "name": "Netresearch DTT GmbH",
     "url": "https://www.netresearch.de"
   },
   "repository": "https://github.com/netresearch/retro-skill",
+  "license": "(MIT AND CC-BY-SA-4.0)",
   "keywords": [
     "retro",
     "retrospective",
@@ -16,7 +17,6 @@
     "learning",
     "meta"
   ],
-  "license": "(MIT AND CC-BY-SA-4.0)",
   "skills": [
     "./skills/retro"
   ]
