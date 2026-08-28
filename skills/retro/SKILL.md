@@ -31,8 +31,11 @@ approval.
   project-local memory); drain the source only after the upward write is
   verified. See `references/promote-mode.md`.
 - **`/retro done`** — definition-of-done gate: seven evidence-backed checks
-  (task, findings, retro, cleanup, questions, tickets, time). See
-  `references/done-mode.md`.
+  (task, findings, retro, cleanup, questions, tickets, time), each ✅ / ❌ /
+  ⏸ / N/A. **⏸ only when a named person can close it with a named action;
+  what is structurally absent is N/A with its reason** — a ⏸ nobody can close
+  makes the whole table get skipped. Say **done** when every row is ✅ or N/A.
+  See `references/done-mode.md`.
 - **Auto** — optional SessionEnd hook (`hooks/session-end.json`), off by default.
 
 ## Pipeline (all modes)
@@ -64,7 +67,9 @@ cache. Per-private-repo confirmation. Conventional Commits. DCO sign-off
 dirty-worktree fallback, any promotion making a note team-visible.
 
 **Never:** auto-merge, silent writes, bot attribution, skip hooks (`--no-verify`),
-patch the cache, hardcode a static skill list, `rm` a drained memory (tombstone).
+patch the cache, hardcode a static skill list, `rm` a drained memory (tombstone);
+from Done mode: merge, tag or deploy, or touch another session's containers,
+processes or worktrees.
 
 ## References
 
