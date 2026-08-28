@@ -1,6 +1,6 @@
 {
   "name": "retro",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "LLM-driven session retrospection. Detects friction in agent sessions and materializes learnings into correct destinations (personal rules, project rules, skill PRs, checkpoints, harness artefacts).",
   "author": {
     "name": "Netresearch DTT GmbH",
