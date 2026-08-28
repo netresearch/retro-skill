@@ -23,6 +23,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `/retro outcome [session-id|--since N]` — Outcome: post-hoc review of a past session
 - `/retro audit [--scope project|repo|skill]` — Audit: cross-session architectural review
 - `/retro promote` — Promote: re-home accumulated local memory upward
+- `/retro done` — Done: seven-gate definition-of-done check (task, findings, retro, cleanup, questions, tickets, time)
 
 ## Rules
 
