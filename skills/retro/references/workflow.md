@@ -100,6 +100,24 @@ Reads the stock, not the session flow. Reuses the scope-escalation rule
 drains the source LAST, only after the upward write is verified. Full detail:
 `references/promote-mode.md`.
 
+### Done — `/retro done`
+
+Not a detector but a **gate**: seven checks that must all hold before the
+session may be called finished — task delivered, findings triaged, retro run,
+cleanup done, no open questions, tickets updated, time booked.
+
+```
+Input: live state of the session's artefacts (forge, tracker, TimeTracker,
+       host), plus this session's Sweep result if one exists
+Output: gate table (✅ / ⏸ / ❌ + evidence); writes only after approval
+Use case: the last command of a session; the answer to "alles erledigt?"
+Token cost: low (no transcript pass) unless it has to run the Sweep first
+```
+
+Phases 1–3 skipped; chains the Sweep for gate 3 when none ran; Phases 8–10
+for the bookings, comments and removals it proposes. Full detail:
+`references/done-mode.md`.
+
 ### Auto — SessionEnd hook (off by default)
 
 Optional automated trigger. Activate by merging the `hooks` object from `hooks/session-end.json` into `~/.claude/settings.json` (or a project `.claude/settings.json`); Claude Code does not load hooks from a `~/.claude/hooks/` directory.

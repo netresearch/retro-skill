@@ -25,6 +25,7 @@ correct destination.
 /retro outcome [session-id|--since N] Outcome — post-hoc review of past session(s)
 /retro audit [--scope X]              Audit — cross-session architectural review
 /retro promote [--scope cwd|all]      Promote — re-home accumulated local memory upward
+/retro done                           Done — seven-gate finish check; "done" only when all hold
 ```
 
 ## Phase 1: Mechanical Pre-Pass
@@ -292,3 +293,23 @@ is confirmed. Full detail in `skills/retro/references/promote-mode.md`.
   (`tombstoned` / `kept — verify failed` / `kept — source changed`)
 - The scanner is read-only; if `--scope cwd` finds nothing, retry `--scope all`
   (the real stock often lives under a sibling slug)
+
+## Done Mode
+
+```
+/retro done
+```
+
+Answers "are we actually finished?" with evidence, not memory. Seven gates —
+task delivered (live state of every PR/MR/issue), interim findings fixed / filed
+(URL) / rejected, retro run, cleanup sweep, no open questions, tickets updated,
+time booked per day — each ✅ / ⏸ / ❌ with its evidence. Full detail in
+`skills/retro/references/done-mode.md`.
+
+- Phases 1–3 are skipped (announce it) unless gate 3 finds no Sweep has run —
+  then run the Sweep in full first
+- Phase 8 applies to every write the gate proposes: TimeTracker bookings
+  (`log_time`, dual-write, `get_day` first, never a Jira worklog), ticket
+  comments, worktree removals
+- Phase 10 report is the gate table; the word **done** appears only when all
+  seven rows are ✅ — a ⏸ (waiting on the user) or ❌ ends with what closes it

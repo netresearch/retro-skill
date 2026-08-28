@@ -70,6 +70,7 @@ retro-skill/
 ```
 /retro                              Sweep: analyze entire current session
 /retro "<problem description>"      Spotlight: focus on specific issue
+/retro done                         Done: seven-gate definition-of-done check (see skills/retro/references/done-mode.md)
 ```
 
 Plus optional auto-trigger via SessionEnd hook (off by default; user opts in).
