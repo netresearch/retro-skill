@@ -35,6 +35,7 @@ pgrep -af 'php -S|node|python -m http'          # servers an agent started
 docker ps -a                                    # containers (e2e, db, apache)
 git worktree list                               # per repo touched this session
 git branch -vv | grep ': gone]'                  # local branches whose remote is gone
+git stash list                                  # per repo — survives every worktree
 ls -d /tmp/phpstan /tmp/cache/PHPStan /tmp/rector_cached_files 2>/dev/null
 du -sh "$SCRATCHPAD"/*                          # scratch disk
 ```
@@ -43,6 +44,24 @@ Plus: subagents stopped (`TaskStop`), background watchers ended, no `/loop`
 armed. **Before removing a worktree or branch:** `git status --porcelain`,
 `git stash list`, `git cherry -v origin/main <branch>` — anything unpushed
 stays, and the report says so.
+
+**Stashes are their own row, not a footnote to worktree removal.** They live in
+the repository, not in a worktree, so a repo can report a clean tree, no
+worktrees and no stray branches while still holding them — and a stash whose
+branch is gone is invisible from every other check. Read each one before
+dropping it: `git stash show --stat`, then look for its content in the target
+(`git stash show -p | grep '^+'` and search a distinctive line on `main`).
+Three stashes from March, April and June were each already merged by another
+route; the SHA goes in the report so the drop stays reversible.
+
+**Three more rows the obvious list misses.** Each one produced a false "all
+done" in the session this mode came out of:
+
+| Check | Why it is not covered above |
+|---|---|
+| Memory-store consistency: no orphaned notes, no dead index links | A note deleted this session can leave `[[wikilinks]]` in surviving notes; an unindexed note is invisible at session start although the file exists |
+| **Author** of every open PR before classifying it | "Renovate handles those" was wrong for one of five — it was an own PR with 14 red checks, waved through by the label rather than read |
+| Consumer cache after a release (`~/.claude/plugins/cache/<marketplace>/<skill>/`) | A published release is not an installed one; "consumers have the fix" is false until the cache shows the version |
 
 ## Booking (gate 7)
 
