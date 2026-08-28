@@ -109,9 +109,12 @@ cleanup done, no open questions, tickets updated, time booked.
 ```
 Input: live state of the session's artefacts (forge, tracker, TimeTracker,
        host), plus this session's Sweep result if one exists
-Output: gate table (✅ / ⏸ / ❌ + evidence); writes only after approval
+Output: scope line + gate table (✅ / ❌ / ⏸ / N-A + evidence); writes only
+       after approval
 Use case: the last command of a session; the answer to "alles erledigt?"
-Token cost: low (no transcript pass) unless it has to run the Sweep first
+Token cost: moderate — no transcript pass, but one live-state read per
+       artefact, one sweep per repository and one get_day per day; a
+       chained Sweep adds its own
 ```
 
 Phases 1–3 skipped; chains the Sweep for gate 3 when none ran; Phases 8–10

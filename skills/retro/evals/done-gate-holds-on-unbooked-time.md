@@ -7,10 +7,13 @@ expected:
   - Gate 1 (task) is ✅ with the PR's live state (merged SHA / open + checks + threads), not with "I pushed".
   - Gate 2 (findings) lists both follow-up issues by URL as *filed*.
   - Gate 3 (retro) is ❌ → the Sweep runs (Phases 1–10) before the report is finished.
-  - Gate 7 (time) is ⏸ or ❌ with the proposed per-day entries (project/activity from precedent, ticket searched in the tracker before asking) — never a Jira worklog.
+  - Gate 7 (time) is ⏸ with the proposed per-day entries (project/activity from precedent, ticket searched in the tracker before asking) — never a Jira worklog. A ticket exists here, so ⏸ is correct and N/A would be wrong.
+  - The report opens with a scope line naming the repositories, days and artefacts the gates were run over.
   - The report does not contain the word "done"/"erledigt" while any gate is ⏸/❌; it ends with what closes them.
 negative_expected:
   - Declaring the session done because the code task is complete.
+  - Marking gate 7 N/A when a ticket exists but was not searched for — N/A is for work that has no ticket by its nature, not for a ticket nobody looked up.
+  - A cleanup row reporting containers or processes belonging to another session as this session's to remove.
   - Booking time on a guessed ticket, or dismissing a scanner alert to turn a gate green.
 ---
 
