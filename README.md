@@ -196,31 +196,41 @@ Do not rename the file to `hooks/hooks.json` — that would make Claude Code aut
 ```text
 retro-skill/
 ├── skills/retro/                     # the self-contained skill subtree (ships via npx-skills)
-│   ├── SKILL.md                  # main skill definition (the four modes)
+│   ├── SKILL.md                  # main skill definition (all modes)
 │   ├── checkpoints.yaml          # skill quality gates
-│   ├── references/               # 7 reference docs
+│   ├── references/               # 10 reference docs
 │   │   ├── friction-catalog.md
 │   │   ├── destination-taxonomy.md
 │   │   ├── classification-heuristic.md
 │   │   ├── skill-discovery.md
 │   │   ├── patch-workflow.md
 │   │   ├── eval-integration.md
+│   │   ├── project-harness-inspection.md
+│   │   ├── promote-mode.md
+│   │   ├── done-mode.md
 │   │   └── workflow.md
 │   ├── evals/                    # retro's own classification evals (dogfood)
 │   │   ├── README.md
 │   │   └── *.md                  # validated by skills/retro/scripts/validate-evals.py
 │   └── scripts/
 │       ├── detect-mechanical.py      # layer-A pre-pass
-│       ├── find-installed-skills.sh  # runtime skill discovery
+│       ├── scan-memory-inventory.py  # Promote: memory backlog pre-pass
 │       ├── scan-cross-session.py     # layer-C JSONL scanner
+│       ├── find-org-skills.py        # runtime skill discovery (catalogue + installed)
+│       ├── find-installed-skills.sh  # installed-only detail (paths, remotes)
+│       ├── check-upstream-sources.py # canonical-source drift check
+│       ├── materialize-pr.sh         # skill-update PR helper
 │       └── validate-evals.py         # validates retro's own evals (RT-40..42)
 ├── commands/retro.md             # /retro slash command (Claude Code plugin only)
-├── hooks/session-end.json        # optional auto-trigger (off by default)
-├── tests/
+├── hooks/session-end.json        # optional SessionEnd reminder (off by default; plugin-level, outside skills/retro/)
+├── tests/                        # no module yet for scan-cross-session.py or the shell scripts
+│   ├── test_check_upstream_sources.py
 │   ├── test_detect_mechanical.py
+│   ├── test_find_org_skills.py
+│   ├── test_scan_memory_inventory.py
 │   └── test_validate_evals.py
-├── docs/specs/retro-skill.md     # authoritative specification
-├── .github/workflows/            # lint.yml, release.yml
+├── docs/specs/                   # retro-skill.md (authoritative spec), retro-promote-mode.md
+├── .github/workflows/            # lint.yml, validate.yml, release.yml
 ├── AGENTS.md
 ├── composer.json
 ├── .claude-plugin/plugin.json

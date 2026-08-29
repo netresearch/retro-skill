@@ -36,7 +36,9 @@ approval.
   what is structurally absent is N/A with its reason** — a ⏸ nobody can close
   makes the whole table get skipped. Say **done** when every row is ✅ or N/A.
   See `references/done-mode.md`.
-- **Auto** — optional SessionEnd hook (`hooks/session-end.json`), off by default.
+- **Auto** — optional SessionEnd hook, off by default. It is plugin-level, not
+  part of this skill directory: `hooks/session-end.json` at the repository root
+  (see README, "Optional SessionEnd hook").
 
 ## Pipeline (all modes)
 
