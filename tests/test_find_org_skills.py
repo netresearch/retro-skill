@@ -227,6 +227,41 @@ class RoutingDescriptionTest(unittest.TestCase):
         _cached_plugin(home, "mp", "x", "1.10.0", {"x": "Use when 1.10"})
         self.assertEqual(fos.collect(home)[0]["description"], "Use when 1.10")
 
+    def test_cache_fallback_survives_a_non_version_directory(self):
+        # Cache directories are not guaranteed to be plain versions. Comparing
+        # a tagged key keeps `sorted()` from raising TypeError on ('latest',)
+        # against (1, 0, 0) and taking the whole scan down with it.
+        home = _minimal_home(
+            [{"name": "x", "description": "d", "source": {"repo": "o/x"}}]
+        )
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        _cached_plugin(home, "mp", "x", "1.0.0", {"x": "Use when 1.0"})
+        _cached_plugin(home, "mp", "x", "latest", {"x": "Use when latest"})
+        entry = fos.collect(home)[0]
+        self.assertEqual(entry["description_source"], "skill")
+
+    def test_cache_fallback_runs_when_the_recorded_path_is_gone(self):
+        # installed_plugins.json outlives the directory it names (a pruned
+        # version, a moved cache). That is the case the cache is a fallback
+        # for, so a recorded plugin with no resolvable path must still reach it.
+        home = _minimal_home(
+            [{"name": "x", "description": "d", "source": {"repo": "o/x"}}]
+        )
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        _cached_plugin(home, "mp", "x", "1.0.0", {"x": "Use when cached"})
+        (home / "plugins" / "installed_plugins.json").write_text(
+            json.dumps(
+                {
+                    "version": 2,
+                    "plugins": {"x@mp": [{"installPath": str(home / "gone")}]},
+                }
+            ),
+            encoding="utf-8",
+        )
+        entry = fos.collect(home)[0]
+        self.assertEqual(entry["description"], "Use when cached")
+        self.assertEqual(entry["description_source"], "skill")
+
     def test_installed_plugin_without_skills_falls_back_to_catalogue(self):
         # LSP / command-only plugins ship no skills/*/SKILL.md.
         home = _minimal_home(

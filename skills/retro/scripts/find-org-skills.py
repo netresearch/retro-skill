@@ -46,8 +46,16 @@ def _load_json(path: Path) -> Any | None:
 
 
 def _version_key(name: str) -> tuple[Any, ...]:
-    """Sort key that orders '1.10.0' after '1.9.1' (plain string sort does not)."""
-    return tuple(int(p) if p.isdigit() else p for p in re.split(r"[.\-+]", name))
+    """Sort key that orders '1.10.0' after '1.9.1' (plain string sort does not).
+
+    Each segment is tagged numeric-or-not before comparison. A tuple mixing
+    bare ints and strs raises TypeError the moment one cache directory is not
+    a plain version ('latest', 'dev', 'v1.0.0' beside '1.2.3'), and that
+    exception would come out of `sorted()` and take the whole scan down.
+    """
+    return tuple(
+        (0, int(p), "") if p.isdigit() else (1, 0, p) for p in re.split(r"[.\-+]", name)
+    )
 
 
 def _installed_plugins(claude_home: Path) -> dict[tuple[str, str], Path | None]:
@@ -85,7 +93,10 @@ def _installed_plugins(claude_home: Path) -> dict[tuple[str, str], Path | None]:
             if not mp_dir.is_dir():
                 continue
             for plugin in mp_dir.iterdir():
-                if not plugin.is_dir() or (mp_dir.name, plugin.name) in installed:
+                # A recorded plugin whose installPath no longer resolves is
+                # exactly the case the cache is a fallback for, so the test is
+                # "do we already have a path", not "is the key present".
+                if not plugin.is_dir() or installed.get((mp_dir.name, plugin.name)):
                     continue
                 versions = sorted(
                     (v for v in plugin.iterdir() if v.is_dir()),
