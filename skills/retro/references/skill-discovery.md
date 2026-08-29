@@ -10,7 +10,7 @@ exists somewhere in the org.
 ## The complete catalogue (primary)
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/scripts/find-org-skills.py
+python3 ${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py
 ```
 
 returns every skill in every configured marketplace — installed or not — as a
@@ -46,7 +46,7 @@ For installed skills' on-disk paths / git remotes (e.g. to prefer an existing
 worktree when patching):
 
 ```bash
-bash ${CLAUDE_PLUGIN_ROOT}/scripts/find-installed-skills.sh
+bash ${CLAUDE_SKILL_DIR}/scripts/find-installed-skills.sh
 ```
 
 returns `{name, path, description, repo_url}` for skills under
@@ -161,7 +161,7 @@ If discovery fails (no manifest, no git remote, no user input):
 
 ## See also
 
-- `scripts/find-org-skills.py` — full catalogue (installed + available)
-- `scripts/find-installed-skills.sh` — installed-only detail (paths, git remotes)
+- `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py` — full catalogue (installed + available)
+- `${CLAUDE_SKILL_DIR}/scripts/find-installed-skills.sh` — installed-only detail (paths, git remotes)
 - `references/patch-workflow.md` — What to do after a skill is matched
 - `references/eval-integration.md` — Using evals for context

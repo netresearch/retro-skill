@@ -27,7 +27,7 @@ agent-specific delta.
 
 ## What the scanner reads (and excludes)
 
-`scripts/scan-memory-inventory.py` is read-only by construction. It emits the
+`${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py` is read-only by construction. It emits the
 same envelope shape as `detect-mechanical.py`, so Phases 4–10 consume it as-is.
 
 | Scanned | Signal | Note |
@@ -104,7 +104,7 @@ classifies to it. Rules:
 - One proposal counts once against the ≤10 cap regardless of how many notes it
   absorbs.
 - The mechanical halves of a materialization repeat identically per proposal —
-  use `scripts/materialize-pr.sh` (`start` = fetch + fresh worktree off the
+  use `${CLAUDE_SKILL_DIR}/scripts/materialize-pr.sh` (`start` = fetch + fresh worktree off the
   default branch; `finish` = stage ONLY named files, signed commit, push, PR
   via `--body-file`) instead of hand-typing the sequence dozens of times.
 - Drain stays per-note: each absorbed note is drained individually (verified

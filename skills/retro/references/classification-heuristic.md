@@ -197,7 +197,7 @@ Knowledge is only as valuable as the breadth of reach where it applies. (Axis 0
 has already routed away facts owned outside the agent system; this axis ranks
 the remaining agent-behaviour prose.)
 
-**First, run skill discovery (`scripts/find-org-skills.py`) and check the full
+**First, run skill discovery (`${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py`) and check the full
 catalogue — installed *and* available — for a skill that owns this topic.** This
 is mandatory and happens *before* a destination is chosen, not after: without
 the catalogue you cannot route to the right owner — which is exactly how a
