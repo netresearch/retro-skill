@@ -7,7 +7,7 @@ metadata:
   author: Netresearch DTT GmbH
   version: "1.8.0"
   repository: https://github.com/netresearch/retro-skill
-allowed-tools: Bash(python3:*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) Bash(grep:*) Bash(jq:*) Read Write Edit Glob Grep Task
+allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*) Bash(bash ${CLAUDE_SKILL_DIR}/scripts/*) Bash(${CLAUDE_SKILL_DIR}/scripts/*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) Bash(grep:*) Bash(jq:*) Read Write Edit Glob Grep Task
 ---
 
 # Retro — LLM-driven Session Retrospection
@@ -42,15 +42,15 @@ approval.
 
 ## Pipeline (all modes)
 
-1. Mechanical pre-pass — `scripts/detect-mechanical.py` (Promote:
-   `scripts/scan-memory-inventory.py`). It requires `--transcript-file`, and the
+1. Mechanical pre-pass — `${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py` (Promote:
+   `${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py`). It requires `--transcript-file`, and the
    transcript is located **by content** — a token from this session — never by
    mtime: several sessions share one project slug, so the newest JSONL is
    regularly somebody else's. Invocation in `references/workflow.md`.
 2. LLM enrichment — inferential signals, both classes (friction + learnings
    B16–B18); filter false positives.
-3. Cross-session enrichment (optional) — JSONL scan via `scripts/scan-cross-session.py`.
-4. Discover skills — `scripts/find-org-skills.py` — and the repo's harness (`project-harness-inspection.md`).
+3. Cross-session enrichment (optional) — JSONL scan via `${CLAUDE_SKILL_DIR}/scripts/scan-cross-session.py`.
+4. Discover skills — `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py` — and the repo's harness (`project-harness-inspection.md`).
 5. Classify (`classification-heuristic.md`) — authority first, then broadest
    scope; never project-local memory.
 6. Evals — read a matched skill's `evals/`; propose a TDD stub.

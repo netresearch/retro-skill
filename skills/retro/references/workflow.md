@@ -167,7 +167,7 @@ if [ -z "$TF" ]; then
   done
 fi
 [ -n "$TF" ] || { echo "transcripts exist but none contain the token — pick another phrase"; exit 1; }
-python3 "${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py" \
+python3 "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" \
   --transcript-file "$TF" --output-format json
 ```
 
@@ -245,7 +245,7 @@ Differences between modes:
 | 4-10 | Same | Same (fewer findings) | D-focused | E-focused | Same |
 | 11 (report) | Detailed | Targeted | Outcome-table | Architectural-table | Reminder only |
 
-**Promote** substitutes Phase 1 with `scripts/scan-memory-inventory.py` (a
+**Promote** substitutes Phase 1 with `${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py` (a
 filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
 2/2b/3/3b/3c, runs Phases 4–10, and adds a verified **materialize-then-drain**
 post-step to Phase 9 — drain via `scan-memory-inventory.py drain <path>` only

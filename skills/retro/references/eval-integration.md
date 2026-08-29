@@ -108,7 +108,7 @@ are both current, and a repo may name the file something other than `evals.json`
 retro ships its **own** `evals/` directory testing its **own** classification
 behaviour — skill-bug vs skill-gap, when to prune, when to propose nothing. These
 are repo-scoped fixtures (see `evals/README.md`), validated for well-formedness by
-`scripts/validate-evals.py` and gated by checkpoints RT-40–RT-42.
+`${CLAUDE_SKILL_DIR}/scripts/validate-evals.py` and gated by checkpoints RT-40–RT-42.
 
 This is the one place retro uses a small, fixed local schema
 (`id` / `trigger` / `expected` / `negative_expected`). It applies **only** to
