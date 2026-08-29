@@ -86,6 +86,7 @@ class TestSchichtA(unittest.TestCase):
             user_texts = detect.extract_user_texts(events_loaded)
             assistant_texts = detect.extract_assistant_texts(events_loaded)
             tool_uses = detect.extract_tool_uses(events_loaded)
+            bypass_from = detect.bypass_permissions_from(events_loaded)
             findings = []
             for func in detect.SIGNAL_FUNCS.values():
                 if func in (
@@ -100,6 +101,8 @@ class TestSchichtA(unittest.TestCase):
                     findings.extend(func(tool_uses, user_texts))
                 elif func is detect.signal_skipped_verification:
                     findings.extend(func(assistant_texts, tool_uses))
+                elif func is detect.signal_wrong_tool_choice:
+                    findings.extend(func(tool_uses, bypass_from))
                 elif func is detect.signal_rule_exists_but_violated:
                     # Schicht C: takes the accumulated findings plus the rules
                     # text, not tool_uses. Run last, like main() does.
@@ -199,6 +202,43 @@ class TestSchichtA(unittest.TestCase):
             "done",
         )
         self.assert_not_signal(evs, "A11")
+
+    def test_A11_cat_under_bypass_permissions_does_not_fire(self):
+        # Bypass-permissions mode instructs Bash-first reading, so reporting it
+        # as friction flags the instructed behaviour on every such session.
+        evs = [{"type": "user", "permissionMode": "bypassPermissions"}] + tool_use_pair(
+            "u1", "Bash", {"command": "cat src/app.py"}, "..."
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_cat_before_bypass_starts_still_fires(self):
+        # The mode can be switched on mid-session; turns before it are ordinary.
+        evs = (
+            tool_use_pair("u1", "Bash", {"command": "cat src/app.py"}, "...")
+            + [{"type": "user", "permissionMode": "bypassPermissions"}]
+            + tool_use_pair("u2", "Bash", {"command": "cat src/other.py"}, "...")
+        )
+        path = write_jsonl(evs)
+        try:
+            events = detect.load_jsonl(path)
+            tool_uses = detect.extract_tool_uses(events)
+            bypass_from = detect.bypass_permissions_from(events)
+            hits = [
+                f
+                for f in detect.signal_wrong_tool_choice(tool_uses, bypass_from)
+                if f.get("name") == "cat_instead_of_read"
+            ]
+            self.assertEqual(len(hits), 1)
+        finally:
+            path.unlink()
+
+    def test_A11_grep_on_json_still_fires_under_bypass_permissions(self):
+        # data-tools is about the wrong parser, not about which tool opens the
+        # file — bypass mode licenses cat, never grep on structured formats.
+        evs = [{"type": "user", "permissionMode": "bypassPermissions"}] + tool_use_pair(
+            "u1", "Bash", {"command": "grep version package.json"}, "..."
+        )
+        self.assert_signal(evs, "A11")
 
     def test_A11_cat_into_a_pipe_does_not_fire(self):
         evs = tool_use_pair("c", "Bash", {"command": "cat config.txt | wc -l"}, "12")

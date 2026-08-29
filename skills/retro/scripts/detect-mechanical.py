@@ -286,6 +286,23 @@ def _is_synthetic_user_text(text: str) -> bool:
     return any(marker in head for marker in _SYNTHETIC_USER_MARKERS)
 
 
+def bypass_permissions_from(events: Iterable[dict]) -> int | None:
+    """Index of the first turn running under bypass-permissions mode, or None.
+
+    In that mode the system prompt tells the assistant to prefer Bash — "read
+    files with cat, head, or sed -n ... rather than using the dedicated Read,
+    Edit, or Write tools" — so A11's cat-instead-of-read arm would report the
+    instructed behaviour as friction, on every such session, and feed C6 the
+    repeat count it reads as a failed prose rule. The harness stamps the mode on
+    the user turn that carries it; it can be switched on mid-session, so this
+    returns the turn it starts at rather than a bare boolean.
+    """
+    for i, ev in enumerate(events):
+        if ev.get("permissionMode") == "bypassPermissions":
+            return i
+    return None
+
+
 def extract_user_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
     events = list(events)
     out = []
@@ -1205,7 +1222,7 @@ def _split_pipeline_segments(tokens: list[str]) -> list[list[str]]:
     return segments
 
 
-def signal_wrong_tool_choice(tool_uses) -> list[dict]:
+def signal_wrong_tool_choice(tool_uses, bypass_from: int | None = None) -> list[dict]:
     """A11: Bash invoking grep/sed/awk on structured files, or cat/head/tail
     *terminally* on a single file (Read would fit).
 
@@ -1252,6 +1269,13 @@ def signal_wrong_tool_choice(tool_uses) -> list[dict]:
             if fired_structured:
                 break
         if fired_structured:
+            continue
+
+        # Under bypass-permissions the assistant is told to read with Bash, so
+        # only this arm is suppressed. Misuse 1 above stays live under every
+        # mode: data-tools is about using the wrong parser on a structured
+        # file, not about which tool opens it.
+        if bypass_from is not None and i >= bypass_from:
             continue
 
         # Misuse 2: cat/head/tail used as the terminal command (no pipe/redirect).
@@ -1536,6 +1560,7 @@ def main() -> int:
     user_texts = extract_user_texts(events)
     assistant_texts = extract_assistant_texts(events)
     tool_uses = extract_tool_uses(events)
+    bypass_from = bypass_permissions_from(events)
 
     selected = {s.strip() for s in args.signals.split(",") if s.strip()}
     findings = []
@@ -1555,6 +1580,8 @@ def main() -> int:
             findings.extend(func(tool_uses, user_texts))
         elif func is signal_skipped_verification:
             findings.extend(func(assistant_texts, tool_uses))
+        elif func is signal_wrong_tool_choice:
+            findings.extend(func(tool_uses, bypass_from))
         elif func is signal_rule_exists_but_violated:
             continue  # runs last, needs the other findings
         else:
@@ -1572,11 +1599,14 @@ def main() -> int:
             fn = SIGNAL_FUNCS.get(dep)
             if fn is None:
                 continue
-            dep_findings.extend(
-                fn(assistant_texts, tool_uses)
-                if fn is signal_skipped_verification
-                else fn(tool_uses)
-            )
+            if fn is signal_skipped_verification:
+                dep_findings.extend(fn(assistant_texts, tool_uses))
+            elif fn is signal_wrong_tool_choice:
+                # Same suppression as the reported pass — otherwise C6 still
+                # counts the findings A11 just withheld and escalates on them.
+                dep_findings.extend(fn(tool_uses, bypass_from))
+            else:
+                dep_findings.extend(fn(tool_uses))
         findings_for_c6 = dep_findings
         rules = ""
         for cand in (Path.home() / ".claude" / "CLAUDE.md",):
