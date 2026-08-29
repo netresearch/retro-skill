@@ -262,6 +262,41 @@ class RoutingDescriptionTest(unittest.TestCase):
         self.assertEqual(entry["description"], "Use when cached")
         self.assertEqual(entry["description_source"], "skill")
 
+    def test_multi_skill_plugin_qualifies_even_the_eponymous_skill(self):
+        # `foo` and `foo:bar` side by side read as two plugins.
+        home = _minimal_home(
+            [{"name": "foo", "description": "d", "source": {"repo": "o/foo"}}]
+        )
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        _cached_plugin(
+            home, "mp", "foo", "1.0.0", {"foo": "Use when foo", "bar": "Use when bar"}
+        )
+        self.assertEqual({s["name"] for s in fos.collect(home)}, {"foo:foo", "foo:bar"})
+
+    def test_manifest_skill_path_outside_the_install_root_is_ignored(self):
+        # A plugin manifest is third-party data; `..` must not reach a SKILL.md
+        # belonging to another plugin and publish it as this one's.
+        home = _minimal_home(
+            [{"name": "p", "description": "d", "source": {"repo": "o/p"}}]
+        )
+        self.addCleanup(shutil.rmtree, home, ignore_errors=True)
+        root = home / "plugins" / "cache" / "mp" / "p" / "1.0.0"
+        outside = home / "outside" / "secret"
+        outside.mkdir(parents=True)
+        (outside / "SKILL.md").write_text(
+            "---\nname: secret\ndescription: Use when leaked\n---\n", encoding="utf-8"
+        )
+        (root / ".claude-plugin").mkdir(parents=True)
+        (root / ".claude-plugin" / "plugin.json").write_text(
+            json.dumps(
+                {"name": "p", "skills": ["../../../../../outside/secret", str(outside)]}
+            ),
+            encoding="utf-8",
+        )
+        entry = fos.collect(home)[0]
+        self.assertEqual(entry["description_source"], "catalogue")
+        self.assertNotIn("leaked", entry["description"])
+
     def test_installed_plugin_without_skills_falls_back_to_catalogue(self):
         # LSP / command-only plugins ship no skills/*/SKILL.md.
         home = _minimal_home(

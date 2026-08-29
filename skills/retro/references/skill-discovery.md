@@ -151,8 +151,10 @@ If discovery fails (no manifest, no git remote, no user input):
 
 ## Performance
 
-- One JSON read; the script itself reads the installed skills' `SKILL.md`
-  frontmatter (a few hundred small files, well under a second).
+- All local reads, no network: the marketplace registry, each marketplace
+  manifest, `installed_plugins.json`, each installed plugin's manifest, and
+  every `SKILL.md` those plugins ship (a few hundred small files, well under a
+  second).
 - Cache the catalogue per session (`~/.cache/retro-skill/catalogue-<session>.json`)
 - The catalogue can hold hundreds of skills across marketplaces — keyword/
   category pre-filter before the LLM match, don't feed all descriptions at once.

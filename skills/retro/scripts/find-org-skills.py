@@ -71,41 +71,62 @@ def _installed_plugins(claude_home: Path) -> dict[tuple[str, str], Path | None]:
     multi-skill plugin installs skills whose names differ from the plugin), so
     mixing the two namespaces produces both false negatives and false positives.
     """
-    installed: dict[tuple[str, str], Path | None] = {}
+    installed = _recorded_installs(claude_home)
+    for key, path in _cached_installs(claude_home).items():
+        # A recorded plugin whose installPath no longer resolves is exactly the
+        # case the cache is a fallback for, so the test is "do we already have a
+        # path", not "is the key present".
+        if not installed.get(key):
+            installed[key] = path
+    return installed
+
+
+def _recorded_install_path(installs: Any) -> Path | None:
+    """The first installPath in one installed_plugins.json record that exists."""
+    if not isinstance(installs, list):
+        return None
+    for entry in installs:
+        if not isinstance(entry, dict) or not entry.get("installPath"):
+            continue
+        candidate = Path(entry["installPath"])
+        if candidate.is_dir():
+            return candidate
+    return None
+
+
+def _recorded_installs(claude_home: Path) -> dict[tuple[str, str], Path | None]:
+    """{(marketplace, plugin): install path} from installed_plugins.json (v2)."""
     record = _load_json(claude_home / "plugins" / "installed_plugins.json")
     plugins = record.get("plugins") if isinstance(record, dict) else None
-    if isinstance(plugins, dict):
-        for key, installs in plugins.items():
-            if "@" not in key or not isinstance(installs, list):
-                continue
-            name, mp = key.rsplit("@", 1)
-            path = None
-            for entry in installs:
-                if isinstance(entry, dict) and entry.get("installPath"):
-                    candidate = Path(entry["installPath"])
-                    if candidate.is_dir():
-                        path = candidate
-                        break
-            installed[(mp, name)] = path
+    if not isinstance(plugins, dict):
+        return {}
+    out: dict[tuple[str, str], Path | None] = {}
+    for key, installs in plugins.items():
+        if "@" not in key:
+            continue
+        name, mp = key.rsplit("@", 1)
+        out[(mp, name)] = _recorded_install_path(installs)
+    return out
+
+
+def _cached_installs(claude_home: Path) -> dict[tuple[str, str], Path | None]:
+    """{(marketplace, plugin): highest cached version} from the plugin cache."""
     cache = claude_home / "plugins" / "cache"
-    if cache.is_dir():
-        for mp_dir in cache.iterdir():
-            if not mp_dir.is_dir():
+    if not cache.is_dir():
+        return {}
+    out: dict[tuple[str, str], Path | None] = {}
+    for mp_dir in cache.iterdir():
+        if not mp_dir.is_dir():
+            continue
+        for plugin in mp_dir.iterdir():
+            if not plugin.is_dir():
                 continue
-            for plugin in mp_dir.iterdir():
-                # A recorded plugin whose installPath no longer resolves is
-                # exactly the case the cache is a fallback for, so the test is
-                # "do we already have a path", not "is the key present".
-                if not plugin.is_dir() or installed.get((mp_dir.name, plugin.name)):
-                    continue
-                versions = sorted(
-                    (v for v in plugin.iterdir() if v.is_dir()),
-                    key=lambda v: _version_key(v.name),
-                )
-                installed[(mp_dir.name, plugin.name)] = (
-                    versions[-1] if versions else None
-                )
-    return installed
+            versions = sorted(
+                (v for v in plugin.iterdir() if v.is_dir()),
+                key=lambda v: _version_key(v.name),
+            )
+            out[(mp_dir.name, plugin.name)] = versions[-1] if versions else None
+    return out
 
 
 _FRONTMATTER_KEY = re.compile(r"^([A-Za-z0-9_-]+):(.*)$")
@@ -125,41 +146,55 @@ def _frontmatter(text: str) -> dict[str, str]:
     fields: dict[str, str] = {}
     i = 1
     while i < len(lines):
-        line = lines[i]
-        if line.strip() == "---":
+        if lines[i].strip() == "---":
             break
-        m = _FRONTMATTER_KEY.match(line)
+        m = _FRONTMATTER_KEY.match(lines[i])
         if not m:
             i += 1
             continue
         key, raw = m.group(1), m.group(2).strip()
         if raw[:1] in ("|", ">"):
-            fold = raw[0] == ">"
-            block: list[str] = []
-            i += 1
-            while i < len(lines) and (
-                lines[i].startswith((" ", "\t")) or not lines[i].strip()
-            ):
-                if lines[i].strip() == "---":
-                    break
-                block.append(lines[i].strip())
-                i += 1
-            joined = " ".join(b for b in block if b) if fold else "\n".join(block)
-            fields[key] = joined.strip()
+            fields[key], i = _block_scalar(lines, i + 1, raw[0] == ">")
             continue
-        if raw.startswith('"'):
-            end = raw.find('"', 1)
-            while end != -1 and raw[end - 1] == "\\":
-                end = raw.find('"', end + 1)
-            value = raw[1:end] if end != -1 else raw[1:]
-            fields[key] = value.replace('\\"', '"')
-        elif raw.startswith("'"):
-            end = raw.find("'", 1)
-            fields[key] = raw[1:end] if end != -1 else raw[1:]
-        else:
-            fields[key] = re.split(r"\s+#", raw, maxsplit=1)[0].strip()
+        fields[key] = (
+            _quoted_scalar(raw, raw[0]) if raw[:1] in ("'", '"') else _plain_scalar(raw)
+        )
         i += 1
     return fields
+
+
+def _block_scalar(lines: list[str], start: int, fold: bool) -> tuple[str, int]:
+    """A `|`/`>` block's text, and the index of the first line after it."""
+    block: list[str] = []
+    i = start
+    while i < len(lines) and (lines[i].startswith((" ", "\t")) or not lines[i].strip()):
+        if lines[i].strip() == "---":
+            break
+        block.append(lines[i].strip())
+        i += 1
+    joined = " ".join(b for b in block if b) if fold else "\n".join(block)
+    return joined.strip(), i
+
+
+def _quoted_scalar(raw: str, quote: str) -> str:
+    """The contents of a quoted scalar; inside `"`, `\\"` does not end it."""
+    end = raw.find(quote, 1)
+    if quote == '"':
+        while end != -1 and raw[end - 1] == "\\":
+            end = raw.find(quote, end + 1)
+    value = raw[1:end] if end != -1 else raw[1:]
+    return value.replace('\\"', '"') if quote == '"' else value
+
+
+def _plain_scalar(raw: str) -> str:
+    """A plain scalar, minus a trailing ` # comment`.
+
+    `\\s#` rather than `\\s+#`: the quantified form backtracks super-linearly
+    over a run of whitespace (Sonar S8786), and both cut at the same place once
+    the result is stripped.
+    """
+    m = re.search(r"\s#", raw)
+    return (raw[: m.start()] if m else raw).strip()
 
 
 def _skill_files(install_path: Path) -> list[Path]:
@@ -176,10 +211,16 @@ def _skill_files(install_path: Path) -> list[Path]:
     if not isinstance(declared, list) or not declared:
         return sorted(install_path.glob("skills/*/SKILL.md"))
     files: list[Path] = []
+    root = install_path.resolve()
     for entry in declared:
         if not isinstance(entry, str):
             continue
-        target = install_path / re.sub(r"^\./", "", entry)
+        target = (install_path / re.sub(r"^\./", "", entry)).resolve()
+        # A plugin manifest is third-party data. An absolute entry, or one with
+        # `..`, would otherwise make this read a SKILL.md outside the plugin the
+        # manifest describes and publish its description as that plugin's.
+        if target != root and root not in target.parents:
+            continue
         if target.is_file():
             files.append(target)
         elif (target / "SKILL.md").is_file():
@@ -268,10 +309,14 @@ def collect(claude_home: Path) -> list[dict[str, Any]]:
                     }
                 )
                 continue
+            # A multi-skill plugin qualifies every one of its skills, including
+            # the one whose name matches the plugin: `foo` and `foo:bar` in one
+            # listing reads as two plugins.
+            bare = len(skills) == 1
             for skill, description in skills:
                 out.append(
                     {
-                        "name": name if skill == name else f"{name}:{skill}",
+                        "name": name if bare and skill == name else f"{name}:{skill}",
                         "skill": skill,
                         "description": description,
                         "description_source": "skill",
