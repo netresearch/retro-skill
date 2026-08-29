@@ -43,7 +43,10 @@ approval.
 ## Pipeline (all modes)
 
 1. Mechanical pre-pass — `scripts/detect-mechanical.py` (Promote:
-   `scripts/scan-memory-inventory.py`).
+   `scripts/scan-memory-inventory.py`). It requires `--transcript-file`, and the
+   transcript is located **by content** — a token from this session — never by
+   mtime: several sessions share one project slug, so the newest JSONL is
+   regularly somebody else's. Invocation in `references/workflow.md`.
 2. LLM enrichment — inferential signals, both classes (friction + learnings
    B16–B18); filter false positives.
 3. Cross-session enrichment (optional) — JSONL scan via `scripts/scan-cross-session.py`.
