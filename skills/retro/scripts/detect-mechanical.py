@@ -1222,6 +1222,61 @@ def _split_pipeline_segments(tokens: list[str]) -> list[list[str]]:
     return segments
 
 
+def _a11_structured_file_misuse(i: int, cmd: str, tokens: list[str]) -> dict | None:
+    """Misuse 1: grep/sed/awk acting on a structured-file argument.
+
+    At most one finding per Bash call — a pipeline that greps two JSON files is
+    one habit, and the C6 tally that decides whether prose has failed counts
+    findings.
+    """
+    for segment in _split_pipeline_segments(tokens):
+        if not segment or segment[0] not in A11_STRUCTURED_TOOLS:
+            continue
+        tool = segment[0]
+        for tok in segment[1:]:
+            if tok.startswith("-"):
+                continue
+            if A11_STRUCTURED_EXT_RE.search(tok):
+                return {
+                    "signal": "A11",
+                    "name": "structured_file_misuse",
+                    "turn": i,
+                    "tool_invoked": tool,
+                    "file": tok,
+                    "hint": "use data-tools (jq / yq / dasel) instead of grep/sed/awk on structured formats",
+                    "snippet": cmd[:200],
+                }
+    return None
+
+
+def _a11_cat_instead_of_read(i: int, cmd: str, tokens: list[str]) -> dict | None:
+    """Misuse 2: cat/head/tail used as the terminal command (no pipe/redirect).
+
+    Per sub-command, not per Bash call: `head -50 file.py; echo done` is the
+    misuse even though the call also runs something else, while bailing on the
+    whole call whenever any operator appears misses it. A sub-command that
+    pipes or redirects is legitimate use and is skipped — that is what
+    `cat f | wc -l` is for. Returns at most one finding per call: two such reads
+    in one call are one habit, and counting twice inflates the C6 tally.
+    """
+    for sub in _split_statements(tokens):
+        if not sub or sub[0] not in A11_CAT_TOOLS:
+            continue
+        if any(tok in A11_PIPELINE_OPS for tok in sub):
+            continue
+        file_args = [t for t in sub[1:] if not t.startswith("-")]
+        if file_args and not all(A11_CAT_EXEMPT_PATH_RE.search(t) for t in file_args):
+            return {
+                "signal": "A11",
+                "name": "cat_instead_of_read",
+                "turn": i,
+                "tool_invoked": sub[0],
+                "hint": "use the Read tool (line-numbered output, ranged reads) instead of cat/head/tail",
+                "snippet": cmd[:200],
+            }
+    return None
+
+
 def signal_wrong_tool_choice(tool_uses, bypass_from: int | None = None) -> list[dict]:
     """A11: Bash invoking grep/sed/awk on structured files, or cat/head/tail
     *terminally* on a single file (Read would fit).
@@ -1229,6 +1284,12 @@ def signal_wrong_tool_choice(tool_uses, bypass_from: int | None = None) -> list[
     Uses shlex so quoted regex/sed bodies like `sed -i 's|a|b|g' file.json`
     tokenize correctly, and so piped pipelines like `cat file | wc -l`
     aren't misread as a cat-instead-of-read pattern.
+
+    The two arms are ordered, and the order carries meaning: a structured-file
+    misuse short-circuits the call, and only the cat arm is suppressed under
+    bypass-permissions, where the assistant is told to read with Bash. Misuse 1
+    stays live under every mode — data-tools is about using the wrong parser on
+    a structured file, not about which tool opens it.
     """
     out = []
     for i, name, inp, _result, _err in tool_uses:
@@ -1241,74 +1302,17 @@ def signal_wrong_tool_choice(tool_uses, bypass_from: int | None = None) -> list[
         if not tokens:
             continue
 
-        # Misuse 1: grep/sed/awk acting on a structured-file argument.
-        fired_structured = False
-        for segment in _split_pipeline_segments(tokens):
-            if not segment:
-                continue
-            tool = segment[0]
-            if tool not in A11_STRUCTURED_TOOLS:
-                continue
-            for tok in segment[1:]:
-                if tok.startswith("-"):
-                    continue
-                if A11_STRUCTURED_EXT_RE.search(tok):
-                    out.append(
-                        {
-                            "signal": "A11",
-                            "name": "structured_file_misuse",
-                            "turn": i,
-                            "tool_invoked": tool,
-                            "file": tok,
-                            "hint": "use data-tools (jq / yq / dasel) instead of grep/sed/awk on structured formats",
-                            "snippet": cmd[:200],
-                        }
-                    )
-                    fired_structured = True
-                    break
-            if fired_structured:
-                break
-        if fired_structured:
+        structured = _a11_structured_file_misuse(i, cmd, tokens)
+        if structured is not None:
+            out.append(structured)
             continue
 
-        # Under bypass-permissions the assistant is told to read with Bash, so
-        # only this arm is suppressed. Misuse 1 above stays live under every
-        # mode: data-tools is about using the wrong parser on a structured
-        # file, not about which tool opens it.
         if bypass_from is not None and i >= bypass_from:
             continue
 
-        # Misuse 2: cat/head/tail used as the terminal command (no pipe/redirect).
-        #
-        # Per sub-command, not per Bash call: `head -50 file.py; echo done` is
-        # the misuse even though the call also runs something else, while
-        # bailing on the whole call whenever any operator appears misses it.
-        # A sub-command that pipes or redirects is legitimate use and is
-        # skipped — that is what `cat f | wc -l` is for.
-        for sub in _split_statements(tokens):
-            if not sub or sub[0] not in A11_CAT_TOOLS:
-                continue
-            if any(tok in A11_PIPELINE_OPS for tok in sub):
-                continue
-            head = sub[0]
-            file_args = [t for t in sub[1:] if not t.startswith("-")]
-            if file_args and not all(
-                A11_CAT_EXEMPT_PATH_RE.search(t) for t in file_args
-            ):
-                out.append(
-                    {
-                        "signal": "A11",
-                        "name": "cat_instead_of_read",
-                        "turn": i,
-                        "tool_invoked": head,
-                        "hint": "use the Read tool (line-numbered output, ranged reads) instead of cat/head/tail",
-                        "snippet": cmd[:200],
-                    }
-                )
-                # One finding per Bash call: a call with two such reads is one
-                # habit, and counting it twice inflates the C6 tally that
-                # decides whether prose has failed.
-                break
+        cat_read = _a11_cat_instead_of_read(i, cmd, tokens)
+        if cat_read is not None:
+            out.append(cat_read)
     return out
 
 
