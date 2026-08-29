@@ -114,8 +114,12 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-org-skills.py
 ```
 
 Returns every skill in every configured marketplace — installed or not —
-`{name, description, repo_url, marketplace, installed}` (offline, generic). Match
-the friction topic against the catalogue `description` fields:
+`{name, plugin, skill, description, description_source, catalogue_description,
+repo_url, marketplace, category, installed}` (offline, generic). For installed plugins
+`description` is the routing text from the skill's own `SKILL.md`, one entry
+per skill; for plugins that are not installed it is the catalogue summary
+(`description_source: "catalogue"`), which can under-describe what the skill
+routes. Match the friction topic against the `description` fields:
 
 - match → `skill-update` against the owning skill's `repo_url` (even if not
   installed locally — note it's available-not-installed so it can be installed)

@@ -14,12 +14,26 @@ python3 ${CLAUDE_PLUGIN_ROOT}/scripts/find-org-skills.py
 ```
 
 returns every skill in every configured marketplace — installed or not — as a
-JSON array of `{name, description, repo_url, marketplace, category, installed}`.
+JSON array of `{name, plugin, skill, description, description_source,
+catalogue_description, repo_url, marketplace, category, installed}`.
 It reads the locally-synced marketplace manifests
 (`~/.claude/plugins/known_marketplaces.json` →
 `<installLocation>/.claude-plugin/marketplace.json`), so it is **offline** and
 **generic**: it covers whatever marketplaces are configured, never a hardcoded
 org. This is the authoritative ownership map.
+
+Two descriptions exist per skill and they answer different questions. The
+catalogue text is a listing summary for a human; the `description` in the
+skill's own `SKILL.md` is the routing text the agent reads when deciding
+whether to load it — and the only text that answers "does a skill claim work
+X". They differ for 37 of 38 skills in one org marketplace. So for an
+**installed** plugin the script reads its `skills/*/SKILL.md` and emits one
+entry per skill with the routing text (`description_source: "skill"`,
+`name` is `plugin:skill` for multi-skill plugins); a plugin that is **not
+installed** has no `SKILL.md` on disk, so its entry carries the catalogue
+text and says so (`description_source: "catalogue"`). Match against
+`description`, but read `description_source` before treating a no-match as
+conclusive: a catalogue-only entry can under-describe what the skill routes.
 
 If no marketplaces are configured (or their manifests aren't synced locally) the
 catalogue is empty — fall back to the installed-only scan below and **say so**:
@@ -137,8 +151,10 @@ If discovery fails (no manifest, no git remote, no user input):
 
 ## Performance
 
-- The catalogue is a single JSON read with descriptions inline — no per-skill
-  `SKILL.md` reads are needed to match.
+- All local reads, no network: the marketplace registry, each marketplace
+  manifest, `installed_plugins.json`, each installed plugin's manifest, and
+  every `SKILL.md` those plugins ship (a few hundred small files, well under a
+  second).
 - Cache the catalogue per session (`~/.cache/retro-skill/catalogue-<session>.json`)
 - The catalogue can hold hundreds of skills across marketplaces — keyword/
   category pre-filter before the LLM match, don't feed all descriptions at once.
