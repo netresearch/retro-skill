@@ -53,12 +53,24 @@ An LLM reading the *actual* transcript classifies friction more accurately and f
 
 ## Install
 
-`/retro` ships as a Claude Code plugin. A bare single-plugin repo can be added to the marketplace directly — no `marketplace.json` required. Run both steps inside Claude Code:
+`/retro` ships as a Claude Code plugin, distributed through the [Netresearch marketplace](https://github.com/netresearch/claude-code-marketplace). Add the catalog once, then install `retro` from it — both steps inside Claude Code:
 
 ```text
-/plugin marketplace add netresearch/retro-skill
-/plugin install retro@netresearch/retro-skill
+/plugin marketplace add netresearch/claude-code-marketplace
+/plugin install retro@netresearch-claude-code-marketplace
 ```
+
+The catalog entry points back at this repository as its source, so the code still comes from here. `marketplace add` needs a `.claude-plugin/marketplace.json` catalog, which this repo does not ship — pointing it at `netresearch/retro-skill` fails with `Marketplace file not found`.
+
+### Without a marketplace
+
+Since Claude Code 2.1.157, a plugin directory under your personal skills directory loads on its own:
+
+```bash
+git clone https://github.com/netresearch/retro-skill.git ~/.claude/skills/retro
+```
+
+It loads as `retro@skills-dir` on the next session, hooks and commands included. Update with `git pull`; remove it by deleting the directory. There is no `claude plugin update` on this route.
 
 Alternatively, install via Composer (the skill-repo convention):
 
