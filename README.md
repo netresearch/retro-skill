@@ -67,10 +67,11 @@ The catalog entry points back at this repository as its source, so the code stil
 Since Claude Code 2.1.157, a plugin directory under your personal skills directory loads on its own:
 
 ```bash
+mkdir -p ~/.claude/skills
 git clone https://github.com/netresearch/retro-skill.git ~/.claude/skills/retro
 ```
 
-It loads as `retro@skills-dir` on the next session, hooks and commands included. Update with `git pull`; remove it by deleting the directory. There is no `claude plugin update` on this route.
+It loads as `retro@skills-dir` on the next session, hooks and commands included. Update with `git -C ~/.claude/skills/retro pull` and start a new session; remove it by deleting the directory. There is no `claude plugin update` on this route.
 
 Alternatively, install via Composer (the skill-repo convention):
 
