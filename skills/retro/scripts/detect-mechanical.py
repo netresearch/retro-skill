@@ -99,6 +99,9 @@ BUILTIN_SLASH_COMMANDS = frozenset(
 #: inline (the client expanded the slash command), so the skill IS in effect without
 #: a Skill tool call.
 INLINE_SKILL_MIN_CHARS = 1500
+#: How far into the following user event to look for the command naming itself.
+#: Measured at well under 200 characters for every slash command of one session.
+EXPANSION_HEAD_CHARS = 400
 GIT_BRANCH_MAIN = re.compile(r"\b(?:main|master)\b")
 # Each alternative skips the flags that come before its branch-creating one via
 # its own negative lookahead (`(?!-b\b)` / `(?!-c\b)`), so the `*` cannot eat the
@@ -950,11 +953,21 @@ def signal_skill_reminder_vs_invoke(events) -> list[dict]:
             if "user" in (ev_next.get("type"), nxt.get("role")):
                 content_n = nxt.get("content", "")
                 if isinstance(content_n, list):
-                    body += " " + " ".join(
+                    following = " ".join(
                         b.get("text", "") for b in content_n if isinstance(b, dict)
                     )
                 else:
-                    body += " " + str(content_n)
+                    following = str(content_n)
+                # Being a long user message is not enough — an unrelated one
+                # would then suppress the signal for a skill that really was
+                # named and not invoked. The expansion opens by naming itself,
+                # measured across every slash command of one session: the bare
+                # command (`/git-workflow:pr-finish` -> `pr-finish`) appears
+                # within the first 200 characters of the body every time.
+                bare = [m.strip().lstrip("/").split(":")[-1].lower() for m in matches]
+                head = following[:EXPANSION_HEAD_CHARS].lower()
+                if any(b and b in head for b in bare):
+                    body += " " + following
         if len(body) >= INLINE_SKILL_MIN_CHARS:
             continue
         # Look at next 3 events for Skill tool invocation

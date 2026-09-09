@@ -482,6 +482,16 @@ class TestSchichtA(unittest.TestCase):
         ]
         self.assert_not_signal(evs, "A10")
 
+    # Length alone would let any long user message stand in for the expansion,
+    # suppressing the signal for a skill that really was named and not invoked.
+    # The expansion names itself in its opening lines; unrelated prose does not.
+    def test_A10_unrelated_long_following_message_does_not_suppress(self):
+        evs = [
+            user_msg("<command-name>/some-skill</command-name>"),
+            user_msg("Now about something else entirely. " + ("x" * 1600)),
+        ]
+        self.assert_signal(evs, "A10")
+
     def test_A10_bare_skill_mention_without_invoke_still_fires(self):
         evs = [user_msg("<command-name>/some-skill</command-name>"), user_msg("next")]
         self.assert_signal(evs, "A10")
