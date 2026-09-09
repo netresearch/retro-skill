@@ -468,6 +468,30 @@ class TestSchichtA(unittest.TestCase):
         evs = [user_msg(body), user_msg("next")]
         self.assert_not_signal(evs, "A10")
 
+    # The layout every real slash command actually has: the anchor carries only
+    # the command name, and the expansion is the NEXT user event. The test above
+    # inlines the body into the anchor, which is why the guard passed it and
+    # still fired on all six slash commands of one session.
+    def test_A10_expansion_in_the_following_event_does_not_fire(self):
+        evs = [
+            user_msg(
+                "<command-message>git-workflow:pr-finish</command-message>\n"
+                "<command-name>/git-workflow:pr-finish</command-name>"
+            ),
+            user_msg("# /pr-finish\n" + ("x" * 1600)),
+        ]
+        self.assert_not_signal(evs, "A10")
+
+    # Length alone would let any long user message stand in for the expansion,
+    # suppressing the signal for a skill that really was named and not invoked.
+    # The expansion names itself in its opening lines; unrelated prose does not.
+    def test_A10_unrelated_long_following_message_does_not_suppress(self):
+        evs = [
+            user_msg("<command-name>/some-skill</command-name>"),
+            user_msg("Now about something else entirely. " + ("x" * 1600)),
+        ]
+        self.assert_signal(evs, "A10")
+
     def test_A10_bare_skill_mention_without_invoke_still_fires(self):
         evs = [user_msg("<command-name>/some-skill</command-name>"), user_msg("next")]
         self.assert_signal(evs, "A10")
