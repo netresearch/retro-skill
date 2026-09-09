@@ -934,7 +934,28 @@ def signal_skill_reminder_vs_invoke(events) -> list[dict]:
         # its full instructions inline — neither is a skill that failed to trigger.
         if all(m.strip() in BUILTIN_SLASH_COMMANDS for m in matches):
             continue
-        if len(text) >= INLINE_SKILL_MIN_CHARS:
+        # The expansion is usually its OWN event: the anchor carries only
+        # <command-message> and <command-name> (~110 chars), and the skill body
+        # arrives as the next user message. Measuring the anchor alone therefore
+        # never reached the threshold in practice — six slash commands in one
+        # session were all reported as skills that failed to trigger, /retro
+        # itself among them — while the same body inlined into the anchor was
+        # correctly skipped. Both layouts have to be measured.
+        body = text
+        if i + 1 < len(events):
+            ev_next = events[i + 1]
+            nxt = ev_next.get("message", {}) or {}
+            # The role sits on the event in some transcripts and inside the
+            # message in others; either one identifies the expansion.
+            if "user" in (ev_next.get("type"), nxt.get("role")):
+                content_n = nxt.get("content", "")
+                if isinstance(content_n, list):
+                    body += " " + " ".join(
+                        b.get("text", "") for b in content_n if isinstance(b, dict)
+                    )
+                else:
+                    body += " " + str(content_n)
+        if len(body) >= INLINE_SKILL_MIN_CHARS:
             continue
         # Look at next 3 events for Skill tool invocation
         invoked = False
