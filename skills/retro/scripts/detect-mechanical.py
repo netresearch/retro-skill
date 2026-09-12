@@ -1256,14 +1256,39 @@ def _split_pipeline_segments(tokens: list[str]) -> list[list[str]]:
     return segments
 
 
+# grep short options that consume the next token. A pattern given through `-e`
+# may itself start with a dash — `grep -e '-l' version package.json` searches
+# for the literal "-l" — so reading every dash-prefixed token as flags would
+# collect an `l` from the pattern and exempt an extraction as a presence search.
+A11_GREP_ARG_OPTS = set("efmABCD")
+
+
 def _a11_grep_flags(segment: list[str]) -> str:
-    """The short flags of a grep-family segment, concatenated."""
+    """The short flags of a grep-family segment, concatenated.
+
+    Option arity is honoured: a token consumed as the argument of `-e`, `-f`,
+    `-m` or a context option is not a flag, whatever it looks like.
+    """
     out = []
+    skip_next = False
     for tok in segment[1:]:
+        if skip_next:
+            skip_next = False
+            continue
         if tok == "--":
             break
-        if tok.startswith("-") and not tok.startswith("--"):
-            out.append(tok[1:])
+        if not tok.startswith("-") or tok.startswith("--") or tok == "-":
+            continue
+        # Walk the bundle: an arg-taking option ends the flag run. What follows
+        # it inside the same token is its argument (`-ePAT`); if nothing
+        # follows, the argument is the next token (`-e PAT`).
+        body = tok[1:]
+        for pos, ch in enumerate(body):
+            if ch in A11_GREP_ARG_OPTS:
+                if pos == len(body) - 1:
+                    skip_next = True
+                break
+            out.append(ch)
     return "".join(out)
 
 

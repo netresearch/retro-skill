@@ -286,6 +286,27 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_signal(evs, "A11")
 
+    def test_A11_a_pattern_that_looks_like_a_flag_is_not_a_flag(self):
+        # `-e` takes the next token, so the `-l` here is the search pattern.
+        # Reading it as a presence flag would exempt a real extraction.
+        evs = tool_use_pair(
+            "g", "Bash", {"command": "grep -e '-l' version package.json"}, "..."
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_an_inline_pattern_argument_is_not_a_flag(self):
+        # `-elist` is `-e` carrying the inline pattern "list". Read as a flag
+        # bundle it contains an `l` and would buy the presence exemption.
+        evs = tool_use_pair("g", "Bash", {"command": "grep -elist package.json"}, "...")
+        self.assert_signal(evs, "A11")
+
+    def test_A11_a_real_presence_flag_before_a_pattern_option_still_exempts(self):
+        # The guard must not swallow flags that genuinely precede `-e`.
+        evs = tool_use_pair(
+            "g", "Bash", {"command": "grep -l -e version package.json"}, "..."
+        )
+        self.assert_not_signal(evs, "A11")
+
     def test_A11_extraction_does_not_hide_behind_a_locate_flag(self):
         # `-no` is the case the -o carve-out exists for: `n` alone would buy the
         # locate exemption, while `o` means the command prints the value.
