@@ -209,6 +209,7 @@ A11_CAT_EXEMPT_PATH_RE = re.compile(
     r"(?:"
     r"(?:^|/)(?:tmp|var/log|var/tmp|logs?)/"  # a scratch or log directory
     r"|/tasks/"  # a background task's output
+    r"|/scratchpad/"  # the session scratchpad, wherever it is rooted
     r"|\.(?:log|out|output)$"  # an output file by extension
     r")"
 )
@@ -1361,6 +1362,32 @@ def _a11_structured_file_misuse(i: int, cmd: str, tokens: list[str]) -> dict | N
     return None
 
 
+def _a11_expand_path_vars(arg: str, tokens: list[str]) -> str:
+    """Substitute `VAR=/path` assignments made in the SAME command into `arg`.
+
+    The exemption below is path-literal, and the scratchpad path a session is
+    told to use is long enough that assigning it once — `S=/tmp/.../scratchpad`
+    — and reading `$S/out.txt` is the idiomatic form. Matching the raw token
+    then sees `$S/out.txt`, misses the `/tmp/` the exemption is looking for, and
+    reports a permitted read-back as friction. The better the scratchpad
+    discipline, the more false positives, and C6 turns a run of them into
+    "the prose rule failed, propose a gate" for a gate that already exists.
+
+    Only literal assignments in this command are resolved; an unresolvable
+    variable is left as-is, so nothing is exempted on a guess.
+    """
+    if "$" not in arg:
+        return arg
+    env = {}
+    for tok in tokens:
+        name, sep, value = tok.partition("=")
+        if sep and name.isidentifier() and value.startswith("/"):
+            env[name] = value
+    for name, value in env.items():
+        arg = arg.replace(f"${{{name}}}", value).replace(f"${name}", value)
+    return arg
+
+
 def _a11_cat_instead_of_read(i: int, cmd: str, tokens: list[str]) -> dict | None:
     """Misuse 2: cat/head/tail used as the terminal command (no pipe/redirect).
 
@@ -1376,7 +1403,9 @@ def _a11_cat_instead_of_read(i: int, cmd: str, tokens: list[str]) -> dict | None
             continue
         if any(tok in A11_PIPELINE_OPS for tok in sub):
             continue
-        file_args = [t for t in sub[1:] if not t.startswith("-")]
+        file_args = [
+            _a11_expand_path_vars(t, tokens) for t in sub[1:] if not t.startswith("-")
+        ]
         if file_args and not all(A11_CAT_EXEMPT_PATH_RE.search(t) for t in file_args):
             return {
                 "signal": "A11",
