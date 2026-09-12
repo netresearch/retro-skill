@@ -1256,6 +1256,56 @@ def _split_pipeline_segments(tokens: list[str]) -> list[list[str]]:
     return segments
 
 
+def _a11_grep_flags(segment: list[str]) -> str:
+    """The short flags of a grep-family segment, concatenated."""
+    out = []
+    for tok in segment[1:]:
+        if tok == "--":
+            break
+        if tok.startswith("-") and not tok.startswith("--"):
+            out.append(tok[1:])
+    return "".join(out)
+
+
+def _a11_is_presence_or_locate_grep(
+    segment: list[str], pipeline: list[list[str]]
+) -> bool:
+    """True for a grep that asks WHETHER or WHERE, not WHICH VALUE.
+
+    The harness gate this signal mirrors exempts these deliberately: `-c/-q/-l`
+    answer a question no structured parser can be handed, and `-n` locates a
+    line whose `file:line:text` output is not a field value. They are also the
+    only way to find a COMMENT, which jq and yq cannot see at all. Without the
+    exemption every `grep -rn` over a repo is reported as wrong-tool friction —
+    and, because C6 counts A11 findings, a run of them is read as proof that
+    the prose rule failed and escalates to "propose a mechanical gate", for a
+    gate that already exists and already permits exactly this.
+    """
+    if segment[0] not in {"grep", "egrep", "fgrep"}:
+        return False
+    flags = _a11_grep_flags(segment)
+    if "o" in flags:
+        return False  # -o prints the match itself: extraction, not location
+    if any(f in flags for f in "cqlL"):
+        return True
+    if "n" not in flags:
+        return False
+    # `grep -n … | cut -d: -f2` is still extraction; a lone locate is not.
+    # `grep -n … | cut -d: -f2` is still extraction, so a locate loses its
+    # exemption once a field-splitting sink follows. A lone `sed` does not
+    # count: piping `file:line:text` through it is almost always cosmetic
+    # (trimming the prefix for display), and the gate exempts that by name.
+    idx = pipeline.index(segment)
+    for seg in pipeline[idx + 1 :]:
+        if not seg:
+            continue
+        if seg[0] in {"awk", "gawk", "cut"}:
+            return False
+        if seg[0] in {"head", "tail"} and "-1" in seg:
+            return False
+    return True
+
+
 def _a11_structured_file_misuse(i: int, cmd: str, tokens: list[str]) -> dict | None:
     """Misuse 1: grep/sed/awk acting on a structured-file argument.
 
@@ -1263,8 +1313,11 @@ def _a11_structured_file_misuse(i: int, cmd: str, tokens: list[str]) -> dict | N
     one habit, and the C6 tally that decides whether prose has failed counts
     findings.
     """
-    for segment in _split_pipeline_segments(tokens):
+    pipeline = _split_pipeline_segments(tokens)
+    for segment in pipeline:
         if not segment or segment[0] not in A11_STRUCTURED_TOOLS:
+            continue
+        if _a11_is_presence_or_locate_grep(segment, pipeline):
             continue
         tool = segment[0]
         for tok in segment[1:]:
