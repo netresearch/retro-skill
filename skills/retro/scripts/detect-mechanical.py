@@ -209,6 +209,11 @@ A11_CAT_EXEMPT_PATH_RE = re.compile(
     r"(?:"
     r"(?:^|/)(?:tmp|var/log|var/tmp|logs?)/"  # a scratch or log directory
     r"|/tasks/"  # a background task's output
+    # The session scratchpad when it is rooted outside /tmp — under a cache
+    # directory, typically. Anchored to that root on purpose: a bare
+    # `/scratchpad/` also exempts a project's own scratchpad/ directory, and
+    # reads of files inside the repository are exactly what A11 exists for.
+    r"|(?:^|/)\.?cache/(?:[^/]+/)*scratchpad/"
     r"|\.(?:log|out|output)$"  # an output file by extension
     r")"
 )
@@ -1361,6 +1366,57 @@ def _a11_structured_file_misuse(i: int, cmd: str, tokens: list[str]) -> dict | N
     return None
 
 
+# A value that is not a plain literal cannot be resolved without running the
+# shell, so it does not register: `/tmp/$(mktemp -d)` starts with a slash and
+# would otherwise be trusted as one.
+A11_UNRESOLVABLE_VALUE_RE = re.compile(r"[$`()]")
+A11_VAR_REF_RE = re.compile(r"\$(?:\{(\w+)\}|([A-Za-z_]\w*))")
+
+
+def _a11_leading_assignments(statement: list[str]) -> dict[str, str]:
+    """The `VAR=/literal` prefix of one statement, as shell reads it.
+
+    Only the run of assignments before the first ordinary word counts, which is
+    what makes `echo "S=/tmp/a"` contribute nothing: the statement starts with
+    `echo`, so the argument that merely looks like an assignment is an argument.
+    shlex strips quotes, so without this the quoted text — and a heredoc body —
+    would register as environment.
+    """
+    env: dict[str, str] = {}
+    for tok in statement:
+        name, sep, value = tok.partition("=")
+        if not (sep and name.isidentifier()):
+            break  # the first ordinary word ends the assignment prefix
+        if value.startswith("/") and not A11_UNRESOLVABLE_VALUE_RE.search(value):
+            env[name] = value
+    return env
+
+
+def _a11_expand_path_vars(arg: str, env: dict[str, str]) -> str:
+    """Substitute assignments made earlier in the SAME command into `arg`.
+
+    The exemption below is path-literal, and the scratchpad path a session is
+    told to use is long enough that assigning it once — `S=/tmp/.../scratchpad`
+    — and reading `$S/out.txt` is the idiomatic form. Matching the raw token
+    then sees `$S/out.txt`, misses the `/tmp/` the exemption is looking for, and
+    reports a permitted read-back as friction. The better the scratchpad
+    discipline, the more false positives, and C6 turns a run of them into
+    "the prose rule failed, propose a gate" for a gate that already exists.
+
+    Substitution matches a whole identifier. A plain `str.replace` per name lets
+    a short name eat a longer one — with `S` assigned before `SRC`, `$SRC/main.go`
+    becomes `/tmp/aRC/main.go` and a project file stops being reported — and it
+    also rewrites `$Sfoo`, which the shell reads as an unset `Sfoo`.
+
+    An unresolvable variable is left as-is, so nothing is exempted on a guess.
+    """
+    if "$" not in arg:
+        return arg
+    return A11_VAR_REF_RE.sub(
+        lambda m: env.get(m.group(1) or m.group(2), m.group(0)), arg
+    )
+
+
 def _a11_cat_instead_of_read(i: int, cmd: str, tokens: list[str]) -> dict | None:
     """Misuse 2: cat/head/tail used as the terminal command (no pipe/redirect).
 
@@ -1371,12 +1427,18 @@ def _a11_cat_instead_of_read(i: int, cmd: str, tokens: list[str]) -> dict | None
     `cat f | wc -l` is for. Returns at most one finding per call: two such reads
     in one call are one habit, and counting twice inflates the C6 tally.
     """
+    env: dict[str, str] = {}
     for sub in _split_statements(tokens):
+        # Assignments are collected as the command runs, so a statement sees
+        # only what preceded it: `cat $S/main.go; S=/tmp/y` read $S unset.
+        env |= _a11_leading_assignments(sub)
         if not sub or sub[0] not in A11_CAT_TOOLS:
             continue
         if any(tok in A11_PIPELINE_OPS for tok in sub):
             continue
-        file_args = [t for t in sub[1:] if not t.startswith("-")]
+        file_args = [
+            _a11_expand_path_vars(t, env) for t in sub[1:] if not t.startswith("-")
+        ]
         if file_args and not all(A11_CAT_EXEMPT_PATH_RE.search(t) for t in file_args):
             return {
                 "signal": "A11",
