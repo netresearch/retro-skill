@@ -240,6 +240,81 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_signal(evs, "A11")
 
+    def test_A11_presence_grep_on_json_does_not_fire(self):
+        # `-l` answers whether a file contains a string. No structured parser
+        # takes that question, and the harness gate exempts it by name.
+        evs = tool_use_pair(
+            "g", "Bash", {"command": 'grep -rl "postUpgradeTasks" renovate.json'}, "..."
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_locate_grep_on_yaml_does_not_fire(self):
+        # `grep -n` returns file:line:text — a location, not a field value.
+        evs = tool_use_pair(
+            "g", "Bash", {"command": 'grep -n -A4 "ansible:" compose.yml'}, "..."
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_locate_grep_piped_into_sed_alone_does_not_fire(self):
+        # Redacting a token before printing is cosmetic, not extraction — the
+        # gate exempts a locate whose only downstream filter is sed.
+        evs = tool_use_pair(
+            "g",
+            "Bash",
+            {
+                "command": "grep -rn \"TT_TOKEN\" settings.json | sed 's/tt_pat_[A-Za-z0-9]*/<redacted>/'"
+            },
+            "...",
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_locate_grep_piped_into_cut_still_fires(self):
+        # The exemption is for locating, not for laundering an extraction
+        # through `-n` first.
+        evs = tool_use_pair(
+            "g",
+            "Bash",
+            {"command": "grep -n version package.json | cut -d: -f2"},
+            "...",
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_grep_dash_o_on_json_still_fires(self):
+        # `-o` prints the match itself: that is field extraction.
+        evs = tool_use_pair(
+            "g", "Bash", {"command": "grep -o '\"version\":[^,]*' package.json"}, "..."
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_a_pattern_that_looks_like_a_flag_is_not_a_flag(self):
+        # `-e` takes the next token, so the `-l` here is the search pattern.
+        # Reading it as a presence flag would exempt a real extraction.
+        evs = tool_use_pair(
+            "g", "Bash", {"command": "grep -e '-l' version package.json"}, "..."
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_an_inline_pattern_argument_is_not_a_flag(self):
+        # `-elist` is `-e` carrying the inline pattern "list". Read as a flag
+        # bundle it contains an `l` and would buy the presence exemption.
+        evs = tool_use_pair("g", "Bash", {"command": "grep -elist package.json"}, "...")
+        self.assert_signal(evs, "A11")
+
+    def test_A11_a_real_presence_flag_before_a_pattern_option_still_exempts(self):
+        # The guard must not swallow flags that genuinely precede `-e`.
+        evs = tool_use_pair(
+            "g", "Bash", {"command": "grep -l -e version package.json"}, "..."
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_extraction_does_not_hide_behind_a_locate_flag(self):
+        # `-no` is the case the -o carve-out exists for: `n` alone would buy the
+        # locate exemption, while `o` means the command prints the value.
+        evs = tool_use_pair(
+            "g", "Bash", {"command": "grep -no '\"version\":[^,]*' package.json"}, "..."
+        )
+        self.assert_signal(evs, "A11")
+
     def test_A11_cat_into_a_pipe_does_not_fire(self):
         evs = tool_use_pair("c", "Bash", {"command": "cat config.txt | wc -l"}, "12")
         self.assert_not_signal(evs, "A11")
