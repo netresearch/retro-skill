@@ -313,7 +313,8 @@ Documented in `skills/retro/references/patch-workflow.md`.
 4. Edit + atomic commit per logical change
    - No --no-verify (preserve hooks)
    - No --no-gpg-sign (preserve user's SSH signing — see the user's global rules)
-   - No bot attribution in commit message (see the user's global rules)
+   - No harness-invented attribution in the commit message; the disclosure
+     trailer the user's own rules prescribe is required (see those rules)
    - Conventional Commits format
 
 5. Push branch + create PR via gh / glab
@@ -432,7 +433,7 @@ Documented in `skills/retro/references/patch-workflow.md`.
 - Generate 1000+ candidates (Coach anti-pattern)
 - Continuous background hooks (Coach anti-pattern; only optional SessionEnd)
 - Hardcode static skill list
-- Add bot attribution to commits or PRs
+- Add harness-invented attribution to commits or PRs ("Generated with Claude Code", `Co-Authored-By: Claude`)
 - Skip hooks (`--no-verify`)
 - Patch the cache directory
 
@@ -470,7 +471,7 @@ Documented in `skills/retro/references/patch-workflow.md`.
 | Worktree preference | mechanical | when `~/p/<name>/main/` clean → workspace selected; when dirty → /tmp fallback |
 | Evals read when present | mechanical | mock skill with `evals/` → assert evals in LLM context payload |
 | Commit signing preserved | mechanical | post-commit `git log --show-signature` shows G |
-| No bot attribution | mechanical | grep commit messages for known anti-patterns |
+| No harness-invented attribution | mechanical | grep commit messages for the known anti-patterns ("Generated with", `Co-Authored-By: Claude`) — not for the user's prescribed trailer |
 
 ## Open Questions
 

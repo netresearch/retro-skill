@@ -187,7 +187,7 @@ Per destination, follow `skills/retro/references/patch-workflow.md` and the dest
 
 For each created PR / file:
 - Use Conventional Commits format
-- No bot attribution in commit messages or PR bodies
+- No harness-invented attribution ("Generated with Claude Code", `Co-Authored-By: Claude`); a disclosure the user's own rules prescribe is required, not banned
 - Per-private-repo confirmation before push
 - Preserve commit signing (no `--no-gpg-sign`)
 

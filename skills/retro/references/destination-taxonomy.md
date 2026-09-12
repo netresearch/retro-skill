@@ -58,7 +58,7 @@ same form as above. Do not create `<project>/CLAUDE.md` or
 ### 3. `skill-update` — PR to source repo
 
 Branch: `feat/retro-<slug>`
-Commit: Conventional Commits format, no bot attribution
+Commit: Conventional Commits format; no harness-invented attribution, and the disclosure trailer the user's rules prescribe
 PR body: references the friction, describes the change, includes "Came from /retro: yes"
 
 See `references/patch-workflow.md` for full workflow including worktree-vs-clone selection, signing, and per-private-repo confirmation.

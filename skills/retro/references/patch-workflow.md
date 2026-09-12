@@ -86,7 +86,14 @@ Examples:
 - **Pass the message via `-F <file>`, not inline `-m`,** whenever it contains
   quotes, backticks, or other shell-special characters — inline `-m` mangles
   them mid-shell and produces a corrupted or partial commit message.
-- **No bot attribution.** Never add "Generated with Claude Code" or "Co-Authored-By: Claude" — see the user's global rules.
+- **No attribution the harness invented; keep the attribution the user defined.**
+  Never add "Generated with Claude Code" or "Co-Authored-By: Claude" — the
+  harness suggests those, and `Co-Authored-By` asserts a legal person who shares
+  liability. But where the user's own rules *prescribe* a disclosure — a
+  vendor-neutral `Assisted-by:` / `Agent-Session:` trailer, say — that is a
+  requirement, not a violation, and a commit without it is the defect. Read
+  `~/.claude/CLAUDE.md` before deciding, and check the target repo's own history:
+  if its commits carry the trailers, so must yours.
 - **Preserve signing.** Never pass `--no-gpg-sign` or `-c commit.gpgsign=false` — see the user's global rules (`~/.claude/CLAUDE.md`). (GPG signing and DCO sign-off are independent — you need *both*.)
 - **Preserve hooks.** Never pass `--no-verify`. If a hook fails, investigate.
 - **Atomic.** One logical change per commit.
