@@ -71,7 +71,8 @@ cache. Per-private-repo confirmation. Conventional Commits. DCO sign-off
 **Ask first:** skill-match ambiguity, auto-mode activation, private-repo targets,
 dirty-worktree fallback, any promotion making a note team-visible.
 
-**Never:** auto-merge, silent writes, bot attribution, skip hooks (`--no-verify`),
+**Never:** auto-merge, silent writes, harness-invented attribution (a disclosure
+the user's rules prescribe is required), skip hooks (`--no-verify`),
 patch the cache, hardcode a static skill list, `rm` a drained memory (tombstone);
 from Done mode: merge, tag or deploy, or touch another session's containers,
 processes or worktrees.

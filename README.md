@@ -161,7 +161,7 @@ The full signal catalog lives in [`skills/retro/references/friction-catalog.md`]
 - **No silent writes.** Every materialization needs explicit, per-proposal approval.
 - **Patches target the source repo, never the cache.** `~/.claude/plugins/cache/` is overwritten on every plugin update; edits there would be lost. `/retro` clones the source repo (or uses an existing worktree) and opens a PR via `gh` / `glab`.
 - **The LLM classifies; the pre-pass only saves tokens.** The deterministic layer A never decides a destination.
-- **Never:** auto-merge; AI/bot attribution in commits or PRs; `--no-verify`; patching the cache; hardcoding a static skill list; generating 1000+ candidates.
+- **Never:** auto-merge; harness-invented attribution in commits or PRs ("Generated with Claude Code", `Co-Authored-By: Claude`) — a disclosure trailer the user's own rules prescribe is required rather than banned; `--no-verify`; patching the cache; hardcoding a static skill list; generating 1000+ candidates.
 
 ## Honest limitations
 
