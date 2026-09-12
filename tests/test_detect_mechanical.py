@@ -222,6 +222,73 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_not_signal(evs, "A11")
 
+    def test_A11_short_variable_does_not_eat_a_longer_name(self):
+        # A per-name str.replace has no word boundary, so S assigned before SRC
+        # rewrites "$SRC/main.go" to "/tmp/aRC/main.go" and a project file stops
+        # being reported. The losing order is the common one — the short
+        # scratchpad variable is the one assigned first.
+        evs = tool_use_pair(
+            "t",
+            "Bash",
+            {"command": "S=/tmp/a; SRC=/home/u/repo; cat $SRC/main.go"},
+            "package main",
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_variable_name_is_matched_whole(self):
+        # The shell reads "$Sfoo" as the variable Sfoo, which is unset here.
+        evs = tool_use_pair(
+            "t",
+            "Bash",
+            {"command": "S=/tmp/a; cat $Sfoo/repo/main.go"},
+            "package main",
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_assignment_after_the_read_does_not_exempt_it(self):
+        # Assignments take effect as the command runs: this cat read $S unset.
+        evs = tool_use_pair(
+            "t",
+            "Bash",
+            {"command": "cat $S/main.go; S=/tmp/scratch"},
+            "package main",
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_assignment_shaped_argument_does_not_register(self):
+        # shlex strips quotes, so without an assignment-prefix rule the quoted
+        # text — and a heredoc body — would be read as environment.
+        evs = tool_use_pair(
+            "t",
+            "Bash",
+            {"command": 'echo "S=/tmp/a"; cat $S/repo/main.go'},
+            "package main",
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_unresolvable_value_does_not_register(self):
+        # A value needing the shell to evaluate cannot be resolved here, and
+        # starting with a slash is not enough to make it a literal.
+        evs = tool_use_pair(
+            "t",
+            "Bash",
+            {"command": "S=/tmp/$SESSION; cat $S/repo/main.go"},
+            "package main",
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_project_local_scratchpad_dir_still_fires(self):
+        # A project may have its own scratchpad/ directory. Exempting every path
+        # with that component would hide reads of files in the repository, which
+        # is what this signal is for.
+        evs = tool_use_pair(
+            "t",
+            "Bash",
+            {"command": "cat /home/u/projects/myrepo/scratchpad/helper.py"},
+            "import os",
+        )
+        self.assert_signal(evs, "A11")
+
     def test_A11_repo_file_via_shell_variable_still_fires(self):
         # The negative control for the exemption above: resolving variables must
         # not exempt a read that merely goes through one. Only an assignment
