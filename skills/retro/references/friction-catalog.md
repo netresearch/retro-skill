@@ -53,7 +53,7 @@ Fast, deterministic, regex/count-based. Runs before LLM pass to reduce token cos
 | A12 | Re-read same file | Read tool same path ≥2× without intervening Edit | Caching opportunity |
 | A13 | Skipped verification | Claim "tests pass" / "fixed" without prior test/build run | Verification skip |
 | A14 | Worked on main/master | Git commands without prior `checkout -b` | Workflow violation |
-| A15 | Bot attribution in commit | Commit message contains "Generated with Claude" / "Co-Authored-By: Claude" | Known user rule violated |
+| A15 | Bot attribution in commit | Commit message contains "Generated with Claude" / "Co-Authored-By: Claude" | Known user rule violated — **validate in Phase 2**: a disclosure the user's rules prescribe (a system reminder naming the exact trailer, a CLAUDE.md rule, an explicit request) is compliance, not friction. Only harness-invented attribution is a finding. |
 | A16 | Outdated tool warning | "deprecated", "is now", "use X instead" patterns in stderr | Out-of-date knowledge |
 | A17 | Upstream failure | `git push` fails on pre-receive, `gh pr checks` fails post-push, post-commit lint fail | Pre-push verification gap (shift-left) |
 | A18 | Permission re-approval | Same permission prompt approved ≥3× in session | Allowlist needed |
