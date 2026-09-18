@@ -286,6 +286,26 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_not_signal(evs, "A11")
 
+    def test_A11_sed_i_with_a_second_command_still_fires(self):
+        # Two ways a destructive command rode in behind a substitution, both
+        # found in review: a second `-e` script that the parser never looked
+        # at, and a `;d` that the flag parse accepted as flags.
+        for command in (
+            "sed -i -e 's/a/b/' -e 'd' data.json",
+            "sed -i 's/a/b/;d' data.json",
+        ):
+            with self.subTest(command=command):
+                evs = tool_use_pair("e", "Bash", {"command": command}, "ok")
+                self.assert_signal(evs, "A11")
+
+    def test_A11_single_substitution_behind_dash_e_is_still_exempt(self):
+        # Guards the parser rewrite: one `-e` is the ordinary spelling, and a
+        # numeric occurrence flag is a substitution flag, not another command.
+        for command in ("sed -i -e 's/a/b/' data.json", "sed -i 's/a/b/2' data.json"):
+            with self.subTest(command=command):
+                evs = tool_use_pair("e", "Bash", {"command": command}, "ok")
+                self.assert_not_signal(evs, "A11")
+
     def test_A11_sed_i_that_is_not_a_substitution_still_fires(self):
         # Narrow on purpose: a delete shows nothing about what happens to the
         # document, and `-f` puts the script in a file this cannot read. Both

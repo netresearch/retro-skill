@@ -1417,11 +1417,19 @@ def _a11_is_line_addressed_read(segment: list[str]) -> bool:
 A11_SED_ADDRESS_RE = re.compile(r"\A(?:\d+(?:,(?:\d+|\$))?|\$|/(?:[^/\\]|\\.)*/)?")
 
 
-def _a11_sed_substitution_flags(script: str) -> str | None:
-    """The flags of a single `s` command, or None if this is not one.
+# The flags GNU sed accepts after a substitution. `w file` is excluded on
+# purpose: it writes a second file, which is not what this exemption is about.
+A11_SED_SUB_FLAGS_RE = re.compile(r"\A[0-9gpiImMe]*\Z")
 
-    The delimiter is whatever follows the `s`, so the parse walks three
-    unescaped occurrences of it and returns what trails the third.
+
+def _a11_sed_substitution_flags(script: str) -> str | None:
+    """The flags of a script that is ONE substitution and nothing else.
+
+    None when the script is not a substitution, and none when something
+    follows it. The trailing text is validated against the flag grammar rather
+    than returned raw: `s/a/b/;d` puts a delete behind the substitution, and
+    handing `;d` back as "flags" let a destructive command inherit an
+    exemption written for a version bump. Found in review.
     """
     rest = script[A11_SED_ADDRESS_RE.match(script).end() :]
     if len(rest) < 2 or rest[0] != "s" or rest[1].isalnum() or rest[1].isspace():
@@ -1434,7 +1442,10 @@ def _a11_sed_substitution_flags(script: str) -> str | None:
         if rest[i] == delim:
             seen += 1
         i += 1
-    return rest[i:] if seen == 2 else None
+    if seen != 2:
+        return None
+    flags = rest[i:]
+    return flags if A11_SED_SUB_FLAGS_RE.match(flags) else None
 
 
 def _a11_is_line_precise_edit(segment: list[str]) -> bool:
@@ -1470,20 +1481,41 @@ def _a11_is_line_precise_edit(segment: list[str]) -> bool:
     """
     if segment[0] != "sed":
         return False
+    # sed's grammar decides where the scripts are, and getting it wrong breaks
+    # the check in both directions. With any -e/--expression present, EVERY
+    # script comes from those and every positional is a file; without one, the
+    # first positional is the script and the rest are files. Reading only the
+    # first positional in both cases missed the second script of
+    # `-e 's/a/b/' -e 'd'`, which is how a delete inherited this exemption.
     scripts: list[str] = []
+    positionals: list[str] = []
     flags = ""
+    expect_script = False
+    saw_expression = False
     for tok in segment[1:]:
+        if expect_script:
+            scripts.append(tok)
+            expect_script = False
+            continue
+        if tok in {"-e", "--expression"}:
+            saw_expression = True
+            expect_script = True
+            continue
+        if tok.startswith("--expression="):
+            saw_expression = True
+            scripts.append(tok.split("=", 1)[1])
+            continue
         if tok.startswith("--"):
             continue
         if tok.startswith("-") and len(tok) > 1:
             flags += tok[1:]
+            if tok.endswith("e"):  # bundled, e.g. `-ne` or `-ie`
+                saw_expression = True
+                expect_script = True
             continue
-        if not scripts and not A11_STRUCTURED_EXT_RE.search(tok):
-            # First non-flag token only. sed reads `script file...`, so a
-            # trailing filename that is not a structured one - `ext_emconf.php`
-            # beside a `guides.xml` in the same call - would otherwise be
-            # parsed as a second script and fail the check.
-            scripts.append(tok)
+        positionals.append(tok)
+    if not saw_expression and positionals:
+        scripts.append(positionals[0])
     if "i" not in flags or "f" in flags:
         return False
     if not scripts:
