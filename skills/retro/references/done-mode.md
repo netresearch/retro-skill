@@ -41,22 +41,40 @@ structurally absent is N/A with its reason. `done` may be said when every row is
 | 3 | **Retro** — the Sweep ran for this session | A materialized artefact from it: a memory file written, a skill PR opened, a rule edited — each named with its path or URL. "I ran it" is the same self-report the other gates refuse. No such artefact and no explicit *all rejected* record → Done mode runs the Sweep now (Phases 1–10) before continuing. |
 | 4 | **Cleanup** — nothing of the session's own making is left running or lying around | The sweep list below, each line with its command output. |
 | 5 | **Questions** — nothing is pending on the user that the task still needs | Either no open question, or exactly one human-gated decision stated once with the exact command, and the loop stopped there. Re-listing a parked decision is a ❌. |
-| 6 | **Tickets** — every ticket touched carries the outcome | Per ticket: comment with what/why/evidence, assignee or reviewer set, transition done or hand-back posted; the last work summary is current (`netresearch-jira` › QA Best Practices › keep the work summary current). **N/A** when the session touched no ticket — say which work it was instead. |
+| 6 | **Tickets** — every ticket touched carries the outcome | Per ticket, the state **printed** as `KEY · status · assignee`, read back after the writes — not described. Plus: comment with what/why/evidence; the transition done or the hand-back posted; the assignee being whoever owes the *next* action; the last work summary current (`netresearch-jira` › QA Best Practices). **N/A** when the session touched no ticket — say which work it was instead. |
 | 7 | **Time** — every day of the session is booked | TimeTracker entries listed per day with ticket, project, activity, minutes. See *Booking* below. **N/A** when there is no ticket and no billable context (skill or infrastructure work) — never ⏸, which would wait for something that does not exist. |
 
 ## Cleanup sweep (gate 4)
 
-**Name the scope before running anything.** The sweep is only as wide as the set
-it runs over, and `git worktree list` in the wrong repository returns clean —
-a ✅ that measured nothing. So the report states, above the table:
+**Name the scope before running anything, and derive it — do not recall it.**
+The sweep is only as wide as the set it runs over, and `git worktree list` in
+the wrong repository returns clean: a ✅ that measured nothing. The list comes
+from the transcript, which recorded every path verbatim:
 
-- **which repositories** the session touched (from the transcript: every path a
-  write, a `cd` or a `git` command named — there is no command that produces
-  this list, so it is an input, not an output),
-- **which days** it spans,
-- **which artefacts** it created (PRs, tags, releases, issues).
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/derive-session-scope.py" \
+  --transcript-file "$TF"        # $TF located as in workflow.md § Shared pipeline
+```
 
-Then run all of it; a subset is how "cleaned up" turns out false.
+It prints the repositories, the days, the tags, the forge slugs addressed by
+`-R`, and the paths it could not resolve — read that last group, because a path
+built from a shell variable is where a missing entry hides. Add anything you
+know it cannot see (a repository reached only through a tool that took no
+path), then sweep that.
+
+**Recalling the list does not work, and the failure is silent.** In the session
+that prompted the script the agent named three repositories, swept them, and
+reported cleanup ✅. Asked again it found eight and two held leftovers. The
+script, run on the same transcript, returned **fifteen** — and two of the seven
+nobody had looked at held an orphaned branch and a dirty worktree. Each round
+was honest and each was short, because the instrument was memory.
+
+**Touched is not the same as made.** The script lists every repository the
+session entered, including ones it only read. The sweep *inspects* all of them
+and *removes* only what this session created: a worktree it added, a branch it
+pushed, a process it started. A stale branch from July in a repository you only
+grepped belongs to whoever left it — report it in the table and leave it, as
+the Boundaries section requires.
 
 ```bash
 # $SCRATCH is the scratchpad path from the system prompt — it is NOT in the
@@ -159,7 +177,7 @@ to run passed", and a reader cannot tell whether gate 4 swept three repositories
 or one.
 
 ```
-Scope: t3x-nr-llm, agent-rules-skill, retro-skill · 26.–28.08. · PRs #872 #91 #95, tag v3.15.3
+Scope (derive-session-scope.py): t3x-nr-llm, agent-rules-skill, retro-skill · 26.–28.08. · PRs #872 #91 #95, tag v3.15.3
 
 | # | Gate      | State | Evidence / next step |
 |---|-----------|-------|----------------------|
@@ -168,7 +186,7 @@ Scope: t3x-nr-llm, agent-rules-skill, retro-skill · 26.–28.08. · PRs #872 #9
 | 3 | Retro     | ✅    | 3 memory files written (paths), 1 skill PR #81 |
 | 4 | Cleanup   | ✅    | 3 repos swept: 0 own containers (6 foreign, untouched), 0 processes, 0 stashes, worktree pr169 removed, pr174 kept (PR open) |
 | 5 | Questions | ✅    | none; CI wiring parked by user (stated once) |
-| 6 | Tickets   | N/A   | no ticket touched — skill-repo work |
+| 6 | Tickets   | ✅    | NEXT-155 · Closed · — · NEXT-156 · Closed · — (assignee cleared: project closes with no owner) |
 | 7 | Time      | N/A   | no ticket, no billable context |
 ```
 
