@@ -227,6 +227,7 @@ retro-skill/
 │   │   └── *.md                  # validated by skills/retro/scripts/validate-evals.py
 │   └── scripts/
 │       ├── detect-mechanical.py      # layer-A pre-pass
+│       ├── opencode-transcript.py    # renders an opencode session as layer-A JSONL
 │       ├── scan-memory-inventory.py  # Promote: memory backlog pre-pass
 │       ├── scan-cross-session.py     # layer-C JSONL scanner
 │       ├── find-org-skills.py        # runtime skill discovery (catalogue + installed)
@@ -240,6 +241,7 @@ retro-skill/
 │   ├── test_check_upstream_sources.py
 │   ├── test_detect_mechanical.py
 │   ├── test_find_org_skills.py
+│   ├── test_opencode_transcript.py
 │   ├── test_scan_memory_inventory.py
 │   └── test_validate_evals.py
 ├── docs/specs/                   # retro-skill.md (authoritative spec), retro-promote-mode.md

@@ -10,6 +10,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `hooks/session-end.json` — Optional SessionEnd hook: prints a reminder to run `/retro`, does not invoke it (off by default)
 - `skills/retro/references/` — Friction catalog, destination taxonomy, classification heuristic, skill discovery, patch workflow, eval integration, workflow modes
 - `skills/retro/scripts/detect-mechanical.py` — Schicht-A pre-pass (mechanical friction detection)
+- `skills/retro/scripts/opencode-transcript.py` — Renders an opencode session (SQLite) as the JSONL Schicht A reads
 - `skills/retro/scripts/find-org-skills.py` — Skill discovery: every marketplace skill, installed or not
 - `skills/retro/scripts/find-installed-skills.sh` — Installed-only detail (paths, git remotes)
 - `skills/retro/scripts/scan-cross-session.py` — Cross-session JSONL scanner (Schicht-C)
