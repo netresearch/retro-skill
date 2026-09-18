@@ -189,9 +189,17 @@ def collect(transcript: Path) -> dict[str, Any]:
         "days": sorted(days),
         "forge_slugs": sorted(forges),
         "tags": sorted(tags),
-        "unresolved_paths": sorted(unresolved)[:20],
+        # Not truncated. This is the list whose whole purpose is "read these,
+        # a missing repository hides here", and a silent [:20] would drop the
+        # entries a long session most needs to see.
+        "unresolved_paths": sorted(unresolved),
         "commands_scanned": len(commands),
     }
+
+
+# How many unresolved paths the text rendering shows before pointing at the
+# JSON. The JSON is never truncated.
+TEXT_UNRESOLVED_LIMIT = 20
 
 
 def render_text(scope: dict[str, Any]) -> str:
@@ -205,13 +213,24 @@ def render_text(scope: dict[str, Any]) -> str:
     if scope["forge_slugs"]:
         lines += ["", "Forge repositories addressed by slug (may have no local clone):"]
         lines += [f"  {s}" for s in scope["forge_slugs"]]
-    if scope["unresolved_paths"]:
+    unresolved = scope["unresolved_paths"]
+    if unresolved:
+        shown = unresolved[:TEXT_UNRESOLVED_LIMIT]
         lines += [
             "",
-            "Paths that could not be resolved to a repository — read these, they are",
-            "where a missing entry hides (a shell variable, or a directory since removed):",
+            f"{len(unresolved)} paths could not be resolved to a repository — read these,",
+            "they are where a missing entry hides (a shell variable, or a directory",
+            "since removed):",
         ]
-        lines += [f"  {p}" for p in scope["unresolved_paths"]]
+        lines += [f"  {p}" for p in shown]
+        if len(unresolved) > len(shown):
+            # Named, not silent. The JSON carries all of them; a text list that
+            # quietly stopped at twenty would hide exactly what this section is
+            # for on the long sessions that need it most.
+            lines.append(
+                f"  … showing {len(shown)} of {len(unresolved)};"
+                " --output-format json has the rest"
+            )
     lines += [
         "",
         f"({scope['commands_scanned']} Bash commands scanned. Complete where the transcript is:",
