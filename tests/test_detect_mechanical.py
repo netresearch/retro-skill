@@ -240,6 +240,67 @@ class TestSchichtA(unittest.TestCase):
                 )
                 self.assert_signal(evs, "A11")
 
+    def test_A11_sed_i_substitution_does_not_fire(self):
+        # A line-precise `sed -i` on a structured file is what the data-tools
+        # rule prescribes: jq and json.dumps re-emit the whole document in
+        # their own formatting, so a three-line change lands as a full-file
+        # diff. Flagging it argued, through C6, for a gate against following
+        # the rule. All three shapes below are real version bumps from the
+        # session that produced this test.
+        for command in (
+            'sed -i \'s/"version": "1.8.5"/"version": "1.8.6"/\' plugin.json',
+            "sed -i 's/0.3.11/0.3.12/' Documentation/guides.xml",
+            "sed -i '5s/a/b/' data.json",
+            "sed -i '/^key:/s/a/b/' conf.yml",
+        ):
+            with self.subTest(command=command):
+                evs = tool_use_pair("e", "Bash", {"command": command}, "ok")
+                self.assert_not_signal(evs, "A11")
+
+    def test_A11_global_substitution_still_fires(self):
+        # The `g` flag is where the exemption stops. Without it a substitution
+        # replaces at most once per line; with it the command sweeps every
+        # occurrence anywhere in the document, keys and comments included.
+        # `test_A11_sed_with_pipes_in_program` asserts the same shape and is
+        # the test that caught the first version of this exemption being too
+        # wide.
+        for command in (
+            "sed -i 's|foo|bar|g' config.yaml",
+            "sed -i 's/a/b/g' data.json",
+        ):
+            with self.subTest(command=command):
+                evs = tool_use_pair("e", "Bash", {"command": command}, "ok")
+                self.assert_signal(evs, "A11")
+
+    def test_A11_trailing_unstructured_filename_is_not_a_second_script(self):
+        # sed reads `script file...`, and a release bump often names two files
+        # of which only one is structured. Parsing the second as a script
+        # would fail the check and restore the false positive.
+        evs = tool_use_pair(
+            "e",
+            "Bash",
+            {
+                "command": "sed -i 's/0.3.11/0.3.12/' ext_emconf.php Documentation/guides.xml"
+            },
+            "ok",
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_sed_i_that_is_not_a_substitution_still_fires(self):
+        # Narrow on purpose: a delete shows nothing about what happens to the
+        # document, and `-f` puts the script in a file this cannot read. Both
+        # keep the finding.
+        for command in ("sed -i '5d' data.json", "sed -i -f edit.sed data.json"):
+            with self.subTest(command=command):
+                evs = tool_use_pair("e", "Bash", {"command": command}, "ok")
+                self.assert_signal(evs, "A11")
+
+    def test_A11_substitution_without_in_place_still_fires(self):
+        # Without -i the file is read and the result goes elsewhere, which is
+        # the reading case A11 exists for.
+        evs = tool_use_pair("e", "Bash", {"command": "sed 's/a/b/' data.json"}, "ok")
+        self.assert_signal(evs, "A11")
+
     def test_A11_sed_without_an_actual_address_still_fires(self):
         # A bare `p` prints the whole file and is not a line address, so it
         # must not ride the exemption written for one. Found by review: the

@@ -1412,6 +1412,89 @@ def _a11_is_line_addressed_read(segment: list[str]) -> bool:
     return bool(scripts) and all(A11_SED_LINE_ADDRESS_RE.match(s) for s in scripts)
 
 
+# The address a substitution may carry in front of it: `5s/…`, `1,80s/…`,
+# `$s/…`, `/^key:/s/…`.
+A11_SED_ADDRESS_RE = re.compile(r"\A(?:\d+(?:,(?:\d+|\$))?|\$|/(?:[^/\\]|\\.)*/)?")
+
+
+def _a11_sed_substitution_flags(script: str) -> str | None:
+    """The flags of a single `s` command, or None if this is not one.
+
+    The delimiter is whatever follows the `s`, so the parse walks three
+    unescaped occurrences of it and returns what trails the third.
+    """
+    rest = script[A11_SED_ADDRESS_RE.match(script).end() :]
+    if len(rest) < 2 or rest[0] != "s" or rest[1].isalnum() or rest[1].isspace():
+        return None
+    delim, i, seen = rest[1], 2, 0
+    while i < len(rest) and seen < 2:
+        if rest[i] == "\\":
+            i += 2
+            continue
+        if rest[i] == delim:
+            seen += 1
+        i += 1
+    return rest[i:] if seen == 2 else None
+
+
+def _a11_is_line_precise_edit(segment: list[str]) -> bool:
+    """True for a `sed -i` whose every script is a substitution.
+
+    Editing a structured file this way is not the misuse A11 looks for - it is
+    what the data-tools rule PRESCRIBES. The rule forbids reading values with
+    grep and forbids writing a file back through a serializer, because
+    `json.dumps` and `jq .` re-emit the whole document in their own formatting
+    and turn a three-line change into a full-file diff. What it names as the
+    correct form is the Edit tool or a targeted sed on one anchored line, which
+    is exactly this shape.
+
+    So the flag fired on the prescribed technique, and because C6 counts A11
+    findings it argued for a gate against following the rule. Measured on the
+    session that produced this: three of the nine remaining A11 hits were a
+    `sed -i` version bump - `ext_emconf.php`, `plugin.json`, `composer.json` -
+    each replacing one anchored version string, and one of them was followed by
+    a `json.load` check in the same call.
+
+    Narrow on purpose, and the `g` flag is where the line runs. Without it a
+    substitution replaces at most once per line, which together with a pattern
+    naming the thing being changed is the targeted edit the rule asks for. With
+    it the command sweeps every occurrence anywhere in the document, including
+    inside keys, comments and substrings - `sed -i 's|foo|bar|g' config.yaml`
+    is the sledgehammer A11 exists to catch, and it keeps firing. `g` is a
+    proxy rather than a proof of intent, but it is the one signal in the
+    command text that separates the two.
+
+    Also only `-i`, so a substitution over a pipe is untouched, and only
+    substitutions: `sed -i '5d'` and `sed -i -f edit.sed` still fire because
+    neither shows what it does to the document.
+    """
+    if segment[0] != "sed":
+        return False
+    scripts: list[str] = []
+    flags = ""
+    for tok in segment[1:]:
+        if tok.startswith("--"):
+            continue
+        if tok.startswith("-") and len(tok) > 1:
+            flags += tok[1:]
+            continue
+        if not scripts and not A11_STRUCTURED_EXT_RE.search(tok):
+            # First non-flag token only. sed reads `script file...`, so a
+            # trailing filename that is not a structured one - `ext_emconf.php`
+            # beside a `guides.xml` in the same call - would otherwise be
+            # parsed as a second script and fail the check.
+            scripts.append(tok)
+    if "i" not in flags or "f" in flags:
+        return False
+    if not scripts:
+        return False
+    for script in scripts:
+        sub_flags = _a11_sed_substitution_flags(script)
+        if sub_flags is None or "g" in sub_flags:
+            return False
+    return True
+
+
 def _a11_structured_file_misuse(i: int, cmd: str, tokens: list[str]) -> dict | None:
     """Misuse 1: grep/sed/awk acting on a structured-file argument.
 
@@ -1426,6 +1509,8 @@ def _a11_structured_file_misuse(i: int, cmd: str, tokens: list[str]) -> dict | N
         if _a11_is_presence_or_locate_grep(segment, pipeline):
             continue
         if _a11_is_line_addressed_read(segment):
+            continue
+        if _a11_is_line_precise_edit(segment):
             continue
         tool = segment[0]
         for tok in segment[1:]:
