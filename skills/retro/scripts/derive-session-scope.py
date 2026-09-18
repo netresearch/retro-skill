@@ -110,23 +110,35 @@ def _tool_inputs(event: dict[str, Any]):
                 yield payload
 
 
+def _absolute_paths(payload: dict[str, Any]) -> set[str]:
+    """The absolute paths a tool input names under its path-ish keys."""
+    found = set()
+    for key in ("file_path", "notebook_path", "path"):
+        value = payload.get(key)
+        if isinstance(value, str) and value.startswith("/"):
+            found.add(value)
+    return found
+
+
+def _day_of(event: dict[str, Any]) -> str | None:
+    stamp = event.get("timestamp")
+    return stamp[:10] if isinstance(stamp, str) and len(stamp) >= 10 else None
+
+
 def _read_transcript(transcript: Path) -> tuple[list[str], set[str], set[str]]:
     """The Bash commands, the absolute file paths, and the days."""
     commands: list[str] = []
     file_paths: set[str] = set()
     days: set[str] = set()
     for event in iter_events(transcript):
-        stamp = event.get("timestamp")
-        if isinstance(stamp, str) and len(stamp) >= 10:
-            days.add(stamp[:10])
+        day = _day_of(event)
+        if day:
+            days.add(day)
         for payload in _tool_inputs(event):
             command = payload.get("command")
             if isinstance(command, str):
                 commands.append(command)
-            for key in ("file_path", "notebook_path", "path"):
-                value = payload.get(key)
-                if isinstance(value, str) and value.startswith("/"):
-                    file_paths.add(value)
+            file_paths |= _absolute_paths(payload)
     return commands, file_paths, days
 
 
