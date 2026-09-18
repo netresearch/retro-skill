@@ -77,6 +77,7 @@ def repo_root(path: Path) -> Path | None:
             capture_output=True,
             text=True,
             timeout=10,
+            check=False,  # a non-repository path is an ordinary answer here
         )
     except (OSError, subprocess.SubprocessError):
         return None
@@ -86,7 +87,12 @@ def repo_root(path: Path) -> Path | None:
 
 
 def iter_events(path: Path):
-    with path.open(encoding="utf-8", errors="replace") as fh:
+    # `.resolve()` before opening: the path arrives as a CLI argument an agent
+    # composed, and canonicalising it collapses any `..` segment rather than
+    # following it. The file itself is deliberately unbounded - the opencode
+    # adapter writes its transcript to stdout, so a legitimate one lives
+    # wherever the operator redirected it.
+    with path.resolve().open(encoding="utf-8", errors="replace") as fh:
         for line in fh:
             try:
                 yield json.loads(line)
@@ -94,24 +100,26 @@ def iter_events(path: Path):
                 continue
 
 
-def collect(transcript: Path) -> dict[str, Any]:
+def _tool_inputs(event: dict[str, Any]):
+    """Every tool_use input in one transcript event."""
+    message = event.get("message") or {}
+    for block in message.get("content") or []:
+        if isinstance(block, dict) and block.get("type") == "tool_use":
+            payload = block.get("input") or {}
+            if isinstance(payload, dict):
+                yield payload
+
+
+def _read_transcript(transcript: Path) -> tuple[list[str], set[str], set[str]]:
+    """The Bash commands, the absolute file paths, and the days."""
     commands: list[str] = []
     file_paths: set[str] = set()
     days: set[str] = set()
-    forges: set[str] = set()
-    tags: set[str] = set()
-
     for event in iter_events(transcript):
         stamp = event.get("timestamp")
         if isinstance(stamp, str) and len(stamp) >= 10:
             days.add(stamp[:10])
-        message = event.get("message") or {}
-        for block in message.get("content") or []:
-            if not isinstance(block, dict) or block.get("type") != "tool_use":
-                continue
-            payload = block.get("input") or {}
-            if not isinstance(payload, dict):
-                continue
+        for payload in _tool_inputs(event):
             command = payload.get("command")
             if isinstance(command, str):
                 commands.append(command)
@@ -119,19 +127,28 @@ def collect(transcript: Path) -> dict[str, Any]:
                 value = payload.get(key)
                 if isinstance(value, str) and value.startswith("/"):
                     file_paths.add(value)
+    return commands, file_paths, days
 
-    candidates: set[str] = set(file_paths)
+
+def _scan_commands(commands: list[str]) -> tuple[set[str], set[str], set[str]]:
+    """Candidate paths, forge slugs and release tags named on command lines."""
+    candidates: set[str] = set()
+    forges: set[str] = set()
+    tags: set[str] = set()
     for command in commands:
-        for match in GIT_C_RE.finditer(command):
-            candidates.add(unquote(match.group("path")))
-        for match in CD_RE.finditer(command):
-            candidates.add(unquote(match.group("path")))
+        for pattern in (GIT_C_RE, CD_RE):
+            for match in pattern.finditer(command):
+                candidates.add(unquote(match.group("path")))
         for match in FORGE_RE.finditer(command):
             forges.add(match.group("slug"))
         for match in ARTEFACT_RE.finditer(command):
             if match.group("tag"):
                 tags.add(match.group("tag"))
+    return candidates, forges, tags
 
+
+def _resolve_roots(candidates: set[str]) -> tuple[set[str], set[str]]:
+    """Split candidate paths into repository roots and what stayed unresolved."""
     roots: set[str] = set()
     unresolved: set[str] = set()
     for raw in candidates:
@@ -146,6 +163,13 @@ def collect(transcript: Path) -> dict[str, Any]:
             roots.add(str(root))
         elif raw.startswith("/"):
             unresolved.add(raw)
+    return roots, unresolved
+
+
+def collect(transcript: Path) -> dict[str, Any]:
+    commands, file_paths, days = _read_transcript(transcript)
+    candidates, forges, tags = _scan_commands(commands)
+    roots, unresolved = _resolve_roots(candidates | file_paths)
 
     return {
         "transcript": str(transcript),
