@@ -123,7 +123,50 @@ exactly like any other skill's evals.
 - Eval coverage varies; absence of eval ≠ absence of capability
 - Eval format heterogeneity makes mechanical analysis hard; LLM reading is the practical approach
 
-When evals are absent: `/retro` operates normally, just without this context source.
+### What grades an eval, and what does not
+
+The files read like tests, so it is worth being exact about which half runs.
+
+**The assertions ARE executed — against the file's own samples.**
+`validate-evals.sh` (skill-repo-skill, run by the `eval-validate` workflow)
+applies every assertion carrying a pattern to `samples.passing` and to each
+`samples.failing` entry, honouring the direction of `must_not`, and fails the job
+when a passing sample violates an assertion or a failing sample satisfies all of
+them. That is a real self-consistency gate, and it is worth feeding: measured
+across the 22 `evals.json` files in the fleet, **7 of 492 evals carry samples**,
+so for the other 485 the gate has nothing to compare and validates shape only.
+
+**What does not exist is a runner that produces an answer and grades it.** No CI
+job feeds a prompt to a model and applies the assertions to what comes back, and
+`claude plugin eval` expects a different layout entirely (`<eval dir>/**/case.yaml`,
+or `prompt.md` plus `graders/*.md`). So a green `eval-validate` says the eval
+file is internally coherent — not that the skill passes it. `/retro` itself reads
+these files as text and hands them to the LLM as context.
+
+**Negation does exist.** The grader handles `must_not` and `not_content`, and the
+same measurement counts `content` 617, `must_not` 58, `content_regex` 43,
+`tool_use` 35, `not_content` 5. What is uneven is adoption: only **2 of the 22
+files** use a negative assertion at all. Where the wrong answer carries the same
+keyword as the right one — `target`, `default branch`, `--onto` have all been in
+that state — a positive assertion cannot separate them, and the type that can is
+already available.
+
+Two consequences for anyone writing or reviewing one:
+
+- **Add `samples` to the eval you tighten.** Without them the assertion is
+  documentation of intent that nothing compares against; with them CI checks it
+  both ways on every push.
+- **Reach for `must_not` / `not_content` before treating an exclusion as
+  inexpressible.** Whether a *regex* could also express it depends on the engine,
+  and the grader's is `grader_matches` in `validate-evals.sh` — read it before
+  relying on a lookahead.
+
+`negative_expected` is separate: it belongs to retro's own fixture schema above,
+which applies to retro's own evals and nothing else.
+
+Where this should go next — adopting the `claude plugin eval` layout for real
+answer-grading, or requiring `samples` — is open in
+[retro-skill#92](https://github.com/netresearch/retro-skill/issues/92).
 
 ## See also
 
