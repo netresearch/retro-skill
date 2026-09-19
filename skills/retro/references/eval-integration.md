@@ -123,6 +123,37 @@ exactly like any other skill's evals.
 - Eval coverage varies; absence of eval ≠ absence of capability
 - Eval format heterogeneity makes mechanical analysis hard; LLM reading is the practical approach
 
+### The assertions are read, not executed
+
+This is the limitation that misleads, because the files read like tests. An
+`assertions` entry, a `content_contains`, an `expected_output`: nothing in any
+consuming repo runs them. No CI job reads `evals/evals.json`, and
+`claude plugin eval` expects a different layout entirely (`<eval dir>/**/case.yaml`,
+or `prompt.md` plus `graders/*.md`). These predicates are documentation of intent
+that an LLM interprets — not gates that fail.
+
+Two consequences for anyone reviewing or tightening one:
+
+- **A tightened assertion closes nothing by itself.** A reviewer who reads
+  `content_contains` as a check that runs, and a contributor who adds one
+  believing a hole is now covered, are both reasoning about a guard that never
+  fires.
+- **There is no negation.** Only `content_contains` and `content_regex` occur
+  across the fleet. A case can require a phrase; it cannot forbid one. Where the
+  wrong answer contains the same keyword as the right one — `target`,
+  `default branch`, `--onto` were all in this state — the assertion cannot
+  separate them and the case passes bad guidance. A regex can encode a
+  *relationship* as a workaround, never an exclusion.
+
+`negative_expected` exists only in retro's own fixture schema above, which applies
+to retro's own evals and nothing else.
+
+What to do about it — adopt the `claude plugin eval` layout where a repo wants
+real gating, add a negative key to the informal shape, or leave the shape alone
+and mark the files — is open in
+[retro-skill#92](https://github.com/netresearch/retro-skill/issues/92). This
+paragraph is true whichever way that goes.
+
 When evals are absent: `/retro` operates normally, just without this context source.
 
 ## See also
