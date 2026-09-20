@@ -492,6 +492,23 @@ _WRAPPERS = {"env", "sudo", "command", "time", "timeout", "nohup", "nice", "stdb
 _REMOTE_GIT = {"fetch", "pull", "push", "clone", "ls-remote", "remote", "submodule"}
 
 
+# A PreToolUse hook that refuses a call reports it as that call's tool result,
+# so the presence of a deployed gate is readable from the transcript itself —
+# no need to inspect the reader's live configuration from a transcript analysis,
+# which would answer for whichever machine the retro happens to run on rather
+# than for the session under review.
+HOOK_DENIAL_RE = re.compile(r"PreToolUse:?\w*\s+hook\b", re.IGNORECASE)
+
+
+def extract_hook_denials(tool_uses) -> list[str]:
+    """The result texts of tool calls a PreToolUse hook intercepted."""
+    return [
+        result
+        for _i, _name, _inp, result, _err in tool_uses
+        if result and HOOK_DENIAL_RE.search(result)
+    ]
+
+
 def is_remote_shape(shape: str) -> bool:
     """True when the shape leaves the machine — a round trip worth counting."""
     parts = shape.split()
@@ -1341,6 +1358,12 @@ def _a11_is_presence_or_locate_grep(
     # exemption once a field-splitting sink follows. A lone `sed` does not
     # count: piping `file:line:text` through it is almost always cosmetic
     # (trimming the prefix for display), and the gate exempts that by name.
+    # `pipeline` is the segments of ONE statement (see _a11_structured_file_misuse),
+    # so this walk cannot reach past a `;`, `&&` or `||` into a different command.
+    # It used to: the segment list was built from the whole Bash call, so
+    # `grep -n '<<<<<<<' x.json | head; echo; awk '/<<</,/>>>/' x.json` lost the
+    # locate exemption on an `awk` that was never downstream of the grep at all.
+    # The enforcing gate splits statements first for the same reason.
     idx = pipeline.index(segment)
     for seg in pipeline[idx + 1 :]:
         if not seg:
@@ -1527,18 +1550,69 @@ def _a11_is_line_precise_edit(segment: list[str]) -> bool:
     return True
 
 
+# A git conflict marker is the one thing in a structured file that no structured
+# parser can be asked about: while the markers are there the file is not JSON or
+# YAML at all, and jq/yq/dasel refuse it outright. The enforcing gate permits the
+# search (measured: it denied 0 of the conflict-marker scans in the session that
+# produced this fix), so reporting it is friction the harness does not agree is
+# friction — and C6 counts A11 findings, so a merge with three conflicted
+# manifests escalates to "propose a mechanical gate" against looking for them.
+#
+# Atoms are the three markers; the surrounding characters are only what a regex
+# or an awk range needs to join them (`\|`, `/…/,/…/`, an anchor). Anything else
+# in the pattern — a key name, an `s///` body — loses the exemption.
+A11_CONFLICT_MARKER_ATOM_RE = re.compile(r"<{7}|={7}|>{7}")
+A11_CONFLICT_MARKER_ONLY_RE = re.compile(r"\A(?:<{7}|={7}|>{7}|[\\|/,^$ ])+\Z")
+
+
+def _a11_is_conflict_marker_search(segment: list[str]) -> bool:
+    """True when the only thing this segment searches for is a conflict marker.
+
+    The structured filename is not a pattern, so it is excluded; every remaining
+    non-flag token must be marker-only, and at least one marker must be present.
+    A second, ordinary pattern in the same segment therefore keeps the finding.
+    """
+    if segment[0] in {"grep", "egrep", "fgrep"} and "o" in _a11_grep_flags(segment):
+        return False  # `-o` prints the match: the gate denies that either way
+    patterns = [
+        tok
+        for tok in segment[1:]
+        if not tok.startswith("-") and not A11_STRUCTURED_EXT_RE.search(tok)
+    ]
+    if not patterns:
+        return False
+    return all(
+        A11_CONFLICT_MARKER_ATOM_RE.search(p) and A11_CONFLICT_MARKER_ONLY_RE.match(p)
+        for p in patterns
+    )
+
+
 def _a11_structured_file_misuse(i: int, cmd: str, tokens: list[str]) -> dict | None:
     """Misuse 1: grep/sed/awk acting on a structured-file argument.
 
     At most one finding per Bash call — a pipeline that greps two JSON files is
     one habit, and the C6 tally that decides whether prose has failed counts
     findings.
+
+    Statements first, pipelines inside them: a downstream-sink test that walked
+    the whole call read the next statement's command as this grep's sink.
     """
-    pipeline = _split_pipeline_segments(tokens)
+    for statement in _split_statements(tokens):
+        pipeline = _split_pipeline_segments(statement)
+        finding = _a11_statement_misuse(i, cmd, pipeline)
+        if finding is not None:
+            return finding
+    return None
+
+
+def _a11_statement_misuse(i: int, cmd: str, pipeline: list[list[str]]) -> dict | None:
+    """The misuse-1 scan over the pipeline segments of ONE statement."""
     for segment in pipeline:
         if not segment or segment[0] not in A11_STRUCTURED_TOOLS:
             continue
         if _a11_is_presence_or_locate_grep(segment, pipeline):
+            continue
+        if _a11_is_conflict_marker_search(segment):
             continue
         if _a11_is_line_addressed_read(segment):
             continue
@@ -1862,16 +1936,51 @@ def signal_wait_loop_inefficiency(tool_uses) -> list[dict]:
     return out
 
 
-def signal_rule_exists_but_violated(findings, rules_text: str) -> list[dict]:
+# How many of a signal's keywords a denial set must hit before it counts as
+# THIS rule's gate. One is not enough: the keywords were written to find a rule
+# in prose, where a generic word like "verification" is surrounded by context,
+# and a hook message is one paragraph. Measured on the session behind this fix,
+# a truncation gate ("a verification command is piped into head/tail") matched
+# A13 on that single word and would have been reported as the gate for
+# "claimed success without running anything" — a different control entirely.
+# A11's real gate matched four: "structured file", "jq", "yq", "dasel".
+C6_GATE_MIN_KEYWORDS = 2
+
+
+def _c6_gate_denials(
+    denials: list[str], keywords: list[str]
+) -> tuple[list[str], set[str]]:
+    """The denials attributable to one rule, and which keywords they hit."""
+    hits = [d for d in denials if any(k.lower() in d.lower() for k in keywords)]
+    matched = {k for d in hits for k in keywords if k.lower() in d.lower()}
+    if len(matched) < min(C6_GATE_MIN_KEYWORDS, len(keywords)):
+        return [], matched
+    return hits, matched
+
+
+def signal_rule_exists_but_violated(
+    findings, rules_text: str, hook_denials: list[str] | None = None
+) -> list[dict]:
     """C6: a written rule was violated repeatedly anyway — mechanize it.
 
     When a rule already exists in the always-loaded instructions and the session
     still trips it N times, another sentence will not help: the same prose has
     already failed. The answer is a hook or a check that makes the violation
     impossible, which is a harness-artefact, not a skill-update.
+
+    Unless the hook is already installed. Recommending the construction of a
+    control that is deployed and firing is worse than saying nothing: it sends
+    the retro's reader to build a duplicate, and it buries the question that
+    matters — why these N got through a gate that denies this rule. So the
+    escalation asks whether a gate was OBSERVED, from the transcript rather than
+    from the reader's live config: a PreToolUse denial arrives as a tool result,
+    and its text is matched against the same keywords that decide whether the
+    written rule exists. With none seen the hint no longer asserts that no
+    control exists — only that this session did not show one.
     """
     if not rules_text:
         return []
+    denials = hook_denials or []
     out = []
     by_sig: dict[str, int] = defaultdict(int)
     for f in findings:
@@ -1882,18 +1991,37 @@ def signal_rule_exists_but_violated(findings, rules_text: str) -> list[dict]:
             continue
         if not any(k.lower() in rules_text.lower() for k in keywords):
             continue
+        gate_denials, matched = _c6_gate_denials(denials, keywords)
+        if gate_denials:
+            hint = (
+                f"{sig} fired {n}x while a matching rule is already present in "
+                f"the always-loaded instructions — and a PreToolUse gate for "
+                f"that rule denied {len(gate_denials)} call(s) in this same "
+                f"session (matched on {', '.join(sorted(matched))}). The "
+                "mechanical control exists: do not propose building one. Ask "
+                "instead why these findings passed it — the gate may exempt "
+                "the shape on purpose, or the detector may be counting what "
+                "the gate permits."
+            )
+        else:
+            hint = (
+                f"{sig} fired {n}x while a matching rule is already present in "
+                "the always-loaded instructions. Prose has demonstrably not "
+                "worked. No denial clearly attributable to this rule appeared "
+                "in this session, which is not proof that no gate is installed "
+                "— check the configured hooks first, and only if none covers "
+                "this rule "
+                "propose a mechanical gate (PreToolUse hook, checkpoint, CI "
+                "check) rather than another rule."
+            )
         out.append(
             {
                 "signal": "C6",
                 "name": "written_rule_violated_repeatedly",
                 "violated_signal": sig,
                 "occurrences": n,
-                "hint": (
-                    f"{sig} fired {n}x while a matching rule is already present in "
-                    "the always-loaded instructions. Prose has demonstrably not "
-                    "worked — propose a mechanical gate (PreToolUse hook, "
-                    "checkpoint, CI check), not another rule."
-                ),
+                "gate_observed": bool(gate_denials),
+                "hint": hint,
             }
         )
     return out
@@ -1997,7 +2125,11 @@ def main() -> int:
                 rules = cand.read_text(encoding="utf-8")
             except OSError:
                 pass
-        findings.extend(signal_rule_exists_but_violated(findings_for_c6, rules))
+        findings.extend(
+            signal_rule_exists_but_violated(
+                findings_for_c6, rules, extract_hook_denials(tool_uses)
+            )
+        )
 
     summary = {
         "transcript": str(args.transcript_file),

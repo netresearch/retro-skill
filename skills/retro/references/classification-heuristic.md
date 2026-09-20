@@ -57,7 +57,7 @@ Maps friction signals (from `friction-catalog.md`) to one of the seven destinati
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
 | **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`personal-rule` (LLM picks from `current_location` + content) |
 | **C4** skill update ineffective | `skill-update` (previous fix was wrong) | — |
-| **C6** written rule violated repeatedly | `harness-artefact` (hook/checkpoint that makes the violation impossible) | never another prose rule — that is what already failed |
+| **C6** written rule violated repeatedly | `harness-artefact` (hook/checkpoint that makes the violation impossible) — but where the finding says `gate_observed: true` the artefact exists, and the route is `skill-update` against the detector or the gate, never a second gate | never another prose rule — that is what already failed |
 
 ## Routing — authority first, then enforceability, then reach
 
