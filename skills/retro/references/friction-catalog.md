@@ -49,7 +49,7 @@ Fast, deterministic, regex/count-based. Runs before LLM pass to reduce token cos
 | A8 | Prompt sequence repetition | n-gram match (n=2..5) over user message sequence | Workflow ripe for snippet/command |
 | A9 | Tool sequence repetition | n-gram match over tool_use names + arg templates | Composition opportunity, skill instruction gap |
 | A10 | Skill in reminder vs invoke | `<command-name>` in system reminder, no matching Skill call | Skill not triggered |
-| A11 | Wrong tool choice | `grep` on JSON, `sed` on YAML, `cat` for huge file (not: `tail` on a task output or log, which Read cannot do) | Tool-not-used / wrong tool |
+| A11 | Wrong tool choice | `grep` on JSON, `sed` on YAML, `cat` for huge file (not: `tail` on a task output or log, which Read cannot do; not a presence/count/locate `grep -c/-q/-l/-n`, a `sed -n '5,80p'` read or a search for git conflict markers — the enforcing gate permits all of those, and no structured parser can answer them) | Tool-not-used / wrong tool |
 | A12 | Re-read same file | Read tool same path ≥2× without intervening Edit | Caching opportunity |
 | A13 | Skipped verification | Claim "tests pass" / "fixed" without prior test/build run | Verification skip |
 | A14 | Worked on main/master | Git commands without prior `checkout -b` | Workflow violation |
@@ -113,8 +113,17 @@ Not detectable from a single session. Session-file scan across projects.
 | C2 | Cross-project pattern | Same friction class in N≥2 projects | Multi-session JSONL grouped by project |
 | C3 | Memory drift | `feedback_*.md` exists but assistant violated it anyway → skill needs it more prominently | JSONL diff against memory files |
 | C4 | Skill update ineffective | Previous PR to skill X, same bug returned afterward | Git log of skill repo + JSONL |
-| C6 | Written rule violated repeatedly | A signal fired >=3x while a matching rule already exists in the always-loaded instructions | Prose has demonstrably failed — needs a mechanical gate |
+| C6 | Written rule violated repeatedly | A signal fired >=3x while a matching rule already exists in the always-loaded instructions | Prose has demonstrably failed — needs a mechanical gate, unless one is already deployed (see below) |
 | C5 | Follow-up-fix session | A later session exists primarily to fix what an earlier session broke (mentions earlier commits, works on same files within 7 days with reverting edits, or `git revert` of earlier commits) | Cross-session JSONL + git log |
+
+A C6 finding carries `gate_observed`. It is true when a PreToolUse hook denied
+a call in this same session for the rule C6 is escalating — the denial reaches
+the transcript as that call's tool result, and two of the rule's keywords must
+appear in it. Then the control already exists and the finding is not "build a
+gate" but "find out why these N passed the one that is installed": the gate may
+exempt the shape deliberately, or the detector may be counting what it permits.
+False when nothing in the session is attributable to the rule, which is not
+proof that no gate exists — check the configured hooks before proposing one.
 
 ## Schicht D — Outcome (Post-Session, requires latency)
 
