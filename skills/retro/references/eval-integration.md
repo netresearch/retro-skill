@@ -58,7 +58,8 @@ This is TDD style: the eval that would have caught the friction goes in with the
 
 **`samples` is required on every eval retro adds or tightens** (decided in
 [retro-skill#92](https://github.com/netresearch/retro-skill/issues/92), option A).
-`samples.passing` is an answer every pattern-bearing assertion must match;
+`samples.passing` is an answer every pattern-bearing assertion is satisfied by —
+matching it, or for a `must_not` assertion not matching it;
 `samples.failing` holds at least one answer at least one assertion must reject.
 Without them the assertion is documentation of intent and
 `validate-evals.sh` has nothing to compare it against. Measured across the 23
@@ -81,8 +82,9 @@ Two cases the requirement does not cover:
   eval unvalidatable. This covers an `expectations`-only eval, and also the
   plain-string assertions that 210 of the fleet's evals use: those *are*
   graded at run time, where `run-ab-evals.sh` falls back to the string itself
-  as the pattern, but this validator's samples machinery reads only
-  `{type, pattern}` objects. Bringing them in would change what `samples`
+  as the pattern, but this validator's samples machinery reads only assertion
+  *objects*, taking `pattern` or `value` from each — a bare string carries
+  neither key. Bringing them in would change what `samples`
   means for the evals that already carry them, which is a decision for
   [#92](https://github.com/netresearch/retro-skill/issues/92) rather than a
   patch.
@@ -177,8 +179,9 @@ applies every assertion carrying a pattern to `samples.passing` and to each
 `samples.failing` entry, honouring the direction of `must_not`, and fails the job
 when a passing sample violates an assertion or a failing sample satisfies all of
 them. That is a real self-consistency gate, and it is worth feeding: measured
-across the 22 `evals.json` files in the fleet, **7 of 492 evals carry samples**,
-so for the other 485 the gate has nothing to compare and validates shape only.
+across the 23 `evals.json` files installed here, **12 of 518 evals carry
+`samples.passing`**, so for the rest the gate has nothing to compare and
+validates shape only.
 
 **What does not exist is a runner that produces an answer and grades it.** No CI
 job feeds a prompt to a model and applies the assertions to what comes back, and
@@ -214,7 +217,7 @@ which applies to retro's own evals and nothing else.
 which of those to build: requiring `samples` on new and tightened evals, which
 arms the gate that already exists. Adopting the `claude plugin eval` layout for
 real answer-grading was rejected there — it is a new runner, a second format and
-a migration across 22 files, against one rule and one check.
+a migration across 23 files, against one rule and one check.
 
 ## See also
 

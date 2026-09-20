@@ -5,14 +5,14 @@
 skill-repo-skill's ``validate-evals.sh`` applies every pattern-bearing
 assertion to ``samples.passing`` and to each ``samples.failing`` entry and
 fails the job when a passing sample violates an assertion or a failing sample
-satisfies all of them. Measured across the 22 ``evals.json`` files in the
-fleet, 7 of 492 evals carry samples, so for the other 485 that gate has
+satisfies all of them. Measured across the 23 ``evals.json`` files in the
+fleet, 12 of 518 evals carry samples.passing, so for the rest that gate has
 nothing to compare and validates shape only (retro-skill#92).
 
 This check closes that on the evals *retro itself writes*: it compares the
 eval records in an ``evals.json`` against the same file at a base revision and
 rejects an eval that is new, or whose assertions changed, while carrying no
-samples. Untouched evals are never looked at - this does not retrofit the 485.
+samples. Untouched evals are never looked at - nothing is retrofitted.
 
 Scope, deliberately: only pattern-bearing assertions can be sampled. An eval
 graded solely by ``expectations`` (LLM-as-judge strings) has nothing for the

@@ -142,6 +142,30 @@ class CheckEvalSamplesTest(unittest.TestCase):
         )
         self.assertEqual(self._check(repo), [])
 
+    def test_value_only_assertion_counts_as_pattern_bearing(self):
+        """`value` is a pattern key, because the gate this mirrors treats it as
+        one: validate-evals.sh builds the list the samples requirement reads
+        from `a.get("pattern") or a.get("value")`. Dropping `value` here would
+        let a value-only eval past this check and straight into a CI failure
+        the local run said was fine."""
+        repo = self._repo(None)
+        self._write(
+            repo,
+            [
+                {
+                    "eval_name": "value_only",
+                    "prompt": "p",
+                    "assertions": [
+                        {"type": "content", "value": "bun install"},
+                        {"type": "must_not", "value": "npm install"},
+                    ],
+                }
+            ],
+        )
+        problems = self._check(repo)
+        self.assertEqual(len(problems), 1, problems)
+        self.assertIn("value_only", problems[0])
+
     def test_legacy_array_container_is_understood(self):
         repo = self._repo(None)
         (repo / "evals" / "evals.json").write_text(
