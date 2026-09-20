@@ -617,6 +617,80 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_signal(evs, "A11")
 
+    def test_A11_sink_scan_stops_at_the_statement_boundary(self):
+        # The awk here is a separate statement, not this grep's sink. Walking
+        # past the `;` withdrew the locate exemption on the strength of a
+        # command the grep never fed — the shape that produced 1 of the 7 A11
+        # findings measured on the session behind this fix.
+        evs = tool_use_pair(
+            "g",
+            "Bash",
+            {
+                "command": "grep -n 'ansible:' compose.yml | head; awk '{print $2}' n.txt"
+            },
+            "...",
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_field_splitting_sink_in_the_same_pipeline_still_fires(self):
+        # The other direction: a sink inside the grep's OWN pipeline still
+        # disqualifies the locate, boundary fix or not.
+        evs = tool_use_pair(
+            "g",
+            "Bash",
+            {"command": "grep -n version conf.yaml | awk -F: '{print $2}'"},
+            "...",
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_conflict_marker_grep_does_not_fire(self):
+        # While the markers are in the file it is not JSON at all — jq refuses
+        # it, and the enforcing gate permits the search. No `-n` here on
+        # purpose: with it the locate exemption already covers the call, and
+        # this case would pass without the guard it exists for.
+        evs = tool_use_pair(
+            "g",
+            "Bash",
+            {
+                "command": "grep '<<<<<<<\\|>>>>>>>\\|=======' "
+                ".claude-plugin/marketplace.json"
+            },
+            "...",
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_conflict_marker_awk_range_does_not_fire(self):
+        evs = tool_use_pair(
+            "a",
+            "Bash",
+            {"command": "awk '/<<<<<<</,/>>>>>>>/' .claude-plugin/plugin.json"},
+            "...",
+        )
+        self.assert_not_signal(evs, "A11")
+
+    def test_A11_a_second_ordinary_pattern_keeps_the_finding(self):
+        # The exemption is for a search that asks ONLY about markers; a key name
+        # in the same awk range is the extraction A11 exists for.
+        evs = tool_use_pair(
+            "a",
+            "Bash",
+            {"command": "awk '/<<<<<<</,/\"version\"/' plugin.json"},
+            "...",
+        )
+        self.assert_signal(evs, "A11")
+
+    def test_A11_conflict_marker_with_dash_o_still_fires(self):
+        # `-o` prints the match itself, which the gate denies whatever the
+        # pattern is. The marker exemption must not launder it. The pattern is
+        # the `=======` marker on purpose: shlex keeps `<<<<<<<` and `>>>>>>>`
+        # indistinguishable from a redirect operator, and the scan stops there
+        # for an unrelated reason, which would make this assertion pass without
+        # the guard it is testing.
+        evs = tool_use_pair(
+            "g", "Bash", {"command": "grep -o '=======' plugin.json"}, "..."
+        )
+        self.assert_signal(evs, "A11")
+
     def test_A11_cat_into_a_pipe_does_not_fire(self):
         evs = tool_use_pair("c", "Bash", {"command": "cat config.txt | wc -l"}, "12")
         self.assert_not_signal(evs, "A11")
@@ -1234,7 +1308,9 @@ class TestMechanizableWaste(unittest.TestCase):
             if sig == "A20":
                 return detect.signal_wait_loop_inefficiency(tool_uses)
             base = detect.signal_wrong_tool_choice(tool_uses)
-            return detect.signal_rule_exists_but_violated(base, rules_text)
+            return detect.signal_rule_exists_but_violated(
+                base, rules_text, detect.extract_hook_denials(tool_uses)
+            )
         finally:
             path.unlink(missing_ok=True)
 
@@ -1292,6 +1368,82 @@ class TestMechanizableWaste(unittest.TestCase):
         with_rule = self._findings(evs, "C6", "never grep on a structured file")
         self.assertTrue(any(f["violated_signal"] == "A11" for f in with_rule))
         self.assertEqual(self._findings(evs, "C6", "unrelated prose"), [])
+
+    # The verbatim denial the PreToolUse gate emitted in the session that
+    # produced this fix — not a paraphrase, because the keyword match that
+    # decides "a gate exists" runs against exactly this text.
+    A11_GATE_DENIAL = (
+        "PreToolUse:Bash hook error: Field extraction from a structured file "
+        "with a text tool. use jq (JSON/JSONL) / yq (YAML·TOML·XML) / dasel "
+        "(any) / qsv·mlr (CSV·TSV) — see the `data-tools` skill. If you are "
+        "grepping for a COMMENT (which no structured parser can see), use "
+        "grep -c/-q/-n/-l and this check will let it through."
+    )
+
+    def _c6_events(self, denial: str | None):
+        evs = []
+        for i in range(4):
+            evs.extend(
+                tool_use_pair(
+                    f"u{i}", "Bash", {"command": f"grep foo conf{i}.yaml"}, ""
+                )
+            )
+        if denial is not None:
+            evs.extend(tool_use_pair("d", "Read", {"file_path": "x"}, denial, True))
+        return evs
+
+    def test_C6_does_not_demand_a_gate_that_already_fired(self):
+        out = self._findings(
+            self._c6_events(self.A11_GATE_DENIAL),
+            "C6",
+            "never grep on a structured file",
+        )
+        a11 = [f for f in out if f["violated_signal"] == "A11"]
+        self.assertEqual(len(a11), 1)
+        self.assertTrue(a11[0]["gate_observed"])
+        self.assertNotIn("propose a mechanical gate", a11[0]["hint"])
+        self.assertIn("do not propose", a11[0]["hint"].lower())
+
+    def test_C6_without_an_observed_gate_still_escalates(self):
+        # The other direction: with no denial in the transcript the escalation
+        # stands — but it may not assert that no control exists.
+        out = self._findings(
+            self._c6_events(None), "C6", "never grep on a structured file"
+        )
+        a11 = [f for f in out if f["violated_signal"] == "A11"]
+        self.assertEqual(len(a11), 1)
+        self.assertFalse(a11[0]["gate_observed"])
+        self.assertIn("propose a mechanical gate", a11[0]["hint"])
+        self.assertIn("not proof that no gate is installed", a11[0]["hint"])
+
+    def test_C6_unrelated_denial_does_not_count_as_this_rules_gate(self):
+        # A hook fired for a different rule says nothing about this one.
+        out = self._findings(
+            self._c6_events(
+                "PreToolUse:Bash hook error: a state-changing git command is "
+                "piped into tail here."
+            ),
+            "C6",
+            "never grep on a structured file",
+        )
+        a11 = [f for f in out if f["violated_signal"] == "A11"]
+        self.assertEqual(len(a11), 1)
+        self.assertFalse(a11[0]["gate_observed"])
+
+    def test_C6_one_generic_keyword_is_not_this_rules_gate(self):
+        # A denial that happens to contain a single keyword of the rule is not
+        # evidence of a gate FOR that rule — the real case was a truncation
+        # gate matching A13 on the word "verification" alone.
+        out = self._findings(
+            self._c6_events(
+                "PreToolUse:Bash hook error: pipe this into jq before reading it."
+            ),
+            "C6",
+            "never grep on a structured file",
+        )
+        a11 = [f for f in out if f["violated_signal"] == "A11"]
+        self.assertEqual(len(a11), 1)
+        self.assertFalse(a11[0]["gate_observed"])
 
     def test_A19_unwraps_wrapper_commands(self):
         # timeout/sudo/env/time must not become the shape — the wrapped
