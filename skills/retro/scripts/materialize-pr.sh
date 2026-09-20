@@ -13,9 +13,10 @@
 #       plain checkout. Fetches origin, creates ../<branch-dirname> worktree
 #       off origin/<default-branch>, prints the worktree path.
 #   materialize-pr.sh finish <worktree-dir> <title> <body-file> <file>...
-#       Stages ONLY the named files (never -A), commits signed
-#       (-S --signoff, message = title), pushes -u, opens the PR with
-#       --body-file, prints the PR URL.
+#       Refuses first when a named evals.json adds or tightens an eval that
+#       carries no `samples` (check-eval-samples.py). Then stages ONLY the
+#       named files (never -A), commits signed (-S --signoff, message =
+#       title), pushes -u, opens the PR with --body-file, prints the PR URL.
 #
 # Exit: 0 ok; 2 usage/error. Never force-pushes, never merges.
 set -euo pipefail
@@ -40,6 +41,11 @@ finish)
     [[ $# -ge 1 ]] || die "name at least one file to stage (never -A)"
     [[ -f "$body" ]] || die "body file not found: $body"
     branch=$(git -C "$wt" rev-parse --abbrev-ref HEAD)
+    # An eval retro adds or tightens must carry samples, or the fleet's eval
+    # gate has nothing to grade it against (retro-skill#92). Runs before any
+    # git write, so a refusal leaves the worktree untouched.
+    python3 "$(dirname "$0")/check-eval-samples.py" --repo "$wt" -- "$@" \
+        || die "eval(s) added or tightened without samples - see above"
     git -C "$wt" add -- "$@"
     git -C "$wt" commit -S --signoff -m "$title"
     git -C "$wt" push -u origin "$branch"
