@@ -95,11 +95,18 @@ done
 
 # Stash and status need a WORKING TREE. In the bare-repo layout the path above
 # is `<project>/.bare`, where both abort with "fatal: this operation must be run
-# in a work tree" — and `| wc -l` turns that abort into a reassuring 0. Point
-# them at a checkout:
-for w in <the worktrees the loop above listed>; do
-  git -C "$w" stash list
-  git -C "$w" status --porcelain
+# in a work tree" — and `| wc -l` turns that abort into a reassuring 0. Read the
+# checkouts out of the repository and ask them instead:
+for r in <the repositories named above>; do
+  git -C "$r" worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r w; do
+    # `worktree list` names the bare repository too, and asking IT is the very
+    # mistake this loop exists to avoid. Do not try to spot it in the porcelain:
+    # a `.bare` created by `git clone --bare` can print a HEAD and a branch and
+    # no `bare` marker at all. Ask git whether the path has a work tree.
+    [ "$(git -C "$w" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ] || continue
+    git -C "$w" stash list
+    git -C "$w" status --porcelain
+  done
 done
 
 ls -d /tmp/phpstan /tmp/cache/PHPStan /tmp/rector_cached_files 2>/dev/null
@@ -154,13 +161,15 @@ done" in the session this mode came out of:
   syncs into Tempo; a direct Jira worklog double-books.
 - **Per day, not per session.** A session can span days; derive the days from
   commit timestamps, scratch-file mtimes and the transcript, not from "today".
-- **Derive the hours from the transcript, and say how.** Sort the user and
-  assistant timestamps, split on gaps longer than 30 minutes, and sum the
-  blocks. Then classify each long gap by what *ended* it: a genuine user
-  message means the agent was idle and the gap stays out; a task notification
-  means the agent's own background work was running and the gap counts. Both
-  numbers belong in the report, because "254 minutes" without the method is a
-  figure nobody can check.
+- **Derive the hours from the transcript, and say how.** Sort **every** timed
+  entry — user, assistant *and* task notifications, which arrive as their own
+  entries and are what ends a wait on your own background run. Leaving them out
+  of the sort makes a gap look longer than it was and files it under the wrong
+  heading. Split on gaps over 30 minutes, sum the blocks, then classify each
+  long gap by what *ended* it: a genuine user message means the agent was idle
+  and the gap stays out; a task notification means the agent's own work was
+  running and the gap counts. Both numbers belong in the report, because "254
+  minutes" without the method is a figure nobody can check.
 - **`get_day` immediately before every `log_time`** — a parallel session may
   have booked the same window (or your own work) already.
 - **Project/activity from precedent:** `list_recent_entries` (write the result
