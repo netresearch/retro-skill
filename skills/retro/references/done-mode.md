@@ -90,7 +90,6 @@ du -sh "$SCRATCH"/*                             # scratch disk
 for r in <the repositories named above>; do     # per repo, never just the cwd
   git -C "$r" worktree list
   git -C "$r" branch -vv | grep ': gone]'       # remote deleted
-  git -C "$r" status --porcelain
 done
 
 # Stash and status need a WORKING TREE. In the bare-repo layout the path above
