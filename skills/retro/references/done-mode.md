@@ -97,7 +97,9 @@ done
 # in a work tree" — and `| wc -l` turns that abort into a reassuring 0. Read the
 # checkouts out of the repository and ask them instead:
 for r in <the repositories named above>; do
-  git -C "$r" worktree list --porcelain | awk '/^worktree /{print $2}' | while read -r w; do
+  # `sed`, not `awk '{print $2}'`: a worktree path containing a space would be
+  # cut at the space, and the guard below would then answer for another path.
+  git -C "$r" worktree list --porcelain | sed -n 's/^worktree //p' | while read -r w; do
     # `worktree list` names the bare repository too, and asking IT is the very
     # mistake this loop exists to avoid. Do not try to spot it in the porcelain:
     # a `.bare` created by `git clone --bare` can print a HEAD and a branch and
