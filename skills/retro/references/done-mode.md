@@ -90,8 +90,24 @@ du -sh "$SCRATCH"/*                             # scratch disk
 for r in <the repositories named above>; do     # per repo, never just the cwd
   git -C "$r" worktree list
   git -C "$r" branch -vv | grep ': gone]'       # remote deleted
-  git -C "$r" stash list                        # lives in the repo, not a worktree
-  git -C "$r" status --porcelain
+done
+
+# Stash and status need a WORKING TREE. In the bare-repo layout the path above
+# is `<project>/.bare`, where both abort with "fatal: this operation must be run
+# in a work tree" — and `| wc -l` turns that abort into a reassuring 0. Read the
+# checkouts out of the repository and ask them instead:
+for r in <the repositories named above>; do
+  # `sed`, not `awk '{print $2}'`: a worktree path containing a space would be
+  # cut at the space, and the guard below would then answer for another path.
+  git -C "$r" worktree list --porcelain | sed -n 's/^worktree //p' | while read -r w; do
+    # `worktree list` names the bare repository too, and asking IT is the very
+    # mistake this loop exists to avoid. Do not try to spot it in the porcelain:
+    # a `.bare` created by `git clone --bare` can print a HEAD and a branch and
+    # no `bare` marker at all. Ask git whether the path has a work tree.
+    [ "$(git -C "$w" rev-parse --is-inside-work-tree 2>/dev/null)" = "true" ] || continue
+    git -C "$w" stash list
+    git -C "$w" status --porcelain
+  done
 done
 
 ls -d /tmp/phpstan /tmp/cache/PHPStan /tmp/rector_cached_files 2>/dev/null
@@ -123,6 +139,14 @@ dropping it: `git stash show --stat`, then look for its content in the target
 Three stashes from March, April and June were each already merged by another
 route; the SHA goes in the report so the drop stays reversible.
 
+**A skills grep needs `-R`, not `-r`.** `~/.claude/skills/<name>` is a symlink
+into `~/.agents/skills/<name>`, and `grep -r` does not follow a symlinked
+directory given as a path argument. A coverage check run with `-r` therefore
+reports "not covered" for every term — a clean, confident, wholly wrong
+negative that sends the retro on to propose what the skills already say.
+Measured 2026-09-21: eight terms, eight NONE with `-r`; with `-R`, five were
+already documented.
+
 **Three more rows the obvious list misses.** Each one produced a false "all
 done" in the session this mode came out of:
 
@@ -138,6 +162,15 @@ done" in the session this mode came out of:
   syncs into Tempo; a direct Jira worklog double-books.
 - **Per day, not per session.** A session can span days; derive the days from
   commit timestamps, scratch-file mtimes and the transcript, not from "today".
+- **Derive the hours from the transcript, and say how.** Sort **every** timed
+  entry — user, assistant *and* task notifications, which arrive as their own
+  entries and are what ends a wait on your own background run. Leaving them out
+  of the sort makes a gap look longer than it was and files it under the wrong
+  heading. Split on gaps over 30 minutes, sum the blocks, then classify each
+  long gap by what *ended* it: a genuine user message means the agent was idle
+  and the gap stays out; a task notification means the agent's own work was
+  running and the gap counts. Both numbers belong in the report, because "254
+  minutes" without the method is a figure nobody can check.
 - **`get_day` immediately before every `log_time`** — a parallel session may
   have booked the same window (or your own work) already.
 - **Project/activity from precedent:** `list_recent_entries` (write the result
