@@ -1939,6 +1939,56 @@ class EleventhRoundTest(unittest.TestCase):
                 )
 
 
+class TwelfthRoundTest(unittest.TestCase):
+    """Inputs from the twelfth review round (9896fd3)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_merge_github_refused_in_a_json_body_is_no_success(self):
+        # Copied from a stored transcript: `| head -3` cut the `(HTTP 405)` line.
+        cmd = "gh api repos/o/r/pulls/795/merge -X PUT -f merge_method=merge 2>&1 | head -3"
+        for printed in (
+            # as recorded: both signs
+            (
+                '{"message":"Repository rule violations found","status":"405"}'
+                "gh: Repository rule violations found\n  795: OPEN -"
+            ),
+            # each sign alone
+            '{"message":"Repository rule violations found","status":"405"}\n  795: OPEN -',
+            (
+                '{"message":"Repository rule violations found"}gh: Repository rule'
+                " violations found\n  795: OPEN -"
+            ),
+        ):
+            with self.subTest(printed=printed[-40:]):
+                urls, data = self.urls([({"command": cmd}, printed)])
+                self.assertEqual(
+                    (urls, len(data["unresolved_forge_commands"])), ({}, 1)
+                )
+
+    def test_a_get_inside_a_substitution_is_not_the_writes_method(self):
+        cmd = (
+            "gh api -X POST repos/o/r/issues/5/comments"
+            ' -f body="state: $(gh api repos/o/r/pulls/5 -X GET --jq .state)"'
+        )
+        printed = '{"html_url":"https://github.com/o/r/issues/5#issuecomment-1"}'
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://github.com/o/r/issues/5": "acted"})
+
+    def test_text_inside_a_substitution_or_after_an_escape_stays_text(self):
+        for cmd in (
+            "gh pr comment 5 -R o/r --body \"Note: $(printf 'Run gh pr merge 6 -R o/r after CI')\"",
+            'gh pr comment 5 -R o/r --body "Run \\$(gh pr merge 6 -R o/r) after CI"',
+        ):
+            with self.subTest(cmd=cmd[30:60]):
+                urls, _ = self.urls(
+                    [({"command": cmd}, "https://github.com/o/r/pull/5#issuecomment-1")]
+                )
+                self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+
+
 class UnresolvedSurfacedTest(unittest.TestCase):
     def test_the_collector_lists_unresolved_writes(self):
         transcript = _transcript([({"command": "gh pr merge --merge"}, "")])

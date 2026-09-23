@@ -139,14 +139,16 @@ endpoint (code scanning, workflow runs) does not count at all. Continued lines
 (`\` + newline) are one command. A write inside a heredoc or quoted text,
 `pr-merge.sh` included, is never attributed; a `$(…)` command substitution
 inside double quotes (`echo "#5: $(gh pr merge …)"`) runs, only the text
-around it is text. Whenever a call that writes to a PR, MR or issue names a
+around it is text; inside it the quoting starts afresh, and an escaped
+`\$(` is text. Whenever a call that writes to a PR, MR or issue names a
 target no write claimed — a report line, or any URL when a heredoc script may
 have printed it — the call is listed as unresolved, so every write through
 these tools ends attributed, unresolved or refused, never silently gone. A
 call the harness refused (`is_error` without `Exit code N`) ran nothing. A
 successful write that prints nothing counts only as `<verb> <number> -R <repo>`
 outside any heredoc or quoted text. Output that reports a failure is not a
-success: an `HTTP 4xx/5xx` or glab's `422 {message: …}`, `GraphQL:` at a
+success: an `HTTP 4xx/5xx`, glab's `422 {message: …}`, a JSON error body
+with `"status":"405"` or `}gh: …` behind it, `GraphQL:` at a
 line start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`,
 `failed to` or `Cannot perform`, or a background run (a Bash call sent or
 moved to the background, a Monitor), whose output is not in the result at

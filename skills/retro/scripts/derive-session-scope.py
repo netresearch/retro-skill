@@ -121,7 +121,8 @@ EXIT_CODE_RE = re.compile(r"Exit code \d+")
 # a GraphQL error, a refusal, or a background run whose output is not in the
 # result at all (a Bash call sent or moved to the background, a Monitor).
 FAILED_OUTPUT_RE = re.compile(
-    r"HTTP [45]\d\d|: [45]\d\d \{message|(?:^|: )GraphQL: "
+    r"HTTP [45]\d\d|: [45]\d\d \{message|\"status\":\"[45]\d\d\"|\}gh: "
+    r"|(?:^|: )GraphQL: "
     r"|^\s*(?:[xX✗]\s|gh: |failed to |Cannot perform)"
     r"|Command running in background|moved to the background|^Monitor started \(",
     re.MULTILINE,
@@ -523,6 +524,9 @@ def _substitutions(text: str, start: int, end: int) -> list[tuple[int, int]]:
     found = []
     i = text.find("$(", start, end)
     while i != -1:
+        if (i - len(text[start:i].rstrip("\\")) - start) % 2:
+            i = text.find("$(", i + 2, end)
+            continue  # `\$(` inside double quotes is literal
         depth, j = 0, i + 1
         while j < end:
             depth += {"(": 1, ")": -1}.get(text[j], 0)
@@ -532,6 +536,17 @@ def _substitutions(text: str, start: int, end: int) -> list[tuple[int, int]]:
         found.append((i, j + 1))
         i = text.find("$(", j + 1, end)
     return found
+
+
+def _without_substitutions(text: str) -> str:
+    """The text with every `$(…)` body blanked, same length."""
+    for sub_start, sub_end in _substitutions(text, 0, len(text)):
+        text = (
+            text[: sub_start + 2]
+            + re.sub(r"[^\n]", " ", text[sub_start + 2 : sub_end - 1])
+            + text[sub_end - 1 :]
+        )
+    return text
 
 
 def _quoted_spans(command: str) -> list[tuple[int, int]]:
@@ -547,6 +562,11 @@ def _quoted_spans(command: str) -> list[tuple[int, int]]:
         if m.group(0).startswith('"'):
             for sub_start, sub_end in _substitutions(masked, m.start(), m.end()):
                 spans.append((start, sub_start))
+                spans += [
+                    (q.start(), q.end())
+                    for q in QUOTED_RE.finditer(masked, sub_start + 2, sub_end - 1)
+                    if " " in q.group(0)
+                ]
                 start = sub_end - 1
         spans.append((start, m.end()))
     return spans
@@ -568,8 +588,8 @@ def _writes(command: str) -> list[re.Match]:
     blank = _blank_texts(command)
     for m in API_WRITE_RE.finditer(command):
         call = _segment(command, m)
-        # A `-X GET` inside a quoted body is text, not the method.
-        if EXPLICIT_GET_RE.search(_segment(blank, m)):
+        # A `-X GET` inside a quoted body or a `$(…)` is not this write's method.
+        if EXPLICIT_GET_RE.search(_segment(_without_substitutions(blank), m)):
             continue
         if "graphql" in call and "mutation" not in command and "query=@" not in call:
             continue  # a GraphQL query (a query read from a file may be a mutation)
