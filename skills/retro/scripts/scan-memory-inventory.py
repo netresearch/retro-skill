@@ -56,22 +56,41 @@ SECTION_MARKER = re.compile(r"^\*\*[A-Za-z].*?:\*\*", re.MULTILINE)
 # Files inside a memory/ dir that are never themselves promotable stock.
 SKIP_NAMES = {INDEX_FILE}
 
-# Language that asserts a PENDING state: blocked, unreleased, waiting until
-# something happens. A note carrying it was true when written and turns false
-# the moment the thing happens, without a word of its text changing - so it is
-# the one class of note that has to be re-verified rather than merely
+# Language that asserts a PENDING state: something still open, not yet done,
+# waiting on someone. A note carrying it was true when written and turns false
+# the moment the awaited thing happens, without a word of its text changing -
+# so it is the one class of note that has to be re-verified rather than merely
 # promoted. The index line matters most: MEMORY.md is loaded into every
-# session, so a stale pending claim there misleads each one, while the body is
-# only read on demand. Measured on a real store: 1 hit in 8 notes, and that one
-# was genuinely still pending; the note that prompted this - "sit unreleased",
-# resolved a day after it was written, then stood in the index for a week -
-# hits on its description line.
+# session, so a stale pending claim there misleads each one.
+#
+# Chosen by reading, not by listing likely words. The first version flagged 51
+# of 335 notes on a real multi-project store, 7 of them genuinely pending: 14%.
+# Reading every hit showed where the noise came from. `blocked`/`blocks` gave
+# ~15 hits and not one pending claim - `mergeState=BLOCKED`, a status enum,
+# `content-blocks`, "composer blocks ^12" are mechanisms. Bare `waiting` and
+# `pending` were exit codes and API states. And 125 of the 335 notes are German,
+# where the English pattern saw nothing; German state words were 6 of 8
+# correct. This version flags 19, 13 of them pending (68%), missing none of the
+# 13 the first one or this one found. Those numbers come from the same notes
+# the words were chosen on, so expect lower precision on notes not yet seen.
+#
+# `unreleased` stays - it is the word the note that prompted this carried on
+# its index line - but not as `[Unreleased]` (a CHANGELOG heading) or as the
+# tail of a compound like `merged-but-unreleased` (a past event).
 PENDING_STATE_RE = re.compile(
-    r"\b(?:blocked|blocks|waits? on|waiting|unreleased|pending|not yet|"
-    r"still open|remains open|until (?:it|they|then)|"
-    r"needs? (?:a|two) (?:tag|release))\b",
+    r"(?:\b(?:still open|remains open|not yet|waits? on|waiting (?:on|for)|"
+    r"until (?:it|they|then)|pending (?:user|review|approval|decision|choice)|"
+    r"steht aus|stehen aus|ausstehend|noch nicht|noch offen|bleibt offen|"
+    r"wartet auf|warten auf)\b"
+    r"|(?<![\[\w-])(?:unreleased|unveröffentlicht)\b)",
     re.IGNORECASE,
 )
+
+# A feedback note states a rule, and a rule speaks in conditionals - "until the
+# gate is green", "not yet merged means…". None of that is a claim that
+# something is open now, and feedback notes carried most of the noise in both
+# languages, so they are not examined for pending state at all.
+PENDING_STATE_SKIP_TYPES = {"feedback"}
 
 
 def _pending_state_phrases(text: str) -> list[str]:
@@ -172,6 +191,13 @@ def _read_finding(
     fm = _parse_frontmatter(text)
     body = text[_frontmatter_end(text) :].strip()
     metadata = fm.get("metadata") if isinstance(fm.get("metadata"), dict) else {}
+    description = str(fm.get("description", ""))
+    note_type = str(metadata.get("type") or fm.get("type") or "")
+    if note_type in PENDING_STATE_SKIP_TYPES:
+        pending, pending_in_index = [], False
+    else:
+        pending = _pending_state_phrases(body + "\n" + description)
+        pending_in_index = bool(_pending_state_phrases(description))
     return {
         "signal": "C3",
         "name": "memory_drift",
@@ -187,12 +213,8 @@ def _read_finding(
         "current_location": "project-local-memory",
         # Re-verify before promoting. `pending_state_in_index` is the sharper
         # of the two: a match in the description is a match in MEMORY.md.
-        "pending_state": _pending_state_phrases(
-            body + "\n" + str(fm.get("description", ""))
-        ),
-        "pending_state_in_index": bool(
-            _pending_state_phrases(str(fm.get("description", "")))
-        ),
+        "pending_state": pending,
+        "pending_state_in_index": pending_in_index,
     }
 
 
