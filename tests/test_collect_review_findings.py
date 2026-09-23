@@ -1881,6 +1881,64 @@ class TenthRoundTest(unittest.TestCase):
         self.assertEqual(data["unresolved_forge_commands"], [])
 
 
+class EleventhRoundTest(unittest.TestCase):
+    """Inputs from the eleventh review round (56a0ded), found in stored transcripts."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_write_in_a_substitution_inside_quotes_runs(self):
+        # Copied shape: a Monitor loop polling `pr-merge.sh` inside `echo "#865: $(…)"`.
+        # The echo prefix keeps its report off the start of the line: unresolved.
+        cmd = 'echo "#5: $(pr-merge.sh -R o/r 5 --self-reviewed 2>&1 | tail -1)"'
+        urls, data = self.urls(
+            [({"command": cmd}, "#5: pr-merge: o/r#5 queued (--merge)")]
+        )
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+        cmd = 'echo "#5: $(gh pr merge 5 -R o/r --merge 2>&1 | tail -1)"'
+        urls, _ = self.urls([({"command": cmd}, "")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+        # The text around the substitution stays text.
+        cmd = 'gh pr comment 5 -R o/r --body "Run gh pr merge 6 -R o/r after $(date)."'
+        urls, _ = self.urls([({"command": cmd}, "https://github.com/o/r/pull/5#c1")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+
+    def test_every_background_wording_is_no_success(self):
+        for printed in (
+            "Command running in background with ID: b1.",
+            (
+                "Command did not complete within its 120s timeout and was moved to the"
+                " background (ID: b2)."
+            ),
+            "Monitor started (task b3, timeout 1800000ms).",
+        ):
+            with self.subTest(printed=printed[:30]):
+                urls, data = self.urls(
+                    [({"command": "gh pr merge 5 -R o/r --merge"}, printed)]
+                )
+                self.assertEqual(
+                    (urls, len(data["unresolved_forge_commands"])), ({}, 1)
+                )
+
+    def test_a_glab_merge_refused_by_the_api_is_no_success(self):
+        printed = (
+            "All attempts fail: #1: PUT https://git.example.org/api/v4/projects/g%2Fp/"
+            "merge_requests/71/merge: 422 {message: Branch cannot be merged}\nEXIT: 1"
+        )
+        urls, _ = self.urls([({"command": "glab mr merge 71 -R g/p --yes"}, printed)])
+        self.assertNotIn("https://git.example.org/g/p/-/merge_requests/71", urls)
+
+    def test_the_wrapper_inside_a_script_the_call_runs_is_unresolved(self):
+        cmd = "cat > m.sh <<'SH'\npr-merge.sh -R o/r 5\nSH\nbash m.sh"
+        for printed in ("", "o/r  #5  pr-merge: o/r#5 merged"):
+            with self.subTest(printed=printed):
+                urls, data = self.urls([({"command": cmd}, printed)])
+                self.assertEqual(
+                    (urls, len(data["unresolved_forge_commands"])), ({}, 1)
+                )
+
+
 class UnresolvedSurfacedTest(unittest.TestCase):
     def test_the_collector_lists_unresolved_writes(self):
         transcript = _transcript([({"command": "gh pr merge --merge"}, "")])

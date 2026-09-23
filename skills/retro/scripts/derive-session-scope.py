@@ -117,11 +117,13 @@ HOSTNAME_RE = re.compile(r"--hostname[\s=](?P<host>[\w.-]+)")
 DENIED_PREFIX = "PreToolUse:"
 EXIT_CODE_RE = re.compile(r"Exit code \d+")
 # Output that says a write did not happen, although the exit code (behind a
-# pipe or `; echo`) says nothing: an HTTP error, a GraphQL error, a refusal,
-# or a background run whose output is not in the result at all.
+# pipe or `; echo`) says nothing: an HTTP error (glab: `422 {message: …}`),
+# a GraphQL error, a refusal, or a background run whose output is not in the
+# result at all (a Bash call sent or moved to the background, a Monitor).
 FAILED_OUTPUT_RE = re.compile(
-    r"HTTP [45]\d\d|(?:^|: )GraphQL: |^\s*(?:[xX✗]\s|gh: |failed to |Cannot perform)"
-    r"|Command running in background",
+    r"HTTP [45]\d\d|: [45]\d\d \{message|(?:^|: )GraphQL: "
+    r"|^\s*(?:[xX✗]\s|gh: |failed to |Cannot perform)"
+    r"|Command running in background|moved to the background|^Monitor started \(",
     re.MULTILINE,
 )
 # A shell loop runs its body once per item: `for r in a b c; do gh pr create …; done`.
@@ -516,14 +518,38 @@ def _masked(command: str) -> str:
     )
 
 
+def _substitutions(text: str, start: int, end: int) -> list[tuple[int, int]]:
+    """The `$(…)` command substitutions in `text[start:end]`, nesting counted."""
+    found = []
+    i = text.find("$(", start, end)
+    while i != -1:
+        depth, j = 0, i + 1
+        while j < end:
+            depth += {"(": 1, ")": -1}.get(text[j], 0)
+            if depth == 0:
+                break
+            j += 1
+        found.append((i, j + 1))
+        i = text.find("$(", j + 1, end)
+    return found
+
+
 def _quoted_spans(command: str) -> list[tuple[int, int]]:
     """Quoted strings with a space in them: text, not a path or a slug. A
-    command substitution in double quotes (`URL="$(gh pr create …)"`) runs."""
-    return [
-        (m.start(), m.end())
-        for m in QUOTED_RE.finditer(_masked(command))
-        if " " in m.group(0) and not m.group(0).startswith('"$(')
-    ]
+    command substitution in double quotes (`"#5: $(gh pr merge …)"`) runs, so
+    only the text around it is a span."""
+    masked = _masked(command)
+    spans = []
+    for m in QUOTED_RE.finditer(masked):
+        if " " not in m.group(0):
+            continue
+        start = m.start()
+        if m.group(0).startswith('"'):
+            for sub_start, sub_end in _substitutions(masked, m.start(), m.end()):
+                spans.append((start, sub_start))
+                start = sub_end - 1
+        spans.append((start, m.end()))
+    return spans
 
 
 def _inside(spans: list[tuple[int, int]], index: int) -> bool:
@@ -846,6 +872,9 @@ def _forge_write_artefacts(
     # A call in list form (`["gh", "pr", …]`) only occurs inside a script.
     text_writes = bool(LIST_CALL_RE.search(command))
     about_prs = about_prs or text_writes
+    # `pr-merge.sh` written into a heredoc or a quoted text is a write in text.
+    if any(_is_text(command, m) for m in PR_MERGE_WRAPPER_RE.finditer(command)):
+        about_prs = text_writes = True
     for write in writes:
         if _is_text(command, write):
             # Written into a heredoc or a quoted text: a heredoc may be a
