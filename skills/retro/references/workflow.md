@@ -354,7 +354,8 @@ and Jira tickets, which Phase 1b reads (`collect-review-findings.py`); retro doe
 the agent never recognized as a learning); external signals outside forge and
 tracker (customer complaints, prod alerts, Slack / Matrix / Sentry); feedback on
 a ticket that neither a PR/MR of the session nor a jira script or time
-booking in it names; writes made only through GraphQL mutations; slow constitutional drift
+booking in it names; a write whose output named no target (listed as an
+unresolved forge command instead); slow constitutional drift
 without `audit`; or outcomes the agent never saw (a reverted commit or rejected
 PR is seen, an unspoken "the customer hated it" is not). For those, run
 `/retro outcome` (post-hoc) or `/retro audit` (cross-session).

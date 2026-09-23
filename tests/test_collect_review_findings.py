@@ -52,6 +52,7 @@ def _transcript(pairs: list[tuple[dict, str]], texts: list[str] = ()) -> Path:
     lines = [{"timestamp": "2026-09-20T09:36:50.553Z", "message": {"content": "start"}}]
     for i, (payload, result) in enumerate(pairs):
         name = payload.pop("__name", "Bash")
+        error = payload.pop("__error", False)
         lines.append(
             {
                 "type": "assistant",
@@ -76,6 +77,7 @@ def _transcript(pairs: list[tuple[dict, str]], texts: list[str] = ()) -> Path:
                             "type": "tool_result",
                             "tool_use_id": f"t{i}",
                             "content": result,
+                            "is_error": error,
                         }
                     ]
                 },
@@ -132,10 +134,6 @@ class SessionArtefactsTest(unittest.TestCase):
         urls = {a["url"]: a["origin"] for a in data["artefacts"]}
         self.assertEqual(urls, {"https://github.com/o/r/pull/7": "acted"})
 
-    def test_flag_value_is_not_the_number(self):
-        self.assertIsNone(dss.positional_number("--limit 5 --json url"))
-        self.assertEqual(dss.positional_number("--repo o/r 12"), 12)
-
     def test_read_only_and_placeholder_urls_are_only_mentioned(self):
         data = dss.collect_artefacts(
             _transcript(
@@ -171,7 +169,7 @@ class SessionArtefactsTest(unittest.TestCase):
                         {
                             "command": 'python3 jira-comment.py add NRS-4763 "UTF-8, SHA-256"'
                         },
-                        "",
+                        "✓ Comment added to NRS-4763",
                     ),
                     ({"__name": "mcp__tt__log_time", "ticket": "OPS-12"}, ""),
                     ({"command": "echo UTF-8 SHA-256 NRS-1 | wc"}, ""),
@@ -431,9 +429,10 @@ class ReviewFixesArtefactTest(unittest.TestCase):
         self.assertEqual(urls, {})
         self.assertEqual(len(data["unresolved_forge_commands"]), 1)
 
-    def test_a_boolean_flag_does_not_hide_the_number(self):
-        urls, _ = self.urls([({"command": "gh pr merge --merge 12 -R o/r"}, "")])
-        self.assertEqual(urls, {"https://github.com/o/r/pull/12": "acted"})
+    def test_a_silent_write_with_the_number_after_a_flag_is_unresolved(self):
+        # Only `<verb> <number>` is read without output; anything else is not guessed.
+        urls, data = self.urls([({"command": "gh pr merge --merge 12 -R o/r"}, "")])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
 
     def test_create_keeps_only_its_own_url(self):
         cmd = "gh pr create -R o/r --fill && gh pr view 1 -R x/y --comments"
@@ -484,74 +483,16 @@ class ReviewFixesArtefactTest(unittest.TestCase):
 
     def test_jira_key_inside_the_comment_text_is_not_the_ticket(self):
         self.assertEqual(
-            dss.jira_command_tickets('uv run jira-comment.py add NRS-1 "see ABC-2"'),
+            dss.jira_command_tickets(
+                'uv run jira-comment.py add NRS-1 "see ABC-2"',
+                "added to NRS-1, see ABC-2",
+            ),
             {"NRS-1"},
         )
 
 
 def _git(*args: str, cwd: Path) -> None:
     subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
-
-
-class RemoteResolutionTest(unittest.TestCase):
-    def repo(self, remotes: dict[str, str]) -> Path:
-        path = Path(TMP.name) / f"repo{next(_COUNTER)}"
-        path.mkdir()
-        _git("init", "-q", cwd=path)
-        for name, url in remotes.items():
-            _git("remote", "add", name, url, cwd=path)
-        return path
-
-    def test_credentials_are_dropped_from_the_remote(self):
-        path = self.repo(
-            {
-                "origin": "https://gitlab-ci-token:glpat-SECRET@git.example.org/group/app.git"
-            }
-        )
-        self.assertEqual(
-            dss.remote_project(str(path), "glab"), ("git.example.org", "group/app")
-        )
-
-    def test_gh_prefers_upstream_in_a_fork(self):
-        path = self.repo(
-            {
-                "origin": "git@github.com:me/fork.git",
-                "upstream": "https://github.com/org/proj.git",
-            }
-        )
-        self.assertEqual(
-            dss.remote_project(str(path), "gh"), ("github.com", "org/proj")
-        )
-        self.assertEqual(
-            dss.remote_project(str(path), "glab"), ("github.com", "me/fork")
-        )
-
-    def test_gh_set_default_wins(self):
-        path = self.repo(
-            {
-                "origin": "git@github.com:me/fork.git",
-                "upstream": "https://github.com/org/proj.git",
-            }
-        )
-        _git("config", "remote.origin.gh-resolved", "base", cwd=path)
-        self.assertEqual(dss.remote_project(str(path), "gh"), ("github.com", "me/fork"))
-
-    def test_the_last_cd_decides(self):
-        first = self.repo({"origin": "git@github.com:a/first.git"})
-        second = self.repo({"origin": "git@github.com:b/second.git"})
-        cmd = f"cd {first} && git fetch && cd {second} && gh pr edit 5 --add-label x"
-        data = dss.collect_artefacts(_transcript([({"command": cmd}, "")]))
-        self.assertEqual(
-            [a["url"] for a in data["artefacts"]],
-            ["https://github.com/b/second/pull/5"],
-        )
-
-    def test_a_relative_cd_is_unresolved(self):
-        # A real repository, named relative to this process's cwd: the session's
-        # cwd is unknown, so resolving it here would name a different checkout.
-        path = self.repo({"origin": "git@github.com:a/here.git"})
-        with contextlib.chdir(path.parent):
-            self.assertIsNone(dss.remote_project(path.name))
 
 
 def _pr(threads=(), reviews=(), commits_total=None):
@@ -803,8 +744,11 @@ class SecondRoundTest(unittest.TestCase):
         )
         self.assertEqual(urls, {})
 
-    def test_close_comment_takes_a_value(self):
-        urls, _ = self.urls([({"command": 'gh pr close -c "5" 10 -R o/r'}, "")])
+    def test_a_value_flag_before_the_number_is_not_guessed(self):
+        cmd = 'gh pr close -c "5" 10 -R o/r'
+        urls, data = self.urls([({"command": cmd}, "")])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+        urls, _ = self.urls([({"command": cmd}, "✓ Closed pull request o/r#10")])
         self.assertEqual(urls, {"https://github.com/o/r/pull/10": "acted"})
 
     def test_more_heredoc_forms_are_text(self):
@@ -816,10 +760,6 @@ class SecondRoundTest(unittest.TestCase):
         ]
         urls, _ = self.urls(pairs)
         self.assertEqual(urls, {})
-        for payload, _result in pairs:
-            self.assertEqual(
-                len(dss.mask_quoted(payload["command"])), len(payload["command"])
-            )
 
     def test_create_inside_a_command_substitution_counts(self):
         cmd = 'PR_URL="$(gh pr create --repo o/r --fill)"; echo "$PR_URL"'
@@ -828,7 +768,9 @@ class SecondRoundTest(unittest.TestCase):
 
     def test_a_quoted_jira_script_path_is_found(self):
         self.assertEqual(
-            dss.jira_command_tickets('uv run "$HOME/x/jira-issue.py" get NRS-5'),
+            dss.jira_command_tickets(
+                'uv run "$HOME/x/jira-issue.py" get NRS-5', "NRS-5: x"
+            ),
             {"NRS-5"},
         )
 
@@ -941,6 +883,155 @@ class SecondRoundTest(unittest.TestCase):
         self.assertEqual(
             crf.gitlab_hosts_from([], "https://git.example.org/"), ("git.example.org",)
         )
+
+
+class CorroborationTest(unittest.TestCase):
+    """A forge write counts when its output names the target (review round 3)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs))
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_refused_call_ran_nothing(self):
+        refused = "PreToolUse:Bash hook error: This body runs past five lines"
+        urls, data = self.urls([({"command": "gh pr merge 3 -R o/r --merge"}, refused)])
+        self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+
+    def test_a_failed_silent_call_is_not_guessed(self):
+        failed = {"command": "gh pr merge 3 -R o/r --merge", "__error": True}
+        urls, data = self.urls([(failed, "Exit code 1")])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+
+    def test_a_graphql_query_is_a_read_a_mutation_a_write(self):
+        query = "gh api graphql -F owner=o -F repo=r -f query='query{repository{id}}'"
+        mutation = "gh api graphql -f query='mutation{addPullRequestReviewThreadReply(input:{}){comment{url}}}'"
+        printed = "https://github.com/o/r/pull/7#discussion_r1"
+        q_urls, _ = self.urls([({"command": query}, printed)])
+        m_urls, _ = self.urls([({"command": mutation}, printed)])
+        self.assertEqual(q_urls, {"https://github.com/o/r/pull/7": "mentioned"})
+        self.assertEqual(m_urls, {"https://github.com/o/r/pull/7": "acted"})
+
+    def test_a_gitlab_work_item_is_an_issue(self):
+        printed = "- Creating issue in g/p https://git.example.org/g/p/-/work_items/4"
+        urls, _ = self.urls([({"command": "glab issue create -R g/p -t x"}, printed)])
+        self.assertEqual(urls, {"https://git.example.org/g/p/-/issues/4": "created"})
+
+    def test_owner_repo_hash_number_in_the_output(self):
+        printed = 'Pull request o/r#124 is marked as "ready for review"'
+        urls, _ = self.urls([({"command": "gh pr ready 124 --repo o/r"}, printed)])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/124": "acted"})
+
+    def test_a_bare_number_needs_exactly_one_repo(self):
+        merged = "Merged pull request #9"
+        one, _ = self.urls([({"command": "gh pr merge 9 -R o/r --merge"}, merged)])
+        two_repos = "gh pr merge 9 -R o/r --merge; gh pr view 1 -R x/y"
+        two, _ = self.urls([({"command": two_repos}, merged)])
+        self.assertEqual((one, two), ({"https://github.com/o/r/pull/9": "acted"}, {}))
+
+    def test_a_silent_rest_write_is_named_by_its_endpoint(self):
+        rest = "gh api -X PUT repos/o/r/pulls/5/merge -f merge_method=merge --silent"
+        numeric = 'glab api "projects/3424/merge_requests/10/merge" --method PUT -f squash=false'
+        urls, data = self.urls(
+            [({"command": rest}, ""), ({"command": numeric}, "merged")]
+        )
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+        self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+
+    def test_a_jira_script_named_inside_a_commit_message_is_not_a_call(self):
+        cmd = 'git commit -m "docs: jira-issue.py get NRS-9 example"'
+        result = "[b 1a2b] docs: jira-issue.py get NRS-9"
+        self.assertEqual(dss.jira_command_tickets(cmd, result), set())
+
+    def test_a_create_beside_another_write(self):
+        cmd = "gh pr create -R o/r --fill && gh pr comment 3 -R x/y --body hi"
+        printed = "https://github.com/o/r/pull/2\nhttps://github.com/x/y/pull/3#issuecomment-1"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(
+            urls,
+            {
+                "https://github.com/o/r/pull/2": "created",
+                "https://github.com/x/y/pull/3": "acted",
+            },
+        )
+
+    def test_a_refused_jira_call_quoting_its_key_names_no_ticket(self):
+        cmd = "uv run jira-comment.py add NRS-9 -"
+        refused = "PreToolUse:Bash hook error: [uv run jira-comment.py add NRS-9 -] lint failed"
+        self.assertEqual(dss.jira_command_tickets(cmd, refused), set())
+
+    def test_a_jira_call_that_failed_names_no_ticket(self):
+        cmd = "uv run jira-comment.py add NRS-9 -"
+        result = "Usage: jira-comment.py add [OPTIONS] ISSUE_KEY"
+        self.assertEqual(dss.jira_command_tickets(cmd, result), set())
+
+
+class ThirdRoundCollectorTest(unittest.TestCase):
+    """Collector inputs from the third review round (dcf6bcf)."""
+
+    def test_a_finding_about_limits_is_not_a_refusal(self):
+        bodies = [
+            "Consider adding a rate limit to this endpoint; it is unauthenticated.",
+            "The quota limit check in line 42 is off by one.",
+        ]
+        reports = [
+            crf.finding("u", "review", "b", "bot", None, b)["report"] for b in bodies
+        ]
+        self.assertEqual(reports, [False, False])
+        copilot = (
+            "Copilot was unable to review this pull request because the user who"
+            " requested the review has reached their quota limit."
+        )
+        self.assertTrue(
+            crf.finding("u", "review", "copilot", "bot", None, copilot)["report"]
+        )
+
+    def test_no_permission_is_a_read_failure_not_absent(self):
+        def runner(command):
+            raise RuntimeError(
+                "Issue does not exist or you do not have permission to see it."
+            )
+
+        result = crf.collect(
+            [crf.ticket_item("OPS-1", "linked")],
+            None,
+            run=runner,
+            jira_cli=Path(__file__),
+        )
+        self.assertFalse(result["artefacts"][0]["absent"])
+
+    def test_an_issue_read_as_the_pr_already_read_is_not_read_twice(self):
+        def runner(command):
+            if any("issue(number" in part for part in command):
+                raise RuntimeError(
+                    "gh: Could not resolve to an Issue with the number of 1."
+                )
+            return _pr()
+
+        items = [
+            dss.artefact("github.com", "o/r", "pull", 1) | {"origin": "created"},
+            dss.artefact("github.com", "o/r", "issues", 1) | {"origin": "acted"},
+        ]
+        result = crf.collect(items, None, run=runner)
+        self.assertEqual(
+            [a["url"] for a in result["artefacts"]], ["https://github.com/o/r/pull/1"]
+        )
+
+    def test_a_malformed_plugin_index_does_not_end_the_run(self):
+        home = Path(TMP.name) / f"home{next(_COUNTER)}"
+        index = home / ".claude/plugins/installed_plugins.json"
+        index.parent.mkdir(parents=True)
+        index.write_text(json.dumps({"plugins": {"x": ["not-a-dict", None]}}))
+        with mock.patch.object(crf.Path, "home", return_value=home):
+            self.assertEqual(crf._installed_jira_clis(), [])
+
+    def test_more_dismissals_than_read_is_named(self):
+        pr = _pr()
+        pr["data"]["repository"]["pullRequest"]["timelineItems"] = {
+            "totalCount": 150,
+            "pageInfo": {"hasNextPage": True},
+            "nodes": [],
+        }
+        self.assertIn("timelineItems", crf.parse_github_pr(pr, set())["truncated"])
 
 
 class MainTest(unittest.TestCase):

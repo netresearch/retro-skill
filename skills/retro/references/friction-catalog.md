@@ -117,10 +117,16 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" \
     --transcript-file <session.jsonl> [--output-format json]
 ```
 
-It reads every PR, MR and issue the session created or wrote to — with
-`gh`/`glab` subcommands, the GitHub MCP tools, or REST calls through `gh api` /
-`glab api`. Writes through GraphQL mutations address node ids, not repositories,
-and are not attributed. It follows each one's linked issues (closing references,
+It reads every PR, MR and issue the session created or wrote to. A write counts
+when its **output** names the target — a URL, `owner/repo#N`, or `#N` with a
+single `-R` in the call — and never from the command text alone: a
+`gh pr merge 3` inside a heredoc or a quoted body prints no target, and a call
+the harness refused (`PreToolUse:` result) ran nothing. A successful write that
+prints nothing counts only in two narrow shapes: a REST endpoint carrying
+repository and number (`gh api -X PUT repos/o/r/pulls/5/merge`), and
+`<verb> <number> -R <repo>` in a call without a heredoc. MCP writes count by
+their input. Everything else is listed as an unresolved forge command, not
+guessed. It follows each one's linked issues (closing references,
 issue URLs in the description) and the Jira key at the start of its title or in
 a branch segment one level, plus the tickets the session ran a jira script
 against or booked time on, and lists every comment by somebody else — each

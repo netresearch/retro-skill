@@ -97,28 +97,31 @@ KNOWN_BOTS = frozenset(
         "gemini-code-assist",
     }
 )
-GITLAB_BOT_RE = re.compile(r"(?:^(?:group|project)_\d+_bot(?:_|$))|(?:(?:^|[-_.])bot$)")
+GITLAB_BOT_RE = re.compile(r"^(?:group|project)_\d+_bot(?:_|$)|(?:^|[-_.])bot$")
 ISSUE_KEYWORD_RE = re.compile(
     r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b", re.IGNORECASE
 )
 
 Runner = Callable[[list[str]], Any]
+GH_GRAPHQL = "gh api graphql"
 # A bot's comment on the whole PR/MR — quality gate, coverage, summary. A bot
 # *review* is not one: its body can carry findings outside the diff.
 REPORT_SOURCES = frozenset({"pr-comment", "mr-comment"})
 # A bot review that says it did not review — out of quota, rate limited,
 # skipped. It is a status, not a finding.
 BOT_REFUSAL_RE = re.compile(
-    r"\b(?:unable to review|could not review|review(?:s)? (?:limit|skipped|paused)"
-    r"|rate.?limit|quota limit)\b",
+    r"\b(?:unable to review|could not review|reviews? (?:limit|skipped|paused)"
+    r"|reached (?:their|your|its|the) (?:review )?(?:quota|rate) limit|rate.?limited)\b",
     re.IGNORECASE,
 )
 # A refusal is a sentence or two; a long review body that mentions a limit in
 # passing still carries findings.
 REFUSAL_MAX_LENGTH = 600
-# A key Jira answers with "does not exist" was never a ticket (`TYPO3-14` in a
-# branch name): listed apart, not counted as a read failure.
-ABSENT_RE = re.compile(r"does not exist", re.IGNORECASE)
+# A key Jira answers with "issue does not exist" is not a ticket this account
+# can see — usually a key-shaped name (`TYPO3-14` in a branch): listed apart,
+# not counted as a read failure. Jira Cloud says the same for a missing
+# permission and then names it; that stays a read failure.
+ABSENT_RE = re.compile(r"\bissue does not exist\b(?!.*permission)", re.IGNORECASE)
 # A ticket key the PR/MR is *about*: at the start of the title (`NRS-12: …`,
 # `[NRS-12] …`) or at the start of a branch path segment (`NRS-12/…`,
 # `feature/NRS-12-…`). A key in running text (`PHP-8.4`, `TYPO3-14`) is not.
@@ -274,6 +277,7 @@ query($owner: String!, $name: String!, $number: Int!) {
         nodes { commit { oid committedDate messageHeadline } }
       }
       timelineItems(itemTypes: [REVIEW_DISMISSED_EVENT], first: 100) {
+        totalCount pageInfo { hasNextPage }
         nodes { ... on ReviewDismissedEvent { previousReviewState review { url } } }
       }
     }
@@ -548,6 +552,7 @@ def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any
             "comments",
             "commits",
             "closingIssuesReferences",
+            "timelineItems",
         ),
     }
 
@@ -706,7 +711,9 @@ def _installed_jira_clis() -> list[Path]:
     paths = []
     for installs in plugins.values():
         for install in installs if isinstance(installs, list) else [installs]:
-            root = Path(str((install or {}).get("installPath", "")))
+            if not isinstance(install, dict):
+                continue
+            root = Path(str(install.get("installPath", "")))
             paths.append(root / "skills/jira-communication/scripts/core/jira-issue.py")
     return paths
 
@@ -874,33 +881,40 @@ def _require_dict(value: Any, what: str) -> dict[str, Any]:
     return value
 
 
+def _read_github(item, run, self_logins) -> dict[str, Any]:
+    if item["kind"] == "pull":
+        raw = _require_dict(fetch_github(item, run), GH_GRAPHQL)
+        return parse_github_pr(raw, self_logins)
+    try:
+        raw = _require_dict(fetch_github(item, run), GH_GRAPHQL)
+        return parse_github_issue(raw, self_logins)
+    except (LookupError, RuntimeError) as exc:
+        # `gh api …/issues/N` and the MCP `issue_number` also address pull
+        # requests; gh then fails with "Could not resolve to an Issue".
+        if "could not resolve to an issue" not in str(exc).lower():
+            raise
+    raw = _require_dict(fetch_github(dict(item, kind="pull"), run), GH_GRAPHQL)
+    return parse_github_pr(raw, self_logins)
+
+
+def _read_gitlab(item, run, self_logins, gitlab_hosts) -> dict[str, Any]:
+    # glab sends GITLAB_TOKEN to whatever --hostname names, so a link to a
+    # foreign host in a PR description must not be followed.
+    if item["host"] not in gitlab_hosts:
+        raise RuntimeError(
+            f"host {item['host']} not allowed — pass --gitlab-host {item['host']}"
+        )
+    raw = fetch_gitlab(item, run)
+    _require_dict(raw["item"], "glab api")
+    return parse_gitlab(raw, self_logins)
+
+
 def read_one(item, run, self_logins, jira_cli, jira_browse, gitlab_hosts=()) -> dict:
     """Fetch and parse one artefact. Raises when it cannot be read."""
     if item["forge"] == "github":
-        if item["kind"] == "pull":
-            raw = _require_dict(fetch_github(item, run), "gh api graphql")
-            return parse_github_pr(raw, self_logins)
-        try:
-            raw = _require_dict(fetch_github(item, run), "gh api graphql")
-            return parse_github_issue(raw, self_logins)
-        except (LookupError, RuntimeError) as exc:
-            # `gh api …/issues/N` and the MCP `issue_number` also address pull
-            # requests; gh then fails with "Could not resolve to an Issue".
-            if "could not resolve to an issue" not in str(exc).lower():
-                raise
-            pull = dict(item, kind="pull")
-            raw = _require_dict(fetch_github(pull, run), "gh api graphql")
-            return parse_github_pr(raw, self_logins)
+        return _read_github(item, run, self_logins)
     if item["forge"] == "gitlab":
-        # glab sends GITLAB_TOKEN to whatever --hostname names, so a link to a
-        # foreign host in a PR description must not be followed.
-        if item["host"] not in gitlab_hosts:
-            raise RuntimeError(
-                f"host {item['host']} not allowed — pass --gitlab-host {item['host']}"
-            )
-        raw = fetch_gitlab(item, run)
-        _require_dict(raw["item"], "glab api")
-        return parse_gitlab(raw, self_logins)
+        return _read_gitlab(item, run, self_logins, gitlab_hosts)
     if jira_cli is None:
         raise RuntimeError(
             "no jira-issue.py found — install the jira-communication skill"
@@ -953,6 +967,11 @@ def collect(
                 {**record, "fetched": False, "absent": absent, "error": error}
             )
             continue
+        if parsed["url"] != item["url"]:
+            # `issues/5` read as `pull/5`: the same PR may already be read.
+            if parsed["url"] in seen:
+                continue
+            seen.add(parsed["url"])
         kept, skipped = _split_by_since(parsed.pop("findings"), since)
         earlier += skipped
         findings += kept
@@ -1037,7 +1056,7 @@ def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
         if not a["fetched"] and not a.get("absent")
     ]
     lines += [
-        f"NO SUCH   {a['url']}: Jira has no such ticket (a key-shaped name, not a ticket)"
+        f"NO SUCH   {a['url']}: Jira says no such issue (or none this account may see)"
         for a in arts
         if a.get("absent")
     ]
@@ -1103,8 +1122,32 @@ def gitlab_hosts_from(named: list[str], env: str | None) -> tuple[str, ...]:
     """The hosts glab may be sent to. glab accepts GITLAB_HOST with or without a
     scheme; the allowlist compares bare hosts."""
     return tuple(
-        re.sub(r"^https?://|/+$", "", host) for host in named or [env or "gitlab.com"]
+        re.sub(r"(?:^https?://)|(?:/+$)", "", host)
+        for host in named or [env or "gitlab.com"]
     )
+
+
+def _items_from_args(args, gitlab_host: str):
+    """The artefacts to read, how many mentioned ones were skipped, and the
+    transcript's start. Raises ValueError on a bad transcript path or ref."""
+    items: list[dict[str, Any]] = []
+    mentioned_skipped, start = 0, None
+    if args.transcript_file:
+        if not args.transcript_file.is_file():
+            raise ValueError(f"no such transcript: {args.transcript_file}")
+        data = scope.collect_artefacts(args.transcript_file, gitlab_host)
+        items = items_from_scope(data, args.include_mentioned)
+        if not args.include_mentioned:
+            mentioned_skipped = sum(
+                1 for a in data["artefacts"] if a["origin"] == "mentioned"
+            )
+        start = transcript_start(args.transcript_file)
+    for ref in args.ref:
+        item = parse_ref(ref)
+        if item is None:
+            raise ValueError(f"not a PR/MR/issue URL or Jira key: {ref}")
+        items.append(item)
+    return items, mentioned_skipped, start
 
 
 def main(argv: list[str]) -> int:
@@ -1138,30 +1181,16 @@ def main(argv: list[str]) -> int:
 
     if not args.transcript_file and not args.ref:
         parser.error("give --transcript-file or at least one --ref")
-    items: list[dict[str, Any]] = []
-    mentioned_skipped = 0
     since = parse_time(args.since) if args.since else None
     if args.since and since is None:
         parser.error(f"--since is not an ISO 8601 time: {args.since}")
     gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
-    if args.transcript_file:
-        if not args.transcript_file.is_file():
-            print(f"no such transcript: {args.transcript_file}", file=sys.stderr)
-            return 2
-        data = scope.collect_artefacts(args.transcript_file, gitlab_hosts[0])
-        items = items_from_scope(data, args.include_mentioned)
-        mentioned_skipped = (
-            0
-            if args.include_mentioned
-            else sum(1 for a in data["artefacts"] if a["origin"] == "mentioned")
-        )
-        since = since or transcript_start(args.transcript_file)
-    for ref in args.ref:
-        item = parse_ref(ref)
-        if item is None:
-            print(f"not a PR/MR/issue URL or Jira key: {ref}", file=sys.stderr)
-            return 2
-        items.append(item)
+    try:
+        items, mentioned_skipped, start = _items_from_args(args, gitlab_hosts[0])
+    except ValueError as exc:
+        print(exc, file=sys.stderr)
+        return 2
+    since = since or start
 
     result = collect(
         items,
