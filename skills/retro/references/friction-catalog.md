@@ -130,9 +130,10 @@ literal PR/MR/issue endpoint counts by the endpoint; a create, a variable
 by the output's report line of that path's kind and number, or stays
 unresolved; a REST write on any other endpoint (code scanning, workflow runs)
 does not count at all. Continued lines (`\` + newline) are one command. A write
-inside a heredoc or quoted text is never attributed — when the output still
-reports targets nobody claimed (a heredoc script the call runs), the call is
-unresolved. A call the harness refused (`is_error` without `Exit code N`) ran
+inside a heredoc or quoted text is never attributed. Whenever a call that
+writes to a PR, MR or issue prints a report line no write claimed — a heredoc
+script it runs, a URL read after the write — the call is listed as unresolved,
+so every write ends attributed, unresolved or refused, never silently gone. A call the harness refused (`is_error` without `Exit code N`) ran
 nothing. A successful write that prints nothing counts only as
 `<verb> <number> -R <repo>` outside any heredoc or quoted text. Output that
 reports a failure is not a success: an `HTTP 4xx/5xx`, `GraphQL:` at a line

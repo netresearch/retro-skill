@@ -121,6 +121,8 @@ FAILED_OUTPUT_RE = re.compile(
     re.MULTILINE,
 )
 # A shell loop runs its body once per item: `for r in a b c; do gh pr create …; done`.
+# Matched on the command with heredoc bodies and quoted texts blanked, so a
+# `for` or a `done` inside a text neither opens nor closes one.
 LOOP_RE = re.compile(
     r"\b(?:for|while|until)\b[^\n]*?\bdo\b(?P<body>.*?)\bdone\b", re.DOTALL
 )
@@ -480,9 +482,22 @@ def _writes(command: str) -> list[re.Match]:
     return found
 
 
+def _blank_texts(command: str) -> str:
+    """The command with heredoc bodies and quoted texts blanked, same length."""
+    masked = _masked(command)
+    for start, end in _quoted_spans(command):
+        masked = (
+            masked[: start + 1]
+            + re.sub(r"[^\n]", " ", masked[start + 1 : end - 1])
+            + masked[end - 1 :]
+        )
+    return masked
+
+
 def _in_loop(command: str, index: int) -> bool:
     return any(
-        m.start("body") <= index < m.end("body") for m in LOOP_RE.finditer(command)
+        m.start("body") <= index < m.end("body")
+        for m in LOOP_RE.finditer(_blank_texts(command))
     )
 
 
@@ -508,8 +523,8 @@ class _Call:
         return GITHUB_HOST if cli == "gh" else self.gitlab_host
 
     def _claim(self, refs: list[dict[str, Any]], loop: bool) -> list[dict[str, Any]]:
-        """The next unclaimed URL for one create; all of them for a create that
-        a loop runs once per item."""
+        """The next unclaimed URL for one create; every unclaimed URL of its
+        kind for a create that a loop runs once per item."""
         free = [r for r in refs if r["url"] not in self.claimed]
         taken = free if loop else free[:1]
         self.claimed.update(r["url"] for r in taken)
@@ -648,25 +663,29 @@ def _forge_write_artefacts(
         return [], False
     command = _joined(command)
     call = _Call(command, result, gitlab_host, failed)
+    writes = _writes(command)
     found: list[dict[str, Any]] = []
     unresolved = False
-    text_writes = False
-    for write in _writes(command):
+    about_prs = False  # a write that concerns a PR, MR or issue at all
+    for write in writes:
         if _is_text(command, write):
-            # Written into a heredoc or a quoted text. A heredoc may be a
-            # script the same call runs, so it is not attributed — but when the
-            # output reports targets nobody claimed, the call is unresolved.
-            text_writes = True
+            # Written into a heredoc or a quoted text: a heredoc may be a
+            # script the same call runs, so it is never attributed.
+            about_prs = True
             continue
         if write.groupdict().get("verb"):
             targets = call.subcommand_targets(write)
         else:
             targets = call.api_targets(write)
+        about_prs = about_prs or targets != []
         if targets is None:
             unresolved = True
         else:
             found += targets
-    if text_writes and not unresolved:
+    # Every write lands in one of three places — attributed, unresolved, or
+    # refused. A report line no write claimed means some write was not
+    # understood, so the call is unresolved rather than silently complete.
+    if about_prs and not unresolved:
         claimed = {a["url"] for a in found}
         reported = [r for r, _, _ in _named_lines(result, "gh", GITHUB_HOST) if r]
         unresolved = any(r["url"] not in claimed for r in reported)

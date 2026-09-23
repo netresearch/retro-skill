@@ -1308,6 +1308,23 @@ class SixthRoundTest(unittest.TestCase):
         self.assertEqual(set(urls.values()), {"created"})
         self.assertEqual(len(urls), 3)
 
+    def test_a_loop_word_in_quoted_text_is_not_a_loop(self):
+        cmd = 'echo "for a in b do"; gh pr create -R o/r --fill; echo "done"'
+        printed = "https://github.com/o/r/pull/2\nhttps://github.com/o/r/pull/9"
+        urls, data = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls["https://github.com/o/r/pull/2"], "created")
+        self.assertEqual(urls["https://github.com/o/r/pull/9"], "mentioned")
+        # pull/9 is a report line no write claimed: the call is not complete.
+        self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+
+    def test_an_unclaimed_report_line_makes_any_call_unresolved(self):
+        cmd = "gh pr create -R o/r --fill && gh pr view 1 -R o/r --json url --jq .url"
+        printed = "https://github.com/o/r/pull/2\nhttps://github.com/o/r/pull/1"
+        urls, data = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls["https://github.com/o/r/pull/2"], "created")
+        self.assertEqual(urls["https://github.com/o/r/pull/1"], "mentioned")
+        self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+
     def test_a_heredoc_script_the_call_runs_is_unresolved_not_dropped(self):
         cmd = "cat > x.sh <<'EOF'\nfor n in 3 4; do gh issue edit \"$n\" -R o/r --add-label x; done\nEOF\nbash x.sh"
         printed = "https://github.com/o/r/issues/3\nhttps://github.com/o/r/issues/4"
