@@ -241,6 +241,18 @@ class GitHubParseTest(unittest.TestCase):
             )
 
 
+class IssueKeywordTest(unittest.TestCase):
+    def test_closes_keyword_resolves_on_github(self):
+        self.assertEqual(
+            crf._issue_urls_in("Closes #5", "https://github.com/o/r/pull/7"),
+            ["https://github.com/o/r/issues/5"],
+        )
+
+    def test_github_in_a_foreign_path_is_not_github(self):
+        own = "https://git.example.org/github.com/r/-/merge_requests/7"
+        self.assertEqual(crf._issue_urls_in("Closes #5", own), [])
+
+
 class GitLabParseTest(unittest.TestCase):
     def setUp(self):
         self.parsed = crf.parse_gitlab(_fixture("gitlab-mr.json"), set())

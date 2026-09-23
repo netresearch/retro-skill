@@ -55,7 +55,7 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 HERE = Path(__file__).resolve().parent
 
@@ -89,7 +89,7 @@ KNOWN_BOTS = frozenset(
         "gemini-code-assist",
     }
 )
-GITLAB_BOT_RE = re.compile(r"^(?:group|project)_\d+_bot(?:_|$)|(?:^|[-_.])bot$")
+GITLAB_BOT_RE = re.compile(r"(?:^(?:group|project)_\d+_bot(?:_|$))|(?:(?:^|[-_.])bot$)")
 ISSUE_KEYWORD_RE = re.compile(
     r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b", re.IGNORECASE
 )
@@ -274,49 +274,43 @@ def _gh_truncated(node: dict[str, Any], *connections: str) -> list[str]:
     return cut
 
 
-def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
-    data = raw.get("data") or {}
-    self_logins = self_logins | {(data.get("viewer") or {}).get("login", "")}
-    pr = (data.get("repository") or {}).get("pullRequest")
-    if not pr:
-        raise LookupError(_graphql_error(raw) or "pull request not found")
-    url = pr["url"]
-    commits = [
-        {
-            "sha": n["commit"]["oid"],
-            "date": parse_time(n["commit"]["committedDate"]),
-            "subject": n["commit"]["messageHeadline"],
-        }
-        for n in (pr.get("commits") or {}).get("nodes") or []
-    ]
-    found: list[dict[str, Any]] = []
-    self_count = 0
+def _nodes(node: dict[str, Any], connection: str) -> list[dict[str, Any]]:
+    return (node.get(connection) or {}).get("nodes") or []
 
-    for thread in (pr.get("reviewThreads") or {}).get("nodes") or []:
-        comments = (thread.get("comments") or {}).get("nodes") or []
+
+def _gh_class(node: dict[str, Any], self_logins: set[str]) -> tuple[str | None, str]:
+    """(login, author class) of a GraphQL comment, review or thread entry."""
+    author = node.get("author") or {}
+    login = author.get("login")
+    return login, author_class(login, author.get("__typename"), self_logins)
+
+
+class _Collected:
+    """Findings of one artefact, plus the count of the agent's own entries."""
+
+    def __init__(self) -> None:
+        self.findings: list[dict[str, Any]] = []
+        self.self_count = 0
+
+
+def _gh_threads(pr, url, commits, self_logins, out: _Collected) -> None:
+    for thread in _nodes(pr, "reviewThreads"):
+        comments = _nodes(thread, "comments")
         if not comments:
             continue
         head, replies = comments[0], comments[1:]
-        author = head.get("author") or {}
-        klass = author_class(author.get("login"), author.get("__typename"), self_logins)
+        login, klass = _gh_class(head, self_logins)
+        # An own thread nobody answered is the agent talking to itself; one
+        # that somebody answered carries feedback in the answers.
         if klass == "self" and not replies:
-            self_count += 1
+            out.self_count += 1
             continue
-        self_replies = [
-            r
-            for r in replies
-            if author_class(
-                (r.get("author") or {}).get("login"),
-                (r.get("author") or {}).get("__typename"),
-                self_logins,
-            )
-            == "self"
-        ]
-        found.append(
+        own = [r for r in replies if _gh_class(r, self_logins)[1] == "self"]
+        out.findings.append(
             finding(
                 url,
                 "review-thread",
-                author.get("login"),
+                login,
                 klass,
                 head.get("createdAt"),
                 head.get("body", ""),
@@ -326,68 +320,94 @@ def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any
                 resolved=thread.get("isResolved"),
                 outdated=thread.get("isOutdated"),
                 replies=len(replies),
-                last_self_reply=self_replies[-1]["body"] if self_replies else None,
+                last_self_reply=own[-1]["body"] if own else None,
                 commit_after=first_commit_after(
                     commits, parse_time(head.get("createdAt"))
                 ),
             )
         )
 
-    for review in (pr.get("reviews") or {}).get("nodes") or []:
-        author = review.get("author") or {}
-        klass = author_class(author.get("login"), author.get("__typename"), self_logins)
-        # An empty COMMENTED review is the envelope of inline threads, which are
-        # listed above. A verdict without text still counts.
-        if (
-            not (review.get("body") or "").strip()
-            and review.get("state") == "COMMENTED"
-        ):
+
+def _gh_reviews(pr, url, commits, self_logins, out: _Collected) -> None:
+    for review in _nodes(pr, "reviews"):
+        login, klass = _gh_class(review, self_logins)
+        state = review.get("state")
+        # An empty COMMENTED review is the envelope of inline threads, which
+        # are listed on their own. A verdict without text still counts.
+        if state == "COMMENTED" and not (review.get("body") or "").strip():
             continue
         if klass == "self":
-            self_count += 1
+            out.self_count += 1
             continue
-        if klass == "bot" and review.get("state") in BOT_EMPTY_VERDICTS:
+        if klass == "bot" and state in BOT_EMPTY_VERDICTS:
             continue
-        found.append(
+        stamp = review.get("submittedAt")
+        out.findings.append(
             finding(
                 url,
                 "review",
-                author.get("login"),
+                login,
                 klass,
-                review.get("submittedAt"),
+                stamp,
                 review.get("body", ""),
                 review.get("url"),
-                state=review.get("state"),
-                commit_after=first_commit_after(
-                    commits, parse_time(review.get("submittedAt"))
-                ),
+                state=state,
+                commit_after=first_commit_after(commits, parse_time(stamp)),
             )
         )
 
-    for comment in (pr.get("comments") or {}).get("nodes") or []:
-        author = comment.get("author") or {}
-        klass = author_class(author.get("login"), author.get("__typename"), self_logins)
+
+def _gh_comments(node, url, source, commits, self_logins, out: _Collected) -> None:
+    for comment in _nodes(node, "comments"):
+        login, klass = _gh_class(comment, self_logins)
         if klass == "self":
-            self_count += 1
+            out.self_count += 1
             continue
-        found.append(
+        stamp = comment.get("createdAt")
+        extra = (
+            {"commit_after": first_commit_after(commits, parse_time(stamp))}
+            if commits is not None
+            else {}
+        )
+        out.findings.append(
             finding(
                 url,
-                "pr-comment",
-                author.get("login"),
+                source,
+                login,
                 klass,
-                comment.get("createdAt"),
+                stamp,
                 comment.get("body", ""),
                 comment.get("url"),
-                commit_after=first_commit_after(
-                    commits, parse_time(comment.get("createdAt"))
-                ),
+                **extra,
             )
         )
 
-    linked = [
-        n["url"] for n in (pr.get("closingIssuesReferences") or {}).get("nodes") or []
+
+def _gh_node(raw: dict[str, Any], kind: str, self_logins: set[str]):
+    """The PR or issue node and the self set including the GraphQL viewer."""
+    data = raw.get("data") or {}
+    node = (data.get("repository") or {}).get(kind)
+    if not node:
+        raise LookupError(_graphql_error(raw) or f"{kind} not found")
+    return node, self_logins | {(data.get("viewer") or {}).get("login", "")}
+
+
+def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
+    pr, self_logins = _gh_node(raw, "pullRequest", self_logins)
+    url = pr["url"]
+    commits = [
+        {
+            "sha": n["commit"]["oid"],
+            "date": parse_time(n["commit"]["committedDate"]),
+            "subject": n["commit"]["messageHeadline"],
+        }
+        for n in _nodes(pr, "commits")
     ]
+    out = _Collected()
+    _gh_threads(pr, url, commits, self_logins, out)
+    _gh_reviews(pr, url, commits, self_logins, out)
+    _gh_comments(pr, url, "pr-comment", commits, self_logins, out)
+    linked = [n["url"] for n in _nodes(pr, "closingIssuesReferences")]
     linked += _issue_urls_in(pr.get("body") or "", url)
     return {
         "url": url,
@@ -395,8 +415,8 @@ def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any
         "branch": pr.get("headRefName"),
         "state": pr.get("state"),
         "commits": len(commits),
-        "findings": found,
-        "self_comments": self_count,
+        "findings": out.findings,
+        "self_comments": out.self_count,
         "linked": sorted(set(linked)),
         "tickets": sorted(
             scope.tickets_in(f"{pr.get('title', '')} {pr.get('headRefName', '')}")
@@ -406,35 +426,15 @@ def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any
 
 
 def parse_github_issue(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
-    data = raw.get("data") or {}
-    self_logins = self_logins | {(data.get("viewer") or {}).get("login", "")}
-    issue = (data.get("repository") or {}).get("issue")
-    if not issue:
-        raise LookupError(_graphql_error(raw) or "issue not found")
-    found, self_count = [], 0
-    for comment in (issue.get("comments") or {}).get("nodes") or []:
-        author = comment.get("author") or {}
-        klass = author_class(author.get("login"), author.get("__typename"), self_logins)
-        if klass == "self":
-            self_count += 1
-            continue
-        found.append(
-            finding(
-                issue["url"],
-                "issue-comment",
-                author.get("login"),
-                klass,
-                comment.get("createdAt"),
-                comment.get("body", ""),
-                comment.get("url"),
-            )
-        )
+    issue, self_logins = _gh_node(raw, "issue", self_logins)
+    out = _Collected()
+    _gh_comments(issue, issue["url"], "issue-comment", None, self_logins, out)
     return {
         "url": issue["url"],
         "title": issue.get("title"),
         "state": issue.get("state"),
-        "findings": found,
-        "self_comments": self_count,
+        "findings": out.findings,
+        "self_comments": out.self_count,
         "linked": [],
         "tickets": sorted(scope.tickets_in(issue.get("title", ""))),
         "truncated": _gh_truncated(issue, "comments"),
@@ -449,8 +449,10 @@ def _graphql_error(raw: dict[str, Any]) -> str:
 def _issue_urls_in(text: str, own_url: str) -> list[str]:
     """Issue URLs in a PR/MR description, plus `Closes #N` in the same project."""
     urls = [a["url"] for a in scope.artefacts_in_text(text) if a["kind"] == "issue"]
-    base = own_url.rsplit("/", 2)[0]
-    if "github.com" in own_url:
+    # Compared by host, never by substring: `github.com` can stand anywhere in
+    # a URL that points somewhere else.
+    if urlparse(own_url).hostname == scope.GITHUB_HOST:
+        base = own_url.rsplit("/", 2)[0]
         urls += [f"{base}/issues/{n}" for n in ISSUE_KEYWORD_RE.findall(text)]
     return [u for u in urls if u != own_url]
 
@@ -479,6 +481,50 @@ def fetch_gitlab(item: dict[str, Any], run: Runner) -> dict[str, Any]:
     return raw
 
 
+def _gitlab_source(is_mr: bool, threaded: bool) -> str:
+    if not is_mr:
+        return "issue-comment"
+    return "review-thread" if threaded else "mr-comment"
+
+
+def _gitlab_discussion(discussion, url, is_mr, commits, self_logins, out: _Collected):
+    notes = [n for n in discussion.get("notes") or [] if not n.get("system")]
+    if not notes:
+        return
+    head, replies = notes[0], notes[1:]
+    login = (head.get("author") or {}).get("username")
+    klass = author_class(login, None, self_logins)
+    if klass == "self" and not replies:
+        out.self_count += 1
+        return
+    own = [
+        r
+        for r in replies
+        if author_class((r.get("author") or {}).get("username"), None, self_logins)
+        == "self"
+    ]
+    threaded = bool(head.get("resolvable"))
+    position = head.get("position") or {}
+    stamp = head.get("created_at")
+    out.findings.append(
+        finding(
+            url,
+            _gitlab_source(is_mr, threaded),
+            login,
+            klass,
+            stamp,
+            head.get("body", ""),
+            f"{url}#note_{head['id']}" if head.get("id") else None,
+            path=position.get("new_path"),
+            line=position.get("new_line"),
+            resolved=head.get("resolved") if threaded else None,
+            replies=len(replies),
+            last_self_reply=own[-1]["body"] if own else None,
+            commit_after=first_commit_after(commits, parse_time(stamp)),
+        )
+    )
+
+
 def parse_gitlab(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
     item = raw["item"]
     self_logins = self_logins | {(raw.get("self") or {}).get("username", "")}
@@ -492,49 +538,9 @@ def parse_gitlab(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
         }
         for c in _flatten(raw.get("commits") or [])
     ]
-    found: list[dict[str, Any]] = []
-    self_count = 0
+    out = _Collected()
     for discussion in _flatten(raw.get("notes") or []):
-        notes = [n for n in discussion.get("notes") or [] if not n.get("system")]
-        if not notes:
-            continue
-        head, replies = notes[0], notes[1:]
-        login = (head.get("author") or {}).get("username")
-        klass = author_class(login, None, self_logins)
-        if klass == "self" and not replies:
-            self_count += 1
-            continue
-        self_replies = [
-            r
-            for r in replies
-            if author_class((r.get("author") or {}).get("username"), None, self_logins)
-            == "self"
-        ]
-        threaded = bool(head.get("resolvable"))
-        position = head.get("position") or {}
-        found.append(
-            finding(
-                url,
-                ("review-thread" if threaded else "mr-comment")
-                if is_mr
-                else "issue-comment",
-                login,
-                klass,
-                head.get("created_at"),
-                head.get("body", ""),
-                f"{url}#note_{head['id']}" if head.get("id") else None,
-                path=position.get("new_path"),
-                line=position.get("new_line"),
-                resolved=head.get("resolved") if threaded else None,
-                replies=len(replies),
-                last_self_reply=self_replies[-1]["body"] if self_replies else None,
-                commit_after=first_commit_after(
-                    commits, parse_time(head.get("created_at"))
-                )
-                if is_mr
-                else None,
-            )
-        )
+        _gitlab_discussion(discussion, url, is_mr, commits, self_logins, out)
     linked = [
         i["web_url"] for i in _flatten(raw.get("closes") or []) if i.get("web_url")
     ]
@@ -546,8 +552,8 @@ def parse_gitlab(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
         "branch": branch or None,
         "state": item.get("state"),
         "commits": len(commits) if is_mr else None,
-        "findings": found,
-        "self_comments": self_count,
+        "findings": out.findings,
+        "self_comments": out.self_count,
         "linked": sorted(set(linked)),
         "tickets": sorted(scope.tickets_in(f"{item.get('title', '')} {branch}")),
         "truncated": [],  # --paginate reads every page
@@ -600,6 +606,47 @@ def fetch_jira(key: str, cli: Path, run: Runner) -> dict[str, Any]:
     }
 
 
+def _jira_comments(comments, url, self_logins, out: _Collected) -> None:
+    for comment in comments:
+        login = (comment.get("author") or {}).get("name")
+        klass = author_class(login, None, self_logins)
+        if klass == "self":
+            out.self_count += 1
+            continue
+        out.findings.append(
+            finding(
+                url,
+                "ticket-comment",
+                login,
+                klass,
+                comment.get("created"),
+                comment.get("body", ""),
+            )
+        )
+
+
+def _jira_transitions(histories, url, self_logins, out: _Collected) -> None:
+    """A status change by somebody else — a ticket sent back from QA — is
+    feedback even without a word of comment."""
+    for history in histories:
+        login = (history.get("author") or {}).get("name")
+        klass = author_class(login, None, self_logins)
+        if klass == "self":
+            continue
+        out.findings += [
+            finding(
+                url,
+                "ticket-transition",
+                login,
+                klass,
+                history.get("created"),
+                f"{change.get('fromString')} → {change.get('toString')}",
+            )
+            for change in history.get("items") or []
+            if change.get("field") == "status"
+        ]
+
+
 def parse_jira(
     raw: dict[str, Any], self_logins: set[str], browse: str
 ) -> dict[str, Any]:
@@ -611,48 +658,18 @@ def parse_jira(
     url = f"{browse.rstrip('/')}/browse/{key}" if browse else key
     fields = issue.get("fields") or {}
     comments = (fields.get("comment") or {}).get("comments") or []
-    found, self_count = [], 0
-    for comment in comments:
-        login = (comment.get("author") or {}).get("name")
-        klass = author_class(login, None, self_logins)
-        if klass == "self":
-            self_count += 1
-            continue
-        found.append(
-            finding(
-                url,
-                "ticket-comment",
-                login,
-                klass,
-                comment.get("created"),
-                comment.get("body", ""),
-            )
-        )
-    # A status change by somebody else — a ticket sent back from QA — is
-    # feedback even without a word of comment.
-    for history in (issue.get("changelog") or {}).get("histories") or []:
-        login = (history.get("author") or {}).get("name")
-        klass = author_class(login, None, self_logins)
-        for change in history.get("items") or []:
-            if change.get("field") != "status" or klass == "self":
-                continue
-            found.append(
-                finding(
-                    url,
-                    "ticket-transition",
-                    login,
-                    klass,
-                    history.get("created"),
-                    f"{change.get('fromString')} → {change.get('toString')}",
-                )
-            )
+    out = _Collected()
+    _jira_comments(comments, url, self_logins, out)
+    _jira_transitions(
+        (issue.get("changelog") or {}).get("histories") or [], url, self_logins, out
+    )
     total = (fields.get("comment") or {}).get("total", len(comments))
     return {
         "url": url,
         "title": fields.get("summary"),
         "state": (fields.get("status") or {}).get("name"),
-        "findings": found,
-        "self_comments": self_count,
+        "findings": out.findings,
+        "self_comments": out.self_count,
         "linked": [],
         "tickets": [],
         "truncated": ["comments"] if total > len(comments) else [],
@@ -688,19 +705,42 @@ def _decode_stream(text: str) -> Any:
     return values[0] if len(values) == 1 else values
 
 
-def parse_ref(ref: str, gitlab_host: str) -> dict[str, Any] | None:
+def ticket_item(key: str, origin: str) -> dict[str, Any]:
+    return {"forge": "jira", "kind": "ticket", "key": key, "url": key, "origin": origin}
+
+
+def parse_ref(ref: str) -> dict[str, Any] | None:
     found = scope.artefacts_in_text(ref)
     if found:
         return dict(found[0], origin="named")
-    if scope.TICKET_RE.fullmatch(ref):
-        return {
-            "forge": "jira",
-            "kind": "ticket",
-            "key": ref,
-            "url": ref,
-            "origin": "named",
-        }
-    return None
+    return ticket_item(ref, "named") if scope.TICKET_RE.fullmatch(ref) else None
+
+
+def read_one(item, run, self_logins, jira_cli, jira_browse) -> dict[str, Any]:
+    """Fetch and parse one artefact. Raises when it cannot be read."""
+    if item["forge"] == "github":
+        raw = fetch_github(item, run)
+        if item["kind"] == "pull":
+            return parse_github_pr(raw, self_logins)
+        return parse_github_issue(raw, self_logins)
+    if item["forge"] == "gitlab":
+        return parse_gitlab(fetch_gitlab(item, run), self_logins)
+    if jira_cli is None:
+        raise RuntimeError(
+            "no jira-issue.py found — install the jira-communication skill"
+            " or pass --jira-cli"
+        )
+    return parse_jira(fetch_jira(item["key"], jira_cli, run), self_logins, jira_browse)
+
+
+def links_of(parsed: dict[str, Any]) -> list[dict[str, Any]]:
+    """The issues and tickets one artefact links to, as queue items."""
+    found = [
+        dict(linked, origin="linked")
+        for url in parsed["linked"]
+        for linked in scope.artefacts_in_text(url)
+    ]
+    return found + [ticket_item(key, "linked") for key in parsed["tickets"]]
 
 
 def collect(
@@ -726,28 +766,10 @@ def collect(
         seen.add(item["url"])
         record = {k: item.get(k) for k in ("url", "forge", "kind", "origin")}
         try:
-            if item["forge"] == "github":
-                raw = fetch_github(item, run)
-                parsed = (
-                    parse_github_pr(raw, self_logins)
-                    if item["kind"] == "pull"
-                    else parse_github_issue(raw, self_logins)
-                )
-            elif item["forge"] == "gitlab":
-                parsed = parse_gitlab(fetch_gitlab(item, run), self_logins)
-            else:
-                if jira_cli is None:
-                    raise RuntimeError(
-                        "no jira-issue.py found — install the jira-communication skill"
-                        " or pass --jira-cli"
-                    )
-                parsed = parse_jira(
-                    fetch_jira(item["key"], jira_cli, run), self_logins, jira_browse
-                )
-        except (RuntimeError, LookupError, KeyError, ValueError, OSError) as exc:
+            parsed = read_one(item, run, self_logins, jira_cli, jira_browse)
+        except (RuntimeError, LookupError, ValueError, OSError) as exc:
             artefacts.append({**record, "fetched": False, "error": str(exc)})
             continue
-
         kept, skipped = _split_by_since(parsed.pop("findings"), since)
         earlier += skipped
         findings += kept
@@ -763,19 +785,7 @@ def collect(
         # Follow links one level: the issue a PR closes, the ticket its branch
         # names. What those link to in turn is not this session's work.
         if item.get("origin") != "linked":
-            for url in parsed["linked"]:
-                for linked in scope.artefacts_in_text(url):
-                    queue.append(dict(linked, origin="linked"))
-            for key in parsed["tickets"]:
-                queue.append(
-                    {
-                        "forge": "jira",
-                        "kind": "ticket",
-                        "key": key,
-                        "url": key,
-                        "origin": "linked",
-                    }
-                )
+            queue += links_of(parsed)
 
     return {
         "since": since.isoformat() if since else None,
@@ -791,10 +801,7 @@ def items_from_scope(
     items = [
         a for a in data["artefacts"] if include_mentioned or a["origin"] != "mentioned"
     ]
-    items += [
-        {"forge": "jira", "kind": "ticket", "key": k, "url": k, "origin": "acted"}
-        for k in data["tickets"]
-    ]
+    items += [ticket_item(k, "acted") for k in data["tickets"]]
     return items
 
 
@@ -816,24 +823,23 @@ def plain(body: str) -> str:
     return " ".join(text.split())
 
 
-def render_text(result: dict[str, Any], mentioned_skipped: int = 0) -> str:
+def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
     arts = result["artefacts"]
     read = [a for a in arts if a["fetched"]]
-    failed = [a for a in arts if not a["fetched"]]
-    silent = [a for a in read if a["findings"] == 0]
+    silent = sum(1 for a in read if a["findings"] == 0)
     by_class: dict[str, int] = {}
     for f in result["findings"]:
         by_class[f["author_class"]] = by_class.get(f["author_class"], 0) + 1
-    lines = [
-        f"{len(arts)} artefacts: {len(read)} read ({len(silent)} with no finding),"
-        f" {len(failed)} could not be read · {len(result['findings'])} findings"
-        + (
-            f" ({', '.join(f'{v} {k}' for k, v in sorted(by_class.items()))})"
-            if by_class
-            else ""
-        )
-        + (f" · since {result['since']}" if result["since"] else ""),
-    ]
+    classes = ", ".join(f"{v} {k}" for k, v in sorted(by_class.items()))
+    line = (
+        f"{len(arts)} artefacts: {len(read)} read ({silent} with no finding),"
+        f" {len(arts) - len(read)} could not be read · {len(result['findings'])} findings"
+    )
+    if classes:
+        line += f" ({classes})"
+    if result["since"]:
+        line += f" · since {result['since']}"
+    lines = [line]
     if result["findings_before_since"]:
         lines.append(
             f"{result['findings_before_since']} comments predate --since and are not listed."
@@ -843,52 +849,62 @@ def render_text(result: dict[str, Any], mentioned_skipped: int = 0) -> str:
             f"{mentioned_skipped} artefacts only mentioned in the transcript were not read"
             " (--include-mentioned reads them)."
         )
-    for a in failed:
-        lines.append(f"NOT READ  {a['url']}: {a['error']}")
-    for a in read:
-        if a.get("truncated"):
-            lines.append(
-                f"TRUNCATED {a['url']}: {', '.join(a['truncated'])} held more than one page"
-            )
+    lines += [f"NOT READ  {a['url']}: {a['error']}" for a in arts if not a["fetched"]]
+    lines += [
+        f"TRUNCATED {a['url']}: {', '.join(a['truncated'])} held more than one page"
+        for a in read
+        if a.get("truncated")
+    ]
+    return lines
 
-    for a in read:
+
+def _where(f: dict[str, Any]) -> str:
+    if not f.get("path"):
+        return ""
+    return f" {f['path']}" + (f":{f['line']}" if f.get("line") else "")
+
+
+def _flags(f: dict[str, Any]) -> str:
+    flags = []
+    if f.get("resolved") is not None:
+        flags.append("resolved" if f["resolved"] else "open")
+    if f.get("commit_after"):
+        flags.append(f"commit after: {f['commit_after'][:8]}")
+    if f.get("last_self_reply"):
+        flags.append("answered")
+    return f" ({', '.join(flags)})" if flags else ""
+
+
+def _clip(text: str, limit: int, marker: str) -> str:
+    return text[:limit] + (marker if len(text) > limit else "")
+
+
+def _render_artefact(a: dict[str, Any], own: list[dict[str, Any]]) -> list[str]:
+    lines = [
+        "",
+        f"== {a['url']} ({a['origin']}, {a.get('state')}) — {a.get('title') or ''}",
+    ]
+    for f in (f for f in own if not f["report"]):
+        lines.append(
+            f"- [{f['source']} · {f['author_class']} {f['author']}{_where(f)}]{_flags(f)}"
+        )
+        lines.append(
+            "  " + _clip(plain(f["body"]), TEXT_BODY_LIMIT, " …[trimmed; json has all]")
+        )
+    lines += [
+        f"  report · {f['author']}: " + _clip(plain(f["body"]), TEXT_REPORT_LIMIT, " …")
+        for f in own
+        if f["report"]
+    ]
+    return lines
+
+
+def render_text(result: dict[str, Any], mentioned_skipped: int = 0) -> str:
+    lines = _tally(result, mentioned_skipped)
+    for a in result["artefacts"]:
         own = [f for f in result["findings"] if f["artefact"] == a["url"]]
-        if not own:
-            continue
-        lines += [
-            "",
-            f"== {a['url']} ({a['origin']}, {a.get('state')}) — {a.get('title') or ''}",
-        ]
-        for f in (f for f in own if not f["report"]):
-            flags = []
-            if f.get("resolved") is not None:
-                flags.append("resolved" if f["resolved"] else "open")
-            if f.get("commit_after"):
-                flags.append(f"commit after: {f['commit_after'][:8]}")
-            if f.get("last_self_reply"):
-                flags.append("answered")
-            where = (
-                f" {f['path']}" + (f":{f['line']}" if f.get("line") else "")
-                if f.get("path")
-                else ""
-            )
-            lines.append(
-                f"- [{f['source']} · {f['author_class']} {f['author']}{where}]"
-                + (f" ({', '.join(flags)})" if flags else "")
-            )
-            body = plain(f["body"])
-            cut = len(body) > TEXT_BODY_LIMIT
-            lines.append(
-                f"  {body[:TEXT_BODY_LIMIT]}"
-                + (" …[trimmed; json has all]" if cut else "")
-            )
-        for f in (f for f in own if f["report"]):
-            text = plain(f["body"])
-            cut = len(text) > TEXT_REPORT_LIMIT
-            lines.append(
-                f"  report · {f['author']}: {text[:TEXT_REPORT_LIMIT]}"
-                + (" …" if cut else "")
-            )
+        if a["fetched"] and own:
+            lines += _render_artefact(a, own)
     return "\n".join(lines)
 
 
@@ -935,7 +951,7 @@ def main(argv: list[str]) -> int:
         )
         since = since or transcript_start(args.transcript_file)
     for ref in args.ref:
-        item = parse_ref(ref, args.gitlab_host)
+        item = parse_ref(ref)
         if item is None:
             print(f"not a PR/MR/issue URL or Jira key: {ref}", file=sys.stderr)
             return 2

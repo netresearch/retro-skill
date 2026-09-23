@@ -54,6 +54,8 @@ ARTEFACT_RE = re.compile(
     r"|\bgit\s+(?:tag|push)\s+(?:-s\s+)?(?:origin\s+)?(?P<tag>v?\d+\.\d+\.\d+)\b"
 )
 
+GITHUB_HOST = "github.com"
+
 # Pull requests, merge requests and issues, by URL. A GitLab project path may
 # be nested (`group/sub/project`), and the `/-/` separator is what marks it.
 GITHUB_URL_RE = re.compile(
@@ -240,14 +242,14 @@ def artefact(host: str, project: str, kind: str, number: int) -> dict[str, Any]:
     kind = {"pull": "pull", "issues": "issue", "merge_requests": "merge_request"}.get(
         kind, kind
     )
-    if host == "github.com":
+    if host == GITHUB_HOST:
         path = "pull" if kind == "pull" else "issues"
-        url = f"https://github.com/{project}/{path}/{number}"
+        url = f"https://{GITHUB_HOST}/{project}/{path}/{number}"
     else:
         path = "merge_requests" if kind == "merge_request" else "issues"
         url = f"https://{host}/{project}/-/{path}/{number}"
     return {
-        "forge": "github" if host == "github.com" else "gitlab",
+        "forge": "github" if host == GITHUB_HOST else "gitlab",
         "host": host,
         "project": project,
         "kind": kind,
@@ -258,7 +260,7 @@ def artefact(host: str, project: str, kind: str, number: int) -> dict[str, Any]:
 
 def artefacts_in_text(text: str) -> list[dict[str, Any]]:
     found = [
-        artefact("github.com", m["project"], m["kind"], int(m["number"]))
+        artefact(GITHUB_HOST, m["project"], m["kind"], int(m["number"]))
         for m in GITHUB_URL_RE.finditer(text)
     ]
     found += [
@@ -266,6 +268,10 @@ def artefacts_in_text(text: str) -> list[dict[str, Any]]:
         for m in GITLAB_URL_RE.finditer(text)
     ]
     return found
+
+
+def _with_origin(found: list[dict[str, Any]], origin: str) -> list[dict[str, Any]]:
+    return [dict(a, origin=origin) for a in found]
 
 
 def remote_project(path: str) -> tuple[str, str] | None:
@@ -300,46 +306,60 @@ def positional_number(rest: str) -> int | None:
     return None
 
 
+def _numbered_target(
+    m: re.Match, command: str, number: int, gitlab_host: str
+) -> dict[str, Any] | None:
+    """The artefact a `<noun> <verb> <number>` names, via `-R` or the `cd` before it."""
+    slug = FORGE_RE.search(m["rest"])
+    if slug:
+        host = GITHUB_HOST if m["cli"] == "gh" else gitlab_host
+        project = slug["slug"]
+    else:
+        cd = CD_RE.search(command[: m.start()])
+        where = remote_project(unquote(cd["path"])) if cd else None
+        if not where:
+            return None
+        host, project = where
+    kind = {"pr": "pull", "mr": "merge_request"}.get(m["noun"], "issue")
+    return dict(artefact(host, project, kind, number), origin="acted")
+
+
+def _one_write(
+    m: re.Match, command: str, result: str, gitlab_host: str
+) -> list[dict[str, Any]] | None:
+    """What one forge write acted on; None when its target stays unknown."""
+    rest = m["rest"]
+    if m["verb"] == "create":
+        # The URL `create` printed is the identity. A body text can name other
+        # URLs, so only the result counts; no URL means nothing was made.
+        return _with_origin(artefacts_in_text(result), "created")
+    # The positional argument: a number, or a URL. Never a URL from inside
+    # `--body`, which names other PRs as often as this one.
+    words = rest.split()
+    positional = artefacts_in_text(words[0]) if words else []
+    if positional:
+        return _with_origin(positional, "acted")
+    number = positional_number(rest)
+    if number is None:
+        # `gh pr edit` on the current branch: the result may carry the URL.
+        printed = artefacts_in_text(result)[:1]
+        return _with_origin(printed, "acted") if printed else None
+    target = _numbered_target(m, command, number, gitlab_host)
+    return [target] if target else None
+
+
 def _forge_write_artefacts(
     command: str, result: str, gitlab_host: str
 ) -> tuple[list[dict[str, Any]], bool]:
-    """Artefacts one forge write command acted on, and whether any stayed unresolved."""
+    """Artefacts one command's forge writes acted on, and whether any stayed unknown."""
     found: list[dict[str, Any]] = []
     unresolved = False
     for m in FORGE_WRITE_RE.finditer(command):
-        verb, rest = m["verb"], m["rest"]
-        if verb == "create":
-            # The URL `create` printed is the identity. A body text can name
-            # other URLs, so only the result counts; no URL means nothing made.
-            found += [dict(a, origin="created") for a in artefacts_in_text(result)]
-            continue
-        # The positional argument: a number, or a URL. Never a URL from inside
-        # `--body`, which names other PRs as often as this one.
-        first = rest.split()[0] if rest.split() else ""
-        positional = artefacts_in_text(first)
-        if positional:
-            found += [dict(a, origin="acted") for a in positional]
-            continue
-        number = positional_number(rest)
-        if number is None:
-            # `gh pr edit` on the current branch: the result may carry the URL.
-            printed = artefacts_in_text(result)
-            found += [dict(a, origin="acted") for a in printed[:1]]
-            unresolved = unresolved or not printed
-            continue
-        slug = FORGE_RE.search(rest)
-        if slug:
-            host = "github.com" if m["cli"] == "gh" else gitlab_host
-            project = slug["slug"]
+        items = _one_write(m, command, result, gitlab_host)
+        if items is None:
+            unresolved = True
         else:
-            cd = CD_RE.search(command[: m.start()])
-            where = remote_project(unquote(cd["path"])) if cd else None
-            if not where:
-                unresolved = True
-                continue
-            host, project = where
-        kind = {"pr": "pull", "mr": "merge_request"}.get(m["noun"], "issue")
-        found.append(dict(artefact(host, project, kind, number), origin="acted"))
+            found += items
     return found, unresolved
 
 
@@ -358,7 +378,7 @@ def _mcp_write_artefacts(payload: dict[str, Any], result: str) -> list[dict[str,
         )
         return [
             dict(
-                artefact("github.com", f"{owner}/{repo}", kind, int(number)),
+                artefact(GITHUB_HOST, f"{owner}/{repo}", kind, int(number)),
                 origin="acted",
             )
         ]
@@ -384,6 +404,63 @@ def tickets_in(text: str) -> set[str]:
     }
 
 
+class _ArtefactScan:
+    """State of one pass over a transcript: pending tool calls and what they named."""
+
+    def __init__(self, gitlab_host: str) -> None:
+        self.gitlab_host = gitlab_host
+        self.pending: dict[str, tuple[str, dict[str, Any]]] = {}
+        self.by_url: dict[str, dict[str, Any]] = {}
+        self.tickets: set[str] = set()
+        self.unresolved: list[str] = []
+
+    def keep(self, found: list[dict[str, Any]]) -> None:
+        for item in found:
+            have = self.by_url.get(item["url"])
+            if not have or ORIGIN_RANK[item["origin"]] > ORIGIN_RANK[have["origin"]]:
+                self.by_url[item["url"]] = item
+
+    def mention(self, text: str) -> None:
+        self.keep(_with_origin(artefacts_in_text(text), "mentioned"))
+
+    def tool_use(self, block: dict[str, Any]) -> None:
+        payload = block.get("input") or {}
+        if not isinstance(payload, dict):
+            return
+        self.pending[block.get("id", "")] = (block.get("name", ""), payload)
+        if block.get("name") == "mcp__tt__log_time":
+            self.tickets |= tickets_in(str(payload.get("ticket", "")))
+
+    def tool_result(self, block: dict[str, Any]) -> None:
+        name, payload = self.pending.pop(block.get("tool_use_id", ""), ("", {}))
+        result = _result_text(block)
+        command = payload.get("command")
+        if isinstance(command, str):
+            found, lost = _forge_write_artefacts(command, result, self.gitlab_host)
+            self.keep(found)
+            if lost:
+                self.unresolved.append(command[:200])
+            if JIRA_COMMAND_RE.search(command):
+                self.tickets |= tickets_in(command)
+        elif MCP_WRITE_RE.search(name):
+            self.keep(_mcp_write_artefacts(payload, result))
+        self.mention(result)
+
+    def event(self, event: dict[str, Any]) -> None:
+        content = (event.get("message") or {}).get("content")
+        if isinstance(content, str):
+            self.mention(content)
+            return
+        handlers = {
+            "tool_use": self.tool_use,
+            "tool_result": self.tool_result,
+            "text": lambda block: self.mention(block.get("text", "")),
+        }
+        for block in content or []:
+            if isinstance(block, dict) and block.get("type") in handlers:
+                handlers[block["type"]](block)
+
+
 def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
     """The PRs, MRs, issues and Jira tickets a session created, acted on or mentioned.
 
@@ -392,59 +469,16 @@ def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]
     `mentioned` (a URL appeared somewhere, which includes documentation
     placeholders such as `OWNER/REPO` — a reader weighs those, a fetch skips them).
     """
-    pending: dict[str, tuple[str, dict[str, Any]]] = {}
-    by_url: dict[str, dict[str, Any]] = {}
-    tickets: set[str] = set()
-    unresolved: list[str] = []
-
-    def keep(found: list[dict[str, Any]]) -> None:
-        for item in found:
-            have = by_url.get(item["url"])
-            if not have or ORIGIN_RANK[item["origin"]] > ORIGIN_RANK[have["origin"]]:
-                by_url[item["url"]] = item
-
+    scan = _ArtefactScan(gitlab_host)
     for event in iter_events(transcript):
-        message = event.get("message") or {}
-        content = message.get("content")
-        if isinstance(content, str):
-            keep([dict(a, origin="mentioned") for a in artefacts_in_text(content)])
-            continue
-        for block in content or []:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "tool_use":
-                payload = block.get("input") or {}
-                if isinstance(payload, dict):
-                    pending[block.get("id", "")] = (block.get("name", ""), payload)
-                    if block.get("name") == "mcp__tt__log_time":
-                        tickets |= tickets_in(str(payload.get("ticket", "")))
-            elif block.get("type") == "tool_result":
-                name, payload = pending.pop(block.get("tool_use_id", ""), ("", {}))
-                result = _result_text(block)
-                command = payload.get("command") if isinstance(payload, dict) else None
-                if isinstance(command, str):
-                    found, lost = _forge_write_artefacts(command, result, gitlab_host)
-                    keep(found)
-                    if lost:
-                        unresolved.append(command[:200])
-                    if JIRA_COMMAND_RE.search(command):
-                        tickets |= tickets_in(command)
-                elif MCP_WRITE_RE.search(name):
-                    keep(_mcp_write_artefacts(payload, result))
-                keep([dict(a, origin="mentioned") for a in artefacts_in_text(result)])
-            elif block.get("type") == "text":
-                keep(
-                    [
-                        dict(a, origin="mentioned")
-                        for a in artefacts_in_text(block.get("text", ""))
-                    ]
-                )
-
-    items = sorted(by_url.values(), key=lambda a: (-ORIGIN_RANK[a["origin"]], a["url"]))
+        scan.event(event)
+    items = sorted(
+        scan.by_url.values(), key=lambda a: (-ORIGIN_RANK[a["origin"]], a["url"])
+    )
     return {
         "artefacts": items,
-        "tickets": sorted(tickets),
-        "unresolved_forge_commands": unresolved,
+        "tickets": sorted(scan.tickets),
+        "unresolved_forge_commands": scan.unresolved,
     }
 
 
