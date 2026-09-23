@@ -1984,6 +1984,12 @@ class TwelfthRoundTest(unittest.TestCase):
             'echo "count: $(gh api -X GET repos/o/r/pulls/5/comments -f per_page=100 --jq length)"',
             "N=$(gh api repos/o/r/issues/8/comments -f per_page=100 -X GET --jq length)",
             "N=$(gh api repos/o/r/issues/7 -F per_page=1 --method GET --jq .state)",
+            # Round 14 on 5313764: a `|` or `;` inside a field's `$(…)` cut the
+            # segment before the read's own GET.
+            "gh api repos/o/r/issues/8/comments -f per_page=$(echo 100 | tr -d ' ') -X GET",
+            "gh api repos/o/r/issues/7 -F per_page=$(printf 1 | cat) --method GET",
+            'gh api repos/o/r/issues/8/comments -f since="$(date -u +%F; true)" -X GET',
+            "N=$(gh api repos/o/r/issues/8/comments -f per_page=$(echo 100 | cat) -X GET --jq length)",
         ):
             with self.subTest(cmd=cmd[:40]):
                 urls, data = self.urls([({"command": cmd}, "")])
