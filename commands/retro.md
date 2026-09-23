@@ -24,7 +24,7 @@ correct destination.
 /retro "<problem description>"        Spotlight — focus on one issue
 /retro outcome [session-id|--since N] Outcome — post-hoc review of past session(s)
 /retro audit [--scope X]              Audit — cross-session architectural review
-/retro promote [--scope cwd|all]      Promote — re-home accumulated local memory upward
+/retro promote [--project=<slug>]     Promote — re-home accumulated local memory upward
 /retro done                           Done — seven-gate finish check; "done" only when all hold
 ```
 
@@ -266,7 +266,7 @@ Requires latency. Don't run within 24h of the session — most D signals (includ
 
 ```
 /retro promote                       # cwd-scoped memory store
-/retro promote --scope all           # every slug holding a memory/ dir
+/retro promote                       # every slug holding a memory/ dir (the default)
 ```
 
 Re-homes already-written local memory (the **stock**, not the session flow)
@@ -279,7 +279,7 @@ is confirmed. Full detail in `skills/retro/references/promote-mode.md`.
 
   ```bash
   python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py \
-    --scope cwd --output-format json
+    --output-format json          # every slug; --project=<slug> narrows to one
   ```
 
 - Skip Phases 2, 2b, 3b, 3c (no transcript) — announce the skip in one line
@@ -295,8 +295,9 @@ is confirmed. Full detail in `skills/retro/references/promote-mode.md`.
   failure, keep the source. For `skill-update`, drain only after the PR is opened.
 - Phase 10 report gains a **Source drained?** column
   (`tombstoned` / `kept — verify failed` / `kept — source changed`)
-- The scanner is read-only; if `--scope cwd` finds nothing, retry `--scope all`
-  (the real stock often lives under a sibling slug)
+- The scanner is read-only and scans every slug by default, because the real
+  stock often lives under a sibling slug. Narrow with `--project=<slug>`; the
+  `=` is required, since every slug starts with `-`.
 
 ## Done Mode
 

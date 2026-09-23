@@ -83,12 +83,15 @@ idempotency key and a drain race-check.
 
 `--project` with a leading-dash slug needs the equals form (`--project=-home-user-projects`) — argparse consumes the bare form as an option and errors "expected one argument".
 
-`--scope cwd` (default) scans only the slug derived from the cwd; `--scope all`
-enumerates every slug that has a `memory/` dir. The scanner **always** reports
-`slugs_scanned` so an empty result reads as "scanned X, found nothing" rather
-than a silent skip — this guards the worktree-vs-parent slug split (the real
-stock often lives under a sibling slug). If `cwd` finds nothing, re-run with
-`--scope all`.
+By default the scanner enumerates **every** slug that has a `memory/` dir;
+`--project=<slug>` narrows it to one. There is no `--scope` flag and there never
+was — earlier versions of this page and of the command documented `--scope
+cwd|all`, which the script rejects with exit 2, so every documented promote run
+died at argument parsing. The scanner **always** reports `slugs_scanned`, so an
+empty result reads as "scanned X, found nothing" rather than a silent skip; that
+guards the worktree-vs-parent slug split, since the real stock often lives
+under a sibling slug. Narrow with `--project=` only when you know which slug
+holds it.
 
 ## Batch semantics — a proposal absorbs notes, the cap counts proposals
 
