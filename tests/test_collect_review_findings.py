@@ -739,7 +739,18 @@ class SecondRoundTest(unittest.TestCase):
                         "command": "gh api -X GET repos/o/r/issues/9/comments -f per_page=100"
                     },
                     "",
-                )
+                ),
+                # CodeRabbit on cbccd69: the GET after the fields.
+                (
+                    {
+                        "command": "gh api repos/o/r/issues/8/comments -f per_page=100 -X GET"
+                    },
+                    "",
+                ),
+                (
+                    {"command": "gh api repos/o/r/issues/7 -F per_page=1 --method GET"},
+                    "",
+                ),
             ]
         )
         self.assertEqual(urls, {})
@@ -921,12 +932,45 @@ class CorroborationTest(unittest.TestCase):
         urls, _ = self.urls([({"command": "gh pr ready 124 --repo o/r"}, printed)])
         self.assertEqual(urls, {"https://github.com/o/r/pull/124": "acted"})
 
-    def test_a_bare_number_needs_exactly_one_repo(self):
-        merged = "Merged pull request #9"
-        one, _ = self.urls([({"command": "gh pr merge 9 -R o/r --merge"}, merged)])
-        two_repos = "gh pr merge 9 -R o/r --merge; gh pr view 1 -R x/y"
-        two, _ = self.urls([({"command": two_repos}, merged)])
-        self.assertEqual((one, two), ({"https://github.com/o/r/pull/9": "acted"}, {}))
+    def test_a_bare_number_needs_the_writes_own_repo(self):
+        merged = "✓ Merged pull request #9 (title)"
+        own, _ = self.urls([({"command": "gh pr merge 9 -R o/r --merge"}, merged)])
+        # The `-R` belongs to another command in the call, not to the merge.
+        other = "gh pr merge 9 --merge; gh pr view 1 -R x/y"
+        foreign, data = self.urls([({"command": other}, merged)])
+        self.assertEqual(own, {"https://github.com/o/r/pull/9": "acted"})
+        self.assertEqual((foreign, len(data["unresolved_forge_commands"])), ({}, 1))
+
+    def test_links_in_running_text_are_not_what_a_write_did(self):
+        # Round 4: a PR body read after the write, a JSON answer, an error line.
+        cmd = "gh pr ready 113 --repo o/r && gh pr view 107 --repo o/r --json body"
+        printed = (
+            '✓ Pull request o/r#113 is marked as "ready for review"\n'
+            '{"body":"Fixes https://github.com/o/r/issues/104"}'
+        )
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls["https://github.com/o/r/pull/113"], "acted")
+        self.assertEqual(urls["https://github.com/o/r/issues/104"], "mentioned")
+        scanning = (
+            "gh api -X PATCH repos/o/r/code-scanning/alerts/119 -f state=dismissed"
+        )
+        alert = '{"html_url": "https://github.com/ossf/scorecard/issues/1773"}'
+        urls, data = self.urls([({"command": scanning}, alert)])
+        self.assertEqual(
+            urls, {"https://github.com/ossf/scorecard/issues/1773": "mentioned"}
+        )
+        self.assertEqual(data["unresolved_forge_commands"], [])
+
+    def test_the_endpoint_beats_a_listing_printed_after_it(self):
+        cmd = "gh api -X PUT repos/o/r/pulls/37/merge -f merge_method=merge; gh issue list -R o/r"
+        urls, _ = self.urls([({"command": cmd}, "#33 open thing\n#28 other")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/37": "acted"})
+
+    def test_an_error_line_number_is_not_a_target(self):
+        cmd = "glab mr merge 258 -R g/main --yes"
+        out = "Exit code 1\nx #1: PUT https://git.example.org/api/v4/... 405"
+        urls, _ = self.urls([({"command": cmd, "__error": True}, out)])
+        self.assertEqual(urls, {})
 
     def test_a_silent_rest_write_is_named_by_its_endpoint(self):
         rest = "gh api -X PUT repos/o/r/pulls/5/merge -f merge_method=merge --silent"
@@ -1032,6 +1076,124 @@ class ThirdRoundCollectorTest(unittest.TestCase):
             "nodes": [],
         }
         self.assertIn("timelineItems", crf.parse_github_pr(pr, set())["truncated"])
+
+
+class FourthRoundTest(unittest.TestCase):
+    """Inputs from the fourth review round (cbccd69)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs))
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_refusal_without_the_prefix_ran_nothing(self):
+        # The bare-reference gate echoes `#721`; `is_error` without `Exit code`.
+        gate = "Bare references in a message you are about to send to people: #721."
+        cmd = {
+            "command": "gh issue comment 721 -R o/r --body-file c.md",
+            "__error": True,
+        }
+        urls, data = self.urls([(cmd, gate)])
+        self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+        jira = "uv run jira-comment.py add NRS-9999 -"
+        self.assertEqual(dss.jira_command_tickets(jira, "lint: NRS-9999", True), set())
+
+    def test_a_failed_run_is_still_a_run(self):
+        cmd = {"command": "gh pr merge 3 -R o/r --merge", "__error": True}
+        _, data = self.urls([(cmd, "Exit code 1\nx Cannot perform merge action")])
+        self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+
+    def test_an_apostrophe_in_a_heredoc_does_not_hide_the_next_command(self):
+        cmd = (
+            "cat > b.md <<'MD'\nthe runner's own check\nMD\n"
+            "gh pr create -R o/r --body-file b.md"
+        )
+        urls, _ = self.urls([({"command": cmd}, "https://github.com/o/r/pull/194")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/194": "created"})
+
+    def test_error_output_behind_a_pipe_is_not_a_silent_success(self):
+        cmds = [
+            (
+                "gh pr merge 202 -R o/r --merge 2>&1 | tail -2",
+                "gh: Pull Request is still a draft (HTTP 405)",
+            ),
+            (
+                "gh pr review 684 -R o/r --approve 2>&1 | tail -1",
+                "GraphQL: Can not approve your own pull request",
+            ),
+            (
+                "gh pr merge 5 -R o/r --merge",
+                "Command running in background with ID: b1.",
+            ),
+        ]
+        urls, data = self.urls([({"command": c}, r) for c, r in cmds])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 3))
+
+    def test_a_create_counts_only_its_own_kind(self):
+        cmd = "gh pr create -R o/r --fill"
+        printed = "https://github.com/o/r/issues/169#issuecomment-1\nhttps://github.com/o/r/pull/170"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls["https://github.com/o/r/pull/170"], "created")
+        self.assertEqual(urls["https://github.com/o/r/issues/169"], "mentioned")
+
+    def test_rate_limited_in_a_finding_is_not_a_refusal(self):
+        body = "The new /login handler is not rate-limited, so a client can brute-force it."
+        self.assertFalse(crf.finding("u", "review", "b", "bot", None, body)["report"])
+
+    def test_no_dismissals_on_a_long_timeline_is_not_truncated(self):
+        pr = _pr()
+        pr["data"]["repository"]["pullRequest"]["timelineItems"] = {
+            # totalCount counts the whole timeline, not the dismissals.
+            "totalCount": 13,
+            "filteredCount": 0,
+            "pageInfo": {"hasNextPage": False},
+            "nodes": [],
+        }
+        self.assertNotIn("timelineItems", crf.parse_github_pr(pr, set())["truncated"])
+
+    def test_a_write_without_a_number_takes_only_report_lines(self):
+        cmd = "gh pr edit --add-label x; gh pr view --json body"
+        printed = (
+            "https://github.com/o/r/pull/7\n"
+            '{"body":"see https://github.com/o/r/issues/104"}'
+        )
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls["https://github.com/o/r/pull/7"], "acted")
+        self.assertEqual(urls["https://github.com/o/r/issues/104"], "mentioned")
+
+    def test_a_write_takes_only_its_own_number(self):
+        cmd = "gh pr ready 113 --repo o/r && gh pr view 107 --repo o/r --json url --jq .url"
+        printed = (
+            "✓ Pull request o/r#113 is marked as ready\nhttps://github.com/o/r/pull/107"
+        )
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls["https://github.com/o/r/pull/113"], "acted")
+        self.assertEqual(urls["https://github.com/o/r/pull/107"], "mentioned")
+
+    def test_a_write_takes_only_its_own_repository(self):
+        cmd = "gh pr merge 5 -R o/r --merge && gh pr view 5 -R x/y --json url --jq .url"
+        printed = "✓ Merged pull request o/r#5\nhttps://github.com/x/y/pull/5"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls["https://github.com/o/r/pull/5"], "acted")
+        self.assertEqual(urls["https://github.com/x/y/pull/5"], "mentioned")
+
+    def test_a_jira_call_after_a_heredoc_with_an_apostrophe(self):
+        # Unmasked, the apostrophe in the heredoc and the quote in `echo 'done'`
+        # would form one quoted span over the jira call.
+        cmd = (
+            "cat > c.txt <<'EOF'\nthe runner's note\nEOF\n"
+            "uv run jira-comment.py add NRS-5 - < c.txt; echo 'all done'"
+        )
+        self.assertEqual(
+            dss.jira_command_tickets(cmd, "Comment added to NRS-5"), {"NRS-5"}
+        )
+
+    def test_a_plugin_index_whose_plugins_is_a_list(self):
+        home = Path(TMP.name) / f"home{next(_COUNTER)}"
+        index = home / ".claude/plugins/installed_plugins.json"
+        index.parent.mkdir(parents=True)
+        index.write_text(json.dumps({"plugins": ["x"]}))
+        with mock.patch.object(crf.Path, "home", return_value=home):
+            self.assertEqual(crf._installed_jira_clis(), [])
 
 
 class MainTest(unittest.TestCase):

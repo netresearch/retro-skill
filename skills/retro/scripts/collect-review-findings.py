@@ -97,7 +97,7 @@ KNOWN_BOTS = frozenset(
         "gemini-code-assist",
     }
 )
-GITLAB_BOT_RE = re.compile(r"^(?:group|project)_\d+_bot(?:_|$)|(?:^|[-_.])bot$")
+GITLAB_TOKEN_BOT_RE = re.compile(r"(?:group|project)_\d+_bot(?:_|$)")
 ISSUE_KEYWORD_RE = re.compile(
     r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b", re.IGNORECASE
 )
@@ -111,7 +111,7 @@ REPORT_SOURCES = frozenset({"pr-comment", "mr-comment"})
 # skipped. It is a status, not a finding.
 BOT_REFUSAL_RE = re.compile(
     r"\b(?:unable to review|could not review|reviews? (?:limit|skipped|paused)"
-    r"|reached (?:their|your|its|the) (?:review )?(?:quota|rate) limit|rate.?limited)\b",
+    r"|reached (?:their|your|its|the) (?:review )?(?:quota|rate) limit)\b",
     re.IGNORECASE,
 )
 # A refusal is a sentence or two; a long review body that mentions a limit in
@@ -160,6 +160,12 @@ def transcript_start(transcript: Path) -> datetime | None:
 # classification (pure)
 
 
+def _named_bot(login: str) -> bool:
+    """A service account named as one: `bot`, `ci-bot`, `release_bot`, `x.bot`."""
+    head, sep, tail = login.lower().rpartition("bot")
+    return sep == "bot" and not tail and (not head or head[-1] in "-_.")
+
+
 def author_class(login: str | None, typename: str | None, self_logins: set[str]) -> str:
     if not login:
         return "human"  # a deleted account ("ghost") is somebody, not a bot
@@ -169,7 +175,7 @@ def author_class(login: str | None, typename: str | None, self_logins: set[str])
         return "self"
     if typename == "Bot" or login.endswith("[bot]") or bare in KNOWN_BOTS:
         return "bot"
-    if GITLAB_BOT_RE.search(login):
+    if GITLAB_TOKEN_BOT_RE.match(login) or _named_bot(login):
         return "bot"
     return "human"
 
@@ -277,7 +283,7 @@ query($owner: String!, $name: String!, $number: Int!) {
         nodes { commit { oid committedDate messageHeadline } }
       }
       timelineItems(itemTypes: [REVIEW_DISMISSED_EVENT], first: 100) {
-        totalCount pageInfo { hasNextPage }
+        filteredCount pageInfo { hasNextPage }
         nodes { ... on ReviewDismissedEvent { previousReviewState review { url } } }
       }
     }
@@ -329,8 +335,11 @@ def _gh_truncated(node: dict[str, Any], *connections: str) -> list[str]:
     cut = []
     for conn in connections:
         data = node.get(conn) or {}
+        # With `itemTypes`, totalCount counts the whole timeline; filteredCount
+        # is the number of items of the asked-for types.
+        count = data.get("filteredCount", data.get("totalCount", 0))
         if (data.get("pageInfo") or {}).get("hasNextPage") or (
-            data.get("totalCount", 0) > len(data.get("nodes") or [])
+            count > len(data.get("nodes") or [])
         ):
             cut.append(conn)
     threads = (node.get("reviewThreads") or {}).get("nodes") or []
@@ -708,6 +717,8 @@ def _installed_jira_clis() -> list[Path]:
         plugins = json.loads(index.read_text(encoding="utf-8")).get("plugins") or {}
     except (OSError, ValueError, AttributeError):
         return []
+    if not isinstance(plugins, dict):
+        return []
     paths = []
     for installs in plugins.values():
         for install in installs if isinstance(installs, list) else [installs]:
@@ -790,6 +801,22 @@ def _jira_transitions(histories, url, self_logins, out: _Collected) -> None:
         ]
 
 
+def _jira_url(issue: dict[str, Any], browse: str) -> str:
+    browse = browse or (issue.get("self") or "").split("/rest/", 1)[0]
+    return f"{browse.rstrip('/')}/browse/{issue['key']}" if browse else issue["key"]
+
+
+def _jira_truncated(fields: dict[str, Any], changelog: dict[str, Any]) -> list[str]:
+    comments = (fields.get("comment") or {}).get("comments") or []
+    histories = changelog.get("histories") or []
+    cut = []
+    if (fields.get("comment") or {}).get("total", len(comments)) > len(comments):
+        cut.append("comments")
+    if changelog.get("total", len(histories)) > len(histories):
+        cut.append("changelog")
+    return cut
+
+
 def parse_jira(
     raw: dict[str, Any], self_logins: set[str], browse: str
 ) -> dict[str, Any]:
@@ -799,22 +826,14 @@ def parse_jira(
         raise LookupError("; ".join(errors or []) or "not a Jira issue")
     me = raw.get("self") or {}
     self_logins = self_logins | {me.get(k, "") for k in ("name", "key", "accountId")}
-    key = issue["key"]
-    browse = browse or (issue.get("self") or "").split("/rest/", 1)[0]
-    url = f"{browse.rstrip('/')}/browse/{key}" if browse else key
+    url = _jira_url(issue, browse)
     fields = issue.get("fields") or {}
-    comments = (fields.get("comment") or {}).get("comments") or []
-    out = _Collected()
-    _jira_comments(comments, url, self_logins, out)
-    _jira_transitions(
-        (issue.get("changelog") or {}).get("histories") or [], url, self_logins, out
-    )
-    total = (fields.get("comment") or {}).get("total", len(comments))
     changelog = issue.get("changelog") or {}
-    histories = changelog.get("histories") or []
-    truncated = ["comments"] if total > len(comments) else []
-    if changelog.get("total", len(histories)) > len(histories):
-        truncated.append("changelog")
+    out = _Collected()
+    _jira_comments(
+        (fields.get("comment") or {}).get("comments") or [], url, self_logins, out
+    )
+    _jira_transitions(changelog.get("histories") or [], url, self_logins, out)
     return {
         "url": url,
         "title": fields.get("summary"),
@@ -823,7 +842,7 @@ def parse_jira(
         "self_comments": out.self_count,
         "linked": [],
         "tickets": [],
-        "truncated": truncated,
+        "truncated": _jira_truncated(fields, changelog),
     }
 
 
@@ -1122,7 +1141,7 @@ def gitlab_hosts_from(named: list[str], env: str | None) -> tuple[str, ...]:
     """The hosts glab may be sent to. glab accepts GITLAB_HOST with or without a
     scheme; the allowlist compares bare hosts."""
     return tuple(
-        re.sub(r"(?:^https?://)|(?:/+$)", "", host)
+        host.removeprefix("https://").removeprefix("http://").rstrip("/")
         for host in named or [env or "gitlab.com"]
     )
 

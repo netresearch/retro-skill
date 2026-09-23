@@ -118,15 +118,19 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" \
 ```
 
 It reads every PR, MR and issue the session created or wrote to. A write counts
-when its **output** names the target — a URL, `owner/repo#N`, or `#N` with a
-single `-R` in the call — and never from the command text alone: a
-`gh pr merge 3` inside a heredoc or a quoted body prints no target, and a call
-the harness refused (`PreToolUse:` result) ran nothing. A successful write that
-prints nothing counts only in two narrow shapes: a REST endpoint carrying
-repository and number (`gh api -X PUT repos/o/r/pulls/5/merge`), and
-`<verb> <number> -R <repo>` in a call without a heredoc. MCP writes count by
-their input. Everything else is listed as an unresolved forge command, not
-guessed. It follows each one's linked issues (closing references,
+when its **output reports** the target, and never from the command text alone:
+a report line is a URL alone on its line, a JSON `html_url`, or a CLI status
+line (`✓ …`, `- Creating issue in …`) naming a URL, `owner/repo#N` or `#N`.
+A link inside a PR body, a JSON answer or an error message is running text and
+does not count. Each write takes only its own number and its own `-R`; a bare
+`#N` needs that `-R`. A REST write on a PR/MR/issue endpoint counts by the
+endpoint, a REST write on any other endpoint not at all. A call the harness
+refused (`is_error` without `Exit code N`) ran nothing. A successful write that
+prints nothing counts only as `<verb> <number> -R <repo>` outside any heredoc
+or quoted text, and output that reports a failure (`HTTP 4xx`, `GraphQL:`,
+`Cannot perform`, a background run) is not a success. MCP writes count by their
+input. Everything else is listed as an unresolved forge command, not guessed.
+It follows each one's linked issues (closing references,
 issue URLs in the description) and the Jira key at the start of its title or in
 a branch segment one level, plus the tickets the session ran a jira script
 against or booked time on, and lists every comment by somebody else — each
