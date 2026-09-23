@@ -2139,6 +2139,28 @@ class SeventeenthRoundTest(unittest.TestCase):
         self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
 
 
+class EighteenthRoundTest(unittest.TestCase):
+    """Inputs from the eighteenth review round (eb8c9b9)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_greater_than_inside_a_quoted_message_is_text(self):
+        for tail, printed in (
+            (' && echo "merged -> done" || echo "merge -> failed"', "merge -> failed"),
+            (" && echo 'ok' || echo 'fehler: exit > 0'", "fehler: exit > 0"),
+            # a quoted message with its own redirection behind the quote
+            (' && echo "ok" >&2 || echo "merge -> failed" >&2', "merge -> failed"),
+        ):
+            with self.subTest(tail=tail):
+                cmd = "gh pr merge 5 -R o/r --merge" + tail
+                urls, data = self.urls([({"command": cmd}, printed)])
+                self.assertEqual(
+                    (urls, len(data["unresolved_forge_commands"])), ({}, 1)
+                )
+
+
 class UnresolvedSurfacedTest(unittest.TestCase):
     def test_the_collector_lists_unresolved_writes(self):
         transcript = _transcript([({"command": "gh pr merge --merge"}, "")])

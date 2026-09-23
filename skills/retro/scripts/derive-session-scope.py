@@ -812,6 +812,17 @@ class _Call:
         return self._rest_fallback(cli, segment)
 
 
+def _echo_text(argument: str) -> str:
+    """What an echo argument prints: a quoted one exactly its quoted text (a
+    `>` inside `"merge -> failed"` is text), an unquoted one without its own
+    redirection (`echo failed >&2`)."""
+    argument = argument.strip()
+    quoted = QUOTED_RE.match(argument)
+    if quoted:
+        return quoted.group(0)[1:-1].strip()
+    return ECHO_REDIRECT_RE.sub("", argument).strip()
+
+
 def _took_the_failure_branch(command: str, result: str) -> bool:
     """Whether a write's own `&& echo A || echo B` printed B and not A: the
     write exited non-zero. Only the pair right behind a write counts, so a
@@ -823,12 +834,7 @@ def _took_the_failure_branch(command: str, result: str) -> bool:
         m = ECHO_BRANCHES_RE.match(plain, write.start())
         if not m:
             continue
-        ok, fail = (
-            ECHO_REDIRECT_RE.sub("", command[m.start(g) : m.end(g)].strip())
-            .strip("\"'")
-            .strip()
-            for g in ("ok", "fail")
-        )
+        ok, fail = (_echo_text(command[m.start(g) : m.end(g)]) for g in ("ok", "fail"))
         if fail and "$" not in fail and fail in lines and ok not in lines:
             return True
     return False
