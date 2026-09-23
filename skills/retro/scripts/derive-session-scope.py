@@ -34,6 +34,7 @@ dropped.
 from __future__ import annotations
 
 import argparse
+import itertools
 import json
 import os
 import re
@@ -179,10 +180,47 @@ SPAWN_RE = re.compile(
 )
 # `! Pull request o/r#5 is already queued`: the write found nothing to do.
 ALREADY_RE = re.compile(r"^\s*!\s.*?[#!](?P<number>\d+)\b.*\balready\b", re.MULTILINE)
-HEREDOC_FILE_RE = re.compile(r"\bcat\s*>\s*(?P<file>\S+)[^\n]*<<")
-# A write in list form, as a script spells it: `subprocess.run(["gh", "pr", …])`.
-LIST_WRITE_RE = re.compile(
-    r"""\[\s*["'](?:gh|glab)["']\s*,\s*["'](?:pr|mr|issue|api)["']"""
+HEREDOC_FILE_RE = re.compile(
+    r"\bcat\s*>\s*(?P<file>\S+)[^\n]*<<"
+    r"|\bcat\s*<<-?\s*\S+\s*>\s*(?P<after>\S+)"
+    r"|\btee\s+(?:-a\s+)?(?P<tee>[^\s-]\S*)[^\n]*<<"
+)
+# A shell or an interpreter given its program inline: `bash -c '…'`.
+INLINE_PROGRAM_RE = re.compile(
+    r"(?<![\w.-])(?:bash|sh|zsh|python3?|node|ruby|perl)\s+(?:-\w+\s+)*-c\s"
+)
+# A call in list form, as a script spells it: `subprocess.run(["gh", "pr", …])`.
+LIST_CALL_RE = re.compile(r"""\[\s*["'](?:gh|glab)["'][^\]]*\]""")
+LIST_ITEM_RE = re.compile(r"""["']([^"']*)["']""")
+WRITE_VERBS = frozenset(
+    [
+        "create",
+        "edit",
+        "update",
+        "comment",
+        "note",
+        "merge",
+        "ready",
+        "review",
+        "close",
+        "reopen",
+        "approve",
+        "rebase",
+        "delete",
+    ]
+)
+API_WRITE_FLAGS = frozenset(
+    [
+        "-f",
+        "-F",
+        "--field",
+        "--raw-field",
+        "--input",
+        "-XPOST",
+        "-XPATCH",
+        "-XPUT",
+        "-XDELETE",
+    ]
 )
 # MCP tools that write to a PR or issue; their input names owner/repo/number.
 MCP_WRITE_RE = re.compile(
@@ -460,11 +498,14 @@ def _named_lines(
     return found
 
 
-def _repo(slug: str, host: str) -> tuple[str, str]:
-    """(host, project) of a `-R` value: `o/r`, `group/sub/app`, `github.com/o/r`."""
+def _repo(slug: str, host: str) -> tuple[str, str] | None:
+    """(host, project) of a `-R` value: `o/r`, `group/sub/app`, `github.com/o/r`;
+    None for a host this run does not know (`gitlab.com/g/p`)."""
     first, _, rest = slug.partition("/")
     if first in (GITHUB_HOST, host) and "/" in rest:
         return first, rest
+    if "." in first and "/" in rest:
+        return None
     return host, slug
 
 
@@ -584,9 +625,10 @@ class _Call:
         segment = _segment(self.command, write)
         slug = FORGE_RE.search(segment)
         number = re.match(r"\s+(\d+)\b", self.command[write.end() :])
-        host, project = (
-            _repo(slug["slug"], self.host(cli)) if slug else (self.host(cli), "")
-        )
+        repo = _repo(slug["slug"], self.host(cli)) if slug else (self.host(cli), "")
+        if repo is None:
+            return None
+        host, project = repo
         wanted = _kind(cli, noun, "")
         found = []
         same_number = False  # the output names this write's number at all
@@ -694,12 +736,16 @@ class _Call:
                 return None
             # It claims the URL only in its own report form, a JSON line; a
             # URL alone on a line is what a create in the same call prints.
+            # With `--jq .html_url` the call prints that URL alone on a line.
+            prints_url = bool(
+                re.search(r"--jq[\s=]['\"]?\.(?:html_|web_)?url\b", segment)
+            )
             reported = {
                 a["url"]
                 for line in self.result.splitlines()
                 if (html := HTML_URL_LINE_RE.match(line) or _json_url(line))
                 for a in artefacts_in_text(html["url"])
-            }
+            } | {a["url"] for a in artefacts_in_text(self.result) if prints_url}
             self.claimed.update(r["url"] for r in endpoint if r["url"] in reported)
             return endpoint
         created = self._created_by_path(
@@ -724,7 +770,12 @@ def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     """What `pr-merge.sh` merged or commented on, from its own report lines;
     [] when it says it wrote nothing, None when it says neither."""
     blank = _blank_texts(command)
-    if not PR_MERGE_WRAPPER_RE.search(blank) or "--dry-run" in blank:
+    runs = [
+        m
+        for m in PR_MERGE_WRAPPER_RE.finditer(blank)
+        if "--dry-run" not in _segment(blank, m)
+    ]
+    if not runs:
         return []
     found = [
         dict(
@@ -738,21 +789,64 @@ def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     return None
 
 
+def _list_write(text: str) -> bool:
+    """A write in list form: `["gh", "pr", "merge", …]`, or `["gh", "api", …]`
+    with a write method or body fields. `["gh", "pr", "view", …]` reads."""
+    for m in LIST_CALL_RE.finditer(text):
+        items = LIST_ITEM_RE.findall(m.group(0))
+        if len(items) > 2 and items[1] in ("pr", "mr", "issue"):
+            if items[2] in WRITE_VERBS:
+                return True
+        elif len(items) > 1 and items[1] == "api":
+            methods = {
+                b for a, b in itertools.pairwise(items) if a in ("-X", "--method")
+            }
+            if methods - {"GET"} or API_WRITE_FLAGS & set(items):
+                return True
+    return False
+
+
+def _program_writes(program: str, shell: bool) -> bool:
+    """Whether a program the call runs holds a write: any `gh`/`glab` write in
+    a shell; in another interpreter, only beside a process call."""
+    writes = bool(
+        FORGE_WRITE_RE.search(program)
+        or API_WRITE_RE.search(program)
+        or _list_write(program)
+    )
+    return writes and (shell or bool(SPAWN_RE.search(program)))
+
+
 def _runs_a_heredoc(command: str) -> bool:
-    """Whether the call executes a heredoc body: fed to an interpreter, or
-    written to a file the call then runs."""
-    for m in INTERPRETER_HEREDOC_RE.finditer(command):
-        body = CLOSED_HEREDOC_RE.match(command, m.end())
-        if m["shell"] or body is None or SPAWN_RE.search(body["body"]):
+    """Whether the call executes a program it carries that holds a write: a
+    heredoc fed to an interpreter or written to a file the call then runs, or
+    `bash -c '…'`. A `python3 -c` that parses JSON from a pipe writes nothing."""
+    # A word in a quoted title (`--title "fix: bash completion"`) is text.
+    blank = _blank_texts(command)
+    for m in INLINE_PROGRAM_RE.finditer(blank):
+        arg = QUOTED_RE.match(command, m.end())
+        program = arg.group(0) if arg else _segment(command, m)
+        if _program_writes(program, m.group(0).split()[0] in ("bash", "sh", "zsh")):
             return True
-    # Run by an interpreter, sourced, or called by name — at the start of a
-    # command, outside any heredoc body; `grep -c . file` only reads it.
+    for m in INTERPRETER_HEREDOC_RE.finditer(blank):
+        body = CLOSED_HEREDOC_RE.match(command, m.end())
+        program = body["body"] if body else command[m.end() :]
+        if _program_writes(program, bool(m["shell"])):
+            return True
+    # Run by an interpreter, sourced, or called by name or path (`./x.sh`) — at
+    # the start of a command, outside any heredoc body; `grep -c . f` reads it.
     masked = _masked(command)
     for m in HEREDOC_FILE_RE.finditer(command):
-        name = re.escape(m["file"].strip("\"'"))
+        path = (m["file"] or m["after"] or m["tee"]).strip("\"'")
+        body = CLOSED_HEREDOC_RE.search(command, m.start())
+        if body is None or not _program_writes(
+            body["body"], not path.endswith((".py", ".js", ".rb", ".pl"))
+        ):
+            continue
+        name = re.escape(path.rsplit("/", 1)[-1])
         run = (
             rf"(?:^|[;&|(])\s*(?:(?:bash|sh|zsh|python3?|node|source|\.)\s+)?"
-            rf"[\"']?{name}"
+            rf"[\"']?(?:[^\s;&|'\"]*/)?{name}(?![\w.-])"
         )
         if re.search(run, masked[m.end() :], re.MULTILINE):
             return True
@@ -798,7 +892,7 @@ def _forge_write_artefacts(
     unresolved = wrapper is None
     about_prs = bool(wrapper) or wrapper is None  # a write concerning a PR, MR or issue
     # A write in list form (`["gh", "pr", …]`) only occurs inside a script.
-    text_writes = bool(LIST_WRITE_RE.search(command))
+    text_writes = _list_write(command)
     about_prs = about_prs or text_writes
     for write in writes:
         if _is_text(command, write):
