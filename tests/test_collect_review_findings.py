@@ -17,6 +17,7 @@ import itertools
 import json
 import subprocess
 import tempfile
+import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1584,6 +1585,17 @@ class EighthRoundTest(unittest.TestCase):
                 printed = "https://github.com/o/r/pull/1\nhttps://github.com/o/r/pull/2"
                 urls, _ = self.urls([({"command": cmd}, printed)])
                 self.assertEqual(set(urls.values()), {"created"})
+
+    def test_a_loop_head_full_of_substitutions_does_not_backtrack(self):
+        # CodeQL py/redos on 3e701ea: overlapping head alternatives took ~5 s here.
+        started = time.perf_counter()
+        self.assertIsNone(dss.LOOP_RE.search("for x " + "$()" * 26))
+        self.assertLess(time.perf_counter() - started, 1.0)
+        # A lone `$` and `(` still belong to the head.
+        cmd = "for f in $HOME (x) $(ls); do gh pr create -R o/r --fill; done"
+        printed = "https://github.com/o/r/pull/1\nhttps://github.com/o/r/pull/2"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(set(urls.values()), {"created"})
 
     def test_already_queued_is_not_a_write(self):
         cmd = "gh pr merge 803 -R o/r --merge"

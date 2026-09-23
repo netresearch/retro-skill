@@ -126,9 +126,12 @@ FAILED_OUTPUT_RE = re.compile(
 )
 # A shell loop runs its body once per item: `for r in a b c; do gh pr create …; done`.
 # Matched on the command with heredoc bodies and quoted texts blanked, so a
-# `for` or a `done` inside a text neither opens nor closes one.
+# `for` or a `done` inside a text neither opens nor closes one. The head's
+# alternatives are disjoint (a `$` or `(` is read by exactly one of them), so
+# a head full of `$()` cannot backtrack exponentially.
 LOOP_RE = re.compile(
-    r"\b(?:for|while|until)\b(?:\(\([^)]*\)\)|\$\([^)]*\)|[^;\n])*(?:;|\n)\s*do\b"
+    r"\b(?:for|while|until)\b"
+    r"(?:\(\([^)]*\)\)|\$\([^)]*\)|\$(?!\()|\((?!\()|[^;\n$(])*(?:;|\n)\s*do\b"
     r"(?P<body>.*?)\bdone\b",
     re.DOTALL,
 )
