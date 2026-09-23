@@ -56,6 +56,28 @@ SECTION_MARKER = re.compile(r"^\*\*[A-Za-z].*?:\*\*", re.MULTILINE)
 # Files inside a memory/ dir that are never themselves promotable stock.
 SKIP_NAMES = {INDEX_FILE}
 
+# Language that asserts a PENDING state: blocked, unreleased, waiting until
+# something happens. A note carrying it was true when written and turns false
+# the moment the thing happens, without a word of its text changing - so it is
+# the one class of note that has to be re-verified rather than merely
+# promoted. The index line matters most: MEMORY.md is loaded into every
+# session, so a stale pending claim there misleads each one, while the body is
+# only read on demand. Measured on a real store: 1 hit in 8 notes, and that one
+# was genuinely still pending; the note that prompted this - "sit unreleased",
+# resolved a day after it was written, then stood in the index for a week -
+# hits on its description line.
+PENDING_STATE_RE = re.compile(
+    r"\b(?:blocked|blocks|waits? on|waiting|unreleased|pending|not yet|"
+    r"still open|remains open|until (?:it|they|then)|"
+    r"needs? (?:a|two) (?:tag|release))\b",
+    re.IGNORECASE,
+)
+
+
+def _pending_state_phrases(text: str) -> list[str]:
+    """The distinct pending-state phrases in `text`, lower-cased and sorted."""
+    return sorted({m.group(0).lower() for m in PENDING_STATE_RE.finditer(text)})
+
 
 def _iter_slug_dirs(memory_root: Path, project: str | None) -> list[tuple[str, Path]]:
     """Return [(slug, memory_dir)] to scan.
@@ -163,6 +185,14 @@ def _read_finding(
         "how_to_apply": _extract_section(body, HOWTO_MARKER) or "",
         "origin_session_id": metadata.get("originSessionId", ""),
         "current_location": "project-local-memory",
+        # Re-verify before promoting. `pending_state_in_index` is the sharper
+        # of the two: a match in the description is a match in MEMORY.md.
+        "pending_state": _pending_state_phrases(
+            body + "\n" + str(fm.get("description", ""))
+        ),
+        "pending_state_in_index": bool(
+            _pending_state_phrases(str(fm.get("description", "")))
+        ),
     }
 
 

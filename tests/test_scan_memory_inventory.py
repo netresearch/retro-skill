@@ -113,6 +113,45 @@ class ScanTest(unittest.TestCase):
         self.assertEqual(f["origin_session_id"], "9d74b3aa-07df-4f72-aa2f-964c8670c122")
         self.assertEqual(f["current_location"], "project-local-memory")
 
+    def test_pending_state_in_the_index_line_is_flagged(self):
+        # The note that prompted this: true on the day it was written, false a
+        # day later, and its description - the line MEMORY.md loads into every
+        # session - stood unchanged for a week. The flag has to fire on that
+        # line specifically, because that is where the damage is.
+        _write(
+            self.memory,
+            "project_blocked.md",
+            "---\nname: demo-blocked\n"
+            "description: Three things the demo needs sit unreleased on main.\n"
+            "metadata:\n  type: project\n---\n\n"
+            "Until it is released, the rollout waits.\n",
+        )
+        f = _run_scan(memory_root=self.root)["json"]["findings"][0]
+        self.assertTrue(f["pending_state_in_index"])
+        self.assertIn("unreleased", f["pending_state"])
+        self.assertIn("until it", f["pending_state"])
+
+    def test_pending_state_only_in_body_is_flagged_but_not_as_index(self):
+        # Still worth re-verifying, but it misleads only whoever opens the
+        # note, so it must not raise the sharper index flag.
+        _write(
+            self.memory,
+            "project_body.md",
+            "---\nname: gap\ndescription: A CLI command lacks an actor option.\n"
+            "metadata:\n  type: project\n---\n\nUntil then, use the backend module.\n",
+        )
+        f = _run_scan(memory_root=self.root)["json"]["findings"][0]
+        self.assertEqual(f["pending_state"], ["until then"])
+        self.assertFalse(f["pending_state_in_index"])
+
+    def test_settled_note_carries_no_pending_state(self):
+        # Guards precision: an ordinary lesson must not be flagged, or the
+        # re-verify list becomes the whole store and is ignored.
+        _write(self.memory, "feedback_x.md", FEEDBACK)
+        f = _run_scan(memory_root=self.root)["json"]["findings"][0]
+        self.assertEqual(f["pending_state"], [])
+        self.assertFalse(f["pending_state_in_index"])
+
     def test_memory_md_index_not_a_finding(self):
         _write(self.memory, "MEMORY.md", "- [x](feedback_x.md) — hook\n")
         _write(self.memory, "feedback_x.md", FEEDBACK)

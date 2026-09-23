@@ -83,12 +83,15 @@ idempotency key and a drain race-check.
 
 `--project` with a leading-dash slug needs the equals form (`--project=-home-user-projects`) — argparse consumes the bare form as an option and errors "expected one argument".
 
-`--scope cwd` (default) scans only the slug derived from the cwd; `--scope all`
-enumerates every slug that has a `memory/` dir. The scanner **always** reports
-`slugs_scanned` so an empty result reads as "scanned X, found nothing" rather
-than a silent skip — this guards the worktree-vs-parent slug split (the real
-stock often lives under a sibling slug). If `cwd` finds nothing, re-run with
-`--scope all`.
+By default the scanner enumerates **every** slug that has a `memory/` dir;
+`--project=<slug>` narrows it to one. There is no `--scope` flag and there never
+was — earlier versions of this page and of the command documented `--scope
+cwd|all`, which the script rejects with exit 2, so every documented promote run
+died at argument parsing. The scanner **always** reports `slugs_scanned`, so an
+empty result reads as "scanned X, found nothing" rather than a silent skip; that
+guards the worktree-vs-parent slug split, since the real stock often lives
+under a sibling slug. Narrow with `--project=` only when you know which slug
+holds it.
 
 ## Batch semantics — a proposal absorbs notes, the cap counts proposals
 
@@ -115,10 +118,26 @@ classifies to it. Rules:
 
 Two checks run at Phase 7, before a note enters a proposal:
 
-- **Stale-check.** A `reference`-type note records what was true when written.
-  Before promoting one, verify its load-bearing claim against reality (does
-  the path/flag/endpoint/version still exist?). A stale note is proposed for
-  **tombstone-only drain** (no upward write), clearly labeled.
+- **Stale-check.** Every note records what was true when written — not only
+  `reference` notes. Verify its load-bearing claim against reality before it
+  enters a proposal, and know which of two kinds of claim it makes:
+  - **Existence** — a path, flag, endpoint or version. Check that it still
+    exists.
+  - **State** — something is blocked, unreleased, pending, waiting *until*
+    something happens. This kind turns false the moment the thing happens,
+    without a word of the note changing, and an existence check passes it. The
+    scanner marks these: `pending_state` lists the phrases, and
+    `pending_state_in_index` is true when one sits in the description.
+
+  Check the **description first**. It is the line `MEMORY.md` carries, loaded
+  into every session, while the body is read only on demand — so a stale state
+  in the description misleads each session and a stale state in the body only
+  whoever opens it. The note that prompted this was accurate on the day it was
+  written, resolved the next day, and stood in the index for a week reading
+  "all wait on one unreleased repo"; its body stayed historically correct
+  throughout. A stale note is proposed for **tombstone-only drain** (no upward
+  write), clearly labeled — or, where part of it is still true, for a rewrite
+  that keeps only that part.
 - **Paraphrase dedup.** `content_sha256` catches identical text, not the same
   rule reworded — and stock notes are often already duplicated into
   `~/.claude/CLAUDE.md` or the target skill. Read the *target* location and
