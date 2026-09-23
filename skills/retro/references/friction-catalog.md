@@ -130,7 +130,9 @@ one call take one URL each, a create in a `for`/`while` loop takes every URL
 of its kind, and a create never takes a URL a numbered write in the same call
 reported. A REST write on a literal PR/MR/issue endpoint counts by the
 endpoint, and claims the URL it prints itself (a JSON `html_url` line, or the
-line `--jq .html_url` prints); a create, a variable (also a whole endpoint held in one) or a
+line `--jq .html_url` prints), matched by repository and number, so
+`issues/5` of a PR claims the `pull/5` URL; a create, a variable (also a
+whole endpoint held in one) or a
 numeric project id in the path counts by the output's report line of that
 path's kind and number, or stays unresolved; a REST write on any other
 endpoint (code scanning, workflow runs) does not count at all. Continued lines
@@ -144,19 +146,24 @@ successful write that prints nothing counts only as `<verb> <number> -R <repo>`
 outside any heredoc or quoted text. Output that reports a failure is not a
 success: an `HTTP 4xx/5xx`, `GraphQL:` at a line start or after a colon, a
 line starting with `x`/`X`/`✗`, `gh:`, `failed to` or `Cannot perform`, or a
-background run. MCP writes count by their input. A `-R` with a host this run
-does not know (`-R gitlab.com/g/p`) leaves the write unresolved. Writes
-through other tools — `curl` against a forge API, a script run in a later
-call, a script file the call did not write itself — are not seen at all; name
-them by hand. A program the call itself runs and that contains a write, also
-in list form (`["gh", "pr", "merge", …]`, or `["gh", "api", …]` with a write
-method or body fields), makes the call unresolved: a shell heredoc
-(`bash <<…`) or `bash -c '…'`; another interpreter's heredoc or `-c` program
-(`python3 - <<…`, `python3 -c '…'`) only with a process call such as
-`subprocess`; or a file written with `cat > x.sh <<…`, `cat <<… > x.sh` or
-`tee x.sh <<…` that a later command runs (`bash x.sh`, `./x.sh`). A program
-that only reads, such as `python3 -c` parsing JSON from a pipe, and a heredoc
-only written to a file the call reads (`grep -c . x.md`) change nothing.
+background run. MCP writes count by their input. A `-R` with a scheme and a
+host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
+`bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
+dotted first segment is a GitLab group. Writes through other tools — `curl`
+against a forge API, a script run in a later call, a script file the call did
+not write itself — are not seen at all; name them by hand. A call that holds
+a write in text (a heredoc, a quoted string, or a list-form call such as
+`["gh", "pr", …]`) and also runs a program it carries is unresolved, whether
+or not that program writes: a shell given its program (`bash <<…`,
+`bash -lc '…'`); another interpreter's heredoc or inline program
+(`python3 - <<…`, `python3 -c '…'`, `node -e '…'`) with a process call such
+as `subprocess`; or a script file the call writes (`cat > x.sh <<…`,
+`cat >> x.sh`, `cat <<… > x.sh`, `tee x.sh`) and names again later, in any
+form (`./x.sh`, `bash -x x.sh`, `timeout 60 x.sh`). A script file is one with
+a script suffix, no suffix, or a `#!` line. This errs towards unresolved: a
+script that only reads is listed too, a lost write is not possible. A
+`python3 -c` without a process call, such as a JSON parser on a pipe, and a
+body file (`cat > pr.md <<…` then `--body-file pr.md`) change nothing.
 `--dry-run` stops only the `pr-merge.sh` command it is given to. A status
 line `! … #N is already …` means the write to `#N` found nothing to do.
 It follows each one's linked issues (closing references,

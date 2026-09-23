@@ -34,7 +34,6 @@ dropped.
 from __future__ import annotations
 
 import argparse
-import itertools
 import json
 import os
 import re
@@ -51,7 +50,7 @@ CD_RE = re.compile(
     r"(?:^|[;&|]\s*|\&\&\s*)cd\s+(?P<path>(?:\"[^\"]+\"|'[^']+'|[^\s;|&]+))"
 )
 FORGE_RE = re.compile(
-    r"(?:-R|--repo)[\s=]['\"]?(?:https?://)?"
+    r"(?:-R|--repo)[\s=]['\"]?(?P<scheme>https?://)?"
     r"(?P<slug>[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+)['\"]?"
 )
 # Artefacts worth naming in the scope line.
@@ -61,6 +60,9 @@ ARTEFACT_RE = re.compile(
 )
 
 GITHUB_HOST = "github.com"
+# Public forges a `-R` value can name without a scheme; any other dotted
+# first segment is a GitLab group (`some.group/sub/proj`).
+PUBLIC_FORGE_HOSTS = frozenset(["gitlab.com", "bitbucket.org", "codeberg.org"])
 
 # Pull requests, merge requests and issues, by URL. A GitLab project path may
 # be nested (`group/sub/project`), and the `/-/` separator is what marks it.
@@ -181,47 +183,22 @@ SPAWN_RE = re.compile(
 # `! Pull request o/r#5 is already queued`: the write found nothing to do.
 ALREADY_RE = re.compile(r"^\s*!\s.*?[#!](?P<number>\d+)\b.*\balready\b", re.MULTILINE)
 HEREDOC_FILE_RE = re.compile(
-    r"\bcat\s*>\s*(?P<file>\S+)[^\n]*<<"
-    r"|\bcat\s*<<-?\s*\S+\s*>\s*(?P<after>\S+)"
+    r"\bcat\s*>>?\s*(?P<file>[^\s>]\S*)[^\n]*<<"
+    r"|\bcat\s*<<-?\s*\S+\s*>>?\s*(?P<after>\S+)"
     r"|\btee\s+(?:-a\s+)?(?P<tee>[^\s-]\S*)[^\n]*<<"
+    r"|<<[^\n]*\|\s*tee\s+(?:-a\s+)?(?P<pipe>[^\s-]\S*)"
 )
-# A shell or an interpreter given its program inline: `bash -c '…'`.
+# A file that is a program: a script suffix, no suffix, or a `#!` line.
+SCRIPT_SUFFIXES = (".sh", ".bash", ".zsh", ".py", ".js", ".mjs", ".rb", ".pl")
+# A shell or an interpreter given its program inline: `bash -lc '…'`,
+# `python3 -c '…'`, `node -e '…'`.
 INLINE_PROGRAM_RE = re.compile(
-    r"(?<![\w.-])(?:bash|sh|zsh|python3?|node|ruby|perl)\s+(?:-\w+\s+)*-c\s"
+    r"(?<![\w.-])(?:(?P<shell>bash|sh|zsh)\s+(?:-\w+\s+)*-[a-z]*c[a-z]*"
+    r"|python3?\s+(?:-\w+\s+)*-c"
+    r"|(?:node|ruby|perl)\s+(?:-\w+\s+)*-[a-z]*e[a-z]*)\s"
 )
 # A call in list form, as a script spells it: `subprocess.run(["gh", "pr", …])`.
 LIST_CALL_RE = re.compile(r"""\[\s*["'](?:gh|glab)["'][^\]]*\]""")
-LIST_ITEM_RE = re.compile(r"""["']([^"']*)["']""")
-WRITE_VERBS = frozenset(
-    [
-        "create",
-        "edit",
-        "update",
-        "comment",
-        "note",
-        "merge",
-        "ready",
-        "review",
-        "close",
-        "reopen",
-        "approve",
-        "rebase",
-        "delete",
-    ]
-)
-API_WRITE_FLAGS = frozenset(
-    [
-        "-f",
-        "-F",
-        "--field",
-        "--raw-field",
-        "--input",
-        "-XPOST",
-        "-XPATCH",
-        "-XPUT",
-        "-XDELETE",
-    ]
-)
 # MCP tools that write to a PR or issue; their input names owner/repo/number.
 MCP_WRITE_RE = re.compile(
     r"github__(?:create_pull_request|update_pull_request|merge_pull_request|"
@@ -498,13 +475,13 @@ def _named_lines(
     return found
 
 
-def _repo(slug: str, host: str) -> tuple[str, str] | None:
+def _repo(slug: str, host: str, scheme: bool = False) -> tuple[str, str] | None:
     """(host, project) of a `-R` value: `o/r`, `group/sub/app`, `github.com/o/r`;
-    None for a host this run does not know (`gitlab.com/g/p`)."""
+    None for a host this run does not know (`https://x.org/g/p`, `gitlab.com/g/p`)."""
     first, _, rest = slug.partition("/")
     if first in (GITHUB_HOST, host) and "/" in rest:
         return first, rest
-    if "." in first and "/" in rest:
+    if "/" in rest and (scheme or first in PUBLIC_FORGE_HOSTS):
         return None
     return host, slug
 
@@ -625,7 +602,11 @@ class _Call:
         segment = _segment(self.command, write)
         slug = FORGE_RE.search(segment)
         number = re.match(r"\s+(\d+)\b", self.command[write.end() :])
-        repo = _repo(slug["slug"], self.host(cli)) if slug else (self.host(cli), "")
+        repo = (
+            _repo(slug["slug"], self.host(cli), bool(slug["scheme"]))
+            if slug
+            else (self.host(cli), "")
+        )
         if repo is None:
             return None
         host, project = repo
@@ -740,13 +721,14 @@ class _Call:
             prints_url = bool(
                 re.search(r"--jq[\s=]['\"]?\.(?:html_|web_)?url\b", segment)
             )
-            reported = {
-                a["url"]
+            reported = [
+                a
                 for line in self.result.splitlines()
                 if (html := HTML_URL_LINE_RE.match(line) or _json_url(line))
                 for a in artefacts_in_text(html["url"])
-            } | {a["url"] for a in artefacts_in_text(self.result) if prints_url}
-            self.claimed.update(r["url"] for r in endpoint if r["url"] in reported)
+            ] + (artefacts_in_text(self.result) if prints_url else [])
+            keys = {_key(r) for r in endpoint}
+            self.claimed.update(a["url"] for a in reported if _key(a) in keys)
             return endpoint
         created = self._created_by_path(
             cli, segment, _in_loop(self.command, write.start())
@@ -789,66 +771,33 @@ def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     return None
 
 
-def _list_write(text: str) -> bool:
-    """A write in list form: `["gh", "pr", "merge", …]`, or `["gh", "api", …]`
-    with a write method or body fields. `["gh", "pr", "view", …]` reads."""
-    for m in LIST_CALL_RE.finditer(text):
-        items = LIST_ITEM_RE.findall(m.group(0))
-        if len(items) > 2 and items[1] in ("pr", "mr", "issue"):
-            if items[2] in WRITE_VERBS:
-                return True
-        elif len(items) > 1 and items[1] == "api":
-            methods = {
-                b for a, b in itertools.pairwise(items) if a in ("-X", "--method")
-            }
-            if methods - {"GET"} or API_WRITE_FLAGS & set(items):
-                return True
-    return False
-
-
-def _program_writes(program: str, shell: bool) -> bool:
-    """Whether a program the call runs holds a write: any `gh`/`glab` write in
-    a shell; in another interpreter, only beside a process call."""
-    writes = bool(
-        FORGE_WRITE_RE.search(program)
-        or API_WRITE_RE.search(program)
-        or _list_write(program)
-    )
-    return writes and (shell or bool(SPAWN_RE.search(program)))
-
-
-def _runs_a_heredoc(command: str) -> bool:
-    """Whether the call executes a program it carries that holds a write: a
-    heredoc fed to an interpreter or written to a file the call then runs, or
-    `bash -c '…'`. A `python3 -c` that parses JSON from a pipe writes nothing."""
+def _runs_a_program(command: str) -> bool:
+    """Whether the call runs a program it carries: a shell given its program
+    (a heredoc, `bash -lc '…'`), another interpreter's heredoc or inline
+    program with a process call, or a script file the call writes and names
+    again later (`bash x.sh`, `./x.sh`, `timeout 60 x.sh`). Such a program can
+    write anywhere; the call is unresolved rather than taken as read-only."""
     # A word in a quoted title (`--title "fix: bash completion"`) is text.
     blank = _blank_texts(command)
     for m in INLINE_PROGRAM_RE.finditer(blank):
         arg = QUOTED_RE.match(command, m.end())
         program = arg.group(0) if arg else _segment(command, m)
-        if _program_writes(program, m.group(0).split()[0] in ("bash", "sh", "zsh")):
+        if m["shell"] or SPAWN_RE.search(program):
             return True
     for m in INTERPRETER_HEREDOC_RE.finditer(blank):
         body = CLOSED_HEREDOC_RE.match(command, m.end())
         program = body["body"] if body else command[m.end() :]
-        if _program_writes(program, bool(m["shell"])):
+        if m["shell"] or SPAWN_RE.search(program):
             return True
-    # Run by an interpreter, sourced, or called by name or path (`./x.sh`) — at
-    # the start of a command, outside any heredoc body; `grep -c . f` reads it.
-    masked = _masked(command)
     for m in HEREDOC_FILE_RE.finditer(command):
-        path = (m["file"] or m["after"] or m["tee"]).strip("\"'")
+        path = (m["file"] or m["after"] or m["tee"] or m["pipe"]).strip("\"'")
+        name = path.rsplit("/", 1)[-1]
         body = CLOSED_HEREDOC_RE.search(command, m.start())
-        if body is None or not _program_writes(
-            body["body"], not path.endswith((".py", ".js", ".rb", ".pl"))
-        ):
-            continue
-        name = re.escape(path.rsplit("/", 1)[-1])
-        run = (
-            rf"(?:^|[;&|(])\s*(?:(?:bash|sh|zsh|python3?|node|source|\.)\s+)?"
-            rf"[\"']?(?:[^\s;&|'\"]*/)?{name}(?![\w.-])"
-        )
-        if re.search(run, masked[m.end() :], re.MULTILINE):
+        shebang = body is not None and body["body"].lstrip().startswith("#!")
+        if not (shebang or "." not in name or name.endswith(SCRIPT_SUFFIXES)):
+            continue  # a body or a note (`cat > pr.md`), not a program
+        later = command[body.end() :] if body else command[m.end() :]
+        if re.search(rf"(?<![\w.-]){re.escape(name)}(?![\w.-])", later):
             return True
     return False
 
@@ -891,8 +840,8 @@ def _forge_write_artefacts(
     found: list[dict[str, Any]] = list(wrapper or [])
     unresolved = wrapper is None
     about_prs = bool(wrapper) or wrapper is None  # a write concerning a PR, MR or issue
-    # A write in list form (`["gh", "pr", …]`) only occurs inside a script.
-    text_writes = _list_write(command)
+    # A call in list form (`["gh", "pr", …]`) only occurs inside a script.
+    text_writes = bool(LIST_CALL_RE.search(command))
     about_prs = about_prs or text_writes
     for write in writes:
         if _is_text(command, write):
@@ -914,7 +863,7 @@ def _forge_write_artefacts(
     # write claimed means some write was not understood: the call is unresolved.
     # A script the call runs can write anywhere and print nothing about it;
     # its writes are never attributed, so the call is unresolved.
-    if text_writes and _runs_a_heredoc(command):
+    if text_writes and _runs_a_program(command):
         unresolved = True
     if about_prs and not unresolved:
         unresolved = _unclaimed(result, found, text_writes)

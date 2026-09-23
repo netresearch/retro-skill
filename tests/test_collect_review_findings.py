@@ -1707,33 +1707,48 @@ class NinthRoundTest(unittest.TestCase):
         )
         self.assertEqual(data["unresolved_forge_commands"], [])
 
-    def test_a_list_form_read_is_no_write(self):
-        cmd = (
-            "python3 - <<'PY'\nimport subprocess\n"
-            "print(subprocess.run(['gh', 'pr', 'view', '5', '--json', 'url']).stdout)\nPY"
-        )
-        _, data = self.urls(
-            [({"command": cmd}, '{"url":"https://github.com/o/r/pull/5"}')]
-        )
-        self.assertEqual(data["unresolved_forge_commands"], [])
-
-    def test_a_program_that_only_reads_leaves_the_call_resolved(self):
+    def test_a_script_that_may_only_read_is_still_unresolved(self):
+        # Deliberate: a lost write costs more than a false UNRESOLVED line, and
+        # a list call can hide its verb (`base + ['close', …]`).
         for cmd in (
-            # a JSON parser beside a write quoted in a body
             (
-                'gh pr comment 5 -R o/r --body "run gh pr merge 5 -R o/r"; '
-                "gh api repos/o/r/pulls/5 | python3 -c \"import json,sys; print(json.load(sys.stdin)['url'])\""
+                "python3 - <<'PY'\nimport subprocess\n"
+                "print(subprocess.run(['gh', 'pr', 'view', '5', '--json', 'url']).stdout)\nPY"
             ),
-            # a list-form API read
             "python3 -c \"import subprocess; subprocess.run(['gh','api','rate_limit'])\"",
-            # a script without any write, written and run
             "cat > x.sh <<'EOF'\necho hi\nEOF\nbash x.sh; gh pr comment 5 -R o/r --body 'use gh pr merge'",
         ):
             with self.subTest(cmd=cmd[:30]):
-                _, data = self.urls(
-                    [({"command": cmd}, "https://github.com/o/r/pull/5#c1")]
+                _, data = self.urls([({"command": cmd}, "")])
+                self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+
+    def test_text_that_no_program_runs_leaves_the_call_resolved(self):
+        cases = (
+            # a JSON parser beside a write quoted in a body
+            (
+                (
+                    'gh pr comment 5 -R o/r --body "run gh pr merge 5 -R o/r"; '
+                    "gh api repos/o/r/pulls/5 | python3 -c \"import json,sys; print(json.load(sys.stdin)['url'])\""
+                ),
+                "https://github.com/o/r/pull/5#c1",
+                {"https://github.com/o/r/pull/5": "acted"},
+            ),
+            # a PR body written to a file and handed to gh
+            (
+                (
+                    "cat > pr.md <<'EOF'\nThen run gh pr merge 5 -R o/r.\nEOF\n"
+                    "gh pr create -R o/r --title t --body-file pr.md"
+                ),
+                "https://github.com/o/r/pull/9",
+                {"https://github.com/o/r/pull/9": "created"},
+            ),
+        )
+        for cmd, printed, expected in cases:
+            with self.subTest(cmd=cmd[:30]):
+                urls, data = self.urls([({"command": cmd}, printed)])
+                self.assertEqual(
+                    (urls, data["unresolved_forge_commands"]), (expected, [])
                 )
-                self.assertEqual(data["unresolved_forge_commands"], [])
 
     def test_a_list_form_api_write_counts(self):
         cmd = (
@@ -1742,6 +1757,116 @@ class NinthRoundTest(unittest.TestCase):
         )
         urls, data = self.urls([({"command": cmd}, "")])
         self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+
+
+WRITE = "gh api -X PATCH repos/o/r/pulls/5 -f state=closed --silent"
+SCRIPT = f"cat > /tmp/x.sh <<'EOF'\n{WRITE}\nEOF\n"
+
+
+class TenthRoundTest(unittest.TestCase):
+    """Inputs from the tenth review round (055a0f1), as the reviewer ran them."""
+
+    def urls(self, pairs, host="git.example.org"):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host=host)
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def assert_unresolved(self, commands):
+        for cmd in commands:
+            with self.subTest(cmd=cmd[-40:]):
+                urls, data = self.urls([({"command": cmd}, "")])
+                self.assertEqual(
+                    (urls, len(data["unresolved_forge_commands"])), ({}, 1)
+                )
+
+    def test_a_script_run_from_another_program_is_unresolved(self):
+        self.assert_unresolved(
+            (
+                SCRIPT + "bash <<'EOF'\n/tmp/x.sh\nEOF",
+                SCRIPT + "python3 - <<'PY'\nimport subprocess\n"
+                "subprocess.run(['bash', '/tmp/x.sh'], check=True)\nPY",
+                f"CMD='{WRITE}'\nbash <<EOF\n$CMD\nEOF",
+            )
+        )
+
+    def test_list_form_writes_the_verb_check_missed(self):
+        head = "python3 - <<'PY'\nimport subprocess\n"
+        self.assert_unresolved(
+            (
+                head
+                + 'subprocess.run(["gh", "api", "--method=PATCH", "repos/o/r/pulls/5",'
+                ' "--raw-field=state=closed"], check=True)\nPY',
+                head + "subprocess.run(['gh', 'api', 'repos/o/r/issues/5',"
+                " '--raw-field=state=closed', '--silent'])\nPY",
+                head + "base = ['gh', 'pr']\nfor n in (5, 6):\n"
+                "    subprocess.run(base + ['close', str(n), '-R', 'o/r'])\nPY",
+                head + "for verb in ('close',):\n"
+                '    subprocess.run(["gh", "pr", verb, "5", "-R", "o/r"])\nPY',
+            )
+        )
+
+    def test_inline_program_flags(self):
+        self.assert_unresolved(
+            (
+                f"bash -lc '{WRITE}'",
+                f"bash -ec '{WRITE}'",
+                f'node -e \'cp.spawnSync("sh", ["-c", "{WRITE}"])\'',
+                f"perl -e 'system(\"{WRITE}\")'",
+            )
+        )
+
+    def test_every_way_to_run_or_write_a_script_file(self):
+        runs = (
+            "bash -x /tmp/x.sh",
+            "bash -eu /tmp/x.sh",
+            "sh -e /tmp/x.sh 5",
+            "timeout 60 /tmp/x.sh",
+            "env GH_TOKEN=x bash /tmp/x.sh",
+            "GH_TOKEN=x bash /tmp/x.sh",
+            "time bash /tmp/x.sh",
+            "! bash /tmp/x.sh",
+            "if bash /tmp/x.sh; then echo ok; fi",
+            "{ bash /tmp/x.sh; }",
+            "bash -c /tmp/x.sh",
+        )
+        self.assert_unresolved([SCRIPT + run for run in runs])
+        self.assert_unresolved(
+            (
+                f"cat >> /tmp/x.sh <<'EOF'\n{WRITE}\nEOF\nbash /tmp/x.sh",
+                f"cat <<EOF | tee /tmp/x.sh\n{WRITE}\nEOF\nbash /tmp/x.sh",
+            )
+        )
+
+    def test_an_issue_endpoint_claims_the_pull_url_it_prints(self):
+        for printed in (
+            "https://github.com/o/r/pull/5",
+            "https://github.com/o/r/pull/5#issuecomment-123",
+        ):
+            with self.subTest(printed=printed):
+                cmd = (
+                    "gh api -X PATCH repos/o/r/issues/5 -f title=x --jq .html_url"
+                    " && gh pr create -R o/r --title t --body b"
+                )
+                urls, data = self.urls(
+                    [({"command": cmd}, f"{printed}\nhttps://github.com/o/r/pull/7\n")]
+                )
+                self.assertEqual(
+                    {u: o for u, o in urls.items() if o != "mentioned"},
+                    {
+                        "https://github.com/o/r/issues/5": "acted",
+                        "https://github.com/o/r/pull/7": "created",
+                    },
+                )
+                self.assertEqual(data["unresolved_forge_commands"], [])
+
+    def test_a_dotted_gitlab_group_is_a_group(self):
+        urls, data = self.urls(
+            [({"command": "glab mr merge 5 -R some.group/sub/proj"}, "✓ Merged !5")]
+        )
+        self.assertEqual(
+            urls,
+            {"https://git.example.org/some.group/sub/proj/-/merge_requests/5": "acted"},
+        )
+        self.assertEqual(data["unresolved_forge_commands"], [])
 
 
 class UnresolvedSurfacedTest(unittest.TestCase):
