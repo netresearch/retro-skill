@@ -152,7 +152,7 @@ with `"status":"405"` or `}gh: …` behind it, `GraphQL:` at a
 line start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`,
 `failed to` or `Cannot perform`, or a background run (a Bash call sent or
 moved to the background, a Monitor), whose output is not in the result at
-all. MCP writes count by their input. A `-R` with a scheme and a
+all; and a write whose own `&& echo A || echo B` printed B and not A. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
 dotted first segment is a GitLab group. Writes through other tools — `curl`

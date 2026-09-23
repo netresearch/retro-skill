@@ -2044,6 +2044,58 @@ class FifteenthRoundTest(unittest.TestCase):
                 self.assertEqual(data["unresolved_forge_commands"], [])
 
 
+class SixteenthRoundTest(unittest.TestCase):
+    """Inputs from the sixteenth review round (9793a57)."""
+
+    WRITE = (
+        "gh api repos/o/r/pulls/118/requested_reviewers -X POST"
+        ' -f "reviewers[]=copilot-pull-request-reviewer[bot]" >/dev/null 2>&1'
+    )
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_every_spelling_of_the_failure_echo(self):
+        for tail, printed in (
+            (
+                ' && echo "  copilot angefragt" || echo "  copilot-anfrage fehlgeschlagen"',
+                "  copilot-anfrage fehlgeschlagen",
+            ),
+            (
+                " && echo copilot angefragt || echo copilot-anfrage fehlgeschlagen",
+                "copilot-anfrage fehlgeschlagen",
+            ),
+            (' && echo -e "ok" || echo -e "fehlgeschlagen"', "fehlgeschlagen"),
+            (
+                ' && echo "ok" || { echo "copilot-anfrage fehlgeschlagen"; }',
+                "copilot-anfrage fehlgeschlagen",
+            ),
+        ):
+            with self.subTest(tail=tail[:30]):
+                urls, data = self.urls([({"command": self.WRITE + tail}, printed)])
+                self.assertEqual(
+                    (urls, len(data["unresolved_forge_commands"])), ({}, 1)
+                )
+
+    def test_a_success_echo_with_flags_is_recognised(self):
+        # Both messages (a loop where one pass wrote): the write stands.
+        tail = ' && echo -e "ok" || echo -e "fehlgeschlagen"'
+        urls, data = self.urls([({"command": self.WRITE + tail}, "fehlgeschlagen\nok")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/118": "acted"})
+        self.assertEqual(data["unresolved_forge_commands"], [])
+
+    def test_another_commands_echo_pair_says_nothing_about_the_write(self):
+        # Copied shape from a stored transcript: an unrelated `test -f` pair.
+        cmd = (
+            'test -f "$F" && echo "  noch da" || echo "  entfernt (Kopie im Scratchpad)"; '
+            + self.WRITE
+        )
+        urls, data = self.urls([({"command": cmd}, "  entfernt (Kopie im Scratchpad)")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/118": "acted"})
+        self.assertEqual(data["unresolved_forge_commands"], [])
+
+
 class UnresolvedSurfacedTest(unittest.TestCase):
     def test_the_collector_lists_unresolved_writes(self):
         transcript = _transcript([({"command": "gh pr merge --merge"}, "")])
