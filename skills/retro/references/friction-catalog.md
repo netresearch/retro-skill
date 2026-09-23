@@ -123,8 +123,12 @@ a report line is a URL alone on its line, a JSON `html_url`, or a CLI status
 line (`✓ …`, `- Creating issue in …`) naming a URL, `owner/repo#N` or `#N`.
 A link inside a PR body, a JSON answer or an error message is running text and
 does not count. Each write takes only its own number and its own `-R`; a bare
-`#N` needs that `-R`. A REST write on a PR/MR/issue endpoint counts by the
-endpoint, a REST write on any other endpoint not at all. A call the harness
+`#N` needs that `-R`; several creates in one call take one URL each. A REST
+write on a literal PR/MR/issue endpoint counts by the endpoint; a create, a
+variable or a numeric project id in the path counts by the output's report
+line, or stays unresolved; a REST write on any other endpoint (code scanning,
+workflow runs) does not count at all. Continued lines (`\` + newline) are one
+command. A call the harness
 refused (`is_error` without `Exit code N`) ran nothing. A successful write that
 prints nothing counts only as `<verb> <number> -R <repo>` outside any heredoc
 or quoted text, and output that reports a failure (`HTTP 4xx`, `GraphQL:`,

@@ -1196,6 +1196,100 @@ class FourthRoundTest(unittest.TestCase):
             self.assertEqual(crf._installed_jira_clis(), [])
 
 
+class FifthRoundTest(unittest.TestCase):
+    """Inputs from the fifth review round (f2a4784)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(
+            _transcript(
+                pairs,
+            ),
+            gitlab_host="git.example.org",
+        )
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_variable_in_the_path_is_unresolved_not_dropped(self):
+        cmd = 'gh api -X PUT "repos/$R/pulls/29/merge" -f merge_method=merge'
+        urls, data = self.urls([({"command": cmd}, "")])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+        printed = '{"sha":"1","merged":true}\nhttps://github.com/o/r/pull/29'
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/29": "acted"})
+
+    def test_a_glab_create_by_path(self):
+        cmd = "glab api projects/g%2Fp/merge_requests -X POST -f title=x -f source_branch=b"
+        printed = "https://git.example.org/g/p/-/merge_requests/21"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {printed: "created"})
+
+    def test_a_numeric_project_create_is_unresolved(self):
+        cmd = 'glab api "projects/907/issues" --method POST -f title=x'
+        urls, data = self.urls([({"command": cmd}, '{"iid": 4}')])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+
+    def test_a_numeric_project_create_names_its_url(self):
+        cmd = 'glab api "projects/907/issues" --method POST -f title=x'
+        printed = (
+            '{\n  "iid": 4,\n  "web_url": "https://git.example.org/g/p/-/issues/4"\n}'
+        )
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://git.example.org/g/p/-/issues/4": "created"})
+
+    def test_editing_a_comment_by_id(self):
+        cmd = "gh api -X PATCH repos/o/r/issues/comments/99 -f body=x"
+        printed = '{"id":99,"html_url":"https://github.com/o/r/pull/5#issuecomment-99","body":"x"}'
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+
+    def test_several_creates_in_one_call(self):
+        cmd = "gh issue create -R o/r -t a -b a; gh issue create -R o/r -t b -b b"
+        printed = "https://github.com/o/r/issues/1\nhttps://github.com/o/r/issues/2"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(
+            urls,
+            {
+                "https://github.com/o/r/issues/1": "created",
+                "https://github.com/o/r/issues/2": "created",
+            },
+        )
+
+    def test_a_refused_mcp_write_wrote_nothing(self):
+        payload = {
+            "__name": "mcp__github__merge_pull_request",
+            "__error": True,
+            "owner": "o",
+            "repo": "r",
+            "pullNumber": 117,
+        }
+        refusal = "Permission for this action was denied by the Claude Code auto mode classifier."
+        urls, _ = self.urls([(payload, refusal)])
+        self.assertEqual(urls, {})
+
+    def test_a_gitlab_json_answer_names_its_web_url(self):
+        cmd = "glab api projects/g%2Fp/issues -X POST -f title=x"
+        printed = '{"iid":7,"web_url":"https://git.example.org/g/p/-/issues/7"}'
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://git.example.org/g/p/-/issues/7": "created"})
+
+    def test_a_continued_line_is_one_command(self):
+        cmd = 'glab api "projects/g%2Fp/merge_requests/434" --hostname git.example.org \\\n  --method PUT -f title=x'
+        urls, _ = self.urls([({"command": cmd}, "")])
+        self.assertEqual(
+            urls, {"https://git.example.org/g/p/-/merge_requests/434": "acted"}
+        )
+
+    def test_cannot_in_a_body_is_not_a_failure(self):
+        cmd = "gh api -X POST repos/o/r/pulls/5/requested_reviewers -f 'reviewers[]=x'"
+        printed = '{"body":"This cannot happen twice"}'
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+
+    def test_a_rest_write_in_quoted_text_is_not_a_call(self):
+        cmd = 'echo "run gh api -X PUT repos/o/r/pulls/5/merge -f merge_method=merge"'
+        urls, data = self.urls([({"command": cmd}, "")])
+        self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+
+
 class MainTest(unittest.TestCase):
     def test_an_unparsable_since_is_an_error(self):
         with (

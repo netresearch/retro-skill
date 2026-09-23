@@ -102,7 +102,9 @@ GLAB_API_PATH_RE = re.compile(
     r"(?P<number>\d+)\b",
     re.IGNORECASE,
 )
-GLAB_NUMERIC_PATH_RE = re.compile(r"\bprojects/\d+/(?:merge_requests|issues)/\d+\b")
+# A REST path about a PR, MR or issue that the literal patterns cannot read —
+# a variable (`repos/$R/pulls/29`), a placeholder, a comment id, a create.
+PR_ENDPOINT_RE = re.compile(r"/(?:pulls|issues|merge_requests)\b")
 HOSTNAME_RE = re.compile(r"--hostname[\s=](?P<host>[\w.-]+)")
 # A call the harness refused never ran: its result is the refusal. Bash marks
 # it `is_error` without the `Exit code N` a command that ran and failed gets.
@@ -112,20 +114,25 @@ EXIT_CODE_RE = re.compile(r"Exit code \d+")
 # pipe or `; echo`) says nothing: an HTTP error, a GraphQL error, a refusal,
 # or a background run whose output is not in the result at all.
 FAILED_OUTPUT_RE = re.compile(
-    r"HTTP [45]\d\d|GraphQL: |Cannot perform|Can ?not |Command running in background",
-    re.IGNORECASE,
+    r"HTTP [45]\d\d|^\s*(?:[x✗]\s+)?(?:GraphQL: |gh: |Cannot perform)"
+    r"|Command running in background",
+    re.IGNORECASE | re.MULTILINE,
 )
 # A line that reports what a write did: a CLI status line (`✓ …`, `! …`,
 # `- Creating issue in …`). A URL alone on its line counts too. A link inside
 # a PR body, a JSON answer or an error message stands in running text.
 STATUS_LINE_RE = re.compile(r"\s*(?:[✓✔!]\s|-\s+(?:Creating|Updating)\b)")
-HTML_URL_LINE_RE = re.compile(r'\s*"html_url"\s*:\s*"(?P<url>[^"]+)"')
+HTML_URL_LINE_RE = re.compile(r'\s*"(?:html_url|web_url)"\s*:\s*"(?P<url>[^"]+)"')
 CLOSED_HEREDOC_RE = re.compile(
     r"<<-?\s*\\?(['\"]?)(?P<tag>[\w-]+)\1[^\n]*\n(?P<body>.*?)\n[ \t]*(?P=tag)[ \t]*(?=\n|$)",
     re.DOTALL,
 )
 GH_API_CREATE_RE = re.compile(
     r"\brepos/(?P<project>[\w.-]+/[\w.-]+)/(?P<kind>pulls|issues)(?![\w/])"
+)
+GLAB_API_CREATE_RE = re.compile(
+    r"\bprojects/(?P<project>[\w.-]*%2F[\w.%-]+|\d+)/(?P<kind>merge_requests|issues)(?![\w/])",
+    re.IGNORECASE,
 )
 BARE_REF_RE = re.compile(r"(?<![\w/&])(?P<sep>[#!])(?P<number>\d+)\b")
 # MCP tools that write to a PR or issue; their input names owner/repo/number.
@@ -371,7 +378,7 @@ def _named_lines(
     found: list[tuple[dict[str, Any] | None, str, int]] = []
     for line in result.splitlines():
         text = line.strip().strip("`'\"").rstrip(".,")
-        html = HTML_URL_LINE_RE.match(line)
+        html = HTML_URL_LINE_RE.match(line) or _json_url(line)
         if html:
             text = html["url"]
         if text.startswith("https://") and " " not in text:
@@ -399,6 +406,20 @@ def _named_lines(
                 (None, m["sep"], int(m["number"])) for m in BARE_REF_RE.finditer(line)
             ]
     return found
+
+
+def _json_url(line: str) -> dict[str, str] | None:
+    """The `html_url` / `web_url` of a one-line JSON object, as a match-like dict."""
+    if not line.lstrip().startswith("{"):
+        return None
+    try:
+        data = json.loads(line)
+    except ValueError:
+        return None
+    url = (
+        data.get("html_url") or data.get("web_url") if isinstance(data, dict) else None
+    )
+    return {"url": url} if isinstance(url, str) else None
 
 
 def _masked(command: str) -> str:
@@ -462,6 +483,8 @@ class _Call:
         self.result = result
         self.gitlab_host = gitlab_host
         self.failed = failed or bool(FAILED_OUTPUT_RE.search(result))
+        # URLs a create in this call already took: each create takes the next.
+        self.claimed: set[str] = set()
 
     def host(self, cli: str) -> str:
         return GITHUB_HOST if cli == "gh" else self.gitlab_host
@@ -487,11 +510,11 @@ class _Call:
             if verb == "create" and ref["kind"] != wanted:
                 continue
             found.append(ref)
+        if verb == "create":
+            found = [r for r in found if r["url"] not in self.claimed][:1]
+            self.claimed.update(r["url"] for r in found)
         if found:
-            return _with_origin(
-                found[:1] if verb == "create" else found,
-                "created" if verb == "create" else "acted",
-            )
+            return _with_origin(found, "created" if verb == "create" else "acted")
         # Silent success in the one unambiguous shape: `<verb> N -R repo`, in
         # a call without any heredoc (an unclosed one hides its extent).
         if (
@@ -508,35 +531,62 @@ class _Call:
             ]
         return None
 
+    def _endpoint_target(self, cli: str, segment: str) -> list[dict[str, Any]] | None:
+        path = (GH_API_PATH_RE if cli == "gh" else GLAB_API_PATH_RE).search(segment)
+        if not path:
+            return None
+        project = path["project"] if cli == "gh" else unquote_url(path["project"])
+        kind = {"pulls": "pull", "issues": "issue"}.get(path["kind"], path["kind"])
+        named = HOSTNAME_RE.search(segment)
+        host = named["host"] if named and cli == "glab" else self.host(cli)
+        return [
+            dict(artefact(host, project, kind, int(path["number"])), origin="acted")
+        ]
+
+    def _created_by_path(self, cli: str, segment: str) -> list[dict[str, Any]] | None:
+        create = (GH_API_CREATE_RE if cli == "gh" else GLAB_API_CREATE_RE).search(
+            segment
+        )
+        if not create:
+            return None
+        project = create["project"] if cli == "gh" else unquote_url(create["project"])
+        kind = {"pulls": "pull", "issues": "issue", "merge_requests": "merge_request"}[
+            create["kind"].lower()
+        ]
+        # A numeric GitLab project id names no path; the created URL does.
+        any_project = project.isdigit()
+        refs = [
+            r
+            for r, _, _ in _named_lines(self.result, cli, self.host(cli))
+            if r
+            and r["kind"] == kind
+            and (any_project or r["project"].lower() == project.lower())
+        ]
+        return _with_origin(refs[:1], "created")
+
     def api_targets(self, write: re.Match) -> list[dict[str, Any]] | None:
         """What a REST or GraphQL write wrote to; [] for an endpoint that is
         not a PR, MR or issue; None when unknown."""
         cli, segment = write["cli"], _segment(self.command, write)
-        path = (GH_API_PATH_RE if cli == "gh" else GLAB_API_PATH_RE).search(segment)
-        if path:
+        if _is_text(self.command, write):
+            return []  # a call written into a text, not run
+        endpoint = self._endpoint_target(cli, segment)
+        if endpoint is not None:
             # The endpoint names the target; the output of a merge or a label
             # change is JSON about something else, or nothing.
-            if self.failed:
-                return None
-            project = path["project"] if cli == "gh" else unquote_url(path["project"])
-            kind = {"pulls": "pull", "issues": "issue"}.get(path["kind"], path["kind"])
-            named = HOSTNAME_RE.search(segment)
-            host = named["host"] if named and cli == "glab" else self.host(cli)
-            return [
-                dict(artefact(host, project, kind, int(path["number"])), origin="acted")
-            ]
-        if cli == "glab" and GLAB_NUMERIC_PATH_RE.search(segment):
-            return None  # a numeric project id: no path to build a URL from
-        create = GH_API_CREATE_RE.search(segment) if cli == "gh" else None
-        if not create and "graphql" not in segment:
+            return None if self.failed else endpoint
+        created = self._created_by_path(cli, segment)
+        if created:
+            return created
+        if not PR_ENDPOINT_RE.search(segment) and "graphql" not in segment:
             return []  # an endpoint that is not about a PR, MR or issue
         refs = [r for r, _, _ in _named_lines(self.result, cli, self.host(cli)) if r]
-        if create:
-            refs = [
-                r for r in refs if r["project"].lower() == create["project"].lower()
-            ]
-            return _with_origin(refs[:1], "created") if refs else None
         return _with_origin(refs, "acted") if refs else None
+
+
+def _joined(command: str) -> str:
+    """Backslash-newline continuations joined, same length."""
+    return command.replace("\\\n", "  ")
 
 
 def _forge_write_artefacts(
@@ -550,6 +600,7 @@ def _forge_write_artefacts(
     target stays unknown is reported as unresolved, not guessed."""
     if refused(result, failed):
         return [], False
+    command = _joined(command)
     call = _Call(command, result, gitlab_host, failed)
     found: list[dict[str, Any]] = []
     unresolved = False
@@ -575,6 +626,7 @@ def jira_command_tickets(command: str, result: str, is_error: bool = False) -> s
     is not a call; a quoted path without spaces (`"$HOME/…/jira-issue.py"`) is."""
     if refused(result, is_error):
         return set()
+    command = _joined(command)
     found = set()
     for m in JIRA_COMMAND_RE.finditer(command):
         if _is_text(command, m):
@@ -585,11 +637,16 @@ def jira_command_tickets(command: str, result: str, is_error: bool = False) -> s
     return found
 
 
-def _mcp_write_artefacts(payload: dict[str, Any], result: str) -> list[dict[str, Any]]:
+def _mcp_write_artefacts(
+    payload: dict[str, Any], result: str, is_error: bool = False
+) -> list[dict[str, Any]]:
     """The PR/issue an MCP GitHub write addressed.
 
     The input's owner/repo/number is the identity when present; a create names
-    its result by the `html_url` field. A URL echoed from a body is neither."""
+    its result by the `html_url` field. A URL echoed from a body is neither.
+    A call the harness refused, or one that failed, wrote nothing."""
+    if is_error:
+        return []
     owner, repo = payload.get("owner"), payload.get("repo")
     number = payload.get("pullNumber") or payload.get("issue_number")
     if isinstance(owner, str) and isinstance(repo, str) and str(number or "").isdigit():
@@ -675,7 +732,9 @@ class _ArtefactScan:
                 command, result, bool(block.get("is_error"))
             )
         elif MCP_WRITE_RE.search(name):
-            self.keep(_mcp_write_artefacts(payload, result))
+            self.keep(
+                _mcp_write_artefacts(payload, result, bool(block.get("is_error")))
+            )
         self.mention(result)
 
     def event(self, event: dict[str, Any]) -> None:
