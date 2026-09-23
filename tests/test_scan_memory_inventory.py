@@ -144,6 +144,62 @@ class ScanTest(unittest.TestCase):
         self.assertEqual(f["pending_state"], ["until then"])
         self.assertFalse(f["pending_state_in_index"])
 
+    def test_mechanism_vocabulary_is_not_a_pending_claim(self):
+        # Every line below comes from a real note that the first version of
+        # the pattern flagged, and none of them claims that something is open
+        # now: a merge state, a resolver rule, a block type, a CHANGELOG
+        # heading, a past event, an exit code. `blocked`/`blocks` alone gave
+        # about fifteen such hits and not one pending claim.
+        for line in (
+            "The merge gate refuses whenever mergeState=BLOCKED.",
+            "4 is ELTS, so composer blocks ^12.",
+            "The relaunch is built on content-blocks.",
+            "The CHANGELOG [Unreleased] section covers every merged PR.",
+            "Emergency hot-deploy of merged-but-unreleased fixes.",
+            "Exit 2 is changes pending, exit 1 is an error.",
+        ):
+            with self.subTest(line=line):
+                _write(
+                    self.memory,
+                    "reference_x.md",
+                    "---\nname: x\ndescription: A mechanism.\n"
+                    f"metadata:\n  type: reference\n---\n\n{line}\n",
+                )
+                f = _run_scan(memory_root=self.root)["json"]["findings"][0]
+                self.assertEqual(f["pending_state"], [])
+
+    def test_german_state_words_are_pending_claims(self):
+        # 125 of 335 notes on the measured store are German, and the first
+        # pattern saw none of them. These two lines are from real project
+        # notes whose state was genuinely open.
+        for line, phrase in (
+            ("Pipeline grün, Merge noch nicht freigegeben.", "noch nicht"),
+            ("Entfernen steht aus (Prod-Eingriff, Freigabe offen).", "steht aus"),
+        ):
+            with self.subTest(line=line):
+                _write(
+                    self.memory,
+                    "project_x.md",
+                    "---\nname: x\ndescription: Stand der Initiative.\n"
+                    f"metadata:\n  type: project\n---\n\n{line}\n",
+                )
+                f = _run_scan(memory_root=self.root)["json"]["findings"][0]
+                self.assertIn(phrase, f["pending_state"])
+
+    def test_feedback_note_is_not_examined_for_pending_state(self):
+        # A rule speaks in conditionals, and "still open" inside a rule is not a
+        # claim that something is open now. Feedback notes carried most of the
+        # noise in both languages.
+        _write(
+            self.memory,
+            "feedback_y.md",
+            "---\nname: y\ndescription: A PR that is still open is not merged.\n"
+            "metadata:\n  type: feedback\n---\n\nNot yet merged means not shipped.\n",
+        )
+        f = _run_scan(memory_root=self.root)["json"]["findings"][0]
+        self.assertEqual(f["pending_state"], [])
+        self.assertFalse(f["pending_state_in_index"])
+
     def test_settled_note_carries_no_pending_state(self):
         # Guards precision: an ordinary lesson must not be flagged, or the
         # re-verify list becomes the whole store and is ignored.

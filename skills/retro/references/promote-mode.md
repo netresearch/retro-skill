@@ -123,11 +123,18 @@ Two checks run at Phase 7, before a note enters a proposal:
   enters a proposal, and know which of two kinds of claim it makes:
   - **Existence** — a path, flag, endpoint or version. Check that it still
     exists.
-  - **State** — something is blocked, unreleased, pending, waiting *until*
-    something happens. This kind turns false the moment the thing happens,
-    without a word of the note changing, and an existence check passes it. The
-    scanner marks these: `pending_state` lists the phrases, and
+  - **State** — something is still open, not yet done, unreleased, waiting on
+    someone. This kind turns false the moment the thing happens, without a
+    word of the note changing, and an existence check passes it. The scanner
+    marks these in English and German (`noch nicht`, `steht aus`, `noch
+    offen`, …): `pending_state` lists the phrases, and
     `pending_state_in_index` is true when one sits in the description.
+
+    The flag is a reason to look, not a verdict. It skips `feedback` notes,
+    because a rule speaks in conditionals and "still open" inside a rule is
+    not a claim that something is open now. And it deliberately does not
+    match `blocked`: on a real store that word never once marked a pending
+    claim — it named merge states, status enums and resolver behaviour.
 
   Check the **description first**. It is the line `MEMORY.md` carries, loaded
   into every session, while the body is read only on demand — so a stale state
