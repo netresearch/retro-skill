@@ -47,8 +47,11 @@ approval.
    transcript is located **by content** — a token from this session — never by
    mtime: several sessions share one project slug, so the newest JSONL is
    regularly somebody else's. Invocation in `references/workflow.md`.
+   Then `${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py` on the same
+   transcript: review threads, bot reviews, and comments on the session's
+   PRs/MRs, their linked issues and Jira tickets (input for B18–B20, D4, D6).
 2. LLM enrichment — inferential signals, both classes (friction + learnings
-   B16–B18); filter false positives.
+   B16–B20); filter false positives.
 3. Cross-session enrichment (optional) — JSONL scan via `${CLAUDE_SKILL_DIR}/scripts/scan-cross-session.py`.
 4. Discover skills — `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py` — and the repo's harness (`project-harness-inspection.md`).
 5. Classify (`classification-heuristic.md`) — authority first, then broadest
@@ -81,7 +84,7 @@ processes or worktrees.
 
 | File | Purpose |
 |---|---|
-| `references/friction-catalog.md` | All signals: friction + learnings (A/B/C, B16–B18) |
+| `references/friction-catalog.md` | All signals: friction + learnings (A/B/C, B16–B20) |
 | `references/destination-taxonomy.md` | The seven destinations |
 | `references/classification-heuristic.md` | Friction → destination mapping |
 | `references/skill-discovery.md` | Finding skills at runtime |

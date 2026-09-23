@@ -25,7 +25,7 @@ should be codified so future generated code follows it (see
 [`../references/friction-catalog.md`](../references/friction-catalog.md) D11 and
 the "good OR bad" framing of Schicht D).
 
-The discriminator is the same generalizability filter as B16–B18 — *"would a
+The discriminator is the same generalizability filter as B16–B20 — *"would a
 future agent re-derive this, and does a skill already say it?"* — plus a
 durability gate unique to outcome mode: a commit is a hypothesis at commit time
 and becomes codifiable only once latency confirms it survived. A local one-off

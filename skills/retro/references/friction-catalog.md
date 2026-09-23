@@ -6,29 +6,29 @@ analysis.
 
 Despite the name, this catalog covers **two classes**: *friction* (things that
 went wrong) and *reusable learnings* (knowledge that went right but is not
-captured anywhere — Schicht B, signals B16–B18). Both are first-class retro
+captured anywhere — Schicht B, signals B16–B20). Both are first-class retro
 findings; a signal-free stretch of a session can still carry a learning worth
 propagating.
 
 ## Scope and honest limitations
 
-This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, and cross-session JSONL data.
+This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, cross-session JSONL data, and the feedback written on the session's PRs, MRs, linked issues and Jira tickets (`collect-review-findings.py`, see [Feedback from outside the transcript](#feedback-from-outside-the-transcript)).
 
 **It does NOT detect:**
 - Architectural choices that are wrong but "work" (no friction signal)
-- External feedback the agent never saw (production alerts, customer complaints, Slack/Jira mentions)
+- External feedback outside forge and tracker (production alerts, customer complaints, Slack/Matrix mentions)
 - Slow constitutional drift unless `/retro audit` mode is run with sufficient history
 
-External-feedback ingestion (Sentry, Jira, monitoring) is out of v0.1 scope — see "Future directions" at the bottom.
+Ingestion of error trackers, monitoring and chat is out of scope — see "Future directions" at the bottom.
 
 ## Implementation status (v0.1.1)
 
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
 | A — Mechanical | 18 | 18 (all of A1–A18) |
-| B — LLM inference | 18 | LLM-driven (no separate code); B16–B18 are reusable-learning signals |
+| B — LLM inference | 20 | LLM-driven; B16–B20 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py` |
 | C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
-| D — Outcome | 12 | Planned for v0.1.x; D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
+| D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
 
 Schicht A is feature-complete. See `references/destination-taxonomy.md` for what each signal class routes to.
@@ -82,7 +82,7 @@ Requires conversational context understanding. The LLM reads pre-pass output + r
 | B14 | Doc drift | Assistant used outdated API/library version when context7 would have helped |
 | B15 | Skill trigger-coverage gap | A **systematic** pass (not opportunistic): load *every* installed skill's `description` via `${CLAUDE_SKILL_DIR}/scripts/find-installed-skills.sh`, then judge — given what this session actually did — which skills *should* have triggered but were never invoked. Each miss whose root cause is weak/missing trigger words → `skill-update` to that skill's `description`. (B2/B4 are the opportunistic, single-skill version; B15 is the exhaustive sweep across the whole inventory. See the trigger-coverage step in `SKILL.md`.) |
 
-### Reusable-learning signals (B16–B18) — scan even when nothing went wrong
+### Reusable-learning signals (B16–B20) — scan even when nothing went wrong
 
 These are **positive** signals: the session produced knowledge worth propagating,
 with **no** friction to trigger it. The mechanical pre-pass cannot see them (there
@@ -102,6 +102,106 @@ only a reference plus the agent-specific delta.
 | B16 | Hard-won technique | A non-obvious command / flag / endpoint / API / workflow the session figured out — even cleanly and first-try — that is NOT in the owning skill. Root cause: real digging was needed. → `skill-update` |
 | B17 | Proactive improvement | A better approach identified *during* the work (not prompted by a correction) — a cleaner pattern, a faster tool, a simpler structure worth codifying. → `skill-update` |
 | B18 | Review-issue learning | A generalizable lesson from a code-review comment (given OR received) — a reviewer taught a rule that applies beyond the current diff. → `skill-update` (or `project-rule` if genuinely repo-specific) |
+| B19 | Escaped defect | A finding the session's own checks did not catch before the push: a review thread resolved by a later commit (`resolved` plus `commit_after`), a `CHANGES_REQUESTED` review, a failed quality gate, a ticket sent back from QA (`ticket-transition`). The learning is the missing check, not the fix. Ask which check would have caught it before the push, and route there: the skill that owns that check, a hook, or an eval stub. → `skill-update` (or a gate) |
+| B20 | Maintainer request | A human reviewer, maintainer or ticket owner states how work is done here — "please always link the ticket", "agree on rollouts across projects first". A convention the agent did not know, not a defect. → `project-rule` in the repo's `AGENTS.md` when it is about one repository; `skill-update` when it is a team convention across repositories |
+
+### Feedback from outside the transcript
+
+B18–B20 fire only on feedback somebody wrote down, and most of it never enters
+the transcript: a bot review nobody opened, a thread answered after the session
+ended, a team that does its acceptance in the ticket instead of the PR. Run the
+pre-pass before judging them:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" \
+    --transcript-file <session.jsonl> [--output-format json]
+```
+
+It reads every PR, MR and issue the session created or wrote to through `gh`,
+`glab` (subcommands and `api`), the GitHub MCP tools, or git-workflow's
+`pr-merge.sh`. A write counts when its **output reports** the target, never
+from the command text alone: a report line is a URL alone on its line, a JSON
+`html_url`/`web_url`, a CLI status line (`✓ …`, `- Creating issue in …`)
+naming a URL, `owner/repo#N` or `#N`, or `pr-merge.sh`'s own `merged`,
+`queued` and attestation lines. A link inside a PR body, a JSON answer or an
+error message is running text and does not count. Each write takes only its
+own number and its own `-R`; a bare `#N` needs that `-R`; several creates in
+one call take one URL each, a create in a `for`/`while` loop takes every URL
+of its kind, and a create never takes a URL a numbered write in the same call
+reported. A REST write on a literal PR/MR/issue endpoint counts by the
+endpoint, and claims the URL it prints itself (a JSON `html_url` line, or the
+line `--jq .html_url` prints), matched by repository and number, so
+`issues/5` of a PR claims the `pull/5` URL; a create, a variable (also a
+whole endpoint held in one) or a
+numeric project id in the path counts by the output's report line of that
+path's kind and number, or stays unresolved; a REST write on any other
+endpoint (code scanning, workflow runs) does not count at all. Continued lines
+(`\` + newline) are one command. A write inside a heredoc or quoted text,
+`pr-merge.sh` included, is never attributed; a `$(…)` command substitution
+inside double quotes (`echo "#5: $(gh pr merge …)"`) runs, only the text
+around it is text; inside it the quoting starts afresh, and an escaped
+`\$(` is text. Whenever a call that writes to a PR, MR or issue names a
+target no write claimed — a report line, or any URL when a heredoc script may
+have printed it — the call is listed as unresolved, so every write through
+these tools ends attributed, unresolved or refused, never silently gone. A
+call the harness refused (`is_error` without `Exit code N`) ran nothing. A
+successful write that prints nothing counts only as `<verb> <number> -R <repo>`
+outside any heredoc or quoted text. Output that reports a failure is not a
+success: an `HTTP 4xx/5xx`, glab's `422 {message: …}`, a JSON error body
+with `"status":"405"` or `}gh: …` behind it, `GraphQL:` at a
+line start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`,
+`failed to` or `Cannot perform`, or a background run (a Bash call sent or
+moved to the background, a Monitor), whose output is not in the result at
+all; and a write whose own `&& echo A || echo B` printed B and not A. MCP writes count by their input. A `-R` with a scheme and a
+host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
+`bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
+dotted first segment is a GitLab group. Writes through other tools — `curl`
+against a forge API, a script run in a later call, a script file the call did
+not write itself — are not seen at all; name them by hand. A call that holds
+a write in text (a heredoc, a quoted string, or a list-form call such as
+`["gh", "pr", …]`) and also runs a program it carries is unresolved, whether
+or not that program writes: a shell given its program (`bash <<…`,
+`bash -lc '…'`); another interpreter's heredoc or inline program
+(`python3 - <<…`, `python3 -c '…'`, `node -e '…'`) with a process call such
+as `subprocess`; or a script file the call writes from a heredoc
+(`cat > x.sh <<…`, `cat >> x.sh <<…`, `cat <<… > x.sh`, `tee x.sh <<…`,
+`cat <<… | tee x.sh`) and names again later, in any
+form (`./x.sh`, `bash -x x.sh`, `timeout 60 x.sh`). A script file is one with
+a script suffix, no suffix, or a `#!` line. This errs towards unresolved: a
+script that only reads is listed too, a lost write is not possible. A
+`python3 -c` without a process call, such as a JSON parser on a pipe, and a
+body file (`cat > pr.md <<…` then `--body-file pr.md`) change nothing.
+`--dry-run` stops only the `pr-merge.sh` command it is given to. A status
+line `! … #N is already …` means the write to `#N` found nothing to do.
+It follows each one's linked issues (closing references,
+issue URLs in the description) and the Jira key at the start of its title or in
+a branch segment one level, plus the tickets the session ran a jira script
+against or booked time on, and lists every comment by somebody else — each
+answer inside a thread as its own `review-reply`. Jira goes through the
+`jira-communication` skill's `jira-issue.py`; without that skill a ticket is
+listed as not read. GitLab is read only on the hosts given with `--gitlab-host`
+(default `$GITLAB_HOST`, else `gitlab.com`), because `glab` sends its token to any host it is
+pointed at. The text output trims bodies; read a finding in full from
+`--output-format json` before classifying it. Each finding carries:
+
+| Field | Meaning |
+|---|---|
+| `source` | `review-thread`, `review-reply` (an answer by somebody else inside a thread, with `thread`, `path`, `resolved`; the opening bot's own follow-ups are not listed), `review`, `pr-comment`, `mr-comment`, `issue-comment`, `ticket-comment`, `ticket-transition` |
+| `author_class` | `human`, `bot`, `self`. `self` is the account running the script plus `--self-login`; in Outcome mode run by another account, pass the session's login. The agent's own comments and replies are counted, not listed; in a thread it opened, the answers by others are listed as `review-reply` |
+| `report` | a bot's comment on the whole PR/MR (quality gate, coverage, summary), or a bot review that says it did not review (quota, rate limit); rendered apart from the findings. Any other bot review is a finding: its body can carry findings outside the diff. Bot approvals, also those GitHub dismissed on a later push, are not listed |
+| `resolved` | the forge's thread state, where it has one |
+| `commit_after` | the first PR/MR commit dated after the finding. A necessary sign that the finding changed the code, not proof: any later commit qualifies, and a rebase re-dates them all. Read it with `resolved` and `last_self_reply` |
+| `last_self_reply` | the agent's last answer in the thread — the reason, when it rejected the finding. A later `review-reply` by a human can overturn it |
+| `last_activity` | the latest entry in the thread; `--since` keeps a thread whose latest entry is at or after it |
+
+Read the `NOT READ` and `UNRESOLVED` lines first: an artefact that could not be
+read, and a write whose target the transcript does not name, are unknowns, not
+artefacts without findings. A `NO SUCH` line is a key-shaped name Jira does
+not know (`TYPO3-14` in a branch) — an answer, not a read failure. A finding answered and followed by no commit was
+rejected; when a bot's findings are rejected again and again, the learning is
+the reviewer's configuration in that repository (`project-rule`), not the
+agent's work. At session end many reviews have not arrived yet — Outcome mode
+(D4, D6) runs the same script later.
 
 ## Schicht C — Cross-Session
 
@@ -144,9 +244,9 @@ sweep was friction-only, outcome was failure-only.)
 | D1 | Session commit reverted | `git log --grep="revert" + ($commit_sha within revert body)` | Output was wrong |
 | D2 | Session commit superseded | Same file touched again within 7 days, diff shows substantial revert of session's changes | Output unfinished or wrong direction |
 | D3 | Session PR closed without merge | `gh pr view --json closedAt,merged,state` shows closed, not merged | Output rejected |
-| D4 | Session PR required major changes | `gh pr view --json reviews` has CHANGES_REQUESTED with substantive review body | Output below standard |
+| D4 | Session PR required major changes | `collect-review-findings.py` lists human or bot review threads and replies, or findings with `commit_after` — GitHub and GitLab — or a `CHANGES_REQUESTED` review (GitHub; GitLab approvals are not read) | Output below standard; each finding is a B19 candidate |
 | D5 | CI failed on session commit | `gh run list --commit $sha --json conclusion` | Output was broken |
-| D6 | Issue filed referencing session files | `gh issue list --search "filename after:$session_date"` | Output caused a bug |
+| D6 | Issue or ticket feedback after the session | `collect-review-findings.py --since <session end>`: comments and status changes on the linked issues and Jira tickets; plus `gh issue list --search "filename after:$session_date"` for issues that link nothing | Output caused a bug, or the acceptance happened in the ticket |
 | D7 | Follow-up session detected | Schicht C5 cross-referenced from outcome perspective | Session output didn't last |
 | D8 | Regression in test suite | Test that passed at session end now fails on a later commit | Output regressed |
 | D9 | Code reverted in same file within 30 days | Diff-based: session's net contribution to file is largely undone | Output not durable |
@@ -182,7 +282,7 @@ and is in fact the finish line waiting on a cutover.
 - Session is too recent (< 24h) — most D signals haven't had time to manifest
 - Session was a refactor or doc-only change — D2/D9 fire spuriously
 - Working on a long-lived feature branch — `git log --grep="revert"` is noisy
-- Change is **local / specific with no transferable approach** — D11 must NOT fire; codifying a one-off is exactly the noise the generalizability filter exists to stop (see B16–B18: "would a future agent re-derive this?")
+- Change is **local / specific with no transferable approach** — D11 must NOT fire; codifying a one-off is exactly the noise the generalizability filter exists to stop (see B16–B20: "would a future agent re-derive this?")
 - A PR/MR is **open and stale** — that is not a D-signal at all; see [Stale-open is not an outcome](#stale-open-is-not-an-outcome) above before proposing to close it
 
 D mode is best for **monthly retros over a 30-day window**, not real-time.
@@ -207,7 +307,7 @@ E mode is best for **monthly or quarterly reviews**, with tech-lead-level actor 
 External-feedback ingestion would extend the catalog significantly:
 
 - **Sentry / error tracker integration** — production crashes correlated to session-touched files
-- **Jira / Linear bug filings** — tickets mentioning session output
+- **Jira / Linear bug filings not linked from the session's PRs** — `collect-review-findings.py` reads the tickets a PR/MR names; a ticket that mentions session output without being linked is not found
 - **Slack / Matrix mentions** — customer/team feedback referencing session commits
 - **PagerDuty / OnCall** — production incidents correlated to session output
 - **Documentation drift detection** — docs changed but corresponding code didn't (or vice versa)

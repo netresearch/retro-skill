@@ -46,6 +46,26 @@ procedure, its guards and the reasons behind them are in
 
 Output is a structured list of candidate findings. Read this before scanning the transcript yourself — it saves tokens.
 
+## Phase 1b: Review and Ticket Feedback
+
+Read what reviewers, bots and ticket owners wrote about the session's work —
+most of it never entered the transcript:
+
+```bash
+python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/collect-review-findings.py \
+  --transcript-file <the transcript confirmed in Phase 1>
+```
+
+It reads the PRs, MRs and issues the session created or wrote to, their linked
+issues, the Jira tickets named at the start of their titles or in a branch
+segment, and the tickets the session ran a jira script against. Bodies are
+trimmed in text; read a finding in full from `--output-format json` before
+classifying it. A GitLab host other than `--gitlab-host` is not contacted. Treat `NOT READ`
+and `UNRESOLVED` lines as unknown, never as "no findings": an `UNRESOLVED` line
+is a write whose target the transcript does not name — read the command and add
+the PR, MR or issue it wrote to by hand. Field meanings and how to read them:
+`skills/retro/references/friction-catalog.md` § Feedback from outside the transcript.
+
 ## Phase 2: LLM Enrichment
 
 For each pre-pass candidate, validate against the conversational context. Add
@@ -75,6 +95,13 @@ or they are lost. A clean session still owes these findings.
 - **Review-issue learning (B18):** a generalizable lesson from a code-review
   comment (given OR received) — a reviewer taught a rule that applies beyond this
   diff. → `skill-update` (or `project-rule` if repo-specific).
+- **Escaped defect (B19):** a Phase 1b finding the session's own checks did not
+  catch before the push — a thread resolved by a later commit, a failed gate, a
+  ticket sent back from QA. Ask which check would have caught it, and route the
+  learning to that check. → `skill-update` (or a gate).
+- **Maintainer request (B20):** a human states how work is done in this
+  repository or team. → `project-rule` (the repo's `AGENTS.md`), or
+  `skill-update` for a cross-repository convention.
 
 For each learning ask: **"Would a future agent re-derive this, and does an
 existing skill already say it?"** If re-derivable and not covered → it is a
@@ -154,7 +181,7 @@ Group proposals by destination. Show ≤10 items, ranked by severity (see
 
 **Do not let friction crowd out learnings.** When more than 10 candidates exist
 and the list is trimmed to fit, reserve slots so the top reusable-learning
-findings (B16–B18) survive — a friction-free learning is graded *at least*
+findings (B16–B20) survive — a friction-free learning is graded *at least*
 `important`, never auto-`nice-to-have`, precisely so it is not the first thing
 dropped. A retro that returns 10 friction items and zero learnings on a session
 that produced learnings has failed its second class.
@@ -241,10 +268,10 @@ Steps:
 
 - Skip Phases 1 and 2 (the session is in the past; mechanical pre-pass on a stale transcript is low value)
 - Phase 3 runs against the target session(s)
-- **Phase 3b is the primary detection step:** walk forward from session end with `git log`, `gh pr view`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the failures, the durable successes, and superseded temporary copies (D12: a tracked canonical-source upstream PR merged → propose pruning the skill's labelled copy).
+- **Phase 3b is the primary detection step:** walk forward from session end with `collect-review-findings.py --transcript-file <past session> --since <session end>` (reviews, issue and ticket feedback that arrived later, GitHub and GitLab), `git log`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the failures, the durable successes, and superseded temporary copies (D12: a tracked canonical-source upstream PR merged → propose pruning the skill's labelled copy).
 - Phase 3c may also fire if the window is large
 - Phases 4–10 proceed; destinations skew toward `skill-update` — the skill should learn both what to avoid (D1–D10) and what to codify (D11) — and `personal-rule` for personal patterns
-- Guard D11 with the same generalizability filter as B16–B18: a local, one-off change that merged cleanly is **not** a learning; codifying it is noise
+- Guard D11 with the same generalizability filter as B16–B20: a local, one-off change that merged cleanly is **not** a learning; codifying it is noise
 
 Requires latency. Don't run within 24h of the session — most D signals (including D11's "survived the window") haven't manifested yet.
 
