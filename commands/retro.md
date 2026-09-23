@@ -61,7 +61,9 @@ issues, the Jira tickets named at the start of their titles or in a branch
 segment, and the tickets the session ran a jira script against. Bodies are
 trimmed in text; read a finding in full from `--output-format json` before
 classifying it. A GitLab host other than `--gitlab-host` is not contacted. Treat `NOT READ`
-lines as unknown, never as "no findings". Field meanings and how to read them:
+and `UNRESOLVED` lines as unknown, never as "no findings": an `UNRESOLVED` line
+is a write whose target the transcript does not name — read the command and add
+the PR, MR or issue it wrote to by hand. Field meanings and how to read them:
 `skills/retro/references/friction-catalog.md` § Feedback from outside the transcript.
 
 ## Phase 2: LLM Enrichment

@@ -1084,6 +1084,25 @@ def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
         for a in read
         if a.get("truncated")
     ]
+    return lines + _unresolved_lines(result.get("unresolved_forge_commands") or [])
+
+
+# How many unresolved writes the text rendering shows; the JSON has all.
+TEXT_UNRESOLVED_LIMIT = 20
+
+
+def _unresolved_lines(commands: list[str]) -> list[str]:
+    """Forge writes whose target the transcript does not name: unknown, never
+    "nothing written". Each is a command to read before the retro is complete."""
+    lines = [
+        "UNRESOLVED " + " ".join(c.split())[:160]
+        for c in commands[:TEXT_UNRESOLVED_LIMIT]
+    ]
+    if len(commands) > TEXT_UNRESOLVED_LIMIT:
+        lines.append(
+            f"UNRESOLVED … {len(commands) - TEXT_UNRESOLVED_LIMIT} more;"
+            " --output-format json has all"
+        )
     return lines
 
 
@@ -1147,10 +1166,11 @@ def gitlab_hosts_from(named: list[str], env: str | None) -> tuple[str, ...]:
 
 
 def _items_from_args(args, gitlab_host: str):
-    """The artefacts to read, how many mentioned ones were skipped, and the
-    transcript's start. Raises ValueError on a bad transcript path or ref."""
+    """The artefacts to read, how many mentioned ones were skipped, the
+    transcript's start, and the forge writes whose target it does not name.
+    Raises ValueError on a bad transcript path or ref."""
     items: list[dict[str, Any]] = []
-    mentioned_skipped, start = 0, None
+    mentioned_skipped, start, unresolved = 0, None, []
     if args.transcript_file:
         if not args.transcript_file.is_file():
             raise ValueError(f"no such transcript: {args.transcript_file}")
@@ -1161,12 +1181,13 @@ def _items_from_args(args, gitlab_host: str):
                 1 for a in data["artefacts"] if a["origin"] == "mentioned"
             )
         start = transcript_start(args.transcript_file)
+        unresolved = data["unresolved_forge_commands"]
     for ref in args.ref:
         item = parse_ref(ref)
         if item is None:
             raise ValueError(f"not a PR/MR/issue URL or Jira key: {ref}")
         items.append(item)
-    return items, mentioned_skipped, start
+    return items, mentioned_skipped, start, unresolved
 
 
 def main(argv: list[str]) -> int:
@@ -1205,7 +1226,9 @@ def main(argv: list[str]) -> int:
         parser.error(f"--since is not an ISO 8601 time: {args.since}")
     gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
     try:
-        items, mentioned_skipped, start = _items_from_args(args, gitlab_hosts[0])
+        items, mentioned_skipped, start, unresolved = _items_from_args(
+            args, gitlab_hosts[0]
+        )
     except ValueError as exc:
         print(exc, file=sys.stderr)
         return 2
@@ -1219,6 +1242,7 @@ def main(argv: list[str]) -> int:
         jira_browse=args.jira_browse,
         gitlab_hosts=gitlab_hosts,
     )
+    result["unresolved_forge_commands"] = unresolved
     if args.output_format == "json":
         print(json.dumps(result, indent=2, default=str))
     else:

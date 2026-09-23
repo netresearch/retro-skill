@@ -1492,6 +1492,169 @@ class SeventhRoundTest(unittest.TestCase):
         self.assertEqual(len(urls), 2)
 
 
+class EighthRoundTest(unittest.TestCase):
+    """Inputs from the eighth review round (190e282) and CodeRabbit on it."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_nested_repository_is_kept_whole(self):
+        cmd = "glab mr merge 73 -R support/typo3-11/app --yes"
+        printed = "✓ Merged!\nhttps://git.example.org/support/typo3-11/app/-/merge_requests/73"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(
+            urls,
+            {
+                "https://git.example.org/support/typo3-11/app/-/merge_requests/73": "acted"
+            },
+        )
+        silent, _ = self.urls(
+            [({"command": "glab mr note 5 -R group/sub/app -m x"}, "")]
+        )
+        self.assertEqual(
+            silent,
+            {"https://git.example.org/group/sub/app/-/merge_requests/5": "acted"},
+        )
+
+    def test_a_host_in_the_repository_is_the_host(self):
+        cmd = "glab mr merge 4 -R git.example.org/ci-components/board --yes"
+        printed = "https://git.example.org/ci-components/board/-/merge_requests/4"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {printed: "acted"})
+        gh, _ = self.urls(
+            [({"command": "gh pr merge 9 -R github.com/o/r --merge"}, "")]
+        )
+        self.assertEqual(gh, {"https://github.com/o/r/pull/9": "acted"})
+
+    def test_no_guess_when_the_output_names_the_number_elsewhere(self):
+        cmd = "glab mr merge 73 -R g/p --yes"
+        printed = "https://git.example.org/other/proj/-/merge_requests/73"
+        urls, data = self.urls([({"command": cmd}, printed)])
+        self.assertNotIn("https://git.example.org/g/p/-/merge_requests/73", urls)
+        self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+
+    def test_a_heredoc_script_the_call_runs_is_unresolved(self):
+        for cmd in (
+            'cat > "$S/mr.sh" <<\'EOF\'\nglab api "projects/$g%2Fboard/merge_requests/$iid/merge" -X PUT\nEOF\nbash "$S/mr.sh"',
+            'python3 - <<\'PY\'\nimport subprocess\nsubprocess.run(["gh", "pr", "create", "--fill"])\nPY',
+            "cat > $S/m.sh <<'EOF'\ngh pr merge 3 -R x/y\nEOF\nchmod +x $S/m.sh; $S/m.sh",
+        ):
+            with self.subTest(cmd=cmd[:30]):
+                urls, data = self.urls([({"command": cmd}, "netresearch!36: merged")])
+                self.assertEqual(
+                    (urls, len(data["unresolved_forge_commands"])), ({}, 1)
+                )
+
+    def test_a_heredoc_written_only_as_a_document_is_not_unresolved(self):
+        urls, data = self.urls(
+            [({"command": "cat > doc.md <<'EOF'\nRun gh pr merge 3 -R x/y\nEOF"}, "")]
+        )
+        self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+
+    def test_get_inside_a_quoted_body_is_text(self):
+        cmd = (
+            "gh api graphql -f query='mutation($t:ID!,$b:String!){addPullRequestReviewThreadReply("
+            "input:{pullRequestReviewThreadId:$t,body:$b}){comment{url}}}' -F t=X"
+            " -f b='use -X GET for reads'"
+        )
+        urls, _ = self.urls(
+            [({"command": cmd}, "https://github.com/o/r/pull/124#discussion_r1")]
+        )
+        self.assertEqual(urls, {"https://github.com/o/r/pull/124": "acted"})
+
+    def test_a_rest_edit_before_a_create_keeps_its_url(self):
+        cmd = "gh api -X PATCH repos/o/r/pulls/92 -f body=x; gh pr create -R o/r --fill"
+        printed = '{"html_url":"https://github.com/o/r/pull/92"}\nhttps://github.com/o/r/pull/97'
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(
+            urls,
+            {
+                "https://github.com/o/r/pull/92": "acted",
+                "https://github.com/o/r/pull/97": "created",
+            },
+        )
+
+    def test_c_style_and_substitution_loops(self):
+        for cmd in (
+            "for ((i=1;i<=2;i++)); do gh pr create -R o/r --fill; done",
+            "for r in $(echo a; echo b); do gh pr create -R o/r --fill; done",
+        ):
+            with self.subTest(cmd=cmd[:20]):
+                printed = "https://github.com/o/r/pull/1\nhttps://github.com/o/r/pull/2"
+                urls, _ = self.urls([({"command": cmd}, printed)])
+                self.assertEqual(set(urls.values()), {"created"})
+
+    def test_already_queued_is_not_a_write(self):
+        cmd = "gh pr merge 803 -R o/r --merge"
+        urls, data = self.urls(
+            [({"command": cmd}, "! Pull request o/r#803 is already queued to merge")]
+        )
+        self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+        # The line names only its own PR: the other merge in the call stands.
+        cmd = "gh pr merge 803 -R o/r --merge; gh pr merge 9 -R o/r --merge"
+        printed = "! Pull request o/r#803 is already queued to merge\n✓ Merged pull request o/r#9"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/9": "acted"})
+
+    def test_a_create_keeps_its_url_when_a_rest_call_names_it_too(self):
+        cmd = (
+            "gh pr create -R o/r --fill; gh api repos/o/r/pulls/164/requested_reviewers"
+            " -X POST -f 'reviewers[]=x' --silent"
+        )
+        urls, data = self.urls([({"command": cmd}, "https://github.com/o/r/pull/164")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/164": "created"})
+        self.assertEqual(data["unresolved_forge_commands"], [])
+
+    def test_a_heredoc_that_cannot_run_a_command_is_text(self):
+        for cmd in (
+            (
+                "python3 - <<'PY'\nbody = 'Run gh pr merge 3 -R x/y first.'\n"
+                "open('b.md', 'w').write(body)\nPY"
+            ),
+            "cat > bump.sh <<'EOS'\ngh pr merge 3 -R x/y\nEOS",
+            "cat > b.md <<'EOF'\nbash b.md\ngh pr merge 3 -R x/y\nEOF\ngrep -c . b.md",
+        ):
+            with self.subTest(cmd=cmd[:20]):
+                urls, data = self.urls([({"command": cmd}, "")])
+                self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+
+    def test_a_dry_run_of_the_wrapper_writes_nothing(self):
+        urls, data = self.urls(
+            [({"command": "pr-merge.sh -R o/r 5 --dry-run"}, "gh pr merge 5 --merge")]
+        )
+        self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+
+    def test_more_mcp_writes(self):
+        payload = {
+            "__name": "mcp__github__sub_issue_write",
+            "owner": "o",
+            "repo": "r",
+            "issue_number": 3,
+        }
+        urls, _ = self.urls([(payload, "ok")])
+        self.assertEqual(urls, {"https://github.com/o/r/issues/3": "acted"})
+
+
+class UnresolvedSurfacedTest(unittest.TestCase):
+    def test_the_collector_lists_unresolved_writes(self):
+        transcript = _transcript([({"command": "gh pr merge --merge"}, "")])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = crf.main(["x", "--transcript-file", str(transcript)])
+        self.assertEqual(code, 0)
+        self.assertIn("UNRESOLVED gh pr merge --merge", out.getvalue())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            crf.main(
+                ["x", "--transcript-file", str(transcript), "--output-format", "json"]
+            )
+        self.assertEqual(
+            json.loads(out.getvalue())["unresolved_forge_commands"],
+            ["gh pr merge --merge"],
+        )
+
+
 class MainTest(unittest.TestCase):
     def test_an_unparsable_since_is_an_error(self):
         with (

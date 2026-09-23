@@ -50,7 +50,8 @@ CD_RE = re.compile(
     r"(?:^|[;&|]\s*|\&\&\s*)cd\s+(?P<path>(?:\"[^\"]+\"|'[^']+'|[^\s;|&]+))"
 )
 FORGE_RE = re.compile(
-    r"(?:-R|--repo)[\s=]['\"]?(?P<slug>[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)['\"]?"
+    r"(?:-R|--repo)[\s=]['\"]?(?:https?://)?"
+    r"(?P<slug>[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+)['\"]?"
 )
 # Artefacts worth naming in the scope line.
 ARTEFACT_RE = re.compile(
@@ -124,7 +125,9 @@ FAILED_OUTPUT_RE = re.compile(
 # Matched on the command with heredoc bodies and quoted texts blanked, so a
 # `for` or a `done` inside a text neither opens nor closes one.
 LOOP_RE = re.compile(
-    r"\b(?:for|while|until)\b[^;\n]*(?:;|\n)\s*do\b(?P<body>.*?)\bdone\b", re.DOTALL
+    r"\b(?:for|while|until)\b(?:\(\([^)]*\)\)|\$\([^)]*\)|[^;\n])*(?:;|\n)\s*do\b"
+    r"(?P<body>.*?)\bdone\b",
+    re.DOTALL,
 )
 # A REST endpoint held in a variable: `gh api -X POST "$R/123/replies"`.
 VARIABLE_ENDPOINT_RE = re.compile(r"\bapi\b(?:\s+-\S+(?:\s+[^-\s]\S*)?)*\s+[\"']?\$")
@@ -162,11 +165,31 @@ PR_MERGE_REPORT_RE = re.compile(
 PR_MERGE_NO_WRITE_RE = re.compile(
     r"^pr-merge: (?:not merging|dry-run|.*#\d+ failed)", re.MULTILINE
 )
+# A heredoc the same call runs: fed to an interpreter (`python3 - <<'PY'`), or
+# written to a file (`cat > x.sh <<'EOF'`) that the call then executes.
+# A shell runs every line; another interpreter runs a command only through a
+# process call. `bump.sh <<` is a file name, not the interpreter `sh`.
+INTERPRETER_HEREDOC_RE = re.compile(
+    r"(?<![\w.-])(?:(?P<shell>bash|sh|zsh)|python3?|node|ruby|perl)(?![\w.-])"
+    r"[^\n|;&]*(?=<<)"
+)
+SPAWN_RE = re.compile(
+    r"\b(?:subprocess|os\.(?:system|popen|exec\w*)|child_process|execSync"
+    r"|spawnSync|Open3|system\s*\(|exec\s*\()"
+)
+# `! Pull request o/r#5 is already queued`: the write found nothing to do.
+ALREADY_RE = re.compile(r"^\s*!\s.*?[#!](?P<number>\d+)\b.*\balready\b", re.MULTILINE)
+HEREDOC_FILE_RE = re.compile(r"\bcat\s*>\s*(?P<file>\S+)[^\n]*<<")
+# A write in list form, as a script spells it: `subprocess.run(["gh", "pr", …])`.
+LIST_WRITE_RE = re.compile(
+    r"""\[\s*["'](?:gh|glab)["']\s*,\s*["'](?:pr|mr|issue|api)["']"""
+)
 # MCP tools that write to a PR or issue; their input names owner/repo/number.
 MCP_WRITE_RE = re.compile(
     r"github__(?:create_pull_request|update_pull_request|merge_pull_request|"
     r"pull_request_review_write|add_reply_to_pull_request_comment|"
-    r"add_comment_to_pending_review|issue_write|add_issue_comment|request_copilot_review)"
+    r"add_comment_to_pending_review|issue_write|add_issue_comment|request_copilot_review"
+    r"|sub_issue_write|assign_copilot_to_issue)"
 )
 # A Jira key a session acted on: the key on a command line that runs one of the
 # jira skill's scripts, or the `ticket` a time booking named. Prefixes that are
@@ -413,6 +436,8 @@ def _named_lines(
             continue
         if not STATUS_LINE_RE.match(line):
             continue
+        if line.lstrip().startswith("!") and "already" in line:
+            continue  # `! Pull request o/r#5 is already queued`: nothing written
         urls = artefacts_in_text(line)
         found += [(a, "", 0) for a in urls]
         if urls:
@@ -433,6 +458,14 @@ def _named_lines(
                 (None, m["sep"], int(m["number"])) for m in BARE_REF_RE.finditer(line)
             ]
     return found
+
+
+def _repo(slug: str, host: str) -> tuple[str, str]:
+    """(host, project) of a `-R` value: `o/r`, `group/sub/app`, `github.com/o/r`."""
+    first, _, rest = slug.partition("/")
+    if first in (GITHUB_HOST, host) and "/" in rest:
+        return first, rest
+    return host, slug
 
 
 def _json_url(line: str) -> dict[str, str] | None:
@@ -485,12 +518,14 @@ def _in_heredoc(command: str, index: int) -> bool:
 
 def _writes(command: str) -> list[re.Match]:
     found = list(FORGE_WRITE_RE.finditer(command))
+    blank = _blank_texts(command)
     for m in API_WRITE_RE.finditer(command):
         call = _segment(command, m)
-        if EXPLICIT_GET_RE.search(call):
+        # A `-X GET` inside a quoted body is text, not the method.
+        if EXPLICIT_GET_RE.search(_segment(blank, m)):
             continue
-        if "graphql" in call and "mutation" not in command:
-            continue  # a GraphQL query
+        if "graphql" in call and "mutation" not in command and "query=@" not in call:
+            continue  # a GraphQL query (a query read from a file may be a mutation)
         found.append(m)
     return found
 
@@ -549,17 +584,21 @@ class _Call:
         segment = _segment(self.command, write)
         slug = FORGE_RE.search(segment)
         number = re.match(r"\s+(\d+)\b", self.command[write.end() :])
-        host = self.host(cli)
+        host, project = (
+            _repo(slug["slug"], self.host(cli)) if slug else (self.host(cli), "")
+        )
         wanted = _kind(cli, noun, "")
         found = []
+        same_number = False  # the output names this write's number at all
         for ref, sep, bare in _named_lines(self.result, cli, host, noun):
             if ref is None:
                 if not slug:
                     continue  # `#N` needs the repository from this write's `-R`
-                ref = artefact(host, slug["slug"], _kind(cli, noun, sep), bare)
+                ref = artefact(host, project, _kind(cli, noun, sep), bare)
             if number and ref["number"] != int(number[1]):
                 continue
-            if slug and ref["project"].lower() != slug["slug"].lower():
+            same_number = True
+            if slug and ref["project"].lower() != project.lower():
                 continue
             if verb == "create" and ref["kind"] != wanted:
                 continue
@@ -570,19 +609,24 @@ class _Call:
             self.claimed.update(r["url"] for r in found)
         if found:
             return _with_origin(found, "created" if verb == "create" else "acted")
+        if number and any(
+            m["number"] == number[1] for m in ALREADY_RE.finditer(self.result)
+        ):
+            return []
         # Silent success in the one unambiguous shape: `<verb> N -R repo`, in
         # a call without any heredoc (an unclosed one hides its extent).
+        # Never when the output names this number under another repository:
+        # then the `-R` was not understood, and a guess would name a wrong one.
         if (
             number
             and slug
+            and not same_number
             and not self.failed
             and "<<" not in self.command
             and not _is_text(self.command, write)
         ):
             return [
-                dict(
-                    artefact(host, slug["slug"], wanted, int(number[1])), origin="acted"
-                )
+                dict(artefact(host, project, wanted, int(number[1])), origin="acted")
             ]
         return None
 
@@ -646,7 +690,18 @@ class _Call:
         if endpoint is not None:
             # The endpoint names the target; the output of a merge or a label
             # change is JSON about something else, or nothing.
-            return None if self.failed else endpoint
+            if self.failed:
+                return None
+            # It claims the URL only in its own report form, a JSON line; a
+            # URL alone on a line is what a create in the same call prints.
+            reported = {
+                a["url"]
+                for line in self.result.splitlines()
+                if (html := HTML_URL_LINE_RE.match(line) or _json_url(line))
+                for a in artefacts_in_text(html["url"])
+            }
+            self.claimed.update(r["url"] for r in endpoint if r["url"] in reported)
+            return endpoint
         created = self._created_by_path(
             cli, segment, _in_loop(self.command, write.start())
         )
@@ -668,7 +723,8 @@ def _joined(command: str) -> str:
 def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     """What `pr-merge.sh` merged or commented on, from its own report lines;
     [] when it says it wrote nothing, None when it says neither."""
-    if not PR_MERGE_WRAPPER_RE.search(_blank_texts(command)):
+    blank = _blank_texts(command)
+    if not PR_MERGE_WRAPPER_RE.search(blank) or "--dry-run" in blank:
         return []
     found = [
         dict(
@@ -680,6 +736,27 @@ def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     if found or PR_MERGE_NO_WRITE_RE.search(result):
         return found
     return None
+
+
+def _runs_a_heredoc(command: str) -> bool:
+    """Whether the call executes a heredoc body: fed to an interpreter, or
+    written to a file the call then runs."""
+    for m in INTERPRETER_HEREDOC_RE.finditer(command):
+        body = CLOSED_HEREDOC_RE.match(command, m.end())
+        if m["shell"] or body is None or SPAWN_RE.search(body["body"]):
+            return True
+    # Run by an interpreter, sourced, or called by name — at the start of a
+    # command, outside any heredoc body; `grep -c . file` only reads it.
+    masked = _masked(command)
+    for m in HEREDOC_FILE_RE.finditer(command):
+        name = re.escape(m["file"].strip("\"'"))
+        run = (
+            rf"(?:^|[;&|(])\s*(?:(?:bash|sh|zsh|python3?|node|source|\.)\s+)?"
+            rf"[\"']?{name}"
+        )
+        if re.search(run, masked[m.end() :], re.MULTILINE):
+            return True
+    return False
 
 
 def _key(ref: dict[str, Any]) -> tuple[str, int]:
@@ -720,7 +797,9 @@ def _forge_write_artefacts(
     found: list[dict[str, Any]] = list(wrapper or [])
     unresolved = wrapper is None
     about_prs = bool(wrapper) or wrapper is None  # a write concerning a PR, MR or issue
-    text_writes = False
+    # A write in list form (`["gh", "pr", …]`) only occurs inside a script.
+    text_writes = bool(LIST_WRITE_RE.search(command))
+    about_prs = about_prs or text_writes
     for write in writes:
         if _is_text(command, write):
             # Written into a heredoc or a quoted text: a heredoc may be a
@@ -739,6 +818,10 @@ def _forge_write_artefacts(
     # Every gh/glab/api/MCP/pr-merge.sh write lands in one of three places —
     # attributed, unresolved, or refused. A target the output names that no
     # write claimed means some write was not understood: the call is unresolved.
+    # A script the call runs can write anywhere and print nothing about it;
+    # its writes are never attributed, so the call is unresolved.
+    if text_writes and _runs_a_heredoc(command):
+        unresolved = True
     if about_prs and not unresolved:
         unresolved = _unclaimed(result, found, text_writes)
     return found, unresolved
@@ -918,7 +1001,8 @@ def collect(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
         "commands_scanned": len(commands),
         # PRs, MRs and issues with how the transcript links them; the tickets a
         # jira script or a time booking named; forge writes whose target could
-        # not be identified. collect-review-findings.py reads these.
+        # not be identified. collect-review-findings.py reads the artefacts and
+        # tickets, and lists the unresolved writes as UNRESOLVED.
         **forge_artefacts,
     }
 

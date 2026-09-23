@@ -144,8 +144,14 @@ outside any heredoc or quoted text. Output that reports a failure is not a
 success: an `HTTP 4xx/5xx`, `GraphQL:` at a line start or after a colon, a
 line starting with `x`/`X`/`✗`, `gh:`, `failed to` or `Cannot perform`, or a
 background run. MCP writes count by their input. Writes through other tools —
-`curl` against a forge API, a custom script outside a heredoc of the same
-call — are not seen at all; name them by hand.
+`curl` against a forge API, a script run in a later call — are not seen at
+all; name them by hand. A heredoc script the call itself runs and that
+contains a write, also in list form (`["gh", "pr", …]`), makes the call
+unresolved: a shell heredoc (`bash <<…`), another interpreter's heredoc
+(`python3 - <<…`) with a process call such as `subprocess`, or
+`cat > x.sh <<…` followed by a command that runs `x.sh`. A heredoc only
+written to a file that the call reads (`grep -c . x.md`) is text. A status
+line `! … #N is already …` means the write to `#N` found nothing to do.
 It follows each one's linked issues (closing references,
 issue URLs in the description) and the Jira key at the start of its title or in
 a branch segment one level, plus the tickets the session ran a jira script
@@ -167,8 +173,9 @@ pointed at. The text output trims bodies; read a finding in full from
 | `last_self_reply` | the agent's last answer in the thread — the reason, when it rejected the finding. A later `review-reply` by a human can overturn it |
 | `last_activity` | the latest entry in the thread; `--since` keeps a thread whose latest entry is at or after it |
 
-Read the `NOT READ` lines first: an artefact that could not be read is not an
-artefact without findings. A `NO SUCH` line is a key-shaped name Jira does
+Read the `NOT READ` and `UNRESOLVED` lines first: an artefact that could not be
+read, and a write whose target the transcript does not name, are unknowns, not
+artefacts without findings. A `NO SUCH` line is a key-shaped name Jira does
 not know (`TYPO3-14` in a branch) — an answer, not a read failure. A finding answered and followed by no commit was
 rejected; when a bot's findings are rejected again and again, the learning is
 the reviewer's configuration in that repository (`project-rule`), not the
