@@ -1977,6 +1977,22 @@ class TwelfthRoundTest(unittest.TestCase):
         urls, _ = self.urls([({"command": cmd}, printed)])
         self.assertEqual(urls, {"https://github.com/o/r/issues/5": "acted"})
 
+    def test_a_read_inside_a_substitution_stays_a_read(self):
+        # Round 13 on a5052ae: blanking every `$(…)` also blanked the read's own GET.
+        for cmd in (
+            "N=$(gh api -X GET repos/o/r/issues/9/comments -f per_page=100 --jq length)",
+            'echo "count: $(gh api -X GET repos/o/r/pulls/5/comments -f per_page=100 --jq length)"',
+            "N=$(gh api repos/o/r/issues/8/comments -f per_page=100 -X GET --jq length)",
+            "N=$(gh api repos/o/r/issues/7 -F per_page=1 --method GET --jq .state)",
+        ):
+            with self.subTest(cmd=cmd[:40]):
+                urls, data = self.urls([({"command": cmd}, "")])
+                self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+        # A real write inside a substitution still counts.
+        cmd = "X=$(gh api repos/o/r/pulls/5/requested_reviewers -f 'reviewers[]=bob')"
+        urls, _ = self.urls([({"command": cmd}, "")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+
     def test_text_inside_a_substitution_or_after_an_escape_stays_text(self):
         for cmd in (
             "gh pr comment 5 -R o/r --body \"Note: $(printf 'Run gh pr merge 6 -R o/r after CI')\"",

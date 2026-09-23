@@ -589,7 +589,9 @@ def _writes(command: str) -> list[re.Match]:
     for m in API_WRITE_RE.finditer(command):
         call = _segment(command, m)
         # A `-X GET` inside a quoted body or a `$(…)` is not this write's method.
-        if EXPLICIT_GET_RE.search(_segment(_without_substitutions(blank), m)):
+        # The segment starts at the write, so a `$(` around the write is not in
+        # it; a `$(…)` further along is another command and is blanked.
+        if EXPLICIT_GET_RE.search(_without_substitutions(_segment(blank, m))):
             continue
         if "graphql" in call and "mutation" not in command and "query=@" not in call:
             continue  # a GraphQL query (a query read from a file may be a mutation)
