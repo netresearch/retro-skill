@@ -121,14 +121,17 @@ EXIT_CODE_RE = re.compile(r"Exit code \d+")
 # a GraphQL error, a refusal, or a background run whose output is not in the
 # result at all (a Bash call sent or moved to the background, a Monitor).
 # `… && echo ok || echo failed`: the call names its own failure message.
-# Read from the write onward: redirections (`>/dev/null 2>&1`) may stand
+# Read from the write onward: quoted arguments (whole, so a `;` in a body
+# does not end the write) and redirections (`>/dev/null 2>&1`) may stand
 # between the write and its `&&`, another command may not.
 ECHO_BRANCHES_RE = re.compile(
-    r"(?:[^\n;|&]|&(?!&))*&&\s*echo(?:\s+-[neE]+)*\s+"
-    r"(?P<ok>\"[^\"\n]*\"|'[^'\n]*'|[^;|&\n]+?)"
+    r"(?:\"[^\"\n]*\"|'[^'\n]*'|[^\n;|&\"']|&(?!&))*&&\s*echo(?:\s+-[neE]+)*\s+"
+    r"(?P<ok>\"[^\"\n]*\"|'[^'\n]*'|(?:>&|[^;|&\n])+?)"
     r"\s*\|\|\s*\{?\s*echo(?:\s+-[neE]+)*\s+"
-    r"(?P<fail>\"[^\"\n]*\"|'[^'\n]*'|[^;|&\n}]+)"
+    r"(?P<fail>\"[^\"\n]*\"|'[^'\n]*'|(?:>&|[^;|&\n}])+)"
 )
+# A message's own redirection (`echo failed >&2`) is not part of its text.
+ECHO_REDIRECT_RE = re.compile(r"\s*\d*>&?\s*\S+$")
 FAILED_OUTPUT_RE = re.compile(
     r"HTTP [45]\d\d|: [45]\d\d \{message|\"status\":\"[45]\d\d\"|\}gh: "
     r"|(?:^|: )GraphQL: "
@@ -814,11 +817,18 @@ def _took_the_failure_branch(command: str, result: str) -> bool:
     write exited non-zero. Only the pair right behind a write counts, so a
     `test -f … && echo … || echo …` elsewhere in the call says nothing."""
     lines = {line.strip() for line in result.splitlines()}
+    # A `|` inside a `$(…)` argument is another command's; blanked, same length.
+    plain = _without_substitutions(command)
     for write in _writes(command):
-        m = ECHO_BRANCHES_RE.match(command, write.start())
+        m = ECHO_BRANCHES_RE.match(plain, write.start())
         if not m:
             continue
-        ok, fail = (m[g].strip().strip("\"'").strip() for g in ("ok", "fail"))
+        ok, fail = (
+            ECHO_REDIRECT_RE.sub("", command[m.start(g) : m.end(g)].strip())
+            .strip("\"'")
+            .strip()
+            for g in ("ok", "fail")
+        )
         if fail and "$" not in fail and fail in lines and ok not in lines:
             return True
     return False

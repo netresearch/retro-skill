@@ -2096,6 +2096,49 @@ class SixteenthRoundTest(unittest.TestCase):
         self.assertEqual(data["unresolved_forge_commands"], [])
 
 
+class SeventeenthRoundTest(unittest.TestCase):
+    """Inputs from the seventeenth review round (c009c9d)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_separator_inside_an_argument_keeps_the_echo_pair(self):
+        tail = ' && echo "ok" || echo "fehlgeschlagen"'
+        for cmd in (
+            "gh api repos/o/r/pulls/118/requested_reviewers -X POST"
+            ' -f "reviewers[]=a;b" >/dev/null 2>&1' + tail,
+            'gh api repos/o/r/issues/118/comments -f body="done; see log"'
+            " >/dev/null 2>&1" + tail,
+            "gh api repos/o/r/issues/118/comments -f body='a | b' >/dev/null" + tail,
+            'gh api repos/o/r/issues/118/comments -f body="$(cat x.md | head -3)"'
+            " >/dev/null 2>&1" + tail,
+            "gh api repos/o/r/issues/118/comments -f body=$(cat x.md | head -3)"
+            " >/dev/null 2>&1" + tail,
+            'gh pr merge 118 -R o/r --merge --body "x; y"' + tail,
+            "gh pr merge 118 -R o/r --merge --subject 'a | b'" + tail,
+        ):
+            with self.subTest(cmd=cmd[:50]):
+                urls, data = self.urls([({"command": cmd}, "fehlgeschlagen")])
+                self.assertEqual(
+                    (urls, len(data["unresolved_forge_commands"])), ({}, 1)
+                )
+
+    def test_a_redirected_failure_message(self):
+        cmd = (
+            "gh api repos/o/r/pulls/118/requested_reviewers -X POST -f 'reviewers[]=x'"
+            " >/dev/null 2>&1 && echo ok || echo fehlgeschlagen >&2"
+        )
+        urls, data = self.urls([({"command": cmd}, "fehlgeschlagen")])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+        urls, data = self.urls([({"command": cmd}, "ok")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/118": "acted"})
+        # A redirected success message: the pair is still read.
+        cmd = cmd.replace("echo ok ||", "echo ok >&2 ||")
+        urls, data = self.urls([({"command": cmd}, "fehlgeschlagen")])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+
+
 class UnresolvedSurfacedTest(unittest.TestCase):
     def test_the_collector_lists_unresolved_writes(self):
         transcript = _transcript([({"command": "gh pr merge --merge"}, "")])
