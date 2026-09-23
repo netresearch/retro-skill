@@ -117,20 +117,29 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" \
     --transcript-file <session.jsonl> [--output-format json]
 ```
 
-It reads every PR, MR and issue the session created or wrote to, follows each
-one's linked issues and the Jira keys in its title and branch one level, and
-lists every comment by somebody else. Jira goes through the `jira-communication`
-skill's `jira-issue.py`; without that skill a ticket is listed as not read. Each
-finding carries:
+It reads every PR, MR and issue the session created or wrote to — with
+`gh`/`glab` subcommands, the GitHub MCP tools, or REST calls through `gh api` /
+`glab api`. Writes through GraphQL mutations address node ids, not repositories,
+and are not attributed. It follows each one's linked issues (closing references,
+issue URLs in the description) and the Jira key at the start of its title or in
+a branch segment one level, plus the tickets the session ran a jira script
+against or booked time on, and lists every comment by somebody else — each
+answer inside a thread as its own `review-reply`. Jira goes through the
+`jira-communication` skill's `jira-issue.py`; without that skill a ticket is
+listed as not read. GitLab is read only on the hosts given with `--gitlab-host`
+(default `$GITLAB_HOST`), because `glab` sends its token to any host it is
+pointed at. The text output trims bodies; read a finding in full from
+`--output-format json` before classifying it. Each finding carries:
 
 | Field | Meaning |
 |---|---|
-| `source` | `review-thread`, `review`, `pr-comment`, `mr-comment`, `issue-comment`, `ticket-comment`, `ticket-transition` |
-| `author_class` | `human`, `bot`, `self`. `self` is the account running the script plus `--self-login`; in Outcome mode run by another account, pass the session's login. The agent's own comments are counted, not listed — except a thread it opened that somebody answered, where the answers are the feedback |
-| `report` | a bot's summary or verdict on the whole PR (quality gate, coverage, review envelope), rendered apart from the findings anchored in the code |
+| `source` | `review-thread`, `review-reply` (an answer by somebody else inside a thread, with `thread`, `path`, `resolved`), `review`, `pr-comment`, `mr-comment`, `issue-comment`, `ticket-comment`, `ticket-transition` |
+| `author_class` | `human`, `bot`, `self`. `self` is the account running the script plus `--self-login`; in Outcome mode run by another account, pass the session's login. The agent's own comments and replies are counted, not listed; in a thread it opened, the answers by others are listed as `review-reply` |
+| `report` | a bot's comment on the whole PR/MR (quality gate, coverage, summary), rendered apart from the findings. A bot *review* is not a report: its body can carry findings outside the diff |
 | `resolved` | the forge's thread state, where it has one |
 | `commit_after` | the first PR/MR commit dated after the finding. A necessary sign that the finding changed the code, not proof: any later commit qualifies, and a rebase re-dates them all. Read it with `resolved` and `last_self_reply` |
-| `last_self_reply` | the agent's last answer in the thread — the reason, when it rejected the finding |
+| `last_self_reply` | the agent's last answer in the thread — the reason, when it rejected the finding. A later `review-reply` by a human can overturn it |
+| `last_activity` | the latest entry in the thread; `--since` keeps a thread whose latest entry is at or after it |
 
 Read the `NOT READ` lines first: an artefact that could not be read is not an
 artefact without findings. A finding answered and followed by no commit was
@@ -180,7 +189,7 @@ sweep was friction-only, outcome was failure-only.)
 | D1 | Session commit reverted | `git log --grep="revert" + ($commit_sha within revert body)` | Output was wrong |
 | D2 | Session commit superseded | Same file touched again within 7 days, diff shows substantial revert of session's changes | Output unfinished or wrong direction |
 | D3 | Session PR closed without merge | `gh pr view --json closedAt,merged,state` shows closed, not merged | Output rejected |
-| D4 | Session PR required major changes | `collect-review-findings.py` lists human or bot review threads, a `CHANGES_REQUESTED` review, or findings with `commit_after` — GitHub and GitLab alike | Output below standard; each finding is a B19 candidate |
+| D4 | Session PR required major changes | `collect-review-findings.py` lists human or bot review threads and replies, or findings with `commit_after` — GitHub and GitLab — or a `CHANGES_REQUESTED` review (GitHub; GitLab approvals are not read) | Output below standard; each finding is a B19 candidate |
 | D5 | CI failed on session commit | `gh run list --commit $sha --json conclusion` | Output was broken |
 | D6 | Issue or ticket feedback after the session | `collect-review-findings.py --since <session end>`: comments and status changes on the linked issues and Jira tickets; plus `gh issue list --search "filename after:$session_date"` for issues that link nothing | Output caused a bug, or the acceptance happened in the ticket |
 | D7 | Follow-up session detected | Schicht C5 cross-referenced from outcome perspective | Session output didn't last |

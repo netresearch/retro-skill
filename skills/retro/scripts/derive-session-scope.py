@@ -37,10 +37,12 @@ import argparse
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+from urllib.parse import unquote as unquote_url
 
 # `git -C <path>`, `cd <path>`, `-R owner/repo`, `--repo owner/repo`.
 GIT_C_RE = re.compile(r"git\s+-C\s+(?P<path>(?:\"[^\"]+\"|'[^']+'|[^\s;|&]+))")
@@ -106,7 +108,38 @@ NOT_A_TICKET_PREFIX = frozenset(
         "AES",
     }
 )
-JIRA_COMMAND_RE = re.compile(r"\bjira-[a-z-]+\.py\b")
+JIRA_COMMAND_RE = re.compile(r"\bjira-[a-z-]+\.py\b(?P<rest>[^;&|\n]*)")
+# `gh api` / `glab api` calls that write to a PR, MR or issue over REST. GraphQL
+# mutations address node ids, which name no repository — they stay invisible.
+GH_API_WRITE_RE = re.compile(
+    r"\bgh\s+api\b(?P<rest>[^;&|\n]*?)\brepos/(?P<project>[\w.-]+/[\w.-]+)/"
+    r"(?P<kind>pulls|issues)/(?P<number>\d+)\b(?P<tail>[^;&|\n]*)"
+)
+GLAB_API_WRITE_RE = re.compile(
+    r"\bglab\s+api\b(?P<rest>[^;&|\n]*?)\bprojects/(?P<project>[\w.%-]+)/"
+    r"(?P<kind>merge_requests|issues)/(?P<number>\d+)\b(?P<tail>[^;&|\n]*)"
+)
+API_WRITE_FLAG_RE = re.compile(
+    r"(?:-X|--method)[\s=]*(?:POST|PATCH|PUT)\b|(?:^|\s)(?:-f|-F|--field|--raw-field|--input)[\s=]"
+)
+HOSTNAME_RE = re.compile(r"--hostname[\s=](?P<host>[\w.-]+)")
+# Flags of `gh`/`glab` pr|mr|issue subcommands that take a value, so the
+# token after them is never the PR number (`--limit 5`, `--body 12`).
+VALUE_FLAGS = frozenset(
+    {
+        "-R", "--repo", "-b", "--body", "-F", "--body-file", "-t", "--title",
+        "-B", "--base", "-H", "--head", "-l", "--label", "-a", "--assignee",
+        "-r", "--reviewer", "-m", "--milestone", "--message", "-d",
+        "--description", "--target-branch", "--source-branch", "-L", "--limit",
+        "--json", "-q", "--jq", "--template", "--subject", "--add-label",
+        "--remove-label", "--add-reviewer", "--remove-reviewer",
+    }
+)  # fmt: skip
+HEREDOC_RE = re.compile(
+    r"<<-?\s*(['\"]?)(?P<tag>\w+)\1[^\n]*\n(?P<body>.*?)\n[ \t]*(?P=tag)[ \t]*(?=\n|$)",
+    re.DOTALL,
+)
+QUOTED_RE = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
 
 
 def unquote(value: str) -> str:
@@ -274,33 +307,107 @@ def _with_origin(found: list[dict[str, Any]], origin: str) -> list[dict[str, Any
     return [dict(a, origin=origin) for a in found]
 
 
-def remote_project(path: str) -> tuple[str, str] | None:
-    """(host, project) of the `origin` remote of the checkout at `path`."""
-    if "$" in path or "`" in path or not Path(path).is_dir():
-        return None
+REMOTE_URL_RE = re.compile(
+    r"(?:(?:https?|ssh)://(?:[^@/]+@)?|[^@/\s]+@)(?P<host>[\w.-]+)(?::\d+)?[:/]"
+    r"(?P<project>[^\s]+?)(?:\.git)?/?$"
+)
+
+
+def _git(path: str, *args: str) -> str | None:
     try:
         out = subprocess.run(
-            ["git", "-C", path, "remote", "get-url", "origin"],
+            ["git", "-C", path, *args],
             capture_output=True,
             text=True,
             timeout=10,
-            check=False,  # no remote is an ordinary answer here
+            check=False,  # a missing remote or key is an ordinary answer here
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    url = out.stdout.strip()
-    m = re.match(
-        r"(?:https://|ssh://git@|git@)(?P<host>[\w.-]+)(?::\d+)?[:/](?P<project>.+?)(?:\.git)?/?$",
-        url,
+    return out.stdout.strip() if out.returncode == 0 else None
+
+
+def _remote_order(path: str, cli: str) -> list[str]:
+    """Remote names in the order the CLI resolves them.
+
+    gh takes the remote marked by `gh repo set-default` (`remote.<name>.gh-resolved
+    = base`), then `upstream`, `github`, `origin` — so in a fork checkout it
+    targets the upstream repository, not the fork. glab uses `origin`."""
+    if cli != "gh":
+        return ["origin"]
+    marked = _git(path, "config", "--get-regexp", r"^remote\..*\.gh-resolved$") or ""
+    chosen = [
+        line.split()[0].split(".")[1]
+        for line in marked.splitlines()
+        if line.split()[-1] == "base"
+    ]
+    return [*chosen, "upstream", "github", "origin"]
+
+
+def remote_project(path: str, cli: str = "gh") -> tuple[str, str] | None:
+    """(host, project) of the remote the CLI would address from `path`.
+
+    Credentials in the URL (`https://user:token@host/…`) are dropped, never
+    carried into the host or project."""
+    path = os.path.expanduser(path)
+    if (
+        "$" in path
+        or "`" in path
+        or not path.startswith("/")
+        or not Path(path).is_dir()
+    ):
+        return None  # a relative path resolves against the session's cwd, unknown here
+    for name in _remote_order(path, cli):
+        url = _git(path, "remote", "get-url", name)
+        m = REMOTE_URL_RE.match(url or "")
+        if m:
+            return m["host"], m["project"]
+    return None
+
+
+def _blank(text: str) -> str:
+    return re.sub(r"[^\n]", " ", text)
+
+
+def mask_heredocs(command: str) -> str:
+    """The command with heredoc bodies blanked, same length."""
+    return HEREDOC_RE.sub(
+        lambda m: (
+            m.group(0)[: m.start("body") - m.start()]
+            + _blank(m["body"])
+            + m.group(0)[m.end("body") - m.start() :]
+        ),
+        command,
     )
-    return (m["host"], m["project"]) if out.returncode == 0 and m else None
+
+
+def mask_quoted(command: str) -> str:
+    """The command with heredoc bodies and quoted strings blanked, same length.
+
+    `gh pr merge 3` inside a heredoc that writes a doc, or inside `--body "…"`,
+    is text, not a command. Blanking keeps every offset, so a match on the
+    masked string reads its arguments from the original."""
+    return QUOTED_RE.sub(
+        lambda m: m.group(0)[0] + _blank(m.group(0)[1:-1]) + m.group(0)[-1],
+        mask_heredocs(command),
+    )
+
+
+def _tokens(text: str) -> list[str]:
+    try:
+        return shlex.split(text)
+    except ValueError:  # an unbalanced quote: fall back to plain words
+        return text.split()
 
 
 def positional_number(rest: str) -> int | None:
-    """The first bare number that is not the value of a flag (`--limit 5`)."""
+    """The first bare number that is not a flag's value (`--limit 5`, `--body 12`).
+
+    Tokenised like a shell, so a number inside a quoted body is part of that
+    body, not an argument."""
     previous = ""
-    for token in rest.split():
-        if token.isdigit() and not (previous.startswith("-") and "=" not in previous):
+    for token in _tokens(rest):
+        if token.isdigit() and previous not in VALUE_FLAGS:
             return int(token)
         previous = token
     return None
@@ -315,8 +422,9 @@ def _numbered_target(
         host = GITHUB_HOST if m["cli"] == "gh" else gitlab_host
         project = slug["slug"]
     else:
-        cd = CD_RE.search(command[: m.start()])
-        where = remote_project(unquote(cd["path"])) if cd else None
+        # The last `cd` before the command is where it ran.
+        cds = list(CD_RE.finditer(command[: m.start()]))
+        where = remote_project(unquote(cds[-1]["path"]), m["cli"]) if cds else None
         if not where:
             return None
         host, project = where
@@ -327,15 +435,22 @@ def _numbered_target(
 def _one_write(
     m: re.Match, command: str, result: str, gitlab_host: str
 ) -> list[dict[str, Any]] | None:
-    """What one forge write acted on; None when its target stays unknown."""
-    rest = m["rest"]
+    """What one forge write acted on; None when its target stays unknown.
+
+    `m` matched the masked command; its arguments are read from `command`."""
+    rest = command[m.start("rest") : m.end("rest")]
     if m["verb"] == "create":
-        # The URL `create` printed is the identity. A body text can name other
-        # URLs, so only the result counts; no URL means nothing was made.
-        return _with_origin(artefacts_in_text(result), "created")
-    # The positional argument: a number, or a URL. Never a URL from inside
-    # `--body`, which names other PRs as often as this one.
-    words = rest.split()
+        # The URL `create` printed is the identity — one URL, and when `-R`
+        # names the repository, one in that repository. A later command in the
+        # same call can print other URLs; no URL means nothing was made.
+        printed = artefacts_in_text(result)
+        slug = FORGE_RE.search(rest)
+        if slug:
+            printed = [
+                a for a in printed if a["project"].lower() == slug["slug"].lower()
+            ]
+        return _with_origin(printed[:1], "created")
+    words = _tokens(rest)
     positional = artefacts_in_text(words[0]) if words else []
     if positional:
         return _with_origin(positional, "acted")
@@ -348,13 +463,43 @@ def _one_write(
     return [target] if target else None
 
 
+def _api_writes(command: str, masked: str, gitlab_host: str) -> list[dict[str, Any]]:
+    """PRs, MRs and issues a REST `gh api` / `glab api` call wrote to."""
+    found = []
+    for regex, cli in ((GH_API_WRITE_RE, "gh"), (GLAB_API_WRITE_RE, "glab")):
+        for m in regex.finditer(masked):
+            args = (
+                command[m.start("rest") : m.end("rest")]
+                + command[m.start("tail") : m.end("tail")]
+            )
+            if not API_WRITE_FLAG_RE.search(args):
+                continue  # a read
+            if cli == "gh":
+                host, project = GITHUB_HOST, m["project"]
+                kind = "pull" if m["kind"] == "pulls" else "issue"
+            else:
+                named = HOSTNAME_RE.search(args)
+                host = named["host"] if named else gitlab_host
+                project = unquote_url(m["project"])
+                kind = m["kind"]
+            found.append(
+                dict(artefact(host, project, kind, int(m["number"])), origin="acted")
+            )
+    return found
+
+
 def _forge_write_artefacts(
     command: str, result: str, gitlab_host: str
 ) -> tuple[list[dict[str, Any]], bool]:
     """Artefacts one command's forge writes acted on, and whether any stayed unknown."""
-    found: list[dict[str, Any]] = []
+    masked = mask_quoted(command)
+    # API paths are usually quoted (`glab api "projects/…"`), so only heredoc
+    # bodies are blanked for them.
+    found: list[dict[str, Any]] = _api_writes(
+        command, mask_heredocs(command), gitlab_host
+    )
     unresolved = False
-    for m in FORGE_WRITE_RE.finditer(command):
+    for m in FORGE_WRITE_RE.finditer(masked):
         items = _one_write(m, command, result, gitlab_host)
         if items is None:
             unresolved = True
@@ -363,26 +508,47 @@ def _forge_write_artefacts(
     return found, unresolved
 
 
+def jira_command_tickets(command: str) -> set[str]:
+    """The ticket a jira script was run against: its first positional key.
+
+    A key inside a quoted comment text (`add NRS-1 "see ABC-2"`) is not one."""
+    masked = mask_quoted(command)
+    found = set()
+    for m in JIRA_COMMAND_RE.finditer(masked):
+        rest = command[m.start("rest") : m.end("rest")]
+        key = next((t for t in _tokens(rest) if TICKET_RE.fullmatch(t)), None)
+        if key and key.split("-", 1)[0] not in NOT_A_TICKET_PREFIX:
+            found.add(key)
+    return found
+
+
 def _mcp_write_artefacts(payload: dict[str, Any], result: str) -> list[dict[str, Any]]:
+    """The PR/issue an MCP GitHub write addressed.
+
+    The input's owner/repo/number is the identity when present; a create names
+    its result by the `html_url` field. A URL echoed from a body is neither."""
     owner, repo = payload.get("owner"), payload.get("repo")
     number = payload.get("pullNumber") or payload.get("issue_number")
-    named = artefacts_in_text(result)
-    if named:
-        origin = "acted" if number else "created"
-        return [dict(a, origin=origin) for a in named]
     if isinstance(owner, str) and isinstance(repo, str) and str(number or "").isdigit():
-        kind = (
-            "issue"
-            if "issue" in payload.get("method", "") or "issue_number" in payload
-            else "pull"
+        is_issue = (
+            "issue" in str(payload.get("method", "")) or "issue_number" in payload
         )
+        kind = "issue" if is_issue else "pull"
         return [
             dict(
                 artefact(GITHUB_HOST, f"{owner}/{repo}", kind, int(number)),
                 origin="acted",
             )
         ]
-    return []
+    try:
+        data = json.loads(result)
+    except ValueError:
+        data = None
+    link = data.get("html_url") or data.get("url") if isinstance(data, dict) else None
+    named = (
+        artefacts_in_text(link) if isinstance(link, str) else artefacts_in_text(result)
+    )
+    return _with_origin(named[:1], "created")
 
 
 def _result_text(block: dict[str, Any]) -> str:
@@ -440,8 +606,7 @@ class _ArtefactScan:
             self.keep(found)
             if lost:
                 self.unresolved.append(command[:200])
-            if JIRA_COMMAND_RE.search(command):
-                self.tickets |= tickets_in(command)
+            self.tickets |= jira_command_tickets(command)
         elif MCP_WRITE_RE.search(name):
             self.keep(_mcp_write_artefacts(payload, result))
         self.mention(result)

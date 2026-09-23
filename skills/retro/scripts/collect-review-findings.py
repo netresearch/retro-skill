@@ -15,9 +15,16 @@ This script reads them from the forge and the tracker:
 - per MR (GitLab): discussions (threads and plain notes), commits
 - linked issues: GitHub `closingIssuesReferences`, GitLab `closes_issues`, and
   issue URLs in the PR/MR description — their comments
-- Jira tickets: keys in the PR/MR title and branch, plus the tickets the session
-  named on a jira script — their comments and status changes, read through the
-  `jira-communication` skill's `jira-issue.py`
+- Jira tickets: the key at the start of the PR/MR title or in a branch segment,
+  plus the tickets the session ran a jira script against or booked time on —
+  their comments and status changes, read through the `jira-communication`
+  skill's `jira-issue.py`
+
+Every answer by somebody else inside a thread is its own `review-reply`
+finding: a human's "please do fix it" under a bot finding the agent rejected is
+the feedback that overturns the rejection. A GitLab host is contacted only when
+named with `--gitlab-host` (default `$GITLAB_HOST`), because `glab` sends its
+token to whatever host it is given.
 
 Every finding carries `source`, `author_class` (`self` · `bot` · `human`),
 `resolved` where the forge says so, and `commit_after`: the first commit on
@@ -49,6 +56,7 @@ import importlib.util
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -95,9 +103,16 @@ ISSUE_KEYWORD_RE = re.compile(
 )
 
 Runner = Callable[[list[str]], Any]
-REPORT_SOURCES = frozenset({"review", "pr-comment", "mr-comment"})
-# A bot verdict without content: an auto-approval, or one dismissed by a push.
-BOT_EMPTY_VERDICTS = frozenset({"APPROVED", "DISMISSED"})
+# A bot's comment on the whole PR/MR — quality gate, coverage, summary. A bot
+# *review* is not one: its body can carry findings outside the diff.
+REPORT_SOURCES = frozenset({"pr-comment", "mr-comment"})
+# A ticket key the PR/MR is *about*: at the start of the title (`NRS-12: …`,
+# `[NRS-12] …`) or at the start of a branch path segment (`NRS-12/…`,
+# `feature/NRS-12-…`). A key in running text (`PHP-8.4`, `TYPO3-14`) is not.
+TITLE_TICKET_RE = re.compile(r"^\[?(?P<key>[A-Z][A-Z0-9]{1,9}-\d+)\]?(?=[:\s]|$)")
+# GitLab marks a draft in the title itself (`Draft: `, formerly `WIP: `).
+DRAFT_PREFIX_RE = re.compile(r"^(?:\[?(?:draft|wip)\]?:?\s*)+", re.IGNORECASE)
+BRANCH_TICKET_RE = re.compile(r"(?:^|/)(?P<key>[A-Z][A-Z0-9]{1,9}-\d+)(?=[-_/]|$)")
 
 
 # --------------------------------------------------------------------------
@@ -132,10 +147,11 @@ def transcript_start(transcript: Path) -> datetime | None:
 def author_class(login: str | None, typename: str | None, self_logins: set[str]) -> str:
     if not login:
         return "human"  # a deleted account ("ghost") is somebody, not a bot
-    bare = login.removesuffix("[bot]")
-    if login in self_logins or bare in self_logins:
+    bare = login.removesuffix("[bot]").lower()
+    # Logins are case-insensitive on GitHub and GitLab.
+    if bare in {s.lower() for s in self_logins if s}:
         return "self"
-    if typename == "Bot" or login.endswith("[bot]") or bare.lower() in KNOWN_BOTS:
+    if typename == "Bot" or login.endswith("[bot]") or bare in KNOWN_BOTS:
         return "bot"
     if GITLAB_BOT_RE.search(login):
         return "bot"
@@ -165,9 +181,8 @@ def finding(
     return {
         "artefact": artefact_url,
         "source": source,
-        # A bot's summary, status or verdict on the whole PR — a quality gate,
-        # a coverage delta, a review envelope — as opposed to a finding
-        # anchored in the code. Kept, because a failed gate is feedback, but
+        # A bot's comment on the whole PR/MR — a quality gate, a coverage
+        # delta, a summary. Kept, because a failed gate is feedback, but
         # rendered apart so the threads are read first.
         "report": klass == "bot" and source in REPORT_SOURCES,
         "author": login or "ghost",
@@ -180,10 +195,27 @@ def finding(
 
 
 def _split_by_since(items: list[dict[str, Any]], since: datetime | None):
+    """Keep what happened at or after `since`. A thread counts by its latest
+    entry, so one opened in the session and answered later stays listed."""
     if since is None:
         return items, 0
-    kept = [i for i in items if (parse_time(i["created_at"]) or since) >= since]
+
+    def latest(item: dict[str, Any]) -> datetime:
+        stamps = [parse_time(item["created_at"]), parse_time(item.get("last_activity"))]
+        return max((t for t in stamps if t), default=since)
+
+    kept = [i for i in items if latest(i) >= since]
     return kept, len(items) - len(kept)
+
+
+def tickets_named(title: str, branch: str) -> list[str]:
+    found = {m["key"] for m in BRANCH_TICKET_RE.finditer(branch or "")}
+    title_match = TITLE_TICKET_RE.match(DRAFT_PREFIX_RE.sub("", title or ""))
+    if title_match:
+        found.add(title_match["key"])
+    return sorted(
+        k for k in found if k.split("-", 1)[0] not in scope.NOT_A_TICKET_PREFIX
+    )
 
 
 # --------------------------------------------------------------------------
@@ -197,7 +229,7 @@ query($owner: String!, $name: String!, $number: Int!) {
     pullRequest(number: $number) {
       url title body headRefName state createdAt
       author { login __typename }
-      closingIssuesReferences(first: 50) { nodes { url } }
+      closingIssuesReferences(first: 50) { totalCount nodes { url } }
       reviewThreads(first: 100) {
         totalCount pageInfo { hasNextPage }
         nodes {
@@ -271,6 +303,9 @@ def _gh_truncated(node: dict[str, Any], *connections: str) -> list[str]:
             data.get("totalCount", 0) > len(data.get("nodes") or [])
         ):
             cut.append(conn)
+    threads = (node.get("reviewThreads") or {}).get("nodes") or []
+    if any(_gh_truncated(t, "comments") for t in threads):
+        cut.append("reviewThreads.comments")
     return cut
 
 
@@ -293,39 +328,84 @@ class _Collected:
         self.self_count = 0
 
 
+def _thread(url, entries, meta, commits, out: _Collected, sources) -> None:
+    """One review thread: the opening comment and every answer by somebody else.
+
+    `entries` are (login, class, created, body, url) tuples in order; `sources`
+    is (opening source, reply source); `meta` carries path, line, resolved. An answer
+    by a human inside a bot's thread — "please do fix this" under a "won't fix"
+    — is its own finding, because it can overturn the thread.
+    """
+    (login, klass, created, body, link), replies = entries[0], entries[1:]
+    others = [r for r in replies if r[1] != "self"]
+    own = [r for r in replies if r[1] == "self"]
+    if klass == "self" and not others:
+        out.self_count += 1 + len(own)  # the agent talking to itself
+        return
+    last = max((parse_time(e[2]) for e in entries if parse_time(e[2])), default=None)
+    common = {
+        **meta,
+        "replies": len(replies),
+        "last_self_reply": own[-1][3] if own else None,
+        "last_activity": last.isoformat() if last else None,
+    }
+    if klass == "self":
+        out.self_count += 1
+    else:
+        out.findings.append(
+            finding(
+                url,
+                sources[0],
+                login,
+                klass,
+                created,
+                body,
+                link,
+                **common,
+                commit_after=first_commit_after(commits, parse_time(created)),
+            )
+        )
+    out.self_count += len(own)
+    for r_login, r_class, r_created, r_body, r_link in others:
+        out.findings.append(
+            finding(
+                url,
+                sources[1],
+                r_login,
+                r_class,
+                r_created,
+                r_body,
+                r_link,
+                thread=link,
+                path=meta.get("path"),
+                line=meta.get("line"),
+                resolved=meta.get("resolved"),
+                commit_after=first_commit_after(commits, parse_time(r_created)),
+            )
+        )
+
+
 def _gh_threads(pr, url, commits, self_logins, out: _Collected) -> None:
     for thread in _nodes(pr, "reviewThreads"):
         comments = _nodes(thread, "comments")
         if not comments:
             continue
-        head, replies = comments[0], comments[1:]
-        login, klass = _gh_class(head, self_logins)
-        # An own thread nobody answered is the agent talking to itself; one
-        # that somebody answered carries feedback in the answers.
-        if klass == "self" and not replies:
-            out.self_count += 1
-            continue
-        own = [r for r in replies if _gh_class(r, self_logins)[1] == "self"]
-        out.findings.append(
-            finding(
-                url,
-                "review-thread",
-                login,
-                klass,
-                head.get("createdAt"),
-                head.get("body", ""),
-                head.get("url"),
-                path=thread.get("path"),
-                line=thread.get("line"),
-                resolved=thread.get("isResolved"),
-                outdated=thread.get("isOutdated"),
-                replies=len(replies),
-                last_self_reply=own[-1]["body"] if own else None,
-                commit_after=first_commit_after(
-                    commits, parse_time(head.get("createdAt"))
-                ),
+        entries = [
+            (
+                *_gh_class(c, self_logins),
+                c.get("createdAt"),
+                c.get("body", ""),
+                c.get("url"),
             )
-        )
+            for c in comments
+        ]
+        meta = {
+            "path": thread.get("path"),
+            "line": thread.get("line"),
+            "resolved": thread.get("isResolved"),
+            "outdated": thread.get("isOutdated"),
+        }
+        _thread(url, entries, meta, commits, out, ("review-thread", "review-reply"))
 
 
 def _gh_reviews(pr, url, commits, self_logins, out: _Collected) -> None:
@@ -339,7 +419,11 @@ def _gh_reviews(pr, url, commits, self_logins, out: _Collected) -> None:
         if klass == "self":
             out.self_count += 1
             continue
-        if klass == "bot" and state in BOT_EMPTY_VERDICTS:
+        # A bot approval is never a finding, whatever its text (auto-approve
+        # workflows write one). A dismissed bot review is dropped only when it
+        # is empty: one with a body can be the blocking finding somebody dismissed.
+        empty = not (review.get("body") or "").strip()
+        if klass == "bot" and (state == "APPROVED" or (state == "DISMISSED" and empty)):
             continue
         stamp = review.get("submittedAt")
         out.findings.append(
@@ -418,10 +502,15 @@ def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any
         "findings": out.findings,
         "self_comments": out.self_count,
         "linked": sorted(set(linked)),
-        "tickets": sorted(
-            scope.tickets_in(f"{pr.get('title', '')} {pr.get('headRefName', '')}")
+        "tickets": tickets_named(pr.get("title", ""), pr.get("headRefName", "")),
+        "truncated": _gh_truncated(
+            pr,
+            "reviewThreads",
+            "reviews",
+            "comments",
+            "commits",
+            "closingIssuesReferences",
         ),
-        "truncated": _gh_truncated(pr, "reviewThreads", "reviews", "comments"),
     }
 
 
@@ -436,7 +525,7 @@ def parse_github_issue(raw: dict[str, Any], self_logins: set[str]) -> dict[str, 
         "findings": out.findings,
         "self_comments": out.self_count,
         "linked": [],
-        "tickets": sorted(scope.tickets_in(issue.get("title", ""))),
+        "tickets": tickets_named(issue.get("title", ""), ""),
         "truncated": _gh_truncated(issue, "comments"),
     }
 
@@ -477,7 +566,9 @@ def fetch_gitlab(item: dict[str, Any], run: Runner) -> dict[str, Any]:
         raw["commits"] = run(
             ["glab", "api", "--paginate", f"{base}/commits?per_page=100", *host]
         )
-        raw["closes"] = run(["glab", "api", f"{base}/closes_issues", *host])
+        raw["closes"] = run(
+            ["glab", "api", "--paginate", f"{base}/closes_issues?per_page=100", *host]
+        )
     return raw
 
 
@@ -491,38 +582,26 @@ def _gitlab_discussion(discussion, url, is_mr, commits, self_logins, out: _Colle
     notes = [n for n in discussion.get("notes") or [] if not n.get("system")]
     if not notes:
         return
-    head, replies = notes[0], notes[1:]
-    login = (head.get("author") or {}).get("username")
-    klass = author_class(login, None, self_logins)
-    if klass == "self" and not replies:
-        out.self_count += 1
-        return
-    own = [
-        r
-        for r in replies
-        if author_class((r.get("author") or {}).get("username"), None, self_logins)
-        == "self"
+    head = notes[0]
+    entries = [
+        (
+            (n.get("author") or {}).get("username"),
+            author_class((n.get("author") or {}).get("username"), None, self_logins),
+            n.get("created_at"),
+            n.get("body", ""),
+            f"{url}#note_{n['id']}" if n.get("id") else None,
+        )
+        for n in notes
     ]
     threaded = bool(head.get("resolvable"))
     position = head.get("position") or {}
-    stamp = head.get("created_at")
-    out.findings.append(
-        finding(
-            url,
-            _gitlab_source(is_mr, threaded),
-            login,
-            klass,
-            stamp,
-            head.get("body", ""),
-            f"{url}#note_{head['id']}" if head.get("id") else None,
-            path=position.get("new_path"),
-            line=position.get("new_line"),
-            resolved=head.get("resolved") if threaded else None,
-            replies=len(replies),
-            last_self_reply=own[-1]["body"] if own else None,
-            commit_after=first_commit_after(commits, parse_time(stamp)),
-        )
-    )
+    meta = {
+        "path": position.get("new_path"),
+        "line": position.get("new_line"),
+        "resolved": head.get("resolved") if threaded else None,
+    }
+    reply = "review-reply" if threaded else _gitlab_source(is_mr, False)
+    _thread(url, entries, meta, commits, out, (_gitlab_source(is_mr, threaded), reply))
 
 
 def parse_gitlab(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
@@ -555,7 +634,7 @@ def parse_gitlab(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any]:
         "findings": out.findings,
         "self_comments": out.self_count,
         "linked": sorted(set(linked)),
-        "tickets": sorted(scope.tickets_in(f"{item.get('title', '')} {branch}")),
+        "tickets": tickets_named(item.get("title", ""), branch),
         "truncated": [],  # --paginate reads every page
     }
 
@@ -585,30 +664,32 @@ def find_jira_cli(explicit: str | None) -> Path | None:
     return next((p for p in JIRA_CLI_CANDIDATES if p.is_file()), None)
 
 
+def _python_for(script: Path) -> list[str]:
+    """The jira skill's scripts declare their dependencies inline (PEP 723),
+    so they run under `uv run`; plain python3 is the fallback."""
+    return (
+        ["uv", "run", str(script)] if shutil.which("uv") else ["python3", str(script)]
+    )
+
+
 def fetch_jira(key: str, cli: Path, run: Runner) -> dict[str, Any]:
     me = cli.parent.parent / "utility" / JIRA_USER_NAME
+    fields = ["--fields", "summary,status,comment", "--expand", "changelog", "--raw"]
     return {
-        "self": run(["python3", str(me), "--json", "me"]) if me.is_file() else {},
-        "issue": run(
-            [
-                "python3",
-                str(cli),
-                "--json",
-                "get",
-                key,
-                "--fields",
-                "summary,status,comment",
-                "--expand",
-                "changelog",
-                "--raw",
-            ]
-        ),
+        "self": run([*_python_for(me), "--json", "me"]) if me.is_file() else {},
+        "issue": run([*_python_for(cli), "--json", "get", key, *fields]),
     }
+
+
+def _jira_login(person: dict[str, Any] | None) -> str | None:
+    """Server/DC names people by `name`; Cloud only by `accountId`."""
+    person = person or {}
+    return person.get("name") or person.get("accountId") or person.get("displayName")
 
 
 def _jira_comments(comments, url, self_logins, out: _Collected) -> None:
     for comment in comments:
-        login = (comment.get("author") or {}).get("name")
+        login = _jira_login(comment.get("author"))
         klass = author_class(login, None, self_logins)
         if klass == "self":
             out.self_count += 1
@@ -629,7 +710,7 @@ def _jira_transitions(histories, url, self_logins, out: _Collected) -> None:
     """A status change by somebody else — a ticket sent back from QA — is
     feedback even without a word of comment."""
     for history in histories:
-        login = (history.get("author") or {}).get("name")
+        login = _jira_login(history.get("author"))
         klass = author_class(login, None, self_logins)
         if klass == "self":
             continue
@@ -651,8 +732,11 @@ def parse_jira(
     raw: dict[str, Any], self_logins: set[str], browse: str
 ) -> dict[str, Any]:
     issue = raw["issue"]
+    if not isinstance(issue, dict) or "key" not in issue:
+        errors = issue.get("errorMessages") if isinstance(issue, dict) else None
+        raise LookupError("; ".join(errors or []) or "not a Jira issue")
     me = raw.get("self") or {}
-    self_logins = self_logins | {me.get("name", ""), me.get("key", "")}
+    self_logins = self_logins | {me.get(k, "") for k in ("name", "key", "accountId")}
     key = issue["key"]
     browse = browse or (issue.get("self") or "").split("/rest/", 1)[0]
     url = f"{browse.rstrip('/')}/browse/{key}" if browse else key
@@ -664,6 +748,11 @@ def parse_jira(
         (issue.get("changelog") or {}).get("histories") or [], url, self_logins, out
     )
     total = (fields.get("comment") or {}).get("total", len(comments))
+    changelog = issue.get("changelog") or {}
+    histories = changelog.get("histories") or []
+    truncated = ["comments"] if total > len(comments) else []
+    if changelog.get("total", len(histories)) > len(histories):
+        truncated.append("changelog")
     return {
         "url": url,
         "title": fields.get("summary"),
@@ -672,7 +761,7 @@ def parse_jira(
         "self_comments": out.self_count,
         "linked": [],
         "tickets": [],
-        "truncated": ["comments"] if total > len(comments) else [],
+        "truncated": truncated,
     }
 
 
@@ -681,10 +770,13 @@ def parse_jira(
 
 
 def default_runner(command: list[str]) -> Any:
-    """Run a CLI that prints JSON. Raises on a non-zero exit or unparsable output."""
-    out = subprocess.run(
-        command, capture_output=True, text=True, timeout=120, check=False
-    )
+    """Run a CLI that prints JSON. Raises RuntimeError on any failure."""
+    try:
+        out = subprocess.run(
+            command, capture_output=True, text=True, timeout=120, check=False
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(f"{command[0]} timed out after {exc.timeout}s") from exc
     if out.returncode != 0:
         message = (out.stderr or out.stdout).strip().splitlines()
         raise RuntimeError(message[-1] if message else f"exit {out.returncode}")
@@ -692,10 +784,15 @@ def default_runner(command: list[str]) -> Any:
 
 
 def _decode_stream(text: str) -> Any:
-    """One JSON value, or several back to back (`--paginate`) as a list of pages."""
+    """One JSON value, or several back to back (`--paginate`) as a list of pages.
+
+    Empty output is an error, never an empty result: a CLI that printed
+    nothing has not said "no comments"."""
     decoder = json.JSONDecoder()
     values, index = [], 0
     text = text.strip()
+    if not text:
+        raise RuntimeError("empty output")
     while index < len(text):
         value, end = decoder.raw_decode(text, index)
         values.append(value)
@@ -716,15 +813,35 @@ def parse_ref(ref: str) -> dict[str, Any] | None:
     return ticket_item(ref, "named") if scope.TICKET_RE.fullmatch(ref) else None
 
 
-def read_one(item, run, self_logins, jira_cli, jira_browse) -> dict[str, Any]:
+def _require_dict(value: Any, what: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise TypeError(f"{what}: expected a JSON object, got {type(value).__name__}")
+    return value
+
+
+def read_one(item, run, self_logins, jira_cli, jira_browse, gitlab_hosts=()) -> dict:
     """Fetch and parse one artefact. Raises when it cannot be read."""
     if item["forge"] == "github":
-        raw = fetch_github(item, run)
+        raw = _require_dict(fetch_github(item, run), "gh api graphql")
         if item["kind"] == "pull":
             return parse_github_pr(raw, self_logins)
-        return parse_github_issue(raw, self_logins)
+        try:
+            return parse_github_issue(raw, self_logins)
+        except LookupError:
+            # `gh api …/issues/N` also addresses pull requests; read it as one.
+            pull = dict(item, kind="pull")
+            raw = _require_dict(fetch_github(pull, run), "gh api graphql")
+            return parse_github_pr(raw, self_logins)
     if item["forge"] == "gitlab":
-        return parse_gitlab(fetch_gitlab(item, run), self_logins)
+        # glab sends GITLAB_TOKEN to whatever --hostname names, so a link to a
+        # foreign host in a PR description must not be followed.
+        if item["host"] not in gitlab_hosts:
+            raise RuntimeError(
+                f"host {item['host']} not allowed — pass --gitlab-host {item['host']}"
+            )
+        raw = fetch_gitlab(item, run)
+        _require_dict(raw["item"], "glab api")
+        return parse_gitlab(raw, self_logins)
     if jira_cli is None:
         raise RuntimeError(
             "no jira-issue.py found — install the jira-communication skill"
@@ -750,6 +867,7 @@ def collect(
     self_logins: set[str] | None = None,
     jira_cli: Path | None = None,
     jira_browse: str = "",
+    gitlab_hosts: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     """Read every artefact, follow its links once, and gather the findings."""
     self_logins = set(self_logins or ())
@@ -766,9 +884,12 @@ def collect(
         seen.add(item["url"])
         record = {k: item.get(k) for k in ("url", "forge", "kind", "origin")}
         try:
-            parsed = read_one(item, run, self_logins, jira_cli, jira_browse)
-        except (RuntimeError, LookupError, ValueError, OSError) as exc:
-            artefacts.append({**record, "fetched": False, "error": str(exc)})
+            parsed = read_one(
+                item, run, self_logins, jira_cli, jira_browse, gitlab_hosts
+            )
+        except Exception as exc:  # noqa: BLE001 — one artefact never ends the run
+            error = f"{type(exc).__name__}: {exc}"
+            artefacts.append({**record, "fetched": False, "error": error})
             continue
         kept, skipped = _split_by_since(parsed.pop("findings"), since)
         earlier += skipped
@@ -816,7 +937,6 @@ TEXT_REPORT_LIMIT = 160
 def plain(body: str) -> str:
     """Body text without HTML comments, tags, images and link targets."""
     text = re.sub(r"<!--.*?-->", " ", body, flags=re.DOTALL)
-    text = re.sub(r"<details>.*?</details>", " ", text, flags=re.DOTALL)
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
@@ -928,7 +1048,11 @@ def main(argv: list[str]) -> int:
         help="Jira base URL for ticket links (default: $JIRA_URL)",
     )
     parser.add_argument(
-        "--gitlab-host", default=os.environ.get("GITLAB_HOST", "gitlab.com")
+        "--gitlab-host",
+        action="append",
+        default=[],
+        help="GitLab host glab may be sent to; repeatable (default: $GITLAB_HOST"
+        " or gitlab.com). A linked MR/issue on any other host is not read.",
     )
     parser.add_argument("--output-format", choices=("text", "json"), default="text")
     args = parser.parse_args(argv[1:])
@@ -938,11 +1062,16 @@ def main(argv: list[str]) -> int:
     items: list[dict[str, Any]] = []
     mentioned_skipped = 0
     since = parse_time(args.since) if args.since else None
+    if args.since and since is None:
+        parser.error(f"--since is not an ISO 8601 time: {args.since}")
+    gitlab_hosts = tuple(
+        args.gitlab_host or [os.environ.get("GITLAB_HOST") or "gitlab.com"]
+    )
     if args.transcript_file:
         if not args.transcript_file.is_file():
             print(f"no such transcript: {args.transcript_file}", file=sys.stderr)
             return 2
-        data = scope.collect_artefacts(args.transcript_file, args.gitlab_host)
+        data = scope.collect_artefacts(args.transcript_file, gitlab_hosts[0])
         items = items_from_scope(data, args.include_mentioned)
         mentioned_skipped = (
             0
@@ -963,6 +1092,7 @@ def main(argv: list[str]) -> int:
         self_logins=set(args.self_login),
         jira_cli=find_jira_cli(args.jira_cli),
         jira_browse=args.jira_browse,
+        gitlab_hosts=gitlab_hosts,
     )
     if args.output_format == "json":
         print(json.dumps(result, indent=2, default=str))

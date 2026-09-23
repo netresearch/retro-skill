@@ -10,13 +10,17 @@ replaced, because the originals are internal.
 
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import io
 import itertools
 import json
+import subprocess
 import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "skills" / "retro" / "scripts"
@@ -210,10 +214,12 @@ class GitHubParseTest(unittest.TestCase):
     def test_empty_envelopes_and_own_comments_are_not_findings(self):
         reviews = [f for f in self.parsed["findings"] if f["source"] == "review"]
         # 9 reviews: 3 own and 3 bot ones are empty envelopes of inline
-        # threads; 3 bot reviews carry a body. Self: the one own PR comment.
+        # threads; 3 bot reviews carry a body. Self: the own reply in each of
+        # the 3 threads, and the one own PR comment.
         self.assertEqual(len(reviews), 3)
-        self.assertEqual(self.parsed["self_comments"], 1)
-        self.assertTrue(all(f["report"] for f in reviews))
+        self.assertEqual(self.parsed["self_comments"], 4)
+        # A bot review body can carry findings outside the diff: not a report.
+        self.assertFalse(any(f["report"] for f in reviews))
 
     def test_viewer_login_counts_as_self_without_a_flag(self):
         self.assertNotIn("CybotTM", {f["author"] for f in self.parsed["findings"]})
@@ -267,9 +273,8 @@ class GitLabParseTest(unittest.TestCase):
                 ("review-thread", "human"),
             ],
         )
-        self.assertEqual(
-            self.parsed["self_comments"], 1
-        )  # the system note is not counted
+        # The own note and the own reply in the thread; the system note is not counted.
+        self.assertEqual(self.parsed["self_comments"], 2)
 
     def test_thread_resolution_position_and_fix_commit(self):
         thread = self.by_body["The variable check r"]
@@ -383,14 +388,16 @@ class CollectTest(unittest.TestCase):
                 return raw["notes"]
             if endpoint.endswith("commits?per_page=100"):
                 return raw["commits"]
-            if endpoint.endswith("closes_issues"):
+            if "/closes_issues" in endpoint:
                 return raw["closes"]
             return raw["item"]
 
         item = dss.artefact("git.example.org", "group/app", "merge_requests", 88) | {
             "origin": "created"
         }
-        result = crf.collect([item], None, run=runner, jira_cli=None)
+        result = crf.collect(
+            [item], None, run=runner, jira_cli=None, gitlab_hosts=("git.example.org",)
+        )
         origins = sorted((a["origin"], a["url"]) for a in result["artefacts"])
         self.assertEqual(
             origins,
@@ -404,6 +411,361 @@ class CollectTest(unittest.TestCase):
         jira = next(a for a in result["artefacts"] if a["url"] == "OPS-901")
         self.assertFalse(jira["fetched"])
         self.assertIn("jira-issue.py", jira["error"])
+
+
+class ReviewFixesArtefactTest(unittest.TestCase):
+    """Inputs from the independent review of eb232d8 that produced a wrong target."""
+
+    def urls(self, pairs, **kw):
+        data = dss.collect_artefacts(_transcript(pairs), **kw)
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_number_inside_the_body_is_not_the_pr(self):
+        urls, data = self.urls(
+            [({"command": 'gh pr comment -R o/r --body "fixed 12 nits"'}, "")]
+        )
+        self.assertEqual(urls, {})
+        self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+
+    def test_a_boolean_flag_does_not_hide_the_number(self):
+        urls, _ = self.urls([({"command": "gh pr merge --merge 12 -R o/r"}, "")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/12": "acted"})
+
+    def test_create_keeps_only_its_own_url(self):
+        cmd = "gh pr create -R o/r --fill && gh pr view 1 -R x/y --comments"
+        result = "https://github.com/o/r/pull/2\nsee https://github.com/x/y/issues/4"
+        urls, _ = self.urls([({"command": cmd}, result)])
+        self.assertEqual(urls["https://github.com/o/r/pull/2"], "created")
+        self.assertEqual(urls["https://github.com/x/y/issues/4"], "mentioned")
+
+    def test_mcp_write_takes_its_input_not_an_echoed_link(self):
+        payload = {
+            "__name": "mcp__github__add_issue_comment",
+            "owner": "o",
+            "repo": "r",
+            "issue_number": 5,
+        }
+        urls, _ = self.urls(
+            [(payload, '{"body": "see https://github.com/z/z/issues/77"}')]
+        )
+        self.assertEqual(urls["https://github.com/o/r/issues/5"], "acted")
+        self.assertEqual(urls["https://github.com/z/z/issues/77"], "mentioned")
+
+    def test_commands_in_heredocs_and_quotes_are_text(self):
+        doc = "cat > /tmp/doc.md <<'EOF'\nRun gh pr merge 3 -R someone/else\nEOF"
+        echo = 'echo "gh pr merge 4 -R someone/else"'
+        urls, _ = self.urls([({"command": doc}, ""), ({"command": echo}, "")])
+        self.assertEqual(urls, {})
+
+    def test_rest_writes_through_gh_api_and_glab_api(self):
+        pairs = [
+            ({"command": "gh api -X POST repos/o/r/issues/9/comments -f body=x"}, ""),
+            ({"command": "gh api repos/o/r/pulls/8"}, ""),  # a read
+            (
+                {
+                    "command": 'glab api --method POST "projects/group%2Fapp/merge_requests/4/notes"'
+                    " --hostname git.example.org -f body=x"
+                },
+                "",
+            ),
+        ]
+        urls, _ = self.urls(pairs)
+        self.assertEqual(
+            urls,
+            {
+                "https://github.com/o/r/issues/9": "acted",
+                "https://git.example.org/group/app/-/merge_requests/4": "acted",
+            },
+        )
+
+    def test_jira_key_inside_the_comment_text_is_not_the_ticket(self):
+        self.assertEqual(
+            dss.jira_command_tickets('uv run jira-comment.py add NRS-1 "see ABC-2"'),
+            {"NRS-1"},
+        )
+
+
+def _git(*args: str, cwd: Path) -> None:
+    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+
+
+class RemoteResolutionTest(unittest.TestCase):
+    def repo(self, remotes: dict[str, str]) -> Path:
+        path = Path(TMP.name) / f"repo{next(_COUNTER)}"
+        path.mkdir()
+        _git("init", "-q", cwd=path)
+        for name, url in remotes.items():
+            _git("remote", "add", name, url, cwd=path)
+        return path
+
+    def test_credentials_are_dropped_from_the_remote(self):
+        path = self.repo(
+            {
+                "origin": "https://gitlab-ci-token:glpat-SECRET@git.example.org/group/app.git"
+            }
+        )
+        self.assertEqual(
+            dss.remote_project(str(path), "glab"), ("git.example.org", "group/app")
+        )
+
+    def test_gh_prefers_upstream_in_a_fork(self):
+        path = self.repo(
+            {
+                "origin": "git@github.com:me/fork.git",
+                "upstream": "https://github.com/org/proj.git",
+            }
+        )
+        self.assertEqual(
+            dss.remote_project(str(path), "gh"), ("github.com", "org/proj")
+        )
+        self.assertEqual(
+            dss.remote_project(str(path), "glab"), ("github.com", "me/fork")
+        )
+
+    def test_gh_set_default_wins(self):
+        path = self.repo(
+            {
+                "origin": "git@github.com:me/fork.git",
+                "upstream": "https://github.com/org/proj.git",
+            }
+        )
+        _git("config", "remote.origin.gh-resolved", "base", cwd=path)
+        self.assertEqual(dss.remote_project(str(path), "gh"), ("github.com", "me/fork"))
+
+    def test_the_last_cd_decides(self):
+        first = self.repo({"origin": "git@github.com:a/first.git"})
+        second = self.repo({"origin": "git@github.com:b/second.git"})
+        cmd = f"cd {first} && git fetch && cd {second} && gh pr edit 5 --add-label x"
+        data = dss.collect_artefacts(_transcript([({"command": cmd}, "")]))
+        self.assertEqual(
+            [a["url"] for a in data["artefacts"]],
+            ["https://github.com/b/second/pull/5"],
+        )
+
+    def test_a_relative_cd_is_unresolved(self):
+        # A real repository, named relative to this process's cwd: the session's
+        # cwd is unknown, so resolving it here would name a different checkout.
+        path = self.repo({"origin": "git@github.com:a/here.git"})
+        with contextlib.chdir(path.parent):
+            self.assertIsNone(dss.remote_project(path.name))
+
+
+def _pr(threads=(), reviews=(), commits_total=None):
+    commits = [
+        {
+            "commit": {
+                "oid": "c1",
+                "committedDate": "2026-09-21T12:00:00Z",
+                "messageHeadline": "x",
+            }
+        }
+    ]
+    return {
+        "data": {
+            "viewer": {"login": "me"},
+            "repository": {
+                "pullRequest": {
+                    "url": "https://github.com/o/r/pull/1",
+                    "title": "t",
+                    "headRefName": "b",
+                    "reviewThreads": {
+                        "totalCount": len(threads),
+                        "nodes": list(threads),
+                    },
+                    "reviews": {"totalCount": len(reviews), "nodes": list(reviews)},
+                    "comments": {"totalCount": 0, "nodes": []},
+                    "commits": {"totalCount": commits_total or 1, "nodes": commits},
+                    "closingIssuesReferences": {"totalCount": 0, "nodes": []},
+                }
+            },
+        }
+    }
+
+
+def _comment(login, typename, when, body):
+    return {
+        "author": {"login": login, "__typename": typename},
+        "createdAt": when,
+        "body": body,
+        "url": f"u-{when}",
+    }
+
+
+class ReviewFixesParseTest(unittest.TestCase):
+    def test_a_human_reply_in_a_bot_thread_is_its_own_finding(self):
+        thread = {
+            "path": "a.py",
+            "line": 3,
+            "isResolved": True,
+            "comments": {
+                "totalCount": 3,
+                "nodes": [
+                    _comment("coderabbitai", "Bot", "2026-09-20T10:00:00Z", "fix this"),
+                    _comment("me", "User", "2026-09-20T10:05:00Z", "won't fix"),
+                    _comment(
+                        "team.lead", "User", "2026-09-21T11:00:00Z", "please do fix it"
+                    ),
+                ],
+            },
+        }
+        found = crf.parse_github_pr(_pr(threads=[thread]), set())["findings"]
+        reply = next(f for f in found if f["source"] == "review-reply")
+        self.assertEqual(
+            (reply["author"], reply["author_class"], reply["path"]),
+            ("team.lead", "human", "a.py"),
+        )
+
+    def test_since_keeps_a_thread_answered_later(self):
+        thread = {
+            "comments": {
+                "totalCount": 2,
+                "nodes": [
+                    _comment("coderabbitai", "Bot", "2026-09-20T10:00:00Z", "fix this"),
+                    _comment("team.lead", "User", "2026-09-21T11:00:00Z", "agreed"),
+                ],
+            }
+        }
+        found = crf.parse_github_pr(_pr(threads=[thread]), set())["findings"]
+        kept, hidden = crf._split_by_since(
+            found, datetime(2026, 9, 21, tzinfo=timezone.utc)
+        )
+        self.assertEqual(
+            ({f["source"] for f in kept}, hidden),
+            ({"review-thread", "review-reply"}, 0),
+        )
+
+    def test_an_own_thread_with_only_own_replies_is_not_listed(self):
+        thread = {
+            "comments": {
+                "totalCount": 2,
+                "nodes": [
+                    _comment("me", "User", "2026-09-20T10:00:00Z", "note"),
+                    _comment("Me", "User", "2026-09-20T10:01:00Z", "note 2"),
+                ],
+            }
+        }
+        parsed = crf.parse_github_pr(_pr(threads=[thread]), set())
+        self.assertEqual((parsed["findings"], parsed["self_comments"]), ([], 2))
+
+    def test_dismissed_bot_review_with_a_body_is_kept_approval_is_not(self):
+        reviews = [
+            {"state": "DISMISSED", "body": "SQL injection in x.php", "submittedAt": "2026-09-20T10:00:00Z", "author": {"login": "sonarqubecloud", "__typename": "Bot"}},
+            {"state": "DISMISSED", "body": "", "submittedAt": "2026-09-20T10:00:00Z", "author": {"login": "sonarqubecloud", "__typename": "Bot"}},
+            {"state": "APPROVED", "body": "Auto-approved", "submittedAt": "2026-09-20T10:00:00Z", "author": {"login": "github-actions", "__typename": "Bot"}},
+        ]  # fmt: skip
+        found = crf.parse_github_pr(_pr(reviews=reviews), set())["findings"]
+        self.assertEqual([f["body"] for f in found], ["SQL injection in x.php"])
+
+    def test_more_commits_than_read_is_named(self):
+        self.assertIn(
+            "commits", crf.parse_github_pr(_pr(commits_total=150), set())["truncated"]
+        )
+
+    def test_details_text_survives_plain(self):
+        body = "<details><summary>Outside diff (1)</summary>Qualify the grep -r rule</details>"
+        self.assertIn("Qualify the grep -r rule", crf.plain(body))
+
+    def test_tickets_only_from_title_prefix_and_branch_segment(self):
+        self.assertEqual(
+            crf.tickets_named("ci: test PHP-8.4 and TYPO3-14", "ci/matrix"), []
+        )
+        self.assertEqual(
+            crf.tickets_named("[NRS-12] x", "feature/OPS-3-y"), ["NRS-12", "OPS-3"]
+        )
+        # The recorded MR whose feedback sat only in the ticket.
+        title = (
+            "Draft: OPS-901: ci: resolve every pipeline variable before set-pipeline"
+        )
+        self.assertEqual(
+            crf.tickets_named(title, "ops-901-pipeline-var-check"), ["OPS-901"]
+        )
+
+    def test_jira_cloud_accounts_and_error_bodies(self):
+        raw = {
+            "self": {"accountId": "acc-me"},
+            "issue": {
+                "key": "OPS-1",
+                "self": "https://x.atlassian.net/rest/api/2/issue/1",
+                "fields": {
+                    "comment": {
+                        "total": 2,
+                        "comments": [
+                            {"author": {"accountId": "acc-me"}, "created": "2026-09-20T10:00:00.000+0000", "body": "mine"},
+                            {"author": {"accountId": "acc-lead"}, "created": "2026-09-20T11:00:00.000+0000", "body": "theirs"},
+                        ],
+                    }
+                },
+            },
+        }  # fmt: skip
+        parsed = crf.parse_jira(raw, set(), "")
+        self.assertEqual(
+            ([f["body"] for f in parsed["findings"]], parsed["self_comments"]),
+            (["theirs"], 1),
+        )
+        with self.assertRaisesRegex(LookupError, "Issue does not exist"):
+            crf.parse_jira(
+                {"issue": {"errorMessages": ["Issue does not exist"]}}, set(), ""
+            )
+
+
+class ReviewFixesCollectTest(unittest.TestCase):
+    item = dss.artefact("github.com", "o/r", "pull", 1) | {"origin": "created"}
+
+    def test_a_timeout_is_one_unread_artefact_not_a_crash(self):
+        def runner(command):
+            raise subprocess.TimeoutExpired(command, 120)
+
+        result = crf.collect([self.item], None, run=runner)
+        self.assertEqual([a["fetched"] for a in result["artefacts"]], [False])
+        self.assertIn("TimeoutExpired", result["artefacts"][0]["error"])
+
+    def test_a_list_where_an_object_belongs_is_unread(self):
+        result = crf.collect([self.item], None, run=lambda command: [])
+        self.assertFalse(result["artefacts"][0]["fetched"])
+        self.assertIn("expected a JSON object", result["artefacts"][0]["error"])
+
+    def test_empty_output_is_an_error(self):
+        with self.assertRaises(RuntimeError):
+            crf._decode_stream("  \n")
+
+    def test_default_runner_turns_a_timeout_into_an_error(self):
+        timeout = subprocess.TimeoutExpired(["gh"], 120)
+        with (
+            mock.patch.object(crf.subprocess, "run", side_effect=timeout),
+            self.assertRaisesRegex(RuntimeError, "timed out"),
+        ):
+            crf.default_runner(["gh", "api"])
+
+    def test_a_foreign_gitlab_host_is_not_contacted(self):
+        calls = []
+        item = dss.artefact("evil.example", "g/p", "issues", 1) | {"origin": "linked"}
+        result = crf.collect(
+            [item], None, run=calls.append, gitlab_hosts=("git.example.org",)
+        )
+        self.assertEqual(calls, [])
+        self.assertIn("not allowed", result["artefacts"][0]["error"])
+
+    def test_an_issue_number_that_is_a_pr_is_read_as_one(self):
+        def runner(command):
+            if any("issue(number" in part for part in command):
+                return {
+                    "data": {"viewer": {"login": "me"}, "repository": {"issue": None}}
+                }
+            return _pr()
+
+        item = dss.artefact("github.com", "o/r", "issues", 1) | {"origin": "acted"}
+        result = crf.collect([item], None, run=runner)
+        self.assertTrue(result["artefacts"][0]["fetched"])
+
+
+class MainTest(unittest.TestCase):
+    def test_an_unparsable_since_is_an_error(self):
+        with (
+            self.assertRaises(SystemExit) as caught,
+            contextlib.redirect_stderr(io.StringIO()),
+        ):
+            crf.main(["x", "--ref", "NRS-1", "--since", "21.09.2026"])
+        self.assertEqual(caught.exception.code, 2)
 
 
 class DecodeTest(unittest.TestCase):

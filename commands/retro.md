@@ -57,7 +57,10 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/collect-review-findings.py \
 ```
 
 It reads the PRs, MRs and issues the session created or wrote to, their linked
-issues, and the Jira tickets named in their titles and branches. Treat `NOT READ`
+issues, the Jira tickets named at the start of their titles or in a branch
+segment, and the tickets the session ran a jira script against. Bodies are
+trimmed in text; read a finding in full from `--output-format json` before
+classifying it. A GitLab host other than `--gitlab-host` is not contacted. Treat `NOT READ`
 lines as unknown, never as "no findings". Field meanings and how to read them:
 `skills/retro/references/friction-catalog.md` § Feedback from outside the transcript.
 
