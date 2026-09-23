@@ -265,8 +265,8 @@ Requires latency. Don't run within 24h of the session — most D signals (includ
 ## Promote Mode
 
 ```
-/retro promote                       # cwd-scoped memory store
 /retro promote                       # every slug holding a memory/ dir (the default)
+/retro promote --project=<slug>      # one slug only
 ```
 
 Re-homes already-written local memory (the **stock**, not the session flow)
@@ -279,8 +279,12 @@ is confirmed. Full detail in `skills/retro/references/promote-mode.md`.
 
   ```bash
   python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py \
-    --output-format json          # every slug; --project=<slug> narrows to one
+    --output-format json [--project=<slug>]
   ```
+
+  Forward `--project=<slug>` unchanged when `/retro promote` was given one;
+  without it the scanner reads every slug, so a narrowed request would
+  otherwise pull other projects' notes into Phases 4–10.
 
 - Skip Phases 2, 2b, 3b, 3c (no transcript) — announce the skip in one line
 - Phases 4–10 run verbatim; destination skew is **upward** per scope-escalation
