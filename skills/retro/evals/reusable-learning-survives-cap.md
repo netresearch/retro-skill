@@ -22,7 +22,7 @@ retries, and corrections, and severity grades most non-friction findings
 `nice-to-have`. In a busy session, friction findings are numerous and easy to
 grade high, so under the ≤10-proposal cap they crowd out exactly the
 friction-free learnings the retrospective exists to also capture (see
-[`../references/friction-catalog.md`](../references/friction-catalog.md) B16–B18
+[`../references/friction-catalog.md`](../references/friction-catalog.md) B16–B20
 and [`../references/classification-heuristic.md`](../references/classification-heuristic.md)
 → Severity → "Cap protection").
 

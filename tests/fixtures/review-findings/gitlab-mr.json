@@ -1,0 +1,168 @@
+{
+ "self": {
+  "id": 8,
+  "username": "agent.owner",
+  "name": "Agent Owner",
+  "state": "active"
+ },
+ "item": {
+  "iid": 88,
+  "title": "OPS-901: check pipeline variables before deploy",
+  "source_branch": "ops-901-pipeline-var-check",
+  "state": "opened",
+  "web_url": "https://git.example.org/group/app/-/merge_requests/88",
+  "description": "Refs https://git.example.org/group/app/-/issues/12\n\nCloses #13"
+ },
+ "notes": [
+  [
+   {
+    "id": "d1",
+    "individual_note": true,
+    "notes": [
+     {
+      "id": 1001,
+      "type": null,
+      "body": "Guard verification, run before opening this MR.",
+      "author": {
+       "id": 8,
+       "username": "agent.owner",
+       "name": "Agent Owner",
+       "state": "active"
+      },
+      "created_at": "2026-09-18T12:35:54.535+02:00",
+      "system": false,
+      "resolvable": false,
+      "resolved": null
+     }
+    ]
+   },
+   {
+    "id": "d2",
+    "individual_note": true,
+    "notes": [
+     {
+      "id": 1002,
+      "type": null,
+      "body": "requested review from @team.lead",
+      "author": {
+       "id": 8,
+       "username": "agent.owner",
+       "name": "Agent Owner",
+       "state": "active"
+      },
+      "created_at": "2026-09-18T12:36:43.283+02:00",
+      "system": true,
+      "resolvable": false,
+      "resolved": null
+     }
+    ]
+   }
+  ],
+  [
+   {
+    "id": "d3",
+    "individual_note": false,
+    "notes": [
+     {
+      "id": 1003,
+      "type": "DiffNote",
+      "body": "The variable check runs after the deploy job, so it guards nothing.",
+      "author": {
+       "id": 21,
+       "username": "team.lead",
+       "name": "Team Lead",
+       "state": "active"
+      },
+      "created_at": "2026-09-18T14:02:10.000+02:00",
+      "system": false,
+      "resolvable": true,
+      "resolved": true,
+      "position": {
+       "new_path": "ci/deploy.yml",
+       "new_line": 41
+      }
+     },
+     {
+      "id": 1004,
+      "type": "DiffNote",
+      "body": "Moved it into the prepare stage in 5b1e2c0.",
+      "author": {
+       "id": 8,
+       "username": "agent.owner",
+       "name": "Agent Owner",
+       "state": "active"
+      },
+      "created_at": "2026-09-18T14:30:00.000+02:00",
+      "system": false,
+      "resolvable": true,
+      "resolved": true
+     }
+    ]
+   },
+   {
+    "id": "d4",
+    "individual_note": true,
+    "notes": [
+     {
+      "id": 1005,
+      "type": null,
+      "body": "Please always link the ticket in the MR title here.",
+      "author": {
+       "id": 21,
+       "username": "team.lead",
+       "name": "Team Lead",
+       "state": "active"
+      },
+      "created_at": "2026-09-18T15:00:00.000+02:00",
+      "system": false,
+      "resolvable": false,
+      "resolved": null
+     }
+    ]
+   },
+   {
+    "id": "d5",
+    "individual_note": true,
+    "notes": [
+     {
+      "id": 1006,
+      "type": null,
+      "body": "Pipeline #9912 passed.",
+      "author": {
+       "id": 97,
+       "username": "project_42_bot_3f9a1c",
+       "name": "ci-token",
+       "state": "active"
+      },
+      "created_at": "2026-09-18T15:05:00.000+02:00",
+      "system": false,
+      "resolvable": false,
+      "resolved": null
+     }
+    ]
+   }
+  ]
+ ],
+ "commits": [
+  [
+   {
+    "id": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+    "title": "fix(ci): check variables",
+    "committed_date": "2026-09-18T12:30:00.000+02:00",
+    "created_at": "2026-09-18T12:30:00.000+02:00"
+   },
+   {
+    "id": "5b1e2c0d9f8e7a6b5c4d3e2f1a0b9c8d7e6f5a4b",
+    "title": "fix(ci): run the check in prepare",
+    "committed_date": "2026-09-18T14:25:00.000+02:00",
+    "created_at": "2026-09-18T14:25:00.000+02:00"
+   }
+  ]
+ ],
+ "closes": [
+  {
+   "iid": 13,
+   "web_url": "https://git.example.org/group/app/-/issues/13"
+  }
+ ]
+}

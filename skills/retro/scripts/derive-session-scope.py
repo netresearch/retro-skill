@@ -22,6 +22,7 @@ repository root, plus the days the session spans and the artefacts it created.
 
 Usage:
     derive-session-scope.py --transcript-file <session.jsonl> [--output-format text|json]
+        [--gitlab-host <host>]
 
 The output is a starting point that is complete where the transcript is: a
 repository the session only ever reached through a tool with no path in its
@@ -34,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -51,6 +53,58 @@ ARTEFACT_RE = re.compile(
     r"\b(?:gh|glab)\s+(?:pr|mr|release|issue)\s+(?:create|merge|edit)\b"
     r"|\bgit\s+(?:tag|push)\s+(?:-s\s+)?(?:origin\s+)?(?P<tag>v?\d+\.\d+\.\d+)\b"
 )
+
+# Pull requests, merge requests and issues, by URL. A GitLab project path may
+# be nested (`group/sub/project`), and the `/-/` separator is what marks it.
+GITHUB_URL_RE = re.compile(
+    r"https://github\.com/(?P<project>[\w.-]+/[\w.-]+)/(?P<kind>pull|issues)/(?P<number>\d+)"
+)
+GITLAB_URL_RE = re.compile(
+    r"https://(?P<host>(?!github\.com)[\w.-]+\.[a-z]{2,})/"
+    r"(?P<project>[\w.-]+(?:/[\w.-]+)+)/-/(?P<kind>merge_requests|issues)/(?P<number>\d+)"
+)
+# A forge command that writes to a PR/MR/issue. `create` prints the URL of what
+# it made; the others name a number and, usually, `-R`/`--repo`.
+FORGE_WRITE_RE = re.compile(
+    r"\b(?P<cli>gh|glab)\s+(?P<noun>pr|mr|issue)\s+"
+    r"(?P<verb>create|edit|update|comment|note|merge|ready|review|close|reopen|approve)\b"
+    r"(?P<rest>[^;&|\n]*)"
+)
+# MCP tools that write to a PR or issue; their input names owner/repo/number.
+MCP_WRITE_RE = re.compile(
+    r"github__(?:create_pull_request|update_pull_request|merge_pull_request|"
+    r"pull_request_review_write|add_reply_to_pull_request_comment|"
+    r"add_comment_to_pending_review|issue_write|add_issue_comment)"
+)
+# A Jira key a session acted on: the key on a command line that runs one of the
+# jira skill's scripts, or the `ticket` a time booking named. Prefixes that are
+# standards, not projects, are refused — `UTF-8`, `SHA-256`, `CVE-2025-1` would
+# otherwise all read as tickets.
+TICKET_RE = re.compile(r"\b(?P<key>[A-Z][A-Z0-9]{1,9}-\d+)\b")
+NOT_A_TICKET_PREFIX = frozenset(
+    {
+        "CVE",
+        "CWE",
+        "GHSA",
+        "UTF",
+        "SHA",
+        "ISO",
+        "RFC",
+        "TLS",
+        "SSL",
+        "HTTP",
+        "PSR",
+        "PEP",
+        "ECMA",
+        "WCAG",
+        "OWASP",
+        "ASD",
+        "STE100",
+        "X509",
+        "AES",
+    }
+)
+JIRA_COMMAND_RE = re.compile(r"\bjira-[a-z-]+\.py\b")
 
 
 def unquote(value: str) -> str:
@@ -178,10 +232,227 @@ def _resolve_roots(candidates: set[str]) -> tuple[set[str], set[str]]:
     return roots, unresolved
 
 
-def collect(transcript: Path) -> dict[str, Any]:
+ORIGIN_RANK = {"mentioned": 0, "acted": 1, "created": 2}
+
+
+def artefact(host: str, project: str, kind: str, number: int) -> dict[str, Any]:
+    """One PR/MR/issue, keyed by its canonical URL."""
+    kind = {"pull": "pull", "issues": "issue", "merge_requests": "merge_request"}.get(
+        kind, kind
+    )
+    if host == "github.com":
+        path = "pull" if kind == "pull" else "issues"
+        url = f"https://github.com/{project}/{path}/{number}"
+    else:
+        path = "merge_requests" if kind == "merge_request" else "issues"
+        url = f"https://{host}/{project}/-/{path}/{number}"
+    return {
+        "forge": "github" if host == "github.com" else "gitlab",
+        "host": host,
+        "project": project,
+        "kind": kind,
+        "number": number,
+        "url": url,
+    }
+
+
+def artefacts_in_text(text: str) -> list[dict[str, Any]]:
+    found = [
+        artefact("github.com", m["project"], m["kind"], int(m["number"]))
+        for m in GITHUB_URL_RE.finditer(text)
+    ]
+    found += [
+        artefact(m["host"], m["project"], m["kind"], int(m["number"]))
+        for m in GITLAB_URL_RE.finditer(text)
+    ]
+    return found
+
+
+def remote_project(path: str) -> tuple[str, str] | None:
+    """(host, project) of the `origin` remote of the checkout at `path`."""
+    if "$" in path or "`" in path or not Path(path).is_dir():
+        return None
+    try:
+        out = subprocess.run(
+            ["git", "-C", path, "remote", "get-url", "origin"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+            check=False,  # no remote is an ordinary answer here
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    url = out.stdout.strip()
+    m = re.match(
+        r"(?:https://|ssh://git@|git@)(?P<host>[\w.-]+)(?::\d+)?[:/](?P<project>.+?)(?:\.git)?/?$",
+        url,
+    )
+    return (m["host"], m["project"]) if out.returncode == 0 and m else None
+
+
+def positional_number(rest: str) -> int | None:
+    """The first bare number that is not the value of a flag (`--limit 5`)."""
+    previous = ""
+    for token in rest.split():
+        if token.isdigit() and not (previous.startswith("-") and "=" not in previous):
+            return int(token)
+        previous = token
+    return None
+
+
+def _forge_write_artefacts(
+    command: str, result: str, gitlab_host: str
+) -> tuple[list[dict[str, Any]], bool]:
+    """Artefacts one forge write command acted on, and whether any stayed unresolved."""
+    found: list[dict[str, Any]] = []
+    unresolved = False
+    for m in FORGE_WRITE_RE.finditer(command):
+        verb, rest = m["verb"], m["rest"]
+        if verb == "create":
+            # The URL `create` printed is the identity. A body text can name
+            # other URLs, so only the result counts; no URL means nothing made.
+            found += [dict(a, origin="created") for a in artefacts_in_text(result)]
+            continue
+        # The positional argument: a number, or a URL. Never a URL from inside
+        # `--body`, which names other PRs as often as this one.
+        first = rest.split()[0] if rest.split() else ""
+        positional = artefacts_in_text(first)
+        if positional:
+            found += [dict(a, origin="acted") for a in positional]
+            continue
+        number = positional_number(rest)
+        if number is None:
+            # `gh pr edit` on the current branch: the result may carry the URL.
+            printed = artefacts_in_text(result)
+            found += [dict(a, origin="acted") for a in printed[:1]]
+            unresolved = unresolved or not printed
+            continue
+        slug = FORGE_RE.search(rest)
+        if slug:
+            host = "github.com" if m["cli"] == "gh" else gitlab_host
+            project = slug["slug"]
+        else:
+            cd = CD_RE.search(command[: m.start()])
+            where = remote_project(unquote(cd["path"])) if cd else None
+            if not where:
+                unresolved = True
+                continue
+            host, project = where
+        kind = {"pr": "pull", "mr": "merge_request"}.get(m["noun"], "issue")
+        found.append(dict(artefact(host, project, kind, number), origin="acted"))
+    return found, unresolved
+
+
+def _mcp_write_artefacts(payload: dict[str, Any], result: str) -> list[dict[str, Any]]:
+    owner, repo = payload.get("owner"), payload.get("repo")
+    number = payload.get("pullNumber") or payload.get("issue_number")
+    named = artefacts_in_text(result)
+    if named:
+        origin = "acted" if number else "created"
+        return [dict(a, origin=origin) for a in named]
+    if isinstance(owner, str) and isinstance(repo, str) and str(number or "").isdigit():
+        kind = (
+            "issue"
+            if "issue" in payload.get("method", "") or "issue_number" in payload
+            else "pull"
+        )
+        return [
+            dict(
+                artefact("github.com", f"{owner}/{repo}", kind, int(number)),
+                origin="acted",
+            )
+        ]
+    return []
+
+
+def _result_text(block: dict[str, Any]) -> str:
+    content = block.get("content")
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(
+            part.get("text", "") for part in content if isinstance(part, dict)
+        )
+    return ""
+
+
+def tickets_in(text: str) -> set[str]:
+    return {
+        m["key"]
+        for m in TICKET_RE.finditer(text)
+        if m["key"].split("-", 1)[0] not in NOT_A_TICKET_PREFIX
+    }
+
+
+def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
+    """The PRs, MRs, issues and Jira tickets a session created, acted on or mentioned.
+
+    `origin` says how much the transcript supports the link: `created` (the
+    command's own output printed the URL), `acted` (a write command named it),
+    `mentioned` (a URL appeared somewhere, which includes documentation
+    placeholders such as `OWNER/REPO` — a reader weighs those, a fetch skips them).
+    """
+    pending: dict[str, tuple[str, dict[str, Any]]] = {}
+    by_url: dict[str, dict[str, Any]] = {}
+    tickets: set[str] = set()
+    unresolved: list[str] = []
+
+    def keep(found: list[dict[str, Any]]) -> None:
+        for item in found:
+            have = by_url.get(item["url"])
+            if not have or ORIGIN_RANK[item["origin"]] > ORIGIN_RANK[have["origin"]]:
+                by_url[item["url"]] = item
+
+    for event in iter_events(transcript):
+        message = event.get("message") or {}
+        content = message.get("content")
+        if isinstance(content, str):
+            keep([dict(a, origin="mentioned") for a in artefacts_in_text(content)])
+            continue
+        for block in content or []:
+            if not isinstance(block, dict):
+                continue
+            if block.get("type") == "tool_use":
+                payload = block.get("input") or {}
+                if isinstance(payload, dict):
+                    pending[block.get("id", "")] = (block.get("name", ""), payload)
+                    if block.get("name") == "mcp__tt__log_time":
+                        tickets |= tickets_in(str(payload.get("ticket", "")))
+            elif block.get("type") == "tool_result":
+                name, payload = pending.pop(block.get("tool_use_id", ""), ("", {}))
+                result = _result_text(block)
+                command = payload.get("command") if isinstance(payload, dict) else None
+                if isinstance(command, str):
+                    found, lost = _forge_write_artefacts(command, result, gitlab_host)
+                    keep(found)
+                    if lost:
+                        unresolved.append(command[:200])
+                    if JIRA_COMMAND_RE.search(command):
+                        tickets |= tickets_in(command)
+                elif MCP_WRITE_RE.search(name):
+                    keep(_mcp_write_artefacts(payload, result))
+                keep([dict(a, origin="mentioned") for a in artefacts_in_text(result)])
+            elif block.get("type") == "text":
+                keep(
+                    [
+                        dict(a, origin="mentioned")
+                        for a in artefacts_in_text(block.get("text", ""))
+                    ]
+                )
+
+    items = sorted(by_url.values(), key=lambda a: (-ORIGIN_RANK[a["origin"]], a["url"]))
+    return {
+        "artefacts": items,
+        "tickets": sorted(tickets),
+        "unresolved_forge_commands": unresolved,
+    }
+
+
+def collect(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
     commands, file_paths, days = _read_transcript(transcript)
     candidates, forges, tags = _scan_commands(commands)
     roots, unresolved = _resolve_roots(candidates | file_paths)
+    forge_artefacts = collect_artefacts(transcript, gitlab_host)
 
     return {
         "transcript": str(transcript),
@@ -194,6 +465,10 @@ def collect(transcript: Path) -> dict[str, Any]:
         # entries a long session most needs to see.
         "unresolved_paths": sorted(unresolved),
         "commands_scanned": len(commands),
+        # PRs, MRs and issues with how the transcript links them; the tickets a
+        # jira script or a time booking named; forge writes whose target could
+        # not be identified. collect-review-findings.py reads these.
+        **forge_artefacts,
     }
 
 
@@ -213,6 +488,22 @@ def render_text(scope: dict[str, Any]) -> str:
     if scope["forge_slugs"]:
         lines += ["", "Forge repositories addressed by slug (may have no local clone):"]
         lines += [f"  {s}" for s in scope["forge_slugs"]]
+    owned = [a for a in scope["artefacts"] if a["origin"] != "mentioned"]
+    if owned or scope["tickets"]:
+        lines += ["", "PRs, MRs and issues this session created or wrote to:"]
+        lines += [f"  {a['origin']:<8} {a['url']}" for a in owned]
+        if scope["tickets"]:
+            lines.append(f"  tickets  {', '.join(scope['tickets'])}")
+    mentioned = len(scope["artefacts"]) - len(owned)
+    if mentioned:
+        lines.append(
+            f"  (+{mentioned} only mentioned — --output-format json lists them)"
+        )
+    if scope["unresolved_forge_commands"]:
+        lines.append(
+            f"  {len(scope['unresolved_forge_commands'])} forge writes named no"
+            " resolvable target — --output-format json lists them"
+        )
     unresolved = scope["unresolved_paths"]
     if unresolved:
         shown = unresolved[:TEXT_UNRESOLVED_LIMIT]
@@ -243,13 +534,18 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--transcript-file", required=True, type=Path)
     parser.add_argument("--output-format", choices=("text", "json"), default="text")
+    parser.add_argument(
+        "--gitlab-host",
+        default=os.environ.get("GITLAB_HOST", "gitlab.com"),
+        help="host for a `glab ... -R group/project` that names no host (default: $GITLAB_HOST)",
+    )
     args = parser.parse_args(argv[1:])
 
     if not args.transcript_file.is_file():
         print(f"no such transcript: {args.transcript_file}", file=sys.stderr)
         return 2
 
-    scope = collect(args.transcript_file)
+    scope = collect(args.transcript_file, args.gitlab_host)
     if args.output_format == "json":
         print(json.dumps(scope, indent=2))
     else:

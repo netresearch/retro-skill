@@ -6,27 +6,27 @@ analysis.
 
 Despite the name, this catalog covers **two classes**: *friction* (things that
 went wrong) and *reusable learnings* (knowledge that went right but is not
-captured anywhere — Schicht B, signals B16–B18). Both are first-class retro
+captured anywhere — Schicht B, signals B16–B20). Both are first-class retro
 findings; a signal-free stretch of a session can still carry a learning worth
 propagating.
 
 ## Scope and honest limitations
 
-This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, and cross-session JSONL data.
+This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, cross-session JSONL data, and the feedback written on the session's PRs, MRs, linked issues and Jira tickets (`collect-review-findings.py`, see [Feedback from outside the transcript](#feedback-from-outside-the-transcript)).
 
 **It does NOT detect:**
 - Architectural choices that are wrong but "work" (no friction signal)
-- External feedback the agent never saw (production alerts, customer complaints, Slack/Jira mentions)
+- External feedback outside forge and tracker (production alerts, customer complaints, Slack/Matrix mentions)
 - Slow constitutional drift unless `/retro audit` mode is run with sufficient history
 
-External-feedback ingestion (Sentry, Jira, monitoring) is out of v0.1 scope — see "Future directions" at the bottom.
+Ingestion of error trackers, monitoring and chat is out of scope — see "Future directions" at the bottom.
 
 ## Implementation status (v0.1.1)
 
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
 | A — Mechanical | 18 | 18 (all of A1–A18) |
-| B — LLM inference | 18 | LLM-driven (no separate code); B16–B18 are reusable-learning signals |
+| B — LLM inference | 20 | LLM-driven; B16–B20 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py` |
 | C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
 | D — Outcome | 12 | Planned for v0.1.x; D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
@@ -82,7 +82,7 @@ Requires conversational context understanding. The LLM reads pre-pass output + r
 | B14 | Doc drift | Assistant used outdated API/library version when context7 would have helped |
 | B15 | Skill trigger-coverage gap | A **systematic** pass (not opportunistic): load *every* installed skill's `description` via `${CLAUDE_SKILL_DIR}/scripts/find-installed-skills.sh`, then judge — given what this session actually did — which skills *should* have triggered but were never invoked. Each miss whose root cause is weak/missing trigger words → `skill-update` to that skill's `description`. (B2/B4 are the opportunistic, single-skill version; B15 is the exhaustive sweep across the whole inventory. See the trigger-coverage step in `SKILL.md`.) |
 
-### Reusable-learning signals (B16–B18) — scan even when nothing went wrong
+### Reusable-learning signals (B16–B20) — scan even when nothing went wrong
 
 These are **positive** signals: the session produced knowledge worth propagating,
 with **no** friction to trigger it. The mechanical pre-pass cannot see them (there
@@ -102,6 +102,42 @@ only a reference plus the agent-specific delta.
 | B16 | Hard-won technique | A non-obvious command / flag / endpoint / API / workflow the session figured out — even cleanly and first-try — that is NOT in the owning skill. Root cause: real digging was needed. → `skill-update` |
 | B17 | Proactive improvement | A better approach identified *during* the work (not prompted by a correction) — a cleaner pattern, a faster tool, a simpler structure worth codifying. → `skill-update` |
 | B18 | Review-issue learning | A generalizable lesson from a code-review comment (given OR received) — a reviewer taught a rule that applies beyond the current diff. → `skill-update` (or `project-rule` if genuinely repo-specific) |
+| B19 | Escaped defect | A finding the session's own checks did not catch before the push: a review thread resolved by a later commit (`resolved` plus `commit_after`), a `CHANGES_REQUESTED` review, a failed quality gate, a ticket sent back from QA (`ticket-transition`). The learning is the missing check, not the fix. Ask which check would have caught it before the push, and route there: the skill that owns that check, a hook, or an eval stub. → `skill-update` (or a gate) |
+| B20 | Maintainer request | A human reviewer, maintainer or ticket owner states how work is done here — "please always link the ticket", "agree on rollouts across projects first". A convention the agent did not know, not a defect. → `project-rule` in the repo's `AGENTS.md` when it is about one repository; `skill-update` when it is a team convention across repositories |
+
+### Feedback from outside the transcript
+
+B18–B20 fire only on feedback somebody wrote down, and most of it never enters
+the transcript: a bot review nobody opened, a thread answered after the session
+ended, a team that does its acceptance in the ticket instead of the PR. Run the
+pre-pass before judging them:
+
+```bash
+python3 "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" \
+    --transcript-file <session.jsonl> [--output-format json]
+```
+
+It reads every PR, MR and issue the session created or wrote to, follows each
+one's linked issues and the Jira keys in its title and branch one level, and
+lists every comment by somebody else. Jira goes through the `jira-communication`
+skill's `jira-issue.py`; without that skill a ticket is listed as not read. Each
+finding carries:
+
+| Field | Meaning |
+|---|---|
+| `source` | `review-thread`, `review`, `pr-comment`, `mr-comment`, `issue-comment`, `ticket-comment`, `ticket-transition` |
+| `author_class` | `human`, `bot`, `self`. `self` is the account running the script plus `--self-login`; in Outcome mode run by another account, pass the session's login. The agent's own comments are counted, not listed — except a thread it opened that somebody answered, where the answers are the feedback |
+| `report` | a bot's summary or verdict on the whole PR (quality gate, coverage, review envelope), rendered apart from the findings anchored in the code |
+| `resolved` | the forge's thread state, where it has one |
+| `commit_after` | the first PR/MR commit dated after the finding. A necessary sign that the finding changed the code, not proof: any later commit qualifies, and a rebase re-dates them all. Read it with `resolved` and `last_self_reply` |
+| `last_self_reply` | the agent's last answer in the thread — the reason, when it rejected the finding |
+
+Read the `NOT READ` lines first: an artefact that could not be read is not an
+artefact without findings. A finding answered and followed by no commit was
+rejected; when a bot's findings are rejected again and again, the learning is
+the reviewer's configuration in that repository (`project-rule`), not the
+agent's work. At session end many reviews have not arrived yet — Outcome mode
+(D4, D6) runs the same script later.
 
 ## Schicht C — Cross-Session
 
@@ -144,9 +180,9 @@ sweep was friction-only, outcome was failure-only.)
 | D1 | Session commit reverted | `git log --grep="revert" + ($commit_sha within revert body)` | Output was wrong |
 | D2 | Session commit superseded | Same file touched again within 7 days, diff shows substantial revert of session's changes | Output unfinished or wrong direction |
 | D3 | Session PR closed without merge | `gh pr view --json closedAt,merged,state` shows closed, not merged | Output rejected |
-| D4 | Session PR required major changes | `gh pr view --json reviews` has CHANGES_REQUESTED with substantive review body | Output below standard |
+| D4 | Session PR required major changes | `collect-review-findings.py` lists human or bot review threads, a `CHANGES_REQUESTED` review, or findings with `commit_after` — GitHub and GitLab alike | Output below standard; each finding is a B19 candidate |
 | D5 | CI failed on session commit | `gh run list --commit $sha --json conclusion` | Output was broken |
-| D6 | Issue filed referencing session files | `gh issue list --search "filename after:$session_date"` | Output caused a bug |
+| D6 | Issue or ticket feedback after the session | `collect-review-findings.py --since <session end>`: comments and status changes on the linked issues and Jira tickets; plus `gh issue list --search "filename after:$session_date"` for issues that link nothing | Output caused a bug, or the acceptance happened in the ticket |
 | D7 | Follow-up session detected | Schicht C5 cross-referenced from outcome perspective | Session output didn't last |
 | D8 | Regression in test suite | Test that passed at session end now fails on a later commit | Output regressed |
 | D9 | Code reverted in same file within 30 days | Diff-based: session's net contribution to file is largely undone | Output not durable |
@@ -182,7 +218,7 @@ and is in fact the finish line waiting on a cutover.
 - Session is too recent (< 24h) — most D signals haven't had time to manifest
 - Session was a refactor or doc-only change — D2/D9 fire spuriously
 - Working on a long-lived feature branch — `git log --grep="revert"` is noisy
-- Change is **local / specific with no transferable approach** — D11 must NOT fire; codifying a one-off is exactly the noise the generalizability filter exists to stop (see B16–B18: "would a future agent re-derive this?")
+- Change is **local / specific with no transferable approach** — D11 must NOT fire; codifying a one-off is exactly the noise the generalizability filter exists to stop (see B16–B20: "would a future agent re-derive this?")
 - A PR/MR is **open and stale** — that is not a D-signal at all; see [Stale-open is not an outcome](#stale-open-is-not-an-outcome) above before proposing to close it
 
 D mode is best for **monthly retros over a 30-day window**, not real-time.
@@ -207,7 +243,7 @@ E mode is best for **monthly or quarterly reviews**, with tech-lead-level actor 
 External-feedback ingestion would extend the catalog significantly:
 
 - **Sentry / error tracker integration** — production crashes correlated to session-touched files
-- **Jira / Linear bug filings** — tickets mentioning session output
+- **Jira / Linear bug filings not linked from the session's PRs** — `collect-review-findings.py` reads the tickets a PR/MR names; a ticket that mentions session output without being linked is not found
 - **Slack / Matrix mentions** — customer/team feedback referencing session commits
 - **PagerDuty / OnCall** — production incidents correlated to session output
 - **Documentation drift detection** — docs changed but corresponding code didn't (or vice versa)

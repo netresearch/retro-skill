@@ -1,0 +1,312 @@
+{
+ "data": {
+  "viewer": {
+   "login": "CybotTM"
+  },
+  "repository": {
+   "pullRequest": {
+    "url": "https://github.com/netresearch/retro-skill/pull/122",
+    "title": "docs(done-mode): three corrections the sweep needed in practice",
+    "body": "Merging this fixes three things in the Done-mode sweep that each produced a confident wrong answer rather than an error, in one `/retro done` run today.\n\n**The stash and status checks ran against `.bare`.** The sweep loop is keyed on \"the r",
+    "headRefName": "docs/done-sweep-bare-repo-and-symlinks",
+    "state": "MERGED",
+    "createdAt": "2026-09-21T22:34:51Z",
+    "author": {
+     "login": "CybotTM",
+     "__typename": "User"
+    },
+    "closingIssuesReferences": {
+     "nodes": []
+    },
+    "reviewThreads": {
+     "totalCount": 3,
+     "pageInfo": {
+      "hasNextPage": false
+     },
+     "nodes": [
+      {
+       "isResolved": true,
+       "isOutdated": true,
+       "path": "skills/retro/references/done-mode.md",
+       "line": null,
+       "comments": {
+        "totalCount": 3,
+        "nodes": [
+         {
+          "author": {
+           "login": "coderabbitai",
+           "__typename": "Bot"
+          },
+          "body": "_🎯 Functional Correctness_ | _🟡 Minor_ | _⚡ Quick win_\n\n<details>\n<summary>🔎 Supported by static analysis</summary>\n\n🏁 Script executed:\n\n```bash\nsed -n '70,115p' skills/retro/references/done-mode.md\nprintf '\\n--- diff ---\\n'\ngit diff -- ski",
+          "createdAt": "2026-09-21T22:37:36Z",
+          "url": "https://github.com/netresearch/retro-skill/pull/122#discussion_r4066999979"
+         },
+         {
+          "author": {
+           "login": "CybotTM",
+           "__typename": "User"
+          },
+          "body": "Fixed in d4fc340, and fixing it turned up a third problem. The loop now reads the checkouts from `git worktree list --porcelain`, which also names the bare repository — so the first runnable version asked the bare path again, got \"fatal\", a",
+          "createdAt": "2026-09-21T22:46:24Z",
+          "url": "https://github.com/netresearch/retro-skill/pull/122#discussion_r4067045873"
+         },
+         {
+          "author": {
+           "login": "coderabbitai",
+           "__typename": "Bot"
+          },
+          "body": "`@CybotTM`, confirmed. The `rev-parse --is-inside-work-tree` guard is the correct check. It skips the bare repository before `stash list` and `status --porcelain` run. This avoids the false clean result from counting the failed command outp",
+          "createdAt": "2026-09-21T22:47:23Z",
+          "url": "https://github.com/netresearch/retro-skill/pull/122#discussion_r4067051018"
+         }
+        ]
+       }
+      },
+      {
+       "isResolved": true,
+       "isOutdated": true,
+       "path": "skills/retro/references/done-mode.md",
+       "line": null,
+       "comments": {
+        "totalCount": 3,
+        "nodes": [
+         {
+          "author": {
+           "login": "coderabbitai",
+           "__typename": "Bot"
+          },
+          "body": "_🗄️ Data Integrity & Integration_ | _🟡 Minor_ | _⚡ Quick win_\n\n<details>\n<summary>🔎 Supported by static analysis</summary>\n\n🏁 Script executed:\n\n```bash\n#!/bin/bash\nset -eu\nprintf '%s\\n' '--- cited procedure ---'\nsed -n '135,180p' skills/ret",
+          "createdAt": "2026-09-21T22:37:36Z",
+          "url": "https://github.com/netresearch/retro-skill/pull/122#discussion_r4066999980"
+         },
+         {
+          "author": {
+           "login": "CybotTM",
+           "__typename": "User"
+          },
+          "body": "Fixed in d4fc340. The text now says to sort every timed entry, task notifications included, and says why: a notification is what ends a wait on the agent own background run, so leaving it out both lengthens the gap and files it under the wr",
+          "createdAt": "2026-09-21T22:46:27Z",
+          "url": "https://github.com/netresearch/retro-skill/pull/122#discussion_r4067046121"
+         },
+         {
+          "author": {
+           "login": "coderabbitai",
+           "__typename": "Bot"
+          },
+          "body": "`@CybotTM`, confirmed. The updated procedure includes task-notification timestamps in the sorted transcript entries. It also explains their effect on long-gap classification. The finding is addressed.\n\n---\n\n<!-- This is an auto-generated co",
+          "createdAt": "2026-09-21T22:46:58Z",
+          "url": "https://github.com/netresearch/retro-skill/pull/122#discussion_r4067048747"
+         }
+        ]
+       }
+      },
+      {
+       "isResolved": true,
+       "isOutdated": true,
+       "path": "skills/retro/references/done-mode.md",
+       "line": null,
+       "comments": {
+        "totalCount": 3,
+        "nodes": [
+         {
+          "author": {
+           "login": "coderabbitai",
+           "__typename": "Bot"
+          },
+          "body": "_🎯 Functional Correctness_ | _🟡 Minor_ | _⚡ Quick win_\n\n**Preserve complete worktree paths.**\n\nLine 100 uses `awk '{print $2}'`. A worktree path containing a space is truncated at the first space. The `rev-parse` guard then receives the wro",
+          "createdAt": "2026-09-22T05:26:20Z",
+          "url": "https://github.com/netresearch/retro-skill/pull/122#discussion_r4068671126"
+         },
+         {
+          "author": {
+           "login": "CybotTM",
+           "__typename": "User"
+          },
+          "body": "Fixed in 82e5420 — `sed -n 's/^worktree //p'`. The consequence is worth naming: a truncated path makes the `rev-parse --is-inside-work-tree` guard on the next line answer for a path that does not exist, so that worktree is skipped silently,",
+          "createdAt": "2026-09-22T05:27:04Z",
+          "url": "https://github.com/netresearch/retro-skill/pull/122#discussion_r4068674185"
+         },
+         {
+          "author": {
+           "login": "coderabbitai",
+           "__typename": "Bot"
+          },
+          "body": "`@CybotTM`, thanks. The updated extraction preserves complete worktree paths. The explanation correctly identifies that a truncated path causes `rev-parse --is-inside-work-tree` to skip the affected worktree silently.\n\n\n\n---\n\n<details>\n<sum",
+          "createdAt": "2026-09-22T05:27:40Z",
+          "url": "https://github.com/netresearch/retro-skill/pull/122#discussion_r4068676710"
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "reviews": {
+     "totalCount": 9,
+     "pageInfo": {
+      "hasNextPage": false
+     },
+     "nodes": [
+      {
+       "state": "COMMENTED",
+       "body": "Copilot was unable to review this pull request because the user who requested the review has reached their quota limit.",
+       "submittedAt": "2026-09-21T22:35:45Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#pullrequestreview-5272493085",
+       "author": {
+        "login": "copilot-pull-request-reviewer",
+        "__typename": "Bot"
+       }
+      },
+      {
+       "state": "COMMENTED",
+       "body": "**Actionable comments posted: 2**\n\n---\n\n<!-- autofix_checkbox_start -->\n- [ ] <!-- {\"checkboxId\":\"4b0d0e0a-96d7-4f10-b296-3a18ea78f0b9\"} --> 🪄 Fix CodeRabbit comments on this PR\n<!-- autofix_checkbox_end -->\n\n<details>\n<summary>🤖 Prompt to ",
+       "submittedAt": "2026-09-21T22:37:37Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#pullrequestreview-5272505228",
+       "author": {
+        "login": "coderabbitai",
+        "__typename": "Bot"
+       }
+      },
+      {
+       "state": "COMMENTED",
+       "body": "",
+       "submittedAt": "2026-09-21T22:46:24Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#pullrequestreview-5272554545",
+       "author": {
+        "login": "CybotTM",
+        "__typename": "User"
+       }
+      },
+      {
+       "state": "COMMENTED",
+       "body": "",
+       "submittedAt": "2026-09-21T22:46:27Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#pullrequestreview-5272554803",
+       "author": {
+        "login": "CybotTM",
+        "__typename": "User"
+       }
+      },
+      {
+       "state": "COMMENTED",
+       "body": "",
+       "submittedAt": "2026-09-21T22:46:58Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#pullrequestreview-5272557594",
+       "author": {
+        "login": "coderabbitai",
+        "__typename": "Bot"
+       }
+      },
+      {
+       "state": "COMMENTED",
+       "body": "",
+       "submittedAt": "2026-09-21T22:47:23Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#pullrequestreview-5272559898",
+       "author": {
+        "login": "coderabbitai",
+        "__typename": "Bot"
+       }
+      },
+      {
+       "state": "COMMENTED",
+       "body": "**Actionable comments posted: 1**\n\n> [!CAUTION]\n> Some comments are outside the diff and can’t be posted inline due to GitHub limitations.\n> \n> **⚠️ Outside diff range comments (1)**\n> \n> <details>\n> <summary><em>🟡 Minor</em> · Qualify the ",
+       "submittedAt": "2026-09-22T05:26:20Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#pullrequestreview-5274391906",
+       "author": {
+        "login": "coderabbitai",
+        "__typename": "Bot"
+       }
+      },
+      {
+       "state": "COMMENTED",
+       "body": "",
+       "submittedAt": "2026-09-22T05:27:04Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#pullrequestreview-5274395363",
+       "author": {
+        "login": "CybotTM",
+        "__typename": "User"
+       }
+      },
+      {
+       "state": "COMMENTED",
+       "body": "",
+       "submittedAt": "2026-09-22T05:27:40Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#pullrequestreview-5274398165",
+       "author": {
+        "login": "coderabbitai",
+        "__typename": "Bot"
+       }
+      }
+     ]
+    },
+    "comments": {
+     "totalCount": 3,
+     "pageInfo": {
+      "hasNextPage": false
+     },
+     "nodes": [
+      {
+       "author": {
+        "login": "coderabbitai",
+        "__typename": "Bot"
+       },
+       "body": "<!-- This is an auto-generated comment: summarize by coderabbit.ai -->\n<!-- review_stack_entry_start -->\n\n<a href=\"https://app.coderabbit.ai/change-stack/netresearch/retro-skill/pull/122\"><img src=\"https://storage.googleapis.com/coderabbit_",
+       "createdAt": "2026-09-21T22:35:04Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#issuecomment-5768458500"
+      },
+      {
+       "author": {
+        "login": "sonarqubecloud",
+        "__typename": "Bot"
+       },
+       "body": "## [![Quality Gate Passed](https://sonarsource.github.io/sonarcloud-github-static-resources/v2/checks/QualityGateBadge/qg-passed-20px.png 'Quality Gate Passed')](https://sonarcloud.io/dashboard?id=netresearch_retro-skill&pullRequest=122) **",
+       "createdAt": "2026-09-22T05:27:20Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#issuecomment-5771641467"
+      },
+      {
+       "author": {
+        "login": "CybotTM",
+        "__typename": "User"
+       },
+       "body": "Self-review: 82e542057d9ee5ee47c0c0afc5a1bf2f75c435ab\n\nThe bot review this pull request demands is unsatisfiable (Copilot quota wall or repeated bot failures on this head). The diff on this head was reviewed by the PR author; this comment i",
+       "createdAt": "2026-09-22T05:28:32Z",
+       "url": "https://github.com/netresearch/retro-skill/pull/122#issuecomment-5771650419"
+      }
+     ]
+    },
+    "commits": {
+     "totalCount": 4,
+     "nodes": [
+      {
+       "commit": {
+        "oid": "7d418e2a170075ca87e3dd9a741f9ef8c1b423fd",
+        "committedDate": "2026-09-21T22:34:29Z",
+        "messageHeadline": "docs(done-mode): three corrections the sweep needed in practice"
+       }
+      },
+      {
+       "commit": {
+        "oid": "d4fc3406e799ef7620f52255764c7fb6d029c98c",
+        "committedDate": "2026-09-21T22:45:51Z",
+        "messageHeadline": "fix(done-mode): make the sweep loop runnable, and sort the notificati…"
+       }
+      },
+      {
+       "commit": {
+        "oid": "4553bd40fd5d79ed931d043234424bf91fe87b4a",
+        "committedDate": "2026-09-22T05:20:34Z",
+        "messageHeadline": "fix(done-mode): move the status check out of the repository-level loo…"
+       }
+      },
+      {
+       "commit": {
+        "oid": "82e542057d9ee5ee47c0c0afc5a1bf2f75c435ab",
+        "committedDate": "2026-09-22T05:26:53Z",
+        "messageHeadline": "fix(done-mode): keep worktree paths with spaces intact"
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

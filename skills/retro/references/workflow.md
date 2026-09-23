@@ -9,7 +9,7 @@ The modes of `/retro` and how they share the underlying pipeline.
 Full session analysis. Use at end of session — whether or not friction
 accumulated. The sweep captures **both** classes: friction *and* reusable
 learnings (hard-won techniques, proactive improvements, code-review lessons;
-Schicht B, B16–B18). A session that went smoothly is not exempt — it still owes
+Schicht B, B16–B20). A session that went smoothly is not exempt — it still owes
 its learnings.
 
 ```
@@ -218,6 +218,7 @@ re-presented.
 
 ```
 1. Mechanical pre-pass (Schicht A)
+1b. Review and ticket feedback (collect-review-findings.py)
 2. LLM enrichment (Schicht B)
 3. Cross-session enrichment (Schicht C, optional)
 4. Classification → 7 destinations (authority first)
@@ -236,6 +237,7 @@ Differences between modes:
 | Phase | Sweep | Spotlight | Outcome | Audit | Auto |
 |---|---|---|---|---|---|
 | 1 (mechanical A) | Full transcript | Argument-filtered turns | Skipped (past session) | Skipped | Full transcript |
+| 1b (review/ticket feedback) | Session's PRs/MRs/issues/tickets | Only if the argument is about a review | **Primary** with Phase 3b, `--since` the session end | Skipped | Same as Sweep |
 | 2 (LLM enrich B) | Full transcript | Argument-focused | Past session highlights | Cross-session prose | Full transcript |
 | 2b (trigger-coverage B15) | Yes | Only the argument's skill area | Skipped | **Exhaustive** (whole inventory) | Yes |
 | 5b (project harness) | Yes | Only the argument's surface | Skipped | **Primary** (with E) | Yes |
@@ -346,10 +348,12 @@ so the same rejected edit is not proposed again.
 retro detects friction *and* reusable learnings observable in or near the session
 (Sweep / Spotlight) or in the stored backlog (Promote). A learning is detectable
 only when it surfaced in the session (a technique the agent worked out, an
-improvement it named, a review comment it received); retro does **not** detect:
-silent badness (architecturally wrong but friction-free choices the agent never
-recognized as a learning); external signals (customer
-complaints, prod alerts, Slack / Jira / Sentry); slow constitutional drift
+improvement it named) or was written on the session's PRs, MRs, linked issues
+and Jira tickets, which Phase 1b reads (`collect-review-findings.py`); retro does
+**not** detect: silent badness (architecturally wrong but friction-free choices
+the agent never recognized as a learning); external signals outside forge and
+tracker (customer complaints, prod alerts, Slack / Matrix / Sentry); feedback on
+a ticket no PR/MR of the session names; slow constitutional drift
 without `audit`; or outcomes the agent never saw (a reverted commit or rejected
 PR is seen, an unspoken "the customer hated it" is not). For those, run
 `/retro outcome` (post-hoc) or `/retro audit` (cross-session).

@@ -10,7 +10,7 @@ Maps friction signals (from `friction-catalog.md`) to one of the seven destinati
 > and a row naming a prose destination does not rule out a gate. The right
 > owner may be a different (or not-installed) skill — or no skill at all: a
 > fact whose canonical owner is an artefact outside the agent system routes to
-> `canonical-source` regardless of the row (Axis 0 below; B14 and B16–B18 are
+> `canonical-source` regardless of the row (Axis 0 below; B14 and B16–B20 are
 > the main inlets).
 
 | Friction signal | Primary destination | Alternate (LLM decides from context) |
@@ -53,6 +53,8 @@ Maps friction signals (from `friction-catalog.md`) to one of the seven destinati
 | **B16** hard-won technique | `skill-update` (add the command/flag/endpoint to the owning skill) | `canonical-source` (the fact is about the tool itself and its owner is upstream docs/code — Axis 0) / `new-skill` (no owning skill) |
 | **B17** proactive improvement | `skill-update` (codify the better approach) | `project-rule` (repo-specific) |
 | **B18** review-issue learning | `skill-update` (generalize the review lesson) | `project-rule` (genuinely repo-specific) |
+| **B19** escaped defect | `skill-update` to the skill that owns the check which would have caught it before the push | `harness-artefact` (a hook or CI gate, when prose already exists and did not prevent it — cf. C6) / eval stub for that skill |
+| **B20** maintainer request | `project-rule` (the repository's `AGENTS.md`) | `skill-update` (a convention the team applies across repositories) |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
 | **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`personal-rule` (LLM picks from `current_location` + content) |
@@ -88,7 +90,7 @@ failure mode) — never a copy of the fact.
 Why this axis comes first: a duplicated upstream fact hardens locally — a
 checkpoint enforces it, an eval expects it, everything stays green — while
 upstream moves on. The result is **authority drift**: a self-consistent local
-truth that is wrong. The `skill-update` default of B16–B18 is the main inlet
+truth that is wrong. The `skill-update` default of B16–B20 is the main inlet
 for this failure, so run the authority check before taking any mapping row
 literally.
 
@@ -132,7 +134,7 @@ Three tiers, strongest first:
 3. **Prose instruction** — the rule needs context weighed at the time of use →
    `skill-update` / `project-rule` / `personal-rule`.
 
-Most B16–B18 reusable learnings land in tier 3 legitimately; do not contort a
+Most B16–B20 reusable learnings land in tier 3 legitimately; do not contort a
 judgment lesson into a brittle regex to reach tier 1. The test is whether a
 check could have *failed* on the friction as it actually occurred.
 
@@ -282,14 +284,14 @@ Which fits better?
 Severity is set during classification, not during detection:
 
 - `critical` — Recurring (C-layer match) OR caused upstream failure (A17) OR user-visible bug
-- `important` — User correction phrase present (A6) OR known rule violated (A15) OR a **reusable-learning finding** (B16–B18, or D11 durable-improvement in outcome mode): knowledge a future agent will otherwise re-derive is *important* by definition — never auto-grade a genuine learning `nice-to-have`
+- `important` — User correction phrase present (A6) OR known rule violated (A15) OR a **reusable-learning finding** (B16–B20, or D11 durable-improvement in outcome mode): knowledge a future agent will otherwise re-derive is *important* by definition — never auto-grade a genuine learning `nice-to-have`
 - `nice-to-have` — Efficiency / style / convention (most other cases)
 
 Use severity to rank proposals in the output. Higher severity first.
 
 **Cap protection — friction must not crowd out learnings.** When there are more
 than 10 candidates and the list is trimmed to the ≤10 cap, reserve slots so the
-top reusable-learning findings (B16–B18) survive the trim. Friction findings are
+top reusable-learning findings (B16–B20) survive the trim. Friction findings are
 usually more numerous and easier to grade high; without this rule a busy session
 returns 10 friction items and zero learnings, silently dropping exactly the
 knowledge the second class exists to capture. If learnings must still be dropped
