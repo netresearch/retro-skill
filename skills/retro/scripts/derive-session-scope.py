@@ -78,11 +78,13 @@ GITLAB_URL_RE = re.compile(
 # its output (see `_forge_write_artefacts`).
 FORGE_WRITE_RE = re.compile(
     r"\b(?P<cli>gh|glab)\s+(?P<noun>pr|mr|issue)\s+"
-    r"(?P<verb>create|edit|update|comment|note|merge|ready|review|close|reopen|approve)\b"
+    r"(?P<verb>create|edit|update|comment|note|merge|ready|review|close|reopen|approve"
+    r"|rebase|delete)\b"
 )
 API_WRITE_RE = re.compile(
     r"\b(?P<cli>gh|glab)\s+api\b[^\n;|&]*?"
-    r"(?:(?:-X|--method)[\s=]*(?:POST|PATCH|PUT)\b|\s(?:-f|-F|--field|--raw-field|--input)[\s=])"
+    r"(?:(?:-X|--method)[\s=]*(?:POST|PATCH|PUT|DELETE)\b"
+    r"|\s(?:-f|-F|--field|--raw-field|--input)[\s=])"
 )
 # How a CLI names its target when it prints no URL: `owner/repo#12` (gh),
 # `group/project!12` (a glab MR), or a bare `#12` / `!12`.
@@ -114,9 +116,18 @@ EXIT_CODE_RE = re.compile(r"Exit code \d+")
 # pipe or `; echo`) says nothing: an HTTP error, a GraphQL error, a refusal,
 # or a background run whose output is not in the result at all.
 FAILED_OUTPUT_RE = re.compile(
-    r"HTTP [45]\d\d|^\s*(?:[x✗]\s+)?(?:GraphQL: |gh: |Cannot perform)"
+    r"HTTP [45]\d\d|(?:^|: )GraphQL: |^\s*(?:[xX✗]\s|gh: |failed to |Cannot perform)"
     r"|Command running in background",
-    re.IGNORECASE | re.MULTILINE,
+    re.MULTILINE,
+)
+# A shell loop runs its body once per item: `for r in a b c; do gh pr create …; done`.
+LOOP_RE = re.compile(
+    r"\b(?:for|while|until)\b[^\n]*?\bdo\b(?P<body>.*?)\bdone\b", re.DOTALL
+)
+# A REST endpoint held in a variable: `gh api -X POST "$R/123/replies"`.
+VARIABLE_ENDPOINT_RE = re.compile(r"\bapi\b(?:\s+-\S+(?:\s+[^-\s]\S*)?)*\s+[\"']?\$")
+REST_KIND_RE = re.compile(
+    r"/(?P<kind>pulls|issues|merge_requests)(?:/(?P<number>\d+))?\b"
 )
 # A line that reports what a write did: a CLI status line (`✓ …`, `! …`,
 # `- Creating issue in …`). A URL alone on its line counts too. A link inside
@@ -131,7 +142,8 @@ GH_API_CREATE_RE = re.compile(
     r"\brepos/(?P<project>[\w.-]+/[\w.-]+)/(?P<kind>pulls|issues)(?![\w/])"
 )
 GLAB_API_CREATE_RE = re.compile(
-    r"\bprojects/(?P<project>[\w.-]*%2F[\w.%-]+|\d+)/(?P<kind>merge_requests|issues)(?![\w/])",
+    r"\bprojects/(?P<project>[\w.-]*%2F[\w.%-]+|\d+|\$\{?\w+\}?)/"
+    r"(?P<kind>merge_requests|issues)(?![\w/])",
     re.IGNORECASE,
 )
 BARE_REF_RE = re.compile(r"(?<![\w/&])(?P<sep>[#!])(?P<number>\d+)\b")
@@ -139,7 +151,7 @@ BARE_REF_RE = re.compile(r"(?<![\w/&])(?P<sep>[#!])(?P<number>\d+)\b")
 MCP_WRITE_RE = re.compile(
     r"github__(?:create_pull_request|update_pull_request|merge_pull_request|"
     r"pull_request_review_write|add_reply_to_pull_request_comment|"
-    r"add_comment_to_pending_review|issue_write|add_issue_comment)"
+    r"add_comment_to_pending_review|issue_write|add_issue_comment|request_copilot_review)"
 )
 # A Jira key a session acted on: the key on a command line that runs one of the
 # jira skill's scripts, or the `ticket` a time booking named. Prefixes that are
@@ -468,6 +480,12 @@ def _writes(command: str) -> list[re.Match]:
     return found
 
 
+def _in_loop(command: str, index: int) -> bool:
+    return any(
+        m.start("body") <= index < m.end("body") for m in LOOP_RE.finditer(command)
+    )
+
+
 def _is_text(command: str, write: re.Match) -> bool:
     """A write that is part of a text: inside a heredoc body or a quoted string."""
     return _in_heredoc(command, write.start()) or _inside(
@@ -488,6 +506,14 @@ class _Call:
 
     def host(self, cli: str) -> str:
         return GITHUB_HOST if cli == "gh" else self.gitlab_host
+
+    def _claim(self, refs: list[dict[str, Any]], loop: bool) -> list[dict[str, Any]]:
+        """The next unclaimed URL for one create; all of them for a create that
+        a loop runs once per item."""
+        free = [r for r in refs if r["url"] not in self.claimed]
+        taken = free if loop else free[:1]
+        self.claimed.update(r["url"] for r in taken)
+        return taken
 
     def subcommand_targets(self, write: re.Match) -> list[dict[str, Any]] | None:
         """What `gh|glab pr|mr|issue <verb>` wrote to; None when unknown."""
@@ -511,8 +537,7 @@ class _Call:
                 continue
             found.append(ref)
         if verb == "create":
-            found = [r for r in found if r["url"] not in self.claimed][:1]
-            self.claimed.update(r["url"] for r in found)
+            found = self._claim(found, _in_loop(self.command, write.start()))
         if found:
             return _with_origin(found, "created" if verb == "create" else "acted")
         # Silent success in the one unambiguous shape: `<verb> N -R repo`, in
@@ -543,7 +568,9 @@ class _Call:
             dict(artefact(host, project, kind, int(path["number"])), origin="acted")
         ]
 
-    def _created_by_path(self, cli: str, segment: str) -> list[dict[str, Any]] | None:
+    def _created_by_path(
+        self, cli: str, segment: str, loop: bool = False
+    ) -> list[dict[str, Any]] | None:
         create = (GH_API_CREATE_RE if cli == "gh" else GLAB_API_CREATE_RE).search(
             segment
         )
@@ -553,8 +580,9 @@ class _Call:
         kind = {"pulls": "pull", "issues": "issue", "merge_requests": "merge_request"}[
             create["kind"].lower()
         ]
-        # A numeric GitLab project id names no path; the created URL does.
-        any_project = project.isdigit()
+        # A numeric GitLab project id or a variable names no path; the created
+        # URL does.
+        any_project = project.isdigit() or project.startswith("$")
         refs = [
             r
             for r, _, _ in _named_lines(self.result, cli, self.host(cli))
@@ -562,26 +590,44 @@ class _Call:
             and r["kind"] == kind
             and (any_project or r["project"].lower() == project.lower())
         ]
-        return _with_origin(refs[:1], "created")
+        return _with_origin(self._claim(refs, loop), "created")
+
+    def _rest_fallback(self, cli: str, segment: str) -> list[dict[str, Any]] | None:
+        """A REST write on a PR/MR/issue path the literal patterns cannot read:
+        the output's report lines, of the path's kind and number when it has them."""
+        path = REST_KIND_RE.search(segment)
+        noun = (
+            {"pulls": "pr", "merge_requests": "mr"}.get(path["kind"], "issue")
+            if path
+            else ""
+        )
+        refs = [
+            r for r, _, _ in _named_lines(self.result, cli, self.host(cli), noun) if r
+        ]
+        if path and path["number"]:
+            refs = [r for r in refs if r["number"] == int(path["number"])]
+        return _with_origin(refs, "acted") if refs else None
 
     def api_targets(self, write: re.Match) -> list[dict[str, Any]] | None:
         """What a REST or GraphQL write wrote to; [] for an endpoint that is
         not a PR, MR or issue; None when unknown."""
         cli, segment = write["cli"], _segment(self.command, write)
-        if _is_text(self.command, write):
-            return []  # a call written into a text, not run
         endpoint = self._endpoint_target(cli, segment)
         if endpoint is not None:
             # The endpoint names the target; the output of a merge or a label
             # change is JSON about something else, or nothing.
             return None if self.failed else endpoint
-        created = self._created_by_path(cli, segment)
+        created = self._created_by_path(
+            cli, segment, _in_loop(self.command, write.start())
+        )
         if created:
             return created
-        if not PR_ENDPOINT_RE.search(segment) and "graphql" not in segment:
+        about_a_pr = PR_ENDPOINT_RE.search(segment) or VARIABLE_ENDPOINT_RE.search(
+            segment
+        )
+        if not about_a_pr and "graphql" not in segment:
             return []  # an endpoint that is not about a PR, MR or issue
-        refs = [r for r, _, _ in _named_lines(self.result, cli, self.host(cli)) if r]
-        return _with_origin(refs, "acted") if refs else None
+        return self._rest_fallback(cli, segment)
 
 
 def _joined(command: str) -> str:
@@ -604,17 +650,26 @@ def _forge_write_artefacts(
     call = _Call(command, result, gitlab_host, failed)
     found: list[dict[str, Any]] = []
     unresolved = False
+    text_writes = False
     for write in _writes(command):
+        if _is_text(command, write):
+            # Written into a heredoc or a quoted text. A heredoc may be a
+            # script the same call runs, so it is not attributed — but when the
+            # output reports targets nobody claimed, the call is unresolved.
+            text_writes = True
+            continue
         if write.groupdict().get("verb"):
             targets = call.subcommand_targets(write)
-            if targets is None and _is_text(command, write):
-                continue  # a command written into a text, not run
         else:
             targets = call.api_targets(write)
         if targets is None:
             unresolved = True
         else:
             found += targets
+    if text_writes and not unresolved:
+        claimed = {a["url"] for a in found}
+        reported = [r for r, _, _ in _named_lines(result, "gh", GITHUB_HOST) if r]
+        unresolved = any(r["url"] not in claimed for r in reported)
     return found, unresolved
 
 

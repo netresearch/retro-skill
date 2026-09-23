@@ -123,17 +123,22 @@ a report line is a URL alone on its line, a JSON `html_url`, or a CLI status
 line (`✓ …`, `- Creating issue in …`) naming a URL, `owner/repo#N` or `#N`.
 A link inside a PR body, a JSON answer or an error message is running text and
 does not count. Each write takes only its own number and its own `-R`; a bare
-`#N` needs that `-R`; several creates in one call take one URL each. A REST
-write on a literal PR/MR/issue endpoint counts by the endpoint; a create, a
-variable or a numeric project id in the path counts by the output's report
-line, or stays unresolved; a REST write on any other endpoint (code scanning,
-workflow runs) does not count at all. Continued lines (`\` + newline) are one
-command. A call the harness
-refused (`is_error` without `Exit code N`) ran nothing. A successful write that
-prints nothing counts only as `<verb> <number> -R <repo>` outside any heredoc
-or quoted text, and output that reports a failure (`HTTP 4xx`, `GraphQL:`,
-`Cannot perform`, a background run) is not a success. MCP writes count by their
-input. Everything else is listed as an unresolved forge command, not guessed.
+`#N` needs that `-R`; several creates in one call take one URL each, and a
+create in a `for`/`while` loop takes every URL of its kind. A REST write on a
+literal PR/MR/issue endpoint counts by the endpoint; a create, a variable
+(also a whole endpoint held in one) or a numeric project id in the path counts
+by the output's report line of that path's kind and number, or stays
+unresolved; a REST write on any other endpoint (code scanning, workflow runs)
+does not count at all. Continued lines (`\` + newline) are one command. A write
+inside a heredoc or quoted text is never attributed — when the output still
+reports targets nobody claimed (a heredoc script the call runs), the call is
+unresolved. A call the harness refused (`is_error` without `Exit code N`) ran
+nothing. A successful write that prints nothing counts only as
+`<verb> <number> -R <repo>` outside any heredoc or quoted text. Output that
+reports a failure is not a success: an `HTTP 4xx/5xx`, `GraphQL:` at a line
+start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`, `failed to` or
+`Cannot perform`, or a background run. MCP writes count by their input.
+Everything else is listed as an unresolved forge command, not guessed.
 It follows each one's linked issues (closing references,
 issue URLs in the description) and the Jira key at the start of its title or in
 a branch segment one level, plus the tickets the session ran a jira script

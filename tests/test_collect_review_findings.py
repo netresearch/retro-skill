@@ -1290,6 +1290,114 @@ class FifthRoundTest(unittest.TestCase):
         self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
 
 
+class SixthRoundTest(unittest.TestCase):
+    """Inputs from the sixth review round (1e2b0cb)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_a_create_in_a_loop_takes_every_url(self):
+        cmd = "for r in a b c; do gh pr create --repo netresearch/$r --fill; done"
+        printed = (
+            "https://github.com/netresearch/a/pull/1\n"
+            "https://github.com/netresearch/b/pull/2\n"
+            "https://github.com/netresearch/c/pull/3"
+        )
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(set(urls.values()), {"created"})
+        self.assertEqual(len(urls), 3)
+
+    def test_a_heredoc_script_the_call_runs_is_unresolved_not_dropped(self):
+        cmd = "cat > x.sh <<'EOF'\nfor n in 3 4; do gh issue edit \"$n\" -R o/r --add-label x; done\nEOF\nbash x.sh"
+        printed = "https://github.com/o/r/issues/3\nhttps://github.com/o/r/issues/4"
+        urls, data = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(set(urls.values()), {"mentioned"})
+        self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+
+    def test_graphql_after_a_colon_is_a_failure(self):
+        cmd = 'gh pr review 684 -R o/r --approve; echo "exit=$?"'
+        # The recorded line starts with "failed to"; this one only has the
+        # mid-line "GraphQL:".
+        printed = "review not created: GraphQL: Review Can not approve your own pull request\nexit=1"
+        urls, data = self.urls([({"command": cmd}, printed)])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+
+    def test_an_x_line_is_a_failure(self):
+        cmd = "gh pr merge 5 -R o/r --merge; echo done"
+        urls, _ = self.urls(
+            [({"command": cmd}, "X Pull request o/r#5 is not mergeable\ndone")]
+        )
+        self.assertEqual(urls, {})
+
+    def test_several_rest_creates_in_one_call(self):
+        cmd = "gh api repos/o/r/issues -X POST -f title=a; gh api repos/o/r/issues -X POST -f title=b"
+        printed = "https://github.com/o/r/issues/1\nhttps://github.com/o/r/issues/2"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(
+            urls,
+            {
+                "https://github.com/o/r/issues/1": "created",
+                "https://github.com/o/r/issues/2": "created",
+            },
+        )
+
+    def test_an_endpoint_in_a_variable_reads_the_report_line(self):
+        cmd = 'gh api -X POST "$R/4061866425/replies" -f body=x --jq .html_url'
+        printed = "https://github.com/o/r/pull/133#discussion_r9"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/133": "acted"})
+
+    def test_the_rest_fallback_keeps_its_own_number(self):
+        cmd = (
+            'gh api -X POST "repos/$R/pulls/29/requested_reviewers" -f "reviewers[]=x"'
+        )
+        printed = "https://github.com/o/r/pull/29\nhttps://github.com/o/r/pull/30"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls["https://github.com/o/r/pull/29"], "acted")
+        self.assertEqual(urls["https://github.com/o/r/pull/30"], "mentioned")
+
+    def test_the_rest_fallback_keeps_its_own_kind_and_number(self):
+        cmd = (
+            "gh pr ready 87 -R o/r; "
+            'gh api "repos/$1/pulls/$2/requested_reviewers" -X POST -f "reviewers[]=x"'
+        )
+        printed = '✓ Pull request o/r#87 is marked as "ready for review"'
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/87": "acted"})
+
+    def test_more_verbs_and_tools_write(self):
+        pairs = [
+            ({"command": "glab mr rebase 12 -R g/p"}, "✓ Rebase successful"),
+            ({"command": "gh issue delete 9 -R o/r --yes"}, "✓ Deleted issue o/r#9"),
+            (
+                {
+                    "__name": "mcp__github__request_copilot_review",
+                    "owner": "o",
+                    "repo": "r",
+                    "pullNumber": 5,
+                },
+                "ok",
+            ),
+        ]
+        urls, _ = self.urls(pairs)
+        self.assertEqual(
+            urls,
+            {
+                "https://git.example.org/g/p/-/merge_requests/12": "acted",
+                "https://github.com/o/r/issues/9": "acted",
+                "https://github.com/o/r/pull/5": "acted",
+            },
+        )
+
+    def test_a_create_in_a_variable_project_is_a_create(self):
+        cmd = 'for p in 1 2; do glab api "projects/$p/merge_requests" --method POST -f title=x; done'
+        printed = "https://git.example.org/g/a/-/merge_requests/7\nhttps://git.example.org/g/b/-/merge_requests/8"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(set(urls.values()), {"created"})
+        self.assertEqual(len(urls), 2)
+
+
 class MainTest(unittest.TestCase):
     def test_an_unparsable_since_is_an_error(self):
         with (
