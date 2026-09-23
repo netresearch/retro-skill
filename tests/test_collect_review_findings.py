@@ -219,7 +219,11 @@ class GitHubParseTest(unittest.TestCase):
         self.assertEqual(len(reviews), 3)
         self.assertEqual(self.parsed["self_comments"], 4)
         # A bot review body can carry findings outside the diff: not a report.
-        self.assertFalse(any(f["report"] for f in reviews))
+        # Copilot saying it could not review (quota) is one.
+        self.assertEqual(
+            [f["author"] for f in reviews if f["report"]],
+            ["copilot-pull-request-reviewer"],
+        )
 
     def test_viewer_login_counts_as_self_without_a_flag(self):
         self.assertNotIn("CybotTM", {f["author"] for f in self.parsed["findings"]})
@@ -748,14 +752,195 @@ class ReviewFixesCollectTest(unittest.TestCase):
     def test_an_issue_number_that_is_a_pr_is_read_as_one(self):
         def runner(command):
             if any("issue(number" in part for part in command):
-                return {
-                    "data": {"viewer": {"login": "me"}, "repository": {"issue": None}}
-                }
+                # What gh prints, with exit 1, for a PR number asked as an issue.
+                raise RuntimeError(
+                    "gh: Could not resolve to an Issue with the number of 1."
+                )
             return _pr()
 
         item = dss.artefact("github.com", "o/r", "issues", 1) | {"origin": "acted"}
         result = crf.collect([item], None, run=runner)
         self.assertTrue(result["artefacts"][0]["fetched"])
+
+
+class SecondRoundTest(unittest.TestCase):
+    """Inputs from the second review round (4243db7)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs))
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def repo(self, origin: str) -> Path:
+        path = Path(TMP.name) / f"r2repo{next(_COUNTER)}"
+        path.mkdir()
+        _git("init", "-q", cwd=path)
+        _git("remote", "add", "origin", origin, cwd=path)
+        return path
+
+    def test_a_quoted_repo_flag_wins_over_the_cd(self):
+        wrong = self.repo("git@github.com:wrong/repo.git")
+        urls, _ = self.urls(
+            [({"command": f'cd {wrong} && gh pr merge 5 -R "o/r" --merge'}, "")]
+        )
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+
+    def test_a_cd_inside_a_quoted_string_is_text(self):
+        wrong = self.repo("git@github.com:wrong/repo.git")
+        cmd = f'git commit -m "note; cd {wrong} " && gh pr merge 5 --merge'
+        urls, data = self.urls([({"command": cmd}, "")])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+
+    def test_an_explicit_get_with_fields_is_a_read(self):
+        urls, _ = self.urls(
+            [
+                (
+                    {
+                        "command": "gh api -X GET repos/o/r/issues/9/comments -f per_page=100"
+                    },
+                    "",
+                )
+            ]
+        )
+        self.assertEqual(urls, {})
+
+    def test_close_comment_takes_a_value(self):
+        urls, _ = self.urls([({"command": 'gh pr close -c "5" 10 -R o/r'}, "")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/10": "acted"})
+
+    def test_more_heredoc_forms_are_text(self):
+        body = "Run gh pr merge 3 -R x/y"
+        pairs = [
+            ({"command": f"cat > a.md <<'PR-BODY'\n{body}\nPR-BODY"}, ""),
+            ({"command": f"cat > b.md <<\\EOF\n{body}\nEOF"}, ""),
+            ({"command": f"cat > c.md <<EOF\n{body}\n"}, ""),  # never closed
+        ]
+        urls, _ = self.urls(pairs)
+        self.assertEqual(urls, {})
+        for payload, _result in pairs:
+            self.assertEqual(
+                len(dss.mask_quoted(payload["command"])), len(payload["command"])
+            )
+
+    def test_create_inside_a_command_substitution_counts(self):
+        cmd = 'PR_URL="$(gh pr create --repo o/r --fill)"; echo "$PR_URL"'
+        urls, _ = self.urls([({"command": cmd}, "https://github.com/o/r/pull/3")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/3": "created"})
+
+    def test_a_quoted_jira_script_path_is_found(self):
+        self.assertEqual(
+            dss.jira_command_tickets('uv run "$HOME/x/jira-issue.py" get NRS-5'),
+            {"NRS-5"},
+        )
+
+    def test_owner_and_name_are_passed_as_strings(self):
+        seen = []
+        crf.fetch_github(
+            {"project": "gabrielecirulli/2048", "kind": "pull", "number": 1},
+            seen.append,
+        )
+        command = seen[0]
+        self.assertEqual(command[command.index("name=2048") - 1], "-f")
+
+    def test_a_dismissed_bot_approval_is_dropped(self):
+        pr = _pr(
+            reviews=[
+                {"state": "DISMISSED", "body": "Automated approval for maintainer PR", "url": "rv1",
+                 "submittedAt": "2026-09-20T10:00:00Z", "author": {"login": "github-actions", "__typename": "Bot"}},
+            ]
+        )  # fmt: skip
+        node = pr["data"]["repository"]["pullRequest"]
+        node["timelineItems"] = {
+            "nodes": [{"previousReviewState": "APPROVED", "review": {"url": "rv1"}}]
+        }
+        self.assertEqual(crf.parse_github_pr(pr, set())["findings"], [])
+
+    def test_the_opening_bots_follow_up_is_not_feedback(self):
+        thread = {
+            "comments": {
+                "totalCount": 3,
+                "nodes": [
+                    _comment("coderabbitai", "Bot", "2026-09-20T10:00:00Z", "fix this"),
+                    _comment("me", "User", "2026-09-20T10:05:00Z", "fixed in abc"),
+                    _comment(
+                        "coderabbitai", "Bot", "2026-09-20T10:06:00Z", "confirmed"
+                    ),
+                ],
+            }
+        }
+        found = crf.parse_github_pr(_pr(threads=[thread]), set())["findings"]
+        self.assertEqual([f["source"] for f in found], ["review-thread"])
+
+    def test_a_refusal_is_a_report_a_long_review_is_not(self):
+        refusal = crf.finding(
+            "u",
+            "review",
+            "copilot",
+            "bot",
+            None,
+            "Copilot was unable to review this pull request because the user reached their quota limit.",
+        )
+        long_one = crf.finding(
+            "u",
+            "review",
+            "coderabbitai",
+            "bot",
+            None,
+            "Actionable comments posted: 2. " + "x" * 700 + " rate limit",
+        )
+        self.assertEqual((refusal["report"], long_one["report"]), (True, False))  # fmt: skip
+
+    def test_a_ticket_jira_does_not_know_is_absent_not_unread(self):
+        def runner(command):
+            raise RuntimeError("✗ Failed to get issue TYPO3-14: Issue Does Not Exist")
+
+        item = crf.ticket_item("TYPO3-14", "linked")
+        result = crf.collect([item], None, run=runner, jira_cli=Path(__file__))
+        self.assertTrue(result["artefacts"][0]["absent"])
+        text = crf.render_text(result)
+        self.assertIn("NO SUCH   TYPO3-14", text)
+        self.assertNotIn("NOT READ", text)
+
+    def test_truncated_changelog_and_thread_comments_are_named(self):
+        raw = _fixture("jira-ticket.json")
+        raw["issue"]["changelog"]["total"] = 99
+        self.assertIn("changelog", crf.parse_jira(raw, set(), "")["truncated"])
+        thread = {
+            "comments": {
+                "totalCount": 150,
+                "nodes": [_comment("x", "User", "2026-09-20T10:00:00Z", "a")],
+            }
+        }
+        self.assertIn("reviewThreads.comments", crf.parse_github_pr(_pr(threads=[thread]), set())["truncated"])  # fmt: skip
+
+    def test_the_installed_jira_plugin_is_found(self):
+        home = Path(TMP.name) / f"home{next(_COUNTER)}"
+        cli = (
+            home
+            / "cache/jira/3.32.0/skills/jira-communication/scripts/core/jira-issue.py"
+        )
+        cli.parent.mkdir(parents=True)
+        cli.write_text("")
+        index = home / ".claude/plugins/installed_plugins.json"
+        index.parent.mkdir(parents=True)
+        index.write_text(
+            json.dumps(
+                {
+                    "plugins": {
+                        "jira": [{"installPath": str(home / "cache/jira/3.32.0")}]
+                    }
+                }
+            )
+        )
+        with (
+            mock.patch.object(crf.Path, "home", return_value=home),
+            mock.patch.object(crf, "JIRA_CLI_CANDIDATES", ()),
+        ):
+            self.assertEqual(crf.find_jira_cli(None), cli)  # fmt: skip
+
+    def test_gitlab_host_with_a_scheme_is_compared_bare(self):
+        self.assertEqual(
+            crf.gitlab_hosts_from([], "https://git.example.org/"), ("git.example.org",)
+        )
 
 
 class MainTest(unittest.TestCase):

@@ -106,6 +106,19 @@ Runner = Callable[[list[str]], Any]
 # A bot's comment on the whole PR/MR — quality gate, coverage, summary. A bot
 # *review* is not one: its body can carry findings outside the diff.
 REPORT_SOURCES = frozenset({"pr-comment", "mr-comment"})
+# A bot review that says it did not review — out of quota, rate limited,
+# skipped. It is a status, not a finding.
+BOT_REFUSAL_RE = re.compile(
+    r"\b(?:unable to review|could not review|review(?:s)? (?:limit|skipped|paused)"
+    r"|rate.?limit|quota limit)\b",
+    re.IGNORECASE,
+)
+# A refusal is a sentence or two; a long review body that mentions a limit in
+# passing still carries findings.
+REFUSAL_MAX_LENGTH = 600
+# A key Jira answers with "does not exist" was never a ticket (`TYPO3-14` in a
+# branch name): listed apart, not counted as a read failure.
+ABSENT_RE = re.compile(r"does not exist", re.IGNORECASE)
 # A ticket key the PR/MR is *about*: at the start of the title (`NRS-12: …`,
 # `[NRS-12] …`) or at the start of a branch path segment (`NRS-12/…`,
 # `feature/NRS-12-…`). A key in running text (`PHP-8.4`, `TYPO3-14`) is not.
@@ -184,7 +197,15 @@ def finding(
         # A bot's comment on the whole PR/MR — a quality gate, a coverage
         # delta, a summary. Kept, because a failed gate is feedback, but
         # rendered apart so the threads are read first.
-        "report": klass == "bot" and source in REPORT_SOURCES,
+        "report": klass == "bot"
+        and (
+            source in REPORT_SOURCES
+            or (
+                source == "review"
+                and len(body or "") < REFUSAL_MAX_LENGTH
+                and bool(BOT_REFUSAL_RE.search(body or ""))
+            )
+        ),
         "author": login or "ghost",
         "author_class": klass,
         "created_at": created,
@@ -252,6 +273,9 @@ query($owner: String!, $name: String!, $number: Int!) {
         totalCount
         nodes { commit { oid committedDate messageHeadline } }
       }
+      timelineItems(itemTypes: [REVIEW_DISMISSED_EVENT], first: 100) {
+        nodes { ... on ReviewDismissedEvent { previousReviewState review { url } } }
+      }
     }
   }
 }
@@ -284,9 +308,11 @@ def fetch_github(item: dict[str, Any], run: Runner) -> dict[str, Any]:
             "graphql",
             "-f",
             f"query={query}",
-            "-F",
+            # -f: a string as is. -F would turn a repository named `2048`
+            # into a number and fail the String! variable.
+            "-f",
             f"owner={owner}",
-            "-F",
+            "-f",
             f"name={name}",
             "-F",
             f"number={item['number']}",
@@ -337,7 +363,11 @@ def _thread(url, entries, meta, commits, out: _Collected, sources) -> None:
     — is its own finding, because it can overturn the thread.
     """
     (login, klass, created, body, link), replies = entries[0], entries[1:]
-    others = [r for r in replies if r[1] != "self"]
+    # The bot that opened the thread confirming a fix ("confirmed, resolved")
+    # is not feedback; a reply by anybody else is.
+    others = [
+        r for r in replies if r[1] != "self" and not (r[1] == "bot" and r[0] == login)
+    ]
     own = [r for r in replies if r[1] == "self"]
     if klass == "self" and not others:
         out.self_count += 1 + len(own)  # the agent talking to itself
@@ -409,6 +439,12 @@ def _gh_threads(pr, url, commits, self_logins, out: _Collected) -> None:
 
 
 def _gh_reviews(pr, url, commits, self_logins, out: _Collected) -> None:
+    # A review GitHub dismissed on a push keeps no trace of what it was; the
+    # timeline's dismissal event does.
+    was = {
+        (n.get("review") or {}).get("url"): n.get("previousReviewState")
+        for n in _nodes(pr, "timelineItems")
+    }
     for review in _nodes(pr, "reviews"):
         login, klass = _gh_class(review, self_logins)
         state = review.get("state")
@@ -420,10 +456,12 @@ def _gh_reviews(pr, url, commits, self_logins, out: _Collected) -> None:
             out.self_count += 1
             continue
         # A bot approval is never a finding, whatever its text (auto-approve
-        # workflows write one). A dismissed bot review is dropped only when it
-        # is empty: one with a body can be the blocking finding somebody dismissed.
+        # workflows write one), nor is one GitHub dismissed on a later push. A
+        # dismissed bot review is otherwise dropped only when it is empty: one
+        # with a body can be the blocking finding somebody dismissed.
         empty = not (review.get("body") or "").strip()
-        if klass == "bot" and (state == "APPROVED" or (state == "DISMISSED" and empty)):
+        approval = state == "APPROVED" or was.get(review.get("url")) == "APPROVED"
+        if klass == "bot" and (approval or (state == "DISMISSED" and empty)):
             continue
         stamp = review.get("submittedAt")
         out.findings.append(
@@ -657,11 +695,28 @@ JIRA_CLI_CANDIDATES = (
 JIRA_USER_NAME = "jira-user.py"
 
 
+def _installed_jira_clis() -> list[Path]:
+    """jira-issue.py of the jira plugin Claude Code has installed — the active
+    version from installed_plugins.json, never a guess among cached ones."""
+    index = Path.home() / ".claude/plugins/installed_plugins.json"
+    try:
+        plugins = json.loads(index.read_text(encoding="utf-8")).get("plugins") or {}
+    except (OSError, ValueError, AttributeError):
+        return []
+    paths = []
+    for installs in plugins.values():
+        for install in installs if isinstance(installs, list) else [installs]:
+            root = Path(str((install or {}).get("installPath", "")))
+            paths.append(root / "skills/jira-communication/scripts/core/jira-issue.py")
+    return paths
+
+
 def find_jira_cli(explicit: str | None) -> Path | None:
     if explicit:
         path = Path(explicit)
         return path if path.is_file() else None
-    return next((p for p in JIRA_CLI_CANDIDATES if p.is_file()), None)
+    candidates = [*JIRA_CLI_CANDIDATES, *_installed_jira_clis()]
+    return next((p for p in candidates if p.is_file()), None)
 
 
 def _python_for(script: Path) -> list[str]:
@@ -822,13 +877,17 @@ def _require_dict(value: Any, what: str) -> dict[str, Any]:
 def read_one(item, run, self_logins, jira_cli, jira_browse, gitlab_hosts=()) -> dict:
     """Fetch and parse one artefact. Raises when it cannot be read."""
     if item["forge"] == "github":
-        raw = _require_dict(fetch_github(item, run), "gh api graphql")
         if item["kind"] == "pull":
+            raw = _require_dict(fetch_github(item, run), "gh api graphql")
             return parse_github_pr(raw, self_logins)
         try:
+            raw = _require_dict(fetch_github(item, run), "gh api graphql")
             return parse_github_issue(raw, self_logins)
-        except LookupError:
-            # `gh api …/issues/N` also addresses pull requests; read it as one.
+        except (LookupError, RuntimeError) as exc:
+            # `gh api …/issues/N` and the MCP `issue_number` also address pull
+            # requests; gh then fails with "Could not resolve to an Issue".
+            if "could not resolve to an issue" not in str(exc).lower():
+                raise
             pull = dict(item, kind="pull")
             raw = _require_dict(fetch_github(pull, run), "gh api graphql")
             return parse_github_pr(raw, self_logins)
@@ -889,7 +948,10 @@ def collect(
             )
         except Exception as exc:  # noqa: BLE001 — one artefact never ends the run
             error = f"{type(exc).__name__}: {exc}"
-            artefacts.append({**record, "fetched": False, "error": error})
+            absent = item["forge"] == "jira" and bool(ABSENT_RE.search(str(exc)))
+            artefacts.append(
+                {**record, "fetched": False, "absent": absent, "error": error}
+            )
             continue
         kept, skipped = _split_by_since(parsed.pop("findings"), since)
         earlier += skipped
@@ -969,7 +1031,16 @@ def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
             f"{mentioned_skipped} artefacts only mentioned in the transcript were not read"
             " (--include-mentioned reads them)."
         )
-    lines += [f"NOT READ  {a['url']}: {a['error']}" for a in arts if not a["fetched"]]
+    lines += [
+        f"NOT READ  {a['url']}: {a['error']}"
+        for a in arts
+        if not a["fetched"] and not a.get("absent")
+    ]
+    lines += [
+        f"NO SUCH   {a['url']}: Jira has no such ticket (a key-shaped name, not a ticket)"
+        for a in arts
+        if a.get("absent")
+    ]
     lines += [
         f"TRUNCATED {a['url']}: {', '.join(a['truncated'])} held more than one page"
         for a in read
@@ -1028,6 +1099,14 @@ def render_text(result: dict[str, Any], mentioned_skipped: int = 0) -> str:
     return "\n".join(lines)
 
 
+def gitlab_hosts_from(named: list[str], env: str | None) -> tuple[str, ...]:
+    """The hosts glab may be sent to. glab accepts GITLAB_HOST with or without a
+    scheme; the allowlist compares bare hosts."""
+    return tuple(
+        re.sub(r"^https?://|/+$", "", host) for host in named or [env or "gitlab.com"]
+    )
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -1064,9 +1143,7 @@ def main(argv: list[str]) -> int:
     since = parse_time(args.since) if args.since else None
     if args.since and since is None:
         parser.error(f"--since is not an ISO 8601 time: {args.since}")
-    gitlab_hosts = tuple(
-        args.gitlab_host or [os.environ.get("GITLAB_HOST") or "gitlab.com"]
-    )
+    gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
     if args.transcript_file:
         if not args.transcript_file.is_file():
             print(f"no such transcript: {args.transcript_file}", file=sys.stderr)
@@ -1098,7 +1175,10 @@ def main(argv: list[str]) -> int:
         print(json.dumps(result, indent=2, default=str))
     else:
         print(render_text(result, mentioned_skipped))
-    return 1 if any(not a["fetched"] for a in result["artefacts"]) else 0
+    unread = [
+        a for a in result["artefacts"] if not a["fetched"] and not a.get("absent")
+    ]
+    return 1 if unread else 0
 
 
 if __name__ == "__main__":

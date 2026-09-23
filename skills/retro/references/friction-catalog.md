@@ -28,7 +28,7 @@ Ingestion of error trackers, monitoring and chat is out of scope — see "Future
 | A — Mechanical | 18 | 18 (all of A1–A18) |
 | B — LLM inference | 20 | LLM-driven; B16–B20 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py` |
 | C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
-| D — Outcome | 12 | Planned for v0.1.x; D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
+| D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
 
 Schicht A is feature-complete. See `references/destination-taxonomy.md` for what each signal class routes to.
@@ -127,22 +127,23 @@ against or booked time on, and lists every comment by somebody else — each
 answer inside a thread as its own `review-reply`. Jira goes through the
 `jira-communication` skill's `jira-issue.py`; without that skill a ticket is
 listed as not read. GitLab is read only on the hosts given with `--gitlab-host`
-(default `$GITLAB_HOST`), because `glab` sends its token to any host it is
+(default `$GITLAB_HOST`, else `gitlab.com`), because `glab` sends its token to any host it is
 pointed at. The text output trims bodies; read a finding in full from
 `--output-format json` before classifying it. Each finding carries:
 
 | Field | Meaning |
 |---|---|
-| `source` | `review-thread`, `review-reply` (an answer by somebody else inside a thread, with `thread`, `path`, `resolved`), `review`, `pr-comment`, `mr-comment`, `issue-comment`, `ticket-comment`, `ticket-transition` |
+| `source` | `review-thread`, `review-reply` (an answer by somebody else inside a thread, with `thread`, `path`, `resolved`; the opening bot's own follow-ups are not listed), `review`, `pr-comment`, `mr-comment`, `issue-comment`, `ticket-comment`, `ticket-transition` |
 | `author_class` | `human`, `bot`, `self`. `self` is the account running the script plus `--self-login`; in Outcome mode run by another account, pass the session's login. The agent's own comments and replies are counted, not listed; in a thread it opened, the answers by others are listed as `review-reply` |
-| `report` | a bot's comment on the whole PR/MR (quality gate, coverage, summary), rendered apart from the findings. A bot *review* is not a report: its body can carry findings outside the diff |
+| `report` | a bot's comment on the whole PR/MR (quality gate, coverage, summary), or a bot review that says it did not review (quota, rate limit); rendered apart from the findings. Any other bot review is a finding: its body can carry findings outside the diff. Bot approvals, also those GitHub dismissed on a later push, are not listed |
 | `resolved` | the forge's thread state, where it has one |
 | `commit_after` | the first PR/MR commit dated after the finding. A necessary sign that the finding changed the code, not proof: any later commit qualifies, and a rebase re-dates them all. Read it with `resolved` and `last_self_reply` |
 | `last_self_reply` | the agent's last answer in the thread — the reason, when it rejected the finding. A later `review-reply` by a human can overturn it |
 | `last_activity` | the latest entry in the thread; `--since` keeps a thread whose latest entry is at or after it |
 
 Read the `NOT READ` lines first: an artefact that could not be read is not an
-artefact without findings. A finding answered and followed by no commit was
+artefact without findings. A `NO SUCH` line is a key-shaped name Jira does
+not know (`TYPO3-14` in a branch) — an answer, not a read failure. A finding answered and followed by no commit was
 rejected; when a bot's findings are rejected again and again, the learning is
 the reviewer's configuration in that repository (`project-rule`), not the
 agent's work. At session end many reviews have not arrived yet — Outcome mode

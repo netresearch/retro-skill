@@ -49,7 +49,9 @@ GIT_C_RE = re.compile(r"git\s+-C\s+(?P<path>(?:\"[^\"]+\"|'[^']+'|[^\s;|&]+))")
 CD_RE = re.compile(
     r"(?:^|[;&|]\s*|\&\&\s*)cd\s+(?P<path>(?:\"[^\"]+\"|'[^']+'|[^\s;|&]+))"
 )
-FORGE_RE = re.compile(r"(?:-R|--repo)[\s=](?P<slug>[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)")
+FORGE_RE = re.compile(
+    r"(?:-R|--repo)[\s=]['\"]?(?P<slug>[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)['\"]?"
+)
 # Artefacts worth naming in the scope line.
 ARTEFACT_RE = re.compile(
     r"\b(?:gh|glab)\s+(?:pr|mr|release|issue)\s+(?:create|merge|edit)\b"
@@ -135,10 +137,16 @@ VALUE_FLAGS = frozenset(
         "--remove-label", "--add-reviewer", "--remove-reviewer",
     }
 )  # fmt: skip
+# `<<EOF`, `<<-EOF`, `<<'PR-BODY'`, `<<\EOF`. A heredoc whose tag never
+# comes back runs to the end of the command, as bash reads it.
 HEREDOC_RE = re.compile(
-    r"<<-?\s*(['\"]?)(?P<tag>\w+)\1[^\n]*\n(?P<body>.*?)\n[ \t]*(?P=tag)[ \t]*(?=\n|$)",
+    r"<<-?\s*\\?(['\"]?)(?P<tag>[\w-]+)\1[^\n]*\n(?P<body>.*?)"
+    r"(?:\n[ \t]*(?P=tag)[ \t]*(?=\n|$)|\Z)",
     re.DOTALL,
 )
+# `$(…)` inside double quotes still runs: `URL="$(gh pr create …)"`.
+SUBSTITUTION_RE = re.compile(r"\$\((?:[^()]|\([^()]*\))*\)")
+EXPLICIT_GET_RE = re.compile(r"(?:-X|--method)[\s=]*GET\b")
 QUOTED_RE = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
 
 
@@ -387,10 +395,22 @@ def mask_quoted(command: str) -> str:
     `gh pr merge 3` inside a heredoc that writes a doc, or inside `--body "…"`,
     is text, not a command. Blanking keeps every offset, so a match on the
     masked string reads its arguments from the original."""
-    return QUOTED_RE.sub(
-        lambda m: m.group(0)[0] + _blank(m.group(0)[1:-1]) + m.group(0)[-1],
-        mask_heredocs(command),
-    )
+
+    def quoted(m: re.Match) -> str:
+        text = m.group(0)
+        inner = text[1:-1]
+        if text[0] == '"':
+            # Keep command substitutions, blank the rest.
+            kept, last = [], 0
+            for sub in SUBSTITUTION_RE.finditer(inner):
+                kept += [_blank(inner[last : sub.start()]), sub.group(0)]
+                last = sub.end()
+            inner = "".join([*kept, _blank(inner[last:])])
+        else:
+            inner = _blank(inner)
+        return text[0] + inner + text[-1]
+
+    return QUOTED_RE.sub(quoted, mask_heredocs(command))
 
 
 def _tokens(text: str) -> list[str]:
@@ -400,31 +420,37 @@ def _tokens(text: str) -> list[str]:
         return text.split()
 
 
-def positional_number(rest: str) -> int | None:
+def positional_number(rest: str, verb: str = "") -> int | None:
     """The first bare number that is not a flag's value (`--limit 5`, `--body 12`).
 
     Tokenised like a shell, so a number inside a quoted body is part of that
     body, not an argument."""
+    # `-c/--comment` takes a value on close/reopen, and is a switch on review.
+    value_flags = VALUE_FLAGS | (
+        {"-c", "--comment"} if verb in {"close", "reopen"} else set()
+    )
     previous = ""
     for token in _tokens(rest):
-        if token.isdigit() and previous not in VALUE_FLAGS:
+        if token.isdigit() and previous not in value_flags:
             return int(token)
         previous = token
     return None
 
 
 def _numbered_target(
-    m: re.Match, command: str, number: int, gitlab_host: str
+    m: re.Match, command: str, masked: str, number: int, gitlab_host: str
 ) -> dict[str, Any] | None:
     """The artefact a `<noun> <verb> <number>` names, via `-R` or the `cd` before it."""
-    slug = FORGE_RE.search(m["rest"])
+    slug = FORGE_RE.search(command[m.start("rest") : m.end("rest")])
     if slug:
         host = GITHUB_HOST if m["cli"] == "gh" else gitlab_host
         project = slug["slug"]
     else:
         # The last `cd` before the command is where it ran.
-        cds = list(CD_RE.finditer(command[: m.start()]))
-        where = remote_project(unquote(cds[-1]["path"]), m["cli"]) if cds else None
+        # A `cd` inside a quoted string is text; the path is read unmasked.
+        cds = list(CD_RE.finditer(masked[: m.start()]))
+        path = command[cds[-1].start("path") : cds[-1].end("path")] if cds else ""
+        where = remote_project(unquote(path), m["cli"]) if cds else None
         if not where:
             return None
         host, project = where
@@ -433,7 +459,7 @@ def _numbered_target(
 
 
 def _one_write(
-    m: re.Match, command: str, result: str, gitlab_host: str
+    m: re.Match, command: str, masked: str, result: str, gitlab_host: str
 ) -> list[dict[str, Any]] | None:
     """What one forge write acted on; None when its target stays unknown.
 
@@ -454,12 +480,12 @@ def _one_write(
     positional = artefacts_in_text(words[0]) if words else []
     if positional:
         return _with_origin(positional, "acted")
-    number = positional_number(rest)
+    number = positional_number(rest, m["verb"])
     if number is None:
         # `gh pr edit` on the current branch: the result may carry the URL.
         printed = artefacts_in_text(result)[:1]
         return _with_origin(printed, "acted") if printed else None
-    target = _numbered_target(m, command, number, gitlab_host)
+    target = _numbered_target(m, command, masked, number, gitlab_host)
     return [target] if target else None
 
 
@@ -472,8 +498,8 @@ def _api_writes(command: str, masked: str, gitlab_host: str) -> list[dict[str, A
                 command[m.start("rest") : m.end("rest")]
                 + command[m.start("tail") : m.end("tail")]
             )
-            if not API_WRITE_FLAG_RE.search(args):
-                continue  # a read
+            if EXPLICIT_GET_RE.search(args) or not API_WRITE_FLAG_RE.search(args):
+                continue  # a read, also one that passes query fields with -f
             if cli == "gh":
                 host, project = GITHUB_HOST, m["project"]
                 kind = "pull" if m["kind"] == "pulls" else "issue"
@@ -500,7 +526,7 @@ def _forge_write_artefacts(
     )
     unresolved = False
     for m in FORGE_WRITE_RE.finditer(masked):
-        items = _one_write(m, command, result, gitlab_host)
+        items = _one_write(m, command, masked, result, gitlab_host)
         if items is None:
             unresolved = True
         else:
@@ -511,8 +537,10 @@ def _forge_write_artefacts(
 def jira_command_tickets(command: str) -> set[str]:
     """The ticket a jira script was run against: its first positional key.
 
-    A key inside a quoted comment text (`add NRS-1 "see ABC-2"`) is not one."""
-    masked = mask_quoted(command)
+    A key inside a quoted comment text (`add NRS-1 "see ABC-2"`) is not one: the
+    text stays one token. Only heredocs are masked, so a quoted script path
+    (`uv run "$HOME/…/jira-issue.py" get NRS-5`) is still found."""
+    masked = mask_heredocs(command)
     found = set()
     for m in JIRA_COMMAND_RE.finditer(masked):
         rest = command[m.start("rest") : m.end("rest")]
