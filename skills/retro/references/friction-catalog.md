@@ -117,29 +117,35 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" \
     --transcript-file <session.jsonl> [--output-format json]
 ```
 
-It reads every PR, MR and issue the session created or wrote to. A write counts
-when its **output reports** the target, and never from the command text alone:
-a report line is a URL alone on its line, a JSON `html_url`, or a CLI status
-line (`✓ …`, `- Creating issue in …`) naming a URL, `owner/repo#N` or `#N`.
-A link inside a PR body, a JSON answer or an error message is running text and
-does not count. Each write takes only its own number and its own `-R`; a bare
-`#N` needs that `-R`; several creates in one call take one URL each, and a
-create in a `for`/`while` loop takes every URL of its kind. A REST write on a
-literal PR/MR/issue endpoint counts by the endpoint; a create, a variable
-(also a whole endpoint held in one) or a numeric project id in the path counts
-by the output's report line of that path's kind and number, or stays
-unresolved; a REST write on any other endpoint (code scanning, workflow runs)
-does not count at all. Continued lines (`\` + newline) are one command. A write
-inside a heredoc or quoted text is never attributed. Whenever a call that
-writes to a PR, MR or issue prints a report line no write claimed — a heredoc
-script it runs, a URL read after the write — the call is listed as unresolved,
-so every write ends attributed, unresolved or refused, never silently gone. A call the harness refused (`is_error` without `Exit code N`) ran
-nothing. A successful write that prints nothing counts only as
-`<verb> <number> -R <repo>` outside any heredoc or quoted text. Output that
-reports a failure is not a success: an `HTTP 4xx/5xx`, `GraphQL:` at a line
-start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`, `failed to` or
-`Cannot perform`, or a background run. MCP writes count by their input.
-Everything else is listed as an unresolved forge command, not guessed.
+It reads every PR, MR and issue the session created or wrote to through `gh`,
+`glab` (subcommands and `api`), the GitHub MCP tools, or git-workflow's
+`pr-merge.sh`. A write counts when its **output reports** the target, never
+from the command text alone: a report line is a URL alone on its line, a JSON
+`html_url`/`web_url`, a CLI status line (`✓ …`, `- Creating issue in …`)
+naming a URL, `owner/repo#N` or `#N`, or `pr-merge.sh`'s own `merged`,
+`queued` and attestation lines. A link inside a PR body, a JSON answer or an
+error message is running text and does not count. Each write takes only its
+own number and its own `-R`; a bare `#N` needs that `-R`; several creates in
+one call take one URL each, a create in a `for`/`while` loop takes every URL
+of its kind, and a create never takes a URL a numbered write in the same call
+reported. A REST write on a literal PR/MR/issue endpoint counts by the
+endpoint; a create, a variable (also a whole endpoint held in one) or a
+numeric project id in the path counts by the output's report line of that
+path's kind and number, or stays unresolved; a REST write on any other
+endpoint (code scanning, workflow runs) does not count at all. Continued lines
+(`\` + newline) are one command. A write inside a heredoc or quoted text is
+never attributed. Whenever a call that writes to a PR, MR or issue names a
+target no write claimed — a report line, or any URL when a heredoc script may
+have printed it — the call is listed as unresolved, so every write through
+these tools ends attributed, unresolved or refused, never silently gone. A
+call the harness refused (`is_error` without `Exit code N`) ran nothing. A
+successful write that prints nothing counts only as `<verb> <number> -R <repo>`
+outside any heredoc or quoted text. Output that reports a failure is not a
+success: an `HTTP 4xx/5xx`, `GraphQL:` at a line start or after a colon, a
+line starting with `x`/`X`/`✗`, `gh:`, `failed to` or `Cannot perform`, or a
+background run. MCP writes count by their input. Writes through other tools —
+`curl` against a forge API, a custom script outside a heredoc of the same
+call — are not seen at all; name them by hand.
 It follows each one's linked issues (closing references,
 issue URLs in the description) and the Jira key at the start of its title or in
 a branch segment one level, plus the tickets the session ran a jira script

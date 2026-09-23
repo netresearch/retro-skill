@@ -355,7 +355,8 @@ the agent never recognized as a learning); external signals outside forge and
 tracker (customer complaints, prod alerts, Slack / Matrix / Sentry); feedback on
 a ticket that neither a PR/MR of the session nor a jira script or time
 booking in it names; a write whose output named no target (listed as an
-unresolved forge command instead); slow constitutional drift
+unresolved forge command instead); a write through `curl` or another tool
+than `gh`, `glab`, the GitHub MCP tools and `pr-merge.sh`; slow constitutional drift
 without `audit`; or outcomes the agent never saw (a reverted commit or rejected
 PR is seen, an unspoken "the customer hated it" is not). For those, run
 `/retro outcome` (post-hoc) or `/retro audit` (cross-session).

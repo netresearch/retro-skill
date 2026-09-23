@@ -124,7 +124,7 @@ FAILED_OUTPUT_RE = re.compile(
 # Matched on the command with heredoc bodies and quoted texts blanked, so a
 # `for` or a `done` inside a text neither opens nor closes one.
 LOOP_RE = re.compile(
-    r"\b(?:for|while|until)\b[^\n]*?\bdo\b(?P<body>.*?)\bdone\b", re.DOTALL
+    r"\b(?:for|while|until)\b[^;\n]*(?:;|\n)\s*do\b(?P<body>.*?)\bdone\b", re.DOTALL
 )
 # A REST endpoint held in a variable: `gh api -X POST "$R/123/replies"`.
 VARIABLE_ENDPOINT_RE = re.compile(r"\bapi\b(?:\s+-\S+(?:\s+[^-\s]\S*)?)*\s+[\"']?\$")
@@ -149,6 +149,19 @@ GLAB_API_CREATE_RE = re.compile(
     re.IGNORECASE,
 )
 BARE_REF_RE = re.compile(r"(?<![\w/&])(?P<sep>[#!])(?P<number>\d+)\b")
+# git-workflow's merge wrapper: `pr-merge.sh -R owner/repo N`. It reports every
+# write on a line of its own — `pr-merge: o/r#N merged (…)`, `… queued (…)`,
+# `pr-merge: posted Self-review attestation for <sha> on o/r#N`; `not merging`,
+# `failed` and `dry-run` mean nothing was written.
+PR_MERGE_WRAPPER_RE = re.compile(r"\bpr-merge\.sh\b")
+PR_MERGE_REPORT_RE = re.compile(
+    r"^pr-merge: (?:posted Self-review attestation for \S+ on )?"
+    r"(?P<project>[\w.-]+/[\w.-]+)#(?P<number>\d+)(?: merged| queued|$)",
+    re.MULTILINE,
+)
+PR_MERGE_NO_WRITE_RE = re.compile(
+    r"^pr-merge: (?:not merging|dry-run|.*#\d+ failed)", re.MULTILINE
+)
 # MCP tools that write to a PR or issue; their input names owner/repo/number.
 MCP_WRITE_RE = re.compile(
     r"github__(?:create_pull_request|update_pull_request|merge_pull_request|"
@@ -553,6 +566,8 @@ class _Call:
             found.append(ref)
         if verb == "create":
             found = self._claim(found, _in_loop(self.command, write.start()))
+        else:
+            self.claimed.update(r["url"] for r in found)
         if found:
             return _with_origin(found, "created" if verb == "create" else "acted")
         # Silent success in the one unambiguous shape: `<verb> N -R repo`, in
@@ -650,6 +665,39 @@ def _joined(command: str) -> str:
     return command.replace("\\\n", "  ")
 
 
+def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
+    """What `pr-merge.sh` merged or commented on, from its own report lines;
+    [] when it says it wrote nothing, None when it says neither."""
+    if not PR_MERGE_WRAPPER_RE.search(_blank_texts(command)):
+        return []
+    found = [
+        dict(
+            artefact(GITHUB_HOST, m["project"], "pull", int(m["number"])),
+            origin="acted",
+        )
+        for m in PR_MERGE_REPORT_RE.finditer(result)
+    ]
+    if found or PR_MERGE_NO_WRITE_RE.search(result):
+        return found
+    return None
+
+
+def _key(ref: dict[str, Any]) -> tuple[str, int]:
+    """Repository and number: `o/r#5`, `…/pull/5` and `…/issues/5` are one PR."""
+    return ref["project"].lower(), ref["number"]
+
+
+def _unclaimed(result: str, found: list[dict[str, Any]], text_writes: bool) -> bool:
+    """Whether the output names a target no write claimed. With a write inside
+    a heredoc or quoted text (a script the call may run), any URL counts, since
+    such a script prints what it likes; otherwise only report lines do."""
+    claimed = {_key(a) for a in found}
+    named = [r for r, _, _ in _named_lines(result, "gh", GITHUB_HOST) if r]
+    if text_writes:
+        named += artefacts_in_text(result)
+    return any(_key(r) not in claimed for r in named)
+
+
 def _forge_write_artefacts(
     command: str, result: str, gitlab_host: str, failed: bool = False
 ) -> tuple[list[dict[str, Any]], bool]:
@@ -663,15 +711,21 @@ def _forge_write_artefacts(
         return [], False
     command = _joined(command)
     call = _Call(command, result, gitlab_host, failed)
-    writes = _writes(command)
-    found: list[dict[str, Any]] = []
-    unresolved = False
-    about_prs = False  # a write that concerns a PR, MR or issue at all
+    # Numbered writes first, so a create never takes the URL of a PR an edit
+    # or a merge in the same call reported.
+    writes = sorted(
+        _writes(command), key=lambda w: w.groupdict().get("verb") == "create"
+    )
+    wrapper = _wrapper_targets(command, result)
+    found: list[dict[str, Any]] = list(wrapper or [])
+    unresolved = wrapper is None
+    about_prs = bool(wrapper) or wrapper is None  # a write concerning a PR, MR or issue
+    text_writes = False
     for write in writes:
         if _is_text(command, write):
             # Written into a heredoc or a quoted text: a heredoc may be a
             # script the same call runs, so it is never attributed.
-            about_prs = True
+            about_prs = text_writes = True
             continue
         if write.groupdict().get("verb"):
             targets = call.subcommand_targets(write)
@@ -682,13 +736,11 @@ def _forge_write_artefacts(
             unresolved = True
         else:
             found += targets
-    # Every write lands in one of three places — attributed, unresolved, or
-    # refused. A report line no write claimed means some write was not
-    # understood, so the call is unresolved rather than silently complete.
+    # Every gh/glab/api/MCP/pr-merge.sh write lands in one of three places —
+    # attributed, unresolved, or refused. A target the output names that no
+    # write claimed means some write was not understood: the call is unresolved.
     if about_prs and not unresolved:
-        claimed = {a["url"] for a in found}
-        reported = [r for r, _, _ in _named_lines(result, "gh", GITHUB_HOST) if r]
-        unresolved = any(r["url"] not in claimed for r in reported)
+        unresolved = _unclaimed(result, found, text_writes)
     return found, unresolved
 
 

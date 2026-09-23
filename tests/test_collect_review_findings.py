@@ -1415,6 +1415,83 @@ class SixthRoundTest(unittest.TestCase):
         self.assertEqual(len(urls), 2)
 
 
+class SeventhRoundTest(unittest.TestCase):
+    """Inputs from the seventh review round (fc610d5)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_the_merge_wrapper_reports_its_writes(self):
+        cmd = "pr-merge.sh -R o/r 150 --self-reviewed"
+        printed = (
+            "pr-merge: posted Self-review attestation for 1a2b3c4d5e6f on o/r#150\n"
+            "pr-merge: o/r#150 merged (--merge)"
+        )
+        urls, data = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/150": "acted"})
+        self.assertEqual(data["unresolved_forge_commands"], [])
+
+    def test_the_merge_wrapper_that_wrote_nothing(self):
+        shut = "pr-merge: not merging o/r#150 — request-review: no review on the current head"
+        urls, data = self.urls([({"command": "pr-merge.sh -R o/r 150"}, shut)])
+        self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+        urls, data = self.urls([({"command": "pr-merge.sh -R o/r 150"}, "")])
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+
+    def test_a_status_line_of_the_same_pr_is_not_unclaimed(self):
+        ready = '✓ Pull request o/r#682 is marked as "ready for review"'
+        urls, data = self.urls([({"command": "gh pr ready 682 -R o/r"}, ready)])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/682": "acted"})
+        self.assertEqual(data["unresolved_forge_commands"], [])
+        urls, data = self.urls(
+            [({"command": "glab mr rebase 12 -R g/p"}, "✓ Rebased g/p!12")]
+        )
+        self.assertEqual(
+            urls, {"https://git.example.org/g/p/-/merge_requests/12": "acted"}
+        )
+        self.assertEqual(data["unresolved_forge_commands"], [])
+
+    def test_an_edit_and_a_create_in_one_call(self):
+        cmd = "gh pr edit 92 -R o/r --add-label x; gh pr create -R o/r --fill"
+        printed = "https://github.com/o/r/pull/92\nhttps://github.com/o/r/pull/97"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(
+            urls,
+            {
+                "https://github.com/o/r/pull/92": "acted",
+                "https://github.com/o/r/pull/97": "created",
+            },
+        )
+
+    def test_a_create_before_an_edit_in_one_call(self):
+        cmd = "gh pr create -R o/r --fill; gh pr edit 92 -R o/r --add-label x"
+        printed = "https://github.com/o/r/pull/92\nhttps://github.com/o/r/pull/97"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(
+            urls,
+            {
+                "https://github.com/o/r/pull/92": "acted",
+                "https://github.com/o/r/pull/97": "created",
+            },
+        )
+
+    def test_a_script_printing_urls_in_running_text_is_unresolved(self):
+        cmd = "cat > s.sh <<'EOF'\ngh pr merge 5 -R o/r --merge\nEOF\nbash s.sh"
+        urls, data = self.urls(
+            [({"command": cmd}, "o/r: https://github.com/o/r/pull/5 done")]
+        )
+        self.assertEqual(set(urls.values()), {"mentioned"})
+        self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+
+    def test_a_loop_with_do_on_the_next_line(self):
+        cmd = "for r in a b\ndo\n  gh pr create --repo netresearch/$r --fill\ndone"
+        printed = "https://github.com/netresearch/a/pull/1\nhttps://github.com/netresearch/b/pull/2"
+        urls, _ = self.urls([({"command": cmd}, printed)])
+        self.assertEqual(set(urls.values()), {"created"})
+        self.assertEqual(len(urls), 2)
+
+
 class MainTest(unittest.TestCase):
     def test_an_unparsable_since_is_an_error(self):
         with (
