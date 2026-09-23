@@ -163,8 +163,9 @@ a write in text (a heredoc, a quoted string, or a list-form call such as
 or not that program writes: a shell given its program (`bash <<…`,
 `bash -lc '…'`); another interpreter's heredoc or inline program
 (`python3 - <<…`, `python3 -c '…'`, `node -e '…'`) with a process call such
-as `subprocess`; or a script file the call writes (`cat > x.sh <<…`,
-`cat >> x.sh`, `cat <<… > x.sh`, `tee x.sh`) and names again later, in any
+as `subprocess`; or a script file the call writes from a heredoc
+(`cat > x.sh <<…`, `cat >> x.sh <<…`, `cat <<… > x.sh`, `tee x.sh <<…`,
+`cat <<… | tee x.sh`) and names again later, in any
 form (`./x.sh`, `bash -x x.sh`, `timeout 60 x.sh`). A script file is one with
 a script suffix, no suffix, or a `#!` line. This errs towards unresolved: a
 script that only reads is listed too, a lost write is not possible. A

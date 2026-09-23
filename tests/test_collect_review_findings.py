@@ -2011,6 +2011,39 @@ class TwelfthRoundTest(unittest.TestCase):
                 self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
 
 
+class FifteenthRoundTest(unittest.TestCase):
+    """Inputs from the fifteenth review round (496d0bd)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    CMD = (
+        "gh api repos/o/r/pulls/118/requested_reviewers -X POST"
+        ' -f "reviewers[]=copilot-pull-request-reviewer[bot]" >/dev/null 2>&1'
+        ' && echo "copilot angefragt" || echo "copilot-anfrage fehlgeschlagen"'
+    )
+
+    def test_the_failure_echo_of_the_call_is_no_success(self):
+        # Copied from a stored transcript: the `||` branch ran, nothing was written.
+        urls, data = self.urls(
+            [({"command": self.CMD}, "copilot-anfrage fehlgeschlagen")]
+        )
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+
+    def test_the_success_echo_keeps_the_write(self):
+        # The success message alone, or beside the failure one (a loop where
+        # one pass wrote): at least one write happened.
+        for printed in (
+            "copilot angefragt",
+            "copilot-anfrage fehlgeschlagen\ncopilot angefragt",
+        ):
+            with self.subTest(printed=printed):
+                urls, data = self.urls([({"command": self.CMD}, printed)])
+                self.assertEqual(urls, {"https://github.com/o/r/pull/118": "acted"})
+                self.assertEqual(data["unresolved_forge_commands"], [])
+
+
 class UnresolvedSurfacedTest(unittest.TestCase):
     def test_the_collector_lists_unresolved_writes(self):
         transcript = _transcript([({"command": "gh pr merge --merge"}, "")])

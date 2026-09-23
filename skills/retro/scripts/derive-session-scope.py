@@ -120,6 +120,11 @@ EXIT_CODE_RE = re.compile(r"Exit code \d+")
 # pipe or `; echo`) says nothing: an HTTP error (glab: `422 {message: …}`),
 # a GraphQL error, a refusal, or a background run whose output is not in the
 # result at all (a Bash call sent or moved to the background, a Monitor).
+# `… && echo ok || echo failed`: the call names its own failure message.
+ECHO_BRANCHES_RE = re.compile(
+    r"&&\s*echo\s+(?P<ok>\"[^\"\n]*\"|'[^'\n]*'|[^\s;|&]+)"
+    r"\s*\|\|\s*echo\s+(?P<fail>\"[^\"\n]*\"|'[^'\n]*'|[^\s;|&]+)"
+)
 FAILED_OUTPUT_RE = re.compile(
     r"HTTP [45]\d\d|: [45]\d\d \{message|\"status\":\"[45]\d\d\"|\}gh: "
     r"|(?:^|: )GraphQL: "
@@ -634,7 +639,11 @@ class _Call:
         self.command = command
         self.result = result
         self.gitlab_host = gitlab_host
-        self.failed = failed or bool(FAILED_OUTPUT_RE.search(result))
+        self.failed = (
+            failed
+            or bool(FAILED_OUTPUT_RE.search(result))
+            or _took_the_failure_branch(command, result)
+        )
         # URLs a create in this call already took: each create takes the next.
         self.claimed: set[str] = set()
 
@@ -794,6 +803,17 @@ class _Call:
         if not about_a_pr and "graphql" not in segment:
             return []  # an endpoint that is not about a PR, MR or issue
         return self._rest_fallback(cli, segment)
+
+
+def _took_the_failure_branch(command: str, result: str) -> bool:
+    """Whether the output shows the `|| echo …` message of `&& echo A || echo B`
+    and not the success one: the command before it exited non-zero."""
+    lines = {line.strip() for line in result.splitlines()}
+    for m in ECHO_BRANCHES_RE.finditer(command):
+        ok, fail = (m[g].strip("\"'") for g in ("ok", "fail"))
+        if fail and "$" not in fail and fail in lines and ok not in lines:
+            return True
+    return False
 
 
 def _joined(command: str) -> str:
