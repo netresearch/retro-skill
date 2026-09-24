@@ -690,9 +690,14 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         self.assertEqual(patched, [["app.py"], ["/new/app.py"]])
 
     def _session(self, session_id: str, steps: list, **fixture) -> None:
-        """A V2 session of `("patch", file)` calls and `("move", old, new)` rows."""
+        """A V2 session of `("patch", file)` calls and `("move", old, new)` rows.
+
+        `("gone",)` uses up a `seq` without a row, as a revert leaves it.
+        """
         rows = []
         for seq, step in enumerate(steps, start=1):
+            if step[0] == "gone":
+                continue
             if step[0] == "move":
                 switch = {
                     "location": {"directory": step[2]},
@@ -811,6 +816,32 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         self._session("ses_rev", self.FORK[:1], directory="/B")
         self._session("ses_kid", self.FORK, directory="/B", parent="ses_rev", copied=3)
         self.assertEqual(self._patched("ses_kid"), ["/A/a.py", "/B/b.py", "/B/own.py"])
+
+    def test_a_parents_directory_without_a_move_behind_it_does_not_count(
+        self,
+    ) -> None:
+        """The parent forked in `/A`, moved to `/B`, and reverted the move.
+
+        It still holds the boundary row, but no move row says where that row
+        ran; `/B` is only the directory the revert left behind. The fork's
+        own directory is the parent's at fork time.
+        """
+        self._session("ses_back", [("patch", "a.py")], directory="/B")
+        steps = [("patch", "a.py"), ("patch", "own.py")]
+        self._session("ses_fwd", steps, directory="/A", parent="ses_back", copied=1)
+        self.assertEqual(self._patched("ses_fwd"), ["/A/a.py", "/A/own.py"])
+
+    def test_a_parent_that_lost_the_boundary_row_is_not_asked(self) -> None:
+        """The parent moved `/A` → `/B`, reverted past the fork boundary, then
+        moved `/B` → `/C`. Its surviving move names `/B`, where the copied
+        rows never ran."""
+        parent = [("patch", "pre.py"), ("gone",), ("move", "/B", "/C")]
+        self._session("ses_lost", parent, directory="/C")
+        steps = [("patch", "pre.py"), ("patch", "a.py"), ("patch", "own.py")]
+        self._session("ses_orph", steps, directory="/A", parent="ses_lost", copied=2)
+        self.assertEqual(
+            self._patched("ses_orph"), ["/A/pre.py", "/A/a.py", "/A/own.py"]
+        )
 
     def test_a_fork_of_a_fork_asks_each_parent_in_turn(self) -> None:
         """The grandparent moved after both fork points; only it knows `/A`."""

@@ -365,6 +365,8 @@ def _timeline(conn: sqlite3.Connection, session_id: str) -> dict:
         "parent": info.get("fork_session_id"),
         "switches": switches,
         "copied": copied,
+        # The fork boundary: the last row the fork copied.
+        "boundary": max(copied, default=None),
         "seqs": seqs,
     }
 
@@ -375,29 +377,37 @@ def _directory_at(
     seq: int,
     seen: dict,
     visiting: frozenset = frozenset(),
-) -> str | None:
-    """The directory the row at `seq` ran in; None when the database cannot say.
+) -> tuple[str | None, bool]:
+    """The directory the row at `seq` ran in, and whether a move row says so.
 
     A row's directory is the previous location of the next move after it, or
     the session's directory when none follows. A fork's copied row with no
-    copied move after it ran where the parent was at the fork boundary, the
-    last copied `seq` — asked of the parent only while it still holds that
-    row: a deleted parent has no rows, and a revert deletes them from a
-    boundary on without restoring the directory.
+    copied move after it ran where the parent was at the fork boundary. The
+    parent is asked only while it still holds the boundary row, and its answer
+    counts only when a move row gives it. Otherwise the parent's directory may
+    be one a revert left behind — a revert deletes rows from a boundary on
+    without restoring the directory — while the fork's own directory is the
+    parent's at fork time.
     """
     timeline = _cached_timeline(conn, session_id, seen)
     later = [(switch, prev) for switch, prev in timeline["switches"] if switch > seq]
     parent = timeline["parent"]
     copied_move_follows = any(switch in timeline["copied"] for switch, _ in later)
     if parent and seq in timeline["copied"] and not copied_move_follows:
-        boundary = max(timeline["copied"])
+        boundary = timeline["boundary"]
         held = (
             parent not in visiting
             and boundary in _cached_timeline(conn, parent, seen)["seqs"]
         )
         if held:
-            return _directory_at(conn, parent, boundary, seen, visiting | {session_id})
-    return later[0][1] if later else timeline["directory"]
+            found, from_move = _directory_at(
+                conn, parent, boundary, seen, visiting | {session_id}
+            )
+            if from_move:
+                return found, True
+    if later:
+        return later[0][1], True
+    return timeline["directory"], False
 
 
 def _cached_timeline(conn: sqlite3.Connection, session_id: str, seen: dict) -> dict:
@@ -417,7 +427,7 @@ def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
         if role == "user":
             lines.extend(_events("user", _text(data.get("text")), [], timestamp))
         elif role == "assistant":
-            directory = _directory_at(conn, session_id, seq, seen)
+            directory, _ = _directory_at(conn, session_id, seq, seen)
             blocks, results = _v2_assistant(data, directory)
             lines.extend(_events("assistant", blocks, results, timestamp))
     return lines
