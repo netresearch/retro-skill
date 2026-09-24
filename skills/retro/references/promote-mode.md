@@ -166,8 +166,11 @@ Source deletion is **last** and **gated on confirmed materialization**, per item
    materialized; merge is not required).
 3. **Drain only now** — `scan-memory-inventory.py drain <path> --expect-sha256 <sha>`
    tombstone-**moves** the source into `<slug>/memory/.promoted/` (never `rm`)
-   and prunes its `MEMORY.md` bullet. The `--expect-sha256` race-check aborts
-   the drain if the file changed since the scan.
+   and prunes its `MEMORY.md` entry: only the link to the note goes, with its
+   own hook text and one ` · ` separator. The bullet marker, a leading label,
+   sibling links and rule text outside the link stay; the line goes only when
+   nothing but the marker and a label remains. The `--expect-sha256`
+   race-check aborts the drain if the file changed since the scan.
 
 On any verification failure, **keep the source** and report it. Rejected
 proposals are never drained.
