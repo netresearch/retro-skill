@@ -593,7 +593,9 @@ class _Shell:
             ):
                 if " " not in self.source[start:end]:
                     return
-                start, end = start + 1, end - 1
+                # `$'…'` opens with two characters; keep both quotes whole.
+                opening = 2 if self.source[start] == "$" else 1
+                start, end = start + opening, end - 1
             for i in range(start, end):
                 mask[i] = value
 

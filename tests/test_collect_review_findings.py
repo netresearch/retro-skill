@@ -2200,6 +2200,18 @@ class ShellParserTest(unittest.TestCase):
         quoted = "cat > x.md <<'EOF'\nmerged: $(gh pr merge 5 -R o/r --merge)\nEOF"
         self.assertTrue(dss._is_text(quoted, dss.FORGE_WRITE_RE.search(quoted)))
 
+    def test_an_ansi_c_body_keeps_the_echo_pair_readable(self):
+        # CodeRabbit on 6f05551: blanking `$'…'` from its `'` left a stray quote.
+        for cmd in (
+            "gh pr comment 5 -R o/r --body $'a b\\nc' && echo ok || echo failed",
+            'gh pr comment 5 -R o/r --body $"a b c" && echo ok || echo failed',
+        ):
+            with self.subTest(cmd=cmd[30:45]):
+                urls, data = self.urls([({"command": cmd}, "failed")])
+                self.assertEqual(
+                    (urls, len(data["unresolved_forge_commands"])), ({}, 1)
+                )
+
     def test_a_quoted_script_path_stays_a_command(self):
         # A quoted word without a space is a path, not a text: blanking it
         # would hide the wrapper call.
