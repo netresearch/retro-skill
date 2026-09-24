@@ -41,7 +41,7 @@ work happens. retro is currently blind to it.
 ## Mode Definition
 
 ```
-/retro promote [--scope cwd|all]
+/retro promote [--project=<slug>]
 ```
 
 A new front-end that replaces Phases 1–3 (transcript detection) with a
@@ -53,8 +53,8 @@ Read-only by construction; stdlib-only; emits the `detect-mechanical.py`
 envelope so Phases 4–10 consume it as-is.
 
 ```
-python3 scan-memory-inventory.py [--scope cwd|all] [--project SLUG] \
-    [--memory-root PATH] [--cwd PATH] [--include-flagged-locations] \
+python3 scan-memory-inventory.py [--project=SLUG] \
+    [--memory-root PATH] [--project-dir PATH] [--include-flagged-locations] \
     [--output-format json|text]
 python3 scan-memory-inventory.py drain PATH [--memory-root PATH] [--expect-sha256 HEX]
 ```
@@ -133,14 +133,14 @@ as an explicit decision rather than folded in silently (see Open Questions Q1).
 | `drain` refuses non-`memory/` path and sha mismatch | unit tests |
 | `drain` tombstones + prunes index | unit test |
 | Script compiles in CI | `lint.yml` py_compile line |
-| Real-stock smoke | `--scope all` finds the `-home-sme` notes |
+| Real-stock smoke | the default scan (every slug) finds the `-home-sme` notes |
 
 ## Open Questions
 
 | ID | Question | Recommendation |
 |---|---|---|
 | Q1 | SKILL.md is already over the 500-word cap + wrong description prefix. Fix in this change, a separate prep PR, or leave the stub out for now? | Separate prep PR that trims SKILL.md to a terse index and fixes the description; rebase this mode on top. Keeps this change reviewable and doesn't bundle a 700-word prose rewrite with a feature. |
-| Q2 | `--scope` default: `cwd` or `all`? | Keep `cwd` for least-surprise, but always print `slugs_scanned` and document the `--scope all` fallback (the real stock often sits under a sibling slug). |
+| Q2 | Scan the cwd slug or every slug by default? | The scanner has no `--scope` flag: it scans every slug holding a `memory/` dir (the real stock often sits under a sibling slug), prints `slugs_scanned`, and `--project=<slug>` narrows it to one. |
 | Q3 | Signal id: reuse `C3`/`B8` or add a dedicated promote id? | Reuse — both already route correctly; a new id costs edits to two word-sensitive reference files for no routing benefit. |
 | Q4 | Tombstone retention: purge `.promoted/` after PRs merge, or keep as an audit trail? | Keep indefinitely for now; a purge step is a separate roadmap item. |
 
