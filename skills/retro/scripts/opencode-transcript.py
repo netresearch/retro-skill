@@ -57,7 +57,8 @@ are renamed, or every shell and file signal passes over an opencode session
 without firing. A migrated session keeps the 1.x names. Relative file paths are
 resolved against the session's directory, so a patch that names `src/app.py`
 and a read of `/repo/src/app.py` count as the same file. A 2.x session can be
-moved; its directory is followed through the `location-switched` rows.
+moved or forked; each row is resolved against the directory it ran in, taken
+from the `location-switched` rows and, for a fork's copied rows, the parent's.
 
 READ-ONLY. The database is opened with `mode=ro`, so pointing this at a live
 database cannot corrupt a session that is still being written.
@@ -233,13 +234,15 @@ def _text(text: str | None) -> list[dict]:
     return [{"type": "text", "text": text}] if text and text.strip() else []
 
 
-def _resolve(path: object, directory: str | None) -> object:
-    # A `~` path is left alone: opencode expands it to the session user's home,
-    # which the database does not record.
-    relative = isinstance(path, str) and not path.startswith("~")
-    if relative and directory and not os.path.isabs(path):
-        return os.path.normpath(os.path.join(directory, path))
-    return path
+def _resolve(path: object, directory: str | None, expands_home: bool) -> object:
+    # opencode 2.x expands `~` and `~/…` to the session user's home, which the
+    # database does not record, so those stay as they are. 1.x resolves them
+    # against the directory like any other relative path.
+    if not isinstance(path, str) or not directory or os.path.isabs(path):
+        return path
+    if expands_home and (path == "~" or path.startswith("~/")):
+        return path
+    return os.path.normpath(os.path.join(directory, path))
 
 
 def _patch_files(text: object) -> list[str]:
@@ -254,17 +257,23 @@ def _patch_files(text: object) -> list[str]:
     return [path for path in files if path]
 
 
-def _tool_use(tool_id: str, name: str, payload: object, directory: str | None) -> dict:
+def _tool_use(
+    tool_id: str,
+    name: str,
+    payload: object,
+    directory: str | None,
+    expands_home: bool = False,
+) -> dict:
     name = TOOL_NAMES.get(name, name)
     inputs = payload if isinstance(payload, dict) else {}
     inputs = {INPUT_KEYS.get(key, key): value for key, value in inputs.items()}
     if name in FILE_TOOLS and "file_path" not in inputs and "path" in inputs:
         inputs["file_path"] = inputs.pop("path")
     if "file_path" in inputs:
-        inputs["file_path"] = _resolve(inputs["file_path"], directory)
+        inputs["file_path"] = _resolve(inputs["file_path"], directory, expands_home)
     if name == "Patch":
         files = _patch_files(inputs.get("patchText"))
-        inputs["file_paths"] = [_resolve(path, directory) for path in files]
+        inputs["file_paths"] = [_resolve(p, directory, expands_home) for p in files]
     return {"type": "tool_use", "id": tool_id, "name": name, "input": inputs}
 
 
@@ -298,7 +307,7 @@ def _v2_tool(block: dict, directory: str | None) -> tuple[dict, dict | None]:
     state = block.get("state") or {}
     # `streaming` stores the input as a partial JSON string; `_tool_use` drops it.
     name = block.get("name") or "tool"
-    use = _tool_use(block.get("id"), name, state.get("input"), directory)
+    use = _tool_use(block.get("id"), name, state.get("input"), directory, True)
     status = state.get("status")
     error = state.get("error")
     interrupted = isinstance(error, dict) and error.get("type") == MIGRATION_INTERRUPTED
@@ -327,38 +336,62 @@ def _location(data: dict, *keys: str) -> str | None:
     return (data.get("location") or {}).get("directory")
 
 
-def _first_directory(
-    rows: list[tuple[str, dict, int]], current: str | None
-) -> str | None:
-    """The directory a V2 session started in.
+def _timeline(conn: sqlite3.Connection, session_id: str) -> dict:
+    """What decides a V2 session's directory at a given `seq`.
 
     A move rewrites `session_v2.directory` and appends a `location-switched`
-    row naming the new and the previous location, so the current directory is
-    only right from the last move on. Before the first move it is that row's
-    `previous` location — unknown when the row carries none.
+    row naming the previous location, so the current directory holds only
+    after the last move. A fork starts in its parent's directory at fork time
+    and copies the parent's rows with their `seq`, under ids ending `_<seq>`;
+    a copied row ran wherever the parent was at that `seq`.
     """
-    for role, data, _ts in rows:
-        if role == "location-switched":
-            return _location(data, "previous")
-    return current
+    # `SELECT *`: a database from before forks has no `fork_session_id`.
+    cursor = conn.execute("SELECT * FROM session_v2 WHERE id=?", (session_id,))
+    session = cursor.fetchone()
+    names = [column[0] for column in cursor.description]
+    info = dict(zip(names, session)) if session else {}
+    switches, copied = [], set()
+    for row_id, kind, seq, data in conn.execute(
+        "SELECT id, type, seq, data FROM session_message WHERE session_id=? ORDER BY seq",
+        (session_id,),
+    ):
+        if kind == "location-switched":
+            switches.append((seq, _location(json.loads(data), "previous")))
+        if row_id.endswith(f"_{seq}"):
+            copied.add(seq)
+    return {
+        "directory": info.get("directory"),
+        "parent": info.get("fork_session_id"),
+        "switches": switches,
+        "copied": copied,
+    }
+
+
+def _directory_at(
+    conn: sqlite3.Connection, session_id: str, seq: int, seen: dict
+) -> str | None:
+    """The directory the row at `seq` ran in; None when the database cannot say."""
+    if session_id not in seen:
+        seen[session_id] = _timeline(conn, session_id)
+    timeline = seen[session_id]
+    if timeline["parent"] and seq in timeline["copied"]:
+        return _directory_at(conn, timeline["parent"], seq, seen)
+    later = [previous for switch, previous in timeline["switches"] if switch > seq]
+    return later[0] if later else timeline["directory"]
 
 
 def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
-    rows = [
-        (role, json.loads(data), timestamp)
-        for role, data, timestamp in conn.execute(
-            "SELECT type, data, time_created FROM session_message WHERE session_id=? ORDER BY seq",
-            (session_id,),
-        )
-    ]
-    directory = _first_directory(rows, _directory(conn, "session_v2", session_id))
+    seen: dict = {}
     lines: list[str] = []
-    for role, data, timestamp in rows:
-        if role == "location-switched":
-            directory = _location(data)
-        elif role == "user":
+    for role, data, timestamp, seq in conn.execute(
+        "SELECT type, data, time_created, seq FROM session_message WHERE session_id=? ORDER BY seq",
+        (session_id,),
+    ).fetchall():
+        data = json.loads(data)
+        if role == "user":
             lines.extend(_events("user", _text(data.get("text")), [], timestamp))
         elif role == "assistant":
+            directory = _directory_at(conn, session_id, seq, seen)
             blocks, results = _v2_assistant(data, directory)
             lines.extend(_events("assistant", blocks, results, timestamp))
     return lines

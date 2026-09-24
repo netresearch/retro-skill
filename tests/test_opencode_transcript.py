@@ -344,24 +344,40 @@ V2_ROWS = [
 ]
 
 
-def _v2_database(path: str, rows: list = V2_ROWS, session_id: str = "ses_v2") -> None:
-    """The V2 tables, only as wide as the adapter reads."""
+def _v2_database(
+    path: str,
+    rows: list = V2_ROWS,
+    session_id: str = "ses_v2",
+    directory: str = "/repo",
+    parent: str | None = None,
+    copied: int = 0,
+) -> None:
+    """The V2 tables, only as wide as the adapter reads.
+
+    A fork (`parent`) carries its parent's rows up to `seq` `copied` under the
+    ids opencode gives them, `<event id>_<seq>`.
+    """
     conn = sqlite3.connect(path)
     conn.execute(
-        "CREATE TABLE IF NOT EXISTS session_v2 (id TEXT PRIMARY KEY, directory TEXT)"
+        "CREATE TABLE IF NOT EXISTS session_v2"
+        " (id TEXT PRIMARY KEY, directory TEXT, fork_session_id TEXT)"
     )
     conn.execute(
         "CREATE TABLE IF NOT EXISTS session_message (id TEXT PRIMARY KEY, session_id TEXT,"
         " type TEXT, seq INTEGER, time_created INTEGER, time_updated INTEGER, data TEXT)"
     )
-    conn.execute("INSERT INTO session_v2 VALUES (?, ?)", (session_id, "/repo"))
+    conn.execute(
+        "INSERT INTO session_v2 VALUES (?, ?, ?)", (session_id, directory, parent)
+    )
     # Inserted out of `seq` order, with `time_created` inverted, so a render
     # that sorts by anything but `seq` shows it.
     for message_id, kind, seq, data in reversed(rows):
         conn.execute(
             "INSERT INTO session_message VALUES (?,?,?,?,?,?,?)",
             (
-                f"{message_id}_{session_id}",
+                f"msg_fork{session_id}_{seq}"
+                if seq <= copied
+                else f"{message_id}_{session_id}",
                 session_id,
                 kind,
                 seq,
@@ -668,10 +684,122 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
     def test_a_move_without_a_previous_location_leaves_earlier_paths_relative(
         self,
     ) -> None:
-        """The start directory is then unknown; the current one would be wrong."""
+        """The start directory is then unknown; the current one would be wrong.
+
+        opencode v2.0.15 always writes `previous` on a move; this guards a
+        database written by another version.
+        """
         uses = self._moved_session({"location": {"directory": "/new"}})
         patched = [u[2]["file_paths"] for u in uses if u[1] == "Patch"]
         self.assertEqual(patched, [["app.py"], ["/new/app.py"]])
+
+    def _session(self, session_id: str, steps: list, **fixture) -> None:
+        """A V2 session of `("patch", file)` calls and `("move", old, new)` rows."""
+        rows = []
+        for seq, step in enumerate(steps, start=1):
+            if step[0] == "move":
+                switch = {
+                    "location": {"directory": step[2]},
+                    "previous": {"location": {"directory": step[1]}},
+                    "time": {"created": seq},
+                }
+                rows.append((f"m{seq}", "location-switched", seq, switch))
+                continue
+            patch = f"*** Begin Patch\n*** Update File: {step[1]}\n*** End Patch"
+            state = {
+                "status": "completed",
+                "input": {"patchText": patch},
+                "content": [{"type": "text", "text": "ok"}],
+            }
+            tool = _v2_tool(f"c{seq}", state, name="patch")
+            rows.append((f"m{seq}", "assistant", seq, _v2_assistant(tool)))
+        _v2_database(self.db, rows, session_id, **fixture)
+
+    def _patched(self, session_id: str) -> list[str]:
+        return [
+            path
+            for block in _blocks(self._render(session_id))
+            if block.get("name") == "Patch"
+            for path in block["input"]["file_paths"]
+        ]
+
+    def test_each_row_resolves_against_the_directory_before_the_next_move(
+        self,
+    ) -> None:
+        """With two moves, the first row ran where the FIRST move started."""
+        steps = [
+            ("patch", "a.py"),
+            ("move", "/A", "/B"),
+            ("patch", "b.py"),
+            ("move", "/B", "/C"),
+            ("patch", "c.py"),
+        ]
+        self._session("ses_two", steps, directory="/C")
+        self.assertEqual(self._patched("ses_two"), ["/A/a.py", "/B/b.py", "/C/c.py"])
+
+    def test_a_forks_copied_rows_resolve_where_the_parent_ran_them(self) -> None:
+        """A fork starts in its parent's CURRENT directory and copies older rows.
+
+        The parent moved `/A` → `/B` → `/C`; the fork copied the rows up to
+        `seq` 3 and was created in `/C`, where its own row then ran.
+        """
+        parent = [
+            ("patch", "a.py"),
+            ("move", "/A", "/B"),
+            ("patch", "b.py"),
+            ("move", "/B", "/C"),
+        ]
+        self._session("ses_par", parent, directory="/C")
+        self._session(
+            "ses_frk",
+            [*parent[:3], ("patch", "own.py")],
+            directory="/C",
+            parent="ses_par",
+            copied=3,
+        )
+        self.assertEqual(self._patched("ses_frk"), ["/A/a.py", "/B/b.py", "/C/own.py"])
+
+    def test_a_fork_before_the_parents_move_keeps_read_patch_read_apart(
+        self,
+    ) -> None:
+        """The false re-read the fork rule removes: the copied patch ran in `/A`."""
+        read = ("read", {"path": "/A/app.py"})
+        patch = ("patch", {"patchText": "*** Update File: app.py"})
+        done = {"status": "completed", "content": [{"type": "text", "text": "ok"}]}
+        rows = [
+            (
+                f"m{seq}",
+                "assistant",
+                seq,
+                _v2_assistant(_v2_tool(f"c{seq}", {**done, "input": call[1]}, call[0])),
+            )
+            for seq, call in enumerate([read, patch, read], start=1)
+        ]
+        switch = {
+            "location": {"directory": "/B"},
+            "previous": {"location": {"directory": "/A"}},
+            "time": {"created": 4},
+        }
+        _v2_database(
+            self.db, [*rows, ("m4", "location-switched", 4, switch)], "ses_p", "/B"
+        )
+        _v2_database(self.db, rows, "ses_f", "/B", parent="ses_p", copied=3)
+
+        out = self.dir / "fork.jsonl"
+        out.write_text("\n".join(self._render("ses_f")) + "\n", encoding="utf-8")
+        uses = detector.extract_tool_uses(detector.load_jsonl(out))
+        self.assertEqual(uses[1][2]["file_paths"], ["/A/app.py"])
+        self.assertEqual(detector.signal_reread_same_file(uses), [])
+
+    def test_a_home_path_is_joined_in_1x_and_left_alone_in_2x(self) -> None:
+        """2.x expands `~` and `~/…`; 1.x resolves them like any relative path."""
+        for path, v2 in (("~", "~"), ("~/.bashrc", "~/.bashrc"), ("~x", "/repo/~x")):
+            self.assertEqual(
+                adapter._tool_use("c", "read", {"path": path}, "/repo", True)["input"],
+                {"file_path": v2},
+            )
+        legacy = adapter._tool_use("c", "read", {"filePath": "~/.bashrc"}, "/repo")
+        self.assertEqual(legacy["input"], {"file_path": "/repo/~/.bashrc"})
 
     def test_the_detector_accepts_the_rendered_v2_transcript(self) -> None:
         """The consumer contract, run end to end through the detector's own CLI."""
