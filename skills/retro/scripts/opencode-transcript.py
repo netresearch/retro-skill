@@ -75,6 +75,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 from urllib.parse import quote
@@ -106,15 +107,28 @@ TOOL_NAMES = {
 #: them, because on `grep` and `glob` it names a directory.
 INPUT_KEYS = {"filePath": "file_path"}
 FILE_TOOLS = {"Read", "Edit", "Write"}
-#: The header lines of opencode's patch format that name a file. No trailing
-#: space: 1.x's parser accepts `*** Update File:app.py` and trims the rest.
-#: 2.x's `patch` trims a line before matching a hunk header, except inside an
-#: Update hunk, where an indented line is context (`packages/util/src/patch.ts`
-#: at v2.0.15); 1.x's `apply_patch` always matches the raw line. Neither
-#: version accepts an indented `*** Move to:`.
+#: The header lines of opencode's patch format that name a file, as its two
+#: parsers read them (`packages/util/src/patch.ts` at v2.0.15 for 2.x's
+#: `patch`, `src/patch/index.ts` for 1.x's `apply_patch`):
+#:
+#:   · only lines between `*** Begin Patch` and `*** End Patch` count. 2.x
+#:     requires them as the first and the last line; 1.x takes the first of
+#:     each, anywhere;
+#:   · no space is needed after the colon: 1.x accepts `*** Update File:app.py`;
+#:   · 2.x trims a line before matching a hunk header, except inside an Update
+#:     hunk, where an indented line is context; 1.x matches the raw line;
+#:   · `*** Move to:` counts only directly after an Update header — in 2.x
+#:     after any `*** End of File` lines — and never indented.
+PATCH_BEGIN, PATCH_END, PATCH_END_OF_FILE = (
+    "*** Begin Patch",
+    "*** End Patch",
+    "*** End of File",
+)
 PATCH_UPDATE_MARKER = "*** Update File:"
 PATCH_HUNK_MARKERS = ("*** Add File:", PATCH_UPDATE_MARKER, "*** Delete File:")
 PATCH_MOVE_MARKER = "*** Move to:"
+#: How both versions unwrap a patch sent as a shell heredoc.
+PATCH_HEREDOC = re.compile(r"^(?:cat\s+)?<<(['\"]?)(\w+)\1\s*\n([\s\S]*?)\n\2\s*$")
 
 #: A 1.x call still running at the upgrade is copied into V2 as this error. The
 #: legacy path emits no result for a running call; neither does the V2 one, or
@@ -252,21 +266,52 @@ def _resolve(path: object, directory: str | None, expands_home: bool) -> object:
     return os.path.normpath(os.path.join(directory, path))
 
 
-def _patch_files(text: object, trims_hunk_headers: bool) -> list[str]:
-    """The files a patch adds, updates, deletes or moves to, in patch order."""
-    files, in_update = [], False
+def _patch_lines(text: object, v2: bool) -> list[str]:
+    """The lines between a patch's Begin and End markers; none when it has none."""
+    if not isinstance(text, str):
+        return []
+    text = text.strip()
+    heredoc = PATCH_HEREDOC.match(text)
     # Split as opencode does, on "\n" only: `splitlines()` also breaks at a
     # form feed or U+2028 inside patched content and invents headers there.
     # A CRLF line's "\r" ends up in the name, which `.strip()` removes.
-    for line in text.split("\n") if isinstance(text, str) else []:
-        header = line.strip() if trims_hunk_headers and not in_update else line
-        marker = next((m for m in PATCH_HUNK_MARKERS if header.startswith(m)), None)
-        if marker:
-            in_update = marker == PATCH_UPDATE_MARKER
-            files.append(header[len(marker) :].strip())
-        elif line.startswith(PATCH_MOVE_MARKER):
-            files.append(line[len(PATCH_MOVE_MARKER) :].strip())
-    return [path for path in files if path]
+    lines = (heredoc.group(3) if heredoc else text).split("\n")
+    marks = [line.strip() for line in lines]
+    if v2:
+        framed = len(lines) > 1 and marks[0] == PATCH_BEGIN and marks[-1] == PATCH_END
+        return lines[1:-1] if framed else []
+    begin = marks.index(PATCH_BEGIN) if PATCH_BEGIN in marks else None
+    end = marks.index(PATCH_END) if PATCH_END in marks else None
+    if begin is None or end is None or begin >= end:
+        return []
+    return lines[begin + 1 : end]
+
+
+def _patch_files(text: object, v2: bool) -> list[str]:
+    """The files a patch adds, updates, deletes or moves to, in patch order."""
+    files, in_update, expect_move = [], False, False
+    for line in _patch_lines(text, v2):
+        found, in_update, expect_move = _patch_step(line, v2, in_update, expect_move)
+        if found:
+            files.append(found)
+    return files
+
+
+def _patch_step(
+    line: str, v2: bool, in_update: bool, expect_move: bool
+) -> tuple[str, bool, bool]:
+    """One patch line: the file it names, if any, and the parser state after it."""
+    header = line.strip() if v2 and not in_update else line
+    marker = next((m for m in PATCH_HUNK_MARKERS if header.startswith(m)), None)
+    if marker:
+        name = header[len(marker) :].strip()
+        update = marker == PATCH_UPDATE_MARKER
+        # A header without a name is no header: 1.x skips it, Move and all.
+        return name, update, update and bool(name)
+    if expect_move and line.startswith(PATCH_MOVE_MARKER):
+        return line[len(PATCH_MOVE_MARKER) :].strip(), in_update, False
+    end_of_file = v2 and line.rstrip() == PATCH_END_OF_FILE
+    return "", in_update, expect_move and end_of_file
 
 
 def _tool_use(
@@ -276,7 +321,7 @@ def _tool_use(
     directory: str | None,
     expands_home: bool = False,
 ) -> dict:
-    trims_hunk_headers = name == "patch"
+    v2_patch = name == "patch"
     name = TOOL_NAMES.get(name, name)
     inputs = payload if isinstance(payload, dict) else {}
     inputs = {INPUT_KEYS.get(key, key): value for key, value in inputs.items()}
@@ -285,7 +330,7 @@ def _tool_use(
     if "file_path" in inputs:
         inputs["file_path"] = _resolve(inputs["file_path"], directory, expands_home)
     if name == "Patch":
-        files = _patch_files(inputs.get("patchText"), trims_hunk_headers)
+        files = _patch_files(inputs.get("patchText"), v2_patch)
         inputs["file_paths"] = [_resolve(p, directory, expands_home) for p in files]
     return {"type": "tool_use", "id": tool_id, "name": name, "input": inputs}
 

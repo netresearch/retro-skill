@@ -655,11 +655,45 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
 
     def test_a_patch_splits_only_at_newlines(self) -> None:
         """A form feed or U+2028 in patched content does not start a header."""
-        for sep in ("\x0c", " "):
+        for sep in ("\x0c", "\u2028"):
             patch = f"*** Begin Patch\n*** Add File: a.py\n+x{sep}*** Add File: b.py\n*** End Patch"
             for name in ("patch", "apply_patch"):
                 uses = self._tool_uses((name, {"patchText": patch}))
                 self.assertEqual(uses[0][2]["file_paths"], ["/repo/a.py"], name)
+
+    def _files(self, name: str, patch: str) -> list[str]:
+        return self._tool_uses((name, {"patchText": patch}))[0][2]["file_paths"]
+
+    def test_a_crlf_patch_names_its_files_without_the_carriage_return(self) -> None:
+        patch = "*** Begin Patch\r\n*** Add File: a.py\r\n+x\r\n*** End Patch"
+        for name in ("patch", "apply_patch"):
+            self.assertEqual(self._files(name, patch), ["/repo/a.py"], name)
+
+    def test_a_move_counts_only_directly_after_its_update_header(self) -> None:
+        """1.x skips a stray `*** Move to:`; 2.x lets `*** End of File` lines sit
+        between the header and the Move."""
+        stray = "*** Begin Patch\n*** Update File: a.py\n@@\n-x\n+y\n*** Move to: b.py\n*** End Patch"
+        for name in ("patch", "apply_patch"):
+            self.assertEqual(self._files(name, stray), ["/repo/a.py"], name)
+        eof = "*** Begin Patch\n*** Update File: a.py\n*** End of File\n*** Move to: b.py\n@@\n-x\n+y\n*** End Patch"
+        self.assertEqual(self._files("patch", eof), ["/repo/a.py", "/repo/b.py"])
+        self.assertEqual(self._files("apply_patch", eof), ["/repo/a.py"])
+        # A header without a name is no header: 1.x skips its Move too.
+        nameless = "*** Begin Patch\n*** Update File:\n*** Move to: b.py\n*** End Patch"
+        self.assertEqual(self._files("apply_patch", nameless), [])
+
+    def test_only_lines_between_the_patch_markers_count(self) -> None:
+        """2.x requires the markers as the first and the last line; 1.x takes
+        the first of each, wherever they are."""
+        inner = "*** Begin Patch\n*** Add File: a.py\n+x\n*** End Patch"
+        around = f"*** Add File: pre.py\n{inner}\n*** Add File: post.py"
+        self.assertEqual(self._files("apply_patch", around), ["/repo/a.py"])
+        self.assertEqual(self._files("patch", around), [])
+        self.assertEqual(self._files("apply_patch", "*** Add File: a.py\n+x"), [])
+        # Both versions unwrap a patch sent as a shell heredoc.
+        heredoc = f"cat <<'EOF'\n{inner}\nEOF"
+        for name in ("patch", "apply_patch"):
+            self.assertEqual(self._files(name, heredoc), ["/repo/a.py"], name)
 
     def test_a_home_relative_path_is_not_joined_onto_the_session_directory(
         self,
@@ -806,7 +840,10 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
     ) -> None:
         """The false re-read the fork rule removes: the copied patch ran in `/A`."""
         read = ("read", {"path": "/A/app.py"})
-        patch = ("patch", {"patchText": "*** Update File: app.py"})
+        patch = (
+            "patch",
+            {"patchText": "*** Begin Patch\n*** Update File: app.py\n*** End Patch"},
+        )
         done = {"status": "completed", "content": [{"type": "text", "text": "ok"}]}
         rows = [
             (
