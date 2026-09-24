@@ -47,18 +47,24 @@ v2.0.15: a `user` row's `data.text` becomes a `text` block; an `assistant` row's
 `tool_result` pair. Its output is `state.content[]` and its error
 `state.error.message`; there is no `state.output`. A `streaming` call carries
 its input as a partial JSON STRING, which the detector would call `.get` on.
-The other row types (`synthetic`, `shell`, `compaction`, `system`, …) are not
-rendered.
+A `running` or `streaming` call gets no result, and neither does a
+`tool.interrupted` error, which is how 2.x copies a 1.x call that was still
+running at the upgrade. The other row types (`synthetic`, `shell`,
+`compaction`, `system`, …) are not rendered.
 
 TOOL NAMES. opencode names its tools `bash` (1.x) or `shell` (2.x), `read`,
 `edit`, … and its file tools take `filePath` (1.x) or `path` (2.x); the
 detector's signals match Claude's `Bash`, `Read`, `Edit` and `file_path`. Both
 are renamed, or every shell and file signal passes over an opencode session
-without firing. A migrated session keeps the 1.x names. Relative file paths are
-resolved against the session's directory, so a patch that names `src/app.py`
-and a read of `/repo/src/app.py` count as the same file. A 2.x session can be
-moved or forked; each row is resolved against the directory it ran in, taken
-from the `location-switched` rows and, for a fork's copied rows, the parent's.
+without firing. A migrated session keeps the 1.x names. `patch` (2.x) and
+`apply_patch` (1.x) become `Patch`, with the files the patch headers name in
+`file_paths`; the detector's A12 counts it as an edit of each. Relative file
+paths are resolved against the session's directory, so a patch that names
+`src/app.py` and a read of `/repo/src/app.py` count as the same file; 2.x
+expands `~` and `~/…` to a home directory the database does not record, so
+those stay as they are. A 2.x session can be moved or forked; each row is
+resolved against the directory it ran in, taken from the `location-switched`
+rows and, for a fork's copied rows, the parent's.
 
 READ-ONLY. The database is opened with `mode=ro`, so pointing this at a live
 database cannot corrupt a session that is still being written.
@@ -102,12 +108,13 @@ INPUT_KEYS = {"filePath": "file_path"}
 FILE_TOOLS = {"Read", "Edit", "Write"}
 #: The header lines of opencode's patch format that name a file. No trailing
 #: space: 1.x's parser accepts `*** Update File:app.py` and trims the rest.
-PATCH_FILE_MARKERS = (
-    "*** Add File:",
-    "*** Update File:",
-    "*** Delete File:",
-    "*** Move to:",
-)
+#: 2.x's `patch` trims a line before matching a hunk header, except inside an
+#: Update hunk, where an indented line is context (`packages/util/src/patch.ts`
+#: at v2.0.15); 1.x's `apply_patch` always matches the raw line. Neither
+#: version accepts an indented `*** Move to:`.
+PATCH_UPDATE_MARKER = "*** Update File:"
+PATCH_HUNK_MARKERS = ("*** Add File:", PATCH_UPDATE_MARKER, "*** Delete File:")
+PATCH_MOVE_MARKER = "*** Move to:"
 
 #: A 1.x call still running at the upgrade is copied into V2 as this error. The
 #: legacy path emits no result for a running call; neither does the V2 one, or
@@ -245,15 +252,17 @@ def _resolve(path: object, directory: str | None, expands_home: bool) -> object:
     return os.path.normpath(os.path.join(directory, path))
 
 
-def _patch_files(text: object) -> list[str]:
+def _patch_files(text: object, trims_hunk_headers: bool) -> list[str]:
     """The files a patch adds, updates, deletes or moves to, in patch order."""
-    lines = text.splitlines() if isinstance(text, str) else []
-    files = [
-        line[len(marker) :].strip()
-        for line in lines
-        for marker in PATCH_FILE_MARKERS
-        if line.startswith(marker)
-    ]
+    files, in_update = [], False
+    for line in text.splitlines() if isinstance(text, str) else []:
+        header = line.strip() if trims_hunk_headers and not in_update else line
+        marker = next((m for m in PATCH_HUNK_MARKERS if header.startswith(m)), None)
+        if marker:
+            in_update = marker == PATCH_UPDATE_MARKER
+            files.append(header[len(marker) :].strip())
+        elif line.startswith(PATCH_MOVE_MARKER):
+            files.append(line[len(PATCH_MOVE_MARKER) :].strip())
     return [path for path in files if path]
 
 
@@ -264,6 +273,7 @@ def _tool_use(
     directory: str | None,
     expands_home: bool = False,
 ) -> dict:
+    trims_hunk_headers = name == "patch"
     name = TOOL_NAMES.get(name, name)
     inputs = payload if isinstance(payload, dict) else {}
     inputs = {INPUT_KEYS.get(key, key): value for key, value in inputs.items()}
@@ -272,7 +282,7 @@ def _tool_use(
     if "file_path" in inputs:
         inputs["file_path"] = _resolve(inputs["file_path"], directory, expands_home)
     if name == "Patch":
-        files = _patch_files(inputs.get("patchText"))
+        files = _patch_files(inputs.get("patchText"), trims_hunk_headers)
         inputs["file_paths"] = [_resolve(p, directory, expands_home) for p in files]
     return {"type": "tool_use", "id": tool_id, "name": name, "input": inputs}
 
@@ -307,7 +317,9 @@ def _v2_tool(block: dict, directory: str | None) -> tuple[dict, dict | None]:
     state = block.get("state") or {}
     # `streaming` stores the input as a partial JSON string; `_tool_use` drops it.
     name = block.get("name") or "tool"
-    use = _tool_use(block.get("id"), name, state.get("input"), directory, True)
+    use = _tool_use(
+        block.get("id"), name, state.get("input"), directory, expands_home=True
+    )
     status = state.get("status")
     error = state.get("error")
     interrupted = isinstance(error, dict) and error.get("type") == MIGRATION_INTERRUPTED
@@ -378,7 +390,7 @@ def _directory_at(
     conn: sqlite3.Connection,
     session_id: str,
     seq: int,
-    seen: dict,
+    timelines: dict,
     visiting: frozenset = frozenset(),
 ) -> tuple[str | None, int | None]:
     """The directory the row at `seq` ran in, and when the move that says so ran.
@@ -394,38 +406,50 @@ def _directory_at(
     nothing the fork's own directory — the parent's at fork time — does not
     already say.
     """
-    timeline = _cached_timeline(conn, session_id, seen)
+    timeline = _cached_timeline(conn, session_id, timelines)
     later = [switch for switch in timeline["switches"] if switch[0] > seq]
-    parent = timeline["parent"]
     copied_move_follows = any(switch[0] in timeline["copied"] for switch in later)
-    if parent and seq in timeline["copied"] and not copied_move_follows:
-        boundary = timeline["boundary"]
-        held = (
-            parent not in visiting
-            and boundary in _cached_timeline(conn, parent, seen)["seqs"]
-        )
-        if held:
-            found, when = _directory_at(
-                conn, parent, boundary, seen, visiting | {session_id}
-            )
-            # Both times are wall-clock epoch milliseconds. A fork time of 0
-            # is opencode's default for an event that carried none: unknown.
-            forked = timeline["created"]
-            if when is not None and (not forked or when <= forked):
-                return found, when
+    if seq in timeline["copied"] and not copied_move_follows:
+        answer = _parent_answer(conn, session_id, timelines, visiting)
+        if answer:
+            return answer
     if later:
         return later[0][1], later[0][2]
     return timeline["directory"], None
 
 
-def _cached_timeline(conn: sqlite3.Connection, session_id: str, seen: dict) -> dict:
-    if session_id not in seen:
-        seen[session_id] = _timeline(conn, session_id)
-    return seen[session_id]
+def _parent_answer(
+    conn: sqlite3.Connection, session_id: str, timelines: dict, visiting: frozenset
+) -> tuple[str | None, int] | None:
+    """Where a fork's parent was at the fork boundary, if a move made before
+    the fork says so; None when the parent cannot answer."""
+    timeline = timelines[session_id]
+    parent, boundary = timeline["parent"], timeline["boundary"]
+    if not parent or parent in visiting:
+        return None
+    if boundary not in _cached_timeline(conn, parent, timelines)["seqs"]:
+        return None
+    found, when = _directory_at(
+        conn, parent, boundary, timelines, visiting | {session_id}
+    )
+    # Both times are wall-clock epoch milliseconds. A fork time of 0 is
+    # opencode's default for an event that carried none: unknown.
+    forked = timeline["created"]
+    if when is not None and (not forked or when <= forked):
+        return found, when
+    return None
+
+
+def _cached_timeline(
+    conn: sqlite3.Connection, session_id: str, timelines: dict
+) -> dict:
+    if session_id not in timelines:
+        timelines[session_id] = _timeline(conn, session_id)
+    return timelines[session_id]
 
 
 def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
-    seen: dict = {}
+    timelines: dict = {}
     lines: list[str] = []
     for role, data, timestamp, seq in conn.execute(
         "SELECT type, data, time_created, seq FROM session_message WHERE session_id=? ORDER BY seq",
@@ -435,20 +459,20 @@ def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
         if role == "user":
             lines.extend(_events("user", _text(data.get("text")), [], timestamp))
         elif role == "assistant":
-            directory, _ = _directory_at(conn, session_id, seq, seen)
+            directory, _ = _directory_at(conn, session_id, seq, timelines)
             blocks, results = _v2_assistant(data, directory)
             lines.extend(_events("assistant", blocks, results, timestamp))
     return lines
 
 
-def _directory(conn: sqlite3.Connection, table: str, session_id: str) -> str | None:
-    """The session's working directory, for resolving relative file paths."""
+def _legacy_directory(conn: sqlite3.Connection, session_id: str) -> str | None:
+    """A 1.x session's working directory, for resolving relative file paths."""
     if not conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='session'"
     ).fetchone():
         return None
     row = conn.execute(
-        f"SELECT directory FROM {table} WHERE id=?", (session_id,)
+        "SELECT directory FROM session WHERE id=?", (session_id,)
     ).fetchone()
     return row[0] if row else None
 
@@ -503,7 +527,7 @@ def _render_legacy(conn: sqlite3.Connection, session_id: str) -> list[str]:
     ):
         parts.setdefault(message_id, []).append((row_id, json.loads(data)))
 
-    directory = _directory(conn, "session", session_id)
+    directory = _legacy_directory(conn, session_id)
     lines: list[str] = []
     for message_id, data, timestamp in messages:
         role = json.loads(data).get("role")
@@ -515,7 +539,12 @@ def _render_legacy(conn: sqlite3.Connection, session_id: str) -> list[str]:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="opencode-transcript", description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="opencode-transcript",
+        description=__doc__,
+        # The docstring's lists and usage block keep their line breaks.
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--match", help="a token from the session under review")
     parser.add_argument("--session", help="the opencode session id, when it is known")
     parser.add_argument("--db", default=DEFAULT_DB)
