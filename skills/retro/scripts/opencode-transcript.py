@@ -351,17 +351,20 @@ def _timeline(conn: sqlite3.Connection, session_id: str) -> dict:
     names = [column[0] for column in cursor.description]
     info = dict(zip(names, session)) if session else {}
     switches, copied, seqs = [], set(), set()
-    for row_id, kind, seq, data in conn.execute(
-        "SELECT id, type, seq, data FROM session_message WHERE session_id=? ORDER BY seq",
+    for row_id, kind, seq, data, created in conn.execute(
+        "SELECT id, type, seq, data, time_created FROM session_message"
+        " WHERE session_id=? ORDER BY seq",
         (session_id,),
     ):
         seqs.add(seq)
         if kind == "location-switched":
-            switches.append((seq, _location(json.loads(data), "previous")))
+            previous = _location(json.loads(data), "previous")
+            switches.append((seq, previous, created))
         if row_id.endswith(f"_{seq}"):
             copied.add(seq)
     return {
         "directory": info.get("directory"),
+        "created": info.get("time_created"),
         "parent": info.get("fork_session_id"),
         "switches": switches,
         "copied": copied,
@@ -377,22 +380,24 @@ def _directory_at(
     seq: int,
     seen: dict,
     visiting: frozenset = frozenset(),
-) -> tuple[str | None, bool]:
-    """The directory the row at `seq` ran in, and whether a move row says so.
+) -> tuple[str | None, int | None]:
+    """The directory the row at `seq` ran in, and when the move that says so ran.
 
     A row's directory is the previous location of the next move after it, or
-    the session's directory when none follows. A fork's copied row with no
-    copied move after it ran where the parent was at the fork boundary. The
-    parent is asked only while it still holds the boundary row, and its answer
-    counts only when a move row gives it. Otherwise the parent's directory may
-    be one a revert left behind — a revert deletes rows from a boundary on
-    without restoring the directory — while the fork's own directory is the
-    parent's at fork time.
+    the session's directory when none follows (then the time is None). A
+    fork's copied row with no copied move after it ran where the parent was at
+    the fork boundary. The parent is asked only while it still holds the
+    boundary row, and its answer counts only when a move row made before the
+    fork gives it. A revert deletes rows from a boundary on without restoring
+    the directory, so neither the parent's directory nor a move made after a
+    revert need name where the copied rows ran; a move made after the fork adds
+    nothing the fork's own directory — the parent's at fork time — does not
+    already say.
     """
     timeline = _cached_timeline(conn, session_id, seen)
-    later = [(switch, prev) for switch, prev in timeline["switches"] if switch > seq]
+    later = [switch for switch in timeline["switches"] if switch[0] > seq]
     parent = timeline["parent"]
-    copied_move_follows = any(switch in timeline["copied"] for switch, _ in later)
+    copied_move_follows = any(switch[0] in timeline["copied"] for switch in later)
     if parent and seq in timeline["copied"] and not copied_move_follows:
         boundary = timeline["boundary"]
         held = (
@@ -400,14 +405,15 @@ def _directory_at(
             and boundary in _cached_timeline(conn, parent, seen)["seqs"]
         )
         if held:
-            found, from_move = _directory_at(
+            found, when = _directory_at(
                 conn, parent, boundary, seen, visiting | {session_id}
             )
-            if from_move:
-                return found, True
+            forked = timeline["created"]
+            if when is not None and (forked is None or when < forked):
+                return found, when
     if later:
-        return later[0][1], True
-    return timeline["directory"], False
+        return later[0][1], later[0][2]
+    return timeline["directory"], None
 
 
 def _cached_timeline(conn: sqlite3.Connection, session_id: str, seen: dict) -> dict:

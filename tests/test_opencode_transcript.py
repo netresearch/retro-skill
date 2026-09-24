@@ -347,6 +347,7 @@ def _v2_database(
     directory: str = "/repo",
     parent: str | None = None,
     copied: int = 0,
+    created: int | None = None,
 ) -> None:
     """The V2 tables, only as wide as the adapter reads.
 
@@ -356,14 +357,16 @@ def _v2_database(
     conn = sqlite3.connect(path)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS session_v2"
-        " (id TEXT PRIMARY KEY, directory TEXT, fork_session_id TEXT)"
+        " (id TEXT PRIMARY KEY, directory TEXT, fork_session_id TEXT,"
+        " time_created INTEGER)"
     )
     conn.execute(
         "CREATE TABLE IF NOT EXISTS session_message (id TEXT PRIMARY KEY, session_id TEXT,"
         " type TEXT, seq INTEGER, time_created INTEGER, time_updated INTEGER, data TEXT)"
     )
     conn.execute(
-        "INSERT INTO session_v2 VALUES (?, ?, ?)", (session_id, directory, parent)
+        "INSERT INTO session_v2 VALUES (?, ?, ?, ?)",
+        (session_id, directory, parent, created),
     )
     # Inserted out of `seq` order, with `time_created` inverted, so a render
     # that sorts by anything but `seq` shows it.
@@ -757,6 +760,8 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
             directory="/C",
             parent="ses_par",
             copied=3,
+            # After both moves: the fixture's row times are `100 - seq`.
+            created=1000,
         )
         self.assertEqual(self._patched("ses_frk"), ["/A/a.py", "/B/b.py", "/C/own.py"])
 
@@ -842,6 +847,25 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         self.assertEqual(
             self._patched("ses_orph"), ["/A/pre.py", "/A/a.py", "/A/own.py"]
         )
+
+    def test_a_parents_move_made_after_the_fork_does_not_count(self) -> None:
+        """The parent forked in `/A`, moved to `/B`, reverted that move, then
+        moved `/B` → `/C`. The surviving move is backed by a row, but opencode
+        filled its `previous` from the directory the revert left behind; it
+        was made after the fork, so the fork's own `/A` stands."""
+        parent = [("patch", "a.py"), ("gone",), ("move", "/B", "/C")]
+        self._session("ses_late", parent, directory="/C")
+        steps = [("patch", "a.py"), ("patch", "own.py")]
+        # The move row's time is 97 (`100 - seq`); the fork is older.
+        self._session(
+            "ses_early",
+            steps,
+            directory="/A",
+            parent="ses_late",
+            copied=1,
+            created=50,
+        )
+        self.assertEqual(self._patched("ses_early"), ["/A/a.py", "/A/own.py"])
 
     def test_a_fork_of_a_fork_asks_each_parent_in_turn(self) -> None:
         """The grandparent moved after both fork points; only it knows `/A`."""
