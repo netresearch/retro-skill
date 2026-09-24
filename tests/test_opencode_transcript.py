@@ -681,6 +681,18 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         # A header without a name is no header: 1.x skips its Move too.
         nameless = "*** Begin Patch\n*** Update File:\n*** Move to: b.py\n*** End Patch"
         self.assertEqual(self._files("apply_patch", nameless), [])
+        # 2.x trims the end of an `*** End of File` line before comparing it.
+        spaced = eof.replace("*** End of File\n", "*** End of File \n")
+        self.assertEqual(self._files("patch", spaced), ["/repo/a.py", "/repo/b.py"])
+        # One Move per Update header: 1.x reads a second one as a stray line.
+        twice = "*** Begin Patch\n*** Update File: a.py\n*** Move to: b.py\n*** Move to: c.py\n@@\n-x\n+y\n*** End Patch"
+        self.assertEqual(
+            self._files("apply_patch", twice), ["/repo/a.py", "/repo/b.py"]
+        )
+        # The Move does not end the Update hunk: an indented header after it
+        # is still context in 2.x.
+        body = "*** Begin Patch\n*** Update File: a.py\n*** Move to: b.py\n@@\n-x\n+y\n  *** Add File: c.py\n*** End Patch"
+        self.assertEqual(self._files("patch", body), ["/repo/a.py", "/repo/b.py"])
 
     def test_only_lines_between_the_patch_markers_count(self) -> None:
         """2.x requires the markers as the first and the last line; 1.x takes
@@ -690,10 +702,33 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         self.assertEqual(self._files("apply_patch", around), ["/repo/a.py"])
         self.assertEqual(self._files("patch", around), [])
         self.assertEqual(self._files("apply_patch", "*** Add File: a.py\n+x"), [])
-        # Both versions unwrap a patch sent as a shell heredoc.
+        # Both versions unwrap a patch sent as a shell heredoc, and trim the
+        # text first: model output often ends in a newline.
         heredoc = f"cat <<'EOF'\n{inner}\nEOF"
         for name in ("patch", "apply_patch"):
             self.assertEqual(self._files(name, heredoc), ["/repo/a.py"], name)
+            self.assertEqual(self._files(name, inner + "\n"), ["/repo/a.py"], name)
+        # 1.x takes the FIRST Begin and the FIRST End.
+        second = "*** Begin Patch\n*** Add File: b.py\n+y\n*** End Patch"
+        two_blocks = f"{inner}\n{second}"
+        self.assertEqual(self._files("apply_patch", two_blocks), ["/repo/a.py"])
+        two_begins = f"*** Begin Patch\n*** Add File: a.py\n+x\n{second}"
+        self.assertEqual(
+            self._files("apply_patch", two_begins), ["/repo/a.py", "/repo/b.py"]
+        )
+
+    def test_patch_whitespace_is_javascripts(self) -> None:
+        """opencode trims with JavaScript's `trim()`: it strips a byte-order
+        mark, which Python's `strip()` keeps, and keeps U+0085, which Python's
+        strips."""
+        bom = "\ufeff*** Begin Patch\n*** Add File: a.py\n+x\n*** End Patch"
+        nel = "*** Begin Patch\n*** Add File: a.py\x85\n+x\n*** End Patch"
+        # A leading U+0085 stays, so neither parser finds `*** Begin Patch`.
+        led = "\x85*** Begin Patch\n*** Add File: a.py\n+x\n*** End Patch"
+        for name in ("patch", "apply_patch"):
+            self.assertEqual(self._files(name, bom), ["/repo/a.py"], name)
+            self.assertEqual(self._files(name, nel), ["/repo/a.py\x85"], name)
+            self.assertEqual(self._files(name, led), [], name)
 
     def test_a_home_relative_path_is_not_joined_onto_the_session_directory(
         self,

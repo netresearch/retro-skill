@@ -127,8 +127,17 @@ PATCH_BEGIN, PATCH_END, PATCH_END_OF_FILE = (
 PATCH_UPDATE_MARKER = "*** Update File:"
 PATCH_HUNK_MARKERS = ("*** Add File:", PATCH_UPDATE_MARKER, "*** Delete File:")
 PATCH_MOVE_MARKER = "*** Move to:"
-#: How both versions unwrap a patch sent as a shell heredoc.
-PATCH_HEREDOC = re.compile(r"^(?:cat\s+)?<<(['\"]?)(\w+)\1\s*\n([\s\S]*?)\n\2\s*$")
+#: What JavaScript's `trim()` and `\s` remove, which opencode's parsers use.
+#: Python's `str.strip()` differs: it also strips U+001C-U+001F and U+0085,
+#: and keeps the byte-order mark U+FEFF.
+JS_WHITESPACE = "\t\n\v\f\r \xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+_JS_S = "[" + re.escape(JS_WHITESPACE) + "]"
+#: How 2.x unwraps a patch sent as a shell heredoc (`\w` is ASCII in
+#: JavaScript). 1.x's regex does not require the two quotes to match; it
+#: finds the markers anywhere in the text, so the files it names are the same.
+PATCH_HEREDOC = re.compile(
+    rf"^(?:cat{_JS_S}+)?<<(['\"]?)([A-Za-z0-9_]+)\1{_JS_S}*\n([\s\S]*?)\n\2{_JS_S}*$"
+)
 
 #: A 1.x call still running at the upgrade is copied into V2 as this error. The
 #: legacy path emits no result for a running call; neither does the V2 one, or
@@ -270,13 +279,13 @@ def _patch_lines(text: object, v2: bool) -> list[str]:
     """The lines between a patch's Begin and End markers; none when it has none."""
     if not isinstance(text, str):
         return []
-    text = text.strip()
+    text = text.strip(JS_WHITESPACE)
     heredoc = PATCH_HEREDOC.match(text)
     # Split as opencode does, on "\n" only: `splitlines()` also breaks at a
     # form feed or U+2028 inside patched content and invents headers there.
-    # A CRLF line's "\r" ends up in the name, which `.strip()` removes.
+    # A CRLF line's "\r" ends up in the name, which the strip removes.
     lines = (heredoc.group(3) if heredoc else text).split("\n")
-    marks = [line.strip() for line in lines]
+    marks = [line.strip(JS_WHITESPACE) for line in lines]
     if v2:
         framed = len(lines) > 1 and marks[0] == PATCH_BEGIN and marks[-1] == PATCH_END
         return lines[1:-1] if framed else []
@@ -301,16 +310,17 @@ def _patch_step(
     line: str, v2: bool, in_update: bool, expect_move: bool
 ) -> tuple[str, bool, bool]:
     """One patch line: the file it names, if any, and the parser state after it."""
-    header = line.strip() if v2 and not in_update else line
+    header = line.strip(JS_WHITESPACE) if v2 and not in_update else line
     marker = next((m for m in PATCH_HUNK_MARKERS if header.startswith(m)), None)
     if marker:
-        name = header[len(marker) :].strip()
+        name = header[len(marker) :].strip(JS_WHITESPACE)
         update = marker == PATCH_UPDATE_MARKER
         # A header without a name is no header: 1.x skips it, Move and all.
         return name, update, update and bool(name)
     if expect_move and line.startswith(PATCH_MOVE_MARKER):
-        return line[len(PATCH_MOVE_MARKER) :].strip(), in_update, False
-    end_of_file = v2 and line.rstrip() == PATCH_END_OF_FILE
+        move = line[len(PATCH_MOVE_MARKER) :].strip(JS_WHITESPACE)
+        return move, in_update, False
+    end_of_file = v2 and line.rstrip(JS_WHITESPACE) == PATCH_END_OF_FILE
     return "", in_update, expect_move and end_of_file
 
 
