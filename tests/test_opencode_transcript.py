@@ -233,35 +233,31 @@ class OpencodeTranscriptTest(unittest.TestCase):
         conn = sqlite3.connect(self.db)
         conn.execute("CREATE TABLE session (id TEXT, directory TEXT)")
         conn.execute("INSERT INTO session VALUES ('s1', '/repo')")
-        state = {
-            "status": "completed",
-            "input": {"filePath": "src/app.py"},
-            "output": "x",
-        }
-        conn.execute(
-            "INSERT INTO part VALUES (?,?,?,?,?)",
-            (
-                "p7",
-                "m2",
-                "s1",
-                8,
-                json.dumps(
-                    {"type": "tool", "tool": "read", "id": "c7", "state": state}
-                ),
-            ),
-        )
+        # 1.x does not expand `~`: it resolves `~/.bashrc` like any relative path.
+        paths = {"c7": "src/app.py", "c8": "~/.bashrc"}
+        for n, (call_id, path) in enumerate(paths.items(), start=8):
+            state = {"status": "completed", "input": {"filePath": path}, "output": "x"}
+            part = {"type": "tool", "tool": "read", "id": call_id, "state": state}
+            conn.execute(
+                "INSERT INTO part VALUES (?,?,?,?,?)",
+                (f"p{n}", "m2", "s1", n, json.dumps(part)),
+            )
         conn.commit()
         conn.close()
 
         lines = adapter.render(adapter._connect(self.db), "s1")
-        read = next(
-            b
+        reads = {
+            b["id"]: (b["name"], b["input"])
             for line in lines
             for b in json.loads(line)["message"]["content"]
-            if b.get("id") == "c7"
-        )
+            if b.get("id") in paths
+        }
         self.assertEqual(
-            (read["name"], read["input"]), ("Read", {"file_path": "/repo/src/app.py"})
+            reads,
+            {
+                "c7": ("Read", {"file_path": "/repo/src/app.py"}),
+                "c8": ("Read", {"file_path": "/repo/~/.bashrc"}),
+            },
         )
 
     def test_an_unknown_session_id_is_refused_rather_than_rendered_empty(self) -> None:
@@ -790,6 +786,52 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         uses = detector.extract_tool_uses(detector.load_jsonl(out))
         self.assertEqual(uses[1][2]["file_paths"], ["/A/app.py"])
         self.assertEqual(detector.signal_reread_same_file(uses), [])
+
+    #: A fork that copied a patch, a move `/A` → `/B` and a patch, then ran one
+    #: patch of its own in `/B`.
+    FORK = (
+        ("patch", "a.py"),
+        ("move", "/A", "/B"),
+        ("patch", "b.py"),
+        ("patch", "own.py"),
+    )
+
+    def test_a_forks_copied_moves_still_count_when_the_parent_is_gone(self) -> None:
+        """Deleting a session leaves its forks, and their copies of its moves."""
+        self._session("ses_orphan", self.FORK, directory="/B", parent="gone", copied=3)
+        self.assertEqual(
+            self._patched("ses_orphan"), ["/A/a.py", "/B/b.py", "/B/own.py"]
+        )
+
+    def test_a_forks_copied_moves_still_count_after_the_parent_reverted(
+        self,
+    ) -> None:
+        """A revert deletes the parent's rows from a boundary on, moves included,
+        and leaves its directory as it was."""
+        self._session("ses_rev", self.FORK[:1], directory="/B")
+        self._session("ses_kid", self.FORK, directory="/B", parent="ses_rev", copied=3)
+        self.assertEqual(self._patched("ses_kid"), ["/A/a.py", "/B/b.py", "/B/own.py"])
+
+    def test_a_fork_of_a_fork_asks_each_parent_in_turn(self) -> None:
+        """The grandparent moved after both fork points; only it knows `/A`."""
+        self._session(
+            "ses_gp", [("patch", "a.py"), ("move", "/A", "/B")], directory="/B"
+        )
+        one = [("patch", "a.py")]
+        self._session("ses_f1", one, directory="/B", parent="ses_gp", copied=1)
+        self._session("ses_f2", one, directory="/B", parent="ses_f1", copied=1)
+        self.assertEqual(self._patched("ses_f2"), ["/A/a.py"])
+
+    def test_a_fork_cycle_ends_instead_of_recursing_forever(self) -> None:
+        """opencode cannot write one; a damaged database can.
+
+        Which of the two directories wins is arbitrary; that the lookup ends
+        is the point.
+        """
+        one = [("patch", "a.py")]
+        self._session("ses_x", one, directory="/X", parent="ses_y", copied=1)
+        self._session("ses_y", one, directory="/Y", parent="ses_x", copied=1)
+        self.assertIn(self._patched("ses_x"), (["/X/a.py"], ["/Y/a.py"]))
 
     def test_a_home_path_is_joined_in_1x_and_left_alone_in_2x(self) -> None:
         """2.x expands `~` and `~/…`; 1.x resolves them like any relative path."""

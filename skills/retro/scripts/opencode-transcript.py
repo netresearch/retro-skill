@@ -342,19 +342,20 @@ def _timeline(conn: sqlite3.Connection, session_id: str) -> dict:
     A move rewrites `session_v2.directory` and appends a `location-switched`
     row naming the previous location, so the current directory holds only
     after the last move. A fork starts in its parent's directory at fork time
-    and copies the parent's rows with their `seq`, under ids ending `_<seq>`;
-    a copied row ran wherever the parent was at that `seq`.
+    and copies the parent's rows with their `seq`, under ids ending `_<seq>` —
+    moves included, so the fork's own copies say where most copied rows ran.
     """
     # `SELECT *`: a database from before forks has no `fork_session_id`.
     cursor = conn.execute("SELECT * FROM session_v2 WHERE id=?", (session_id,))
     session = cursor.fetchone()
     names = [column[0] for column in cursor.description]
     info = dict(zip(names, session)) if session else {}
-    switches, copied = [], set()
+    switches, copied, seqs = [], set(), set()
     for row_id, kind, seq, data in conn.execute(
         "SELECT id, type, seq, data FROM session_message WHERE session_id=? ORDER BY seq",
         (session_id,),
     ):
+        seqs.add(seq)
         if kind == "location-switched":
             switches.append((seq, _location(json.loads(data), "previous")))
         if row_id.endswith(f"_{seq}"):
@@ -364,20 +365,45 @@ def _timeline(conn: sqlite3.Connection, session_id: str) -> dict:
         "parent": info.get("fork_session_id"),
         "switches": switches,
         "copied": copied,
+        "seqs": seqs,
     }
 
 
 def _directory_at(
-    conn: sqlite3.Connection, session_id: str, seq: int, seen: dict
+    conn: sqlite3.Connection,
+    session_id: str,
+    seq: int,
+    seen: dict,
+    visiting: frozenset = frozenset(),
 ) -> str | None:
-    """The directory the row at `seq` ran in; None when the database cannot say."""
+    """The directory the row at `seq` ran in; None when the database cannot say.
+
+    A row's directory is the previous location of the next move after it, or
+    the session's directory when none follows. A fork's copied row with no
+    copied move after it ran where the parent was at the fork boundary, the
+    last copied `seq` — asked of the parent only while it still holds that
+    row: a deleted parent has no rows, and a revert deletes them from a
+    boundary on without restoring the directory.
+    """
+    timeline = _cached_timeline(conn, session_id, seen)
+    later = [(switch, prev) for switch, prev in timeline["switches"] if switch > seq]
+    parent = timeline["parent"]
+    copied_move_follows = any(switch in timeline["copied"] for switch, _ in later)
+    if parent and seq in timeline["copied"] and not copied_move_follows:
+        boundary = max(timeline["copied"])
+        held = (
+            parent not in visiting
+            and boundary in _cached_timeline(conn, parent, seen)["seqs"]
+        )
+        if held:
+            return _directory_at(conn, parent, boundary, seen, visiting | {session_id})
+    return later[0][1] if later else timeline["directory"]
+
+
+def _cached_timeline(conn: sqlite3.Connection, session_id: str, seen: dict) -> dict:
     if session_id not in seen:
         seen[session_id] = _timeline(conn, session_id)
-    timeline = seen[session_id]
-    if timeline["parent"] and seq in timeline["copied"]:
-        return _directory_at(conn, timeline["parent"], seq, seen)
-    later = [previous for switch, previous in timeline["switches"] if switch > seq]
-    return later[0] if later else timeline["directory"]
+    return seen[session_id]
 
 
 def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
