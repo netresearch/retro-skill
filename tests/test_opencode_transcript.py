@@ -730,6 +730,39 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
             self.assertEqual(self._files(name, nel), ["/repo/a.py\x85"], name)
             self.assertEqual(self._files(name, led), [], name)
 
+    def test_every_javascript_whitespace_character_is_trimmed(self) -> None:
+        """JavaScript's `trim()` set, listed here rather than read from the
+        adapter, so a character missing from JS_WHITESPACE shows. A newline
+        after the name ends the line instead, so it is not in the list."""
+        js_trim = (
+            "\t\v\f\r \xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
+            "\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+        )
+        for char in js_trim:
+            patch = f"*** Begin Patch\n*** Add File: a.py{char}\n+x\n*** End Patch"
+            for name in ("patch", "apply_patch"):
+                self.assertEqual(self._files(name, patch), ["/repo/a.py"], repr(char))
+
+    def test_javascript_whitespace_in_moves_end_of_file_and_heredocs(self) -> None:
+        inner = "*** Begin Patch\n*** Add File: a.py\n+x\n*** End Patch"
+        move = "*** Begin Patch\n*** Update File: a.py\n*** Move to: b.py\ufeff\n@@\n-x\n+y\n*** End Patch"
+        eof = "*** Begin Patch\n*** Update File: a.py\n*** End of File\ufeff\n*** Move to: b.py\n@@\n-x\n+y\n*** End Patch"
+        for name in ("patch", "apply_patch"):
+            self.assertEqual(
+                self._files(name, move), ["/repo/a.py", "/repo/b.py"], name
+            )
+            for wrapped in (
+                f"<<EOF\ufeff\n{inner}\nEOF",
+                f"cat\ufeff<<EOF\n{inner}\nEOF",
+            ):
+                self.assertEqual(self._files(name, wrapped), ["/repo/a.py"], name)
+        self.assertEqual(self._files("patch", eof), ["/repo/a.py", "/repo/b.py"])
+        # JavaScript's `\w` is ASCII: 2.x does not unwrap a non-ASCII
+        # delimiter and rejects the patch; 1.x finds the markers anyway.
+        umlaut = f"cat <<'E\u00d6F'\n{inner}\nE\u00d6F"
+        self.assertEqual(self._files("patch", umlaut), [])
+        self.assertEqual(self._files("apply_patch", umlaut), ["/repo/a.py"])
+
     def test_a_home_relative_path_is_not_joined_onto_the_session_directory(
         self,
     ) -> None:
