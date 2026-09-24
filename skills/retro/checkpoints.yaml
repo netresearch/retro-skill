@@ -42,7 +42,7 @@ mechanical:
 
   - id: RT-07
     type: command
-    pattern: "python3 -m unittest discover -s tests -q"
+    pattern: "uv run --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 python -m unittest discover -s tests -q"
     severity: error
     desc: "Detector test suite passes (guards A1/A14 signal regressions)"
 
