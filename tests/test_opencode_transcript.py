@@ -762,9 +762,14 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         umlaut = f"cat <<'E\u00d6F'\n{inner}\nE\u00d6F"
         self.assertEqual(self._files("patch", umlaut), [])
         self.assertEqual(self._files("apply_patch", umlaut), ["/repo/a.py"])
-        # After the closer, JavaScript's `\s` does not match U+0085, and
-        # `cat` needs whitespace before `<<`: 2.x unwraps neither.
-        for unwrapped in (f"cat <<EOF\n{inner}\nEOF\x85", f"cat<<EOF\n{inner}\nEOF"):
+        # After the closer, JavaScript's `\s` does not match U+0085, `cat`
+        # needs whitespace before `<<`, and the quotes around the delimiter
+        # must match: 2.x unwraps none of these.
+        for unwrapped in (
+            f"cat <<EOF\n{inner}\nEOF\x85",
+            f"cat<<EOF\n{inner}\nEOF",
+            f"<<'EOF\"\n{inner}\nEOF",
+        ):
             self.assertEqual(self._files("patch", unwrapped), [], repr(unwrapped))
             self.assertEqual(
                 self._files("apply_patch", unwrapped), ["/repo/a.py"], repr(unwrapped)
