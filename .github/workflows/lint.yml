@@ -29,4 +29,4 @@ jobs:
     with:
       test-command: |
         uv run --python "$PYTHON_VERSION" python -m py_compile skills/retro/scripts/*.py
-        uv run --python "$PYTHON_VERSION" python -m unittest discover -s tests -v
+        uv run --python "$PYTHON_VERSION" --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 python -m unittest discover -s tests -v

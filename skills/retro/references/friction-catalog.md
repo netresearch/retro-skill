@@ -113,9 +113,13 @@ ended, a team that does its acceptance in the ticket instead of the PR. Run the
 pre-pass before judging them:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" \
+uv run "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" \
     --transcript-file <session.jsonl> [--output-format json]
 ```
+
+`uv run` installs the shell parser (tree-sitter-bash) the script declares in
+its header; it reads each command's structure — quoted text, heredocs,
+`$(…)`, loops — from the parse tree.
 
 It reads every PR, MR and issue the session created or wrote to through `gh`,
 `glab` (subcommands and `api`), the GitHub MCP tools, or git-workflow's
@@ -145,6 +149,9 @@ target no write claimed — a report line, or any URL when a heredoc script may
 have printed it — the call is listed as unresolved, so every write through
 these tools ends attributed, unresolved or refused, never silently gone. A
 call the harness refused (`is_error` without `Exit code N`) ran nothing. A
+call with a write whose command the parser cannot read whole — a truncated
+command, text that is not shell, or two lines the grammar joins into one
+command — is unresolved. A
 successful write that prints nothing counts only as `<verb> <number> -R <repo>`
 outside any heredoc or quoted text. Output that reports a failure is not a
 success: an `HTTP 4xx/5xx`, glab's `422 {message: …}`, a JSON error body

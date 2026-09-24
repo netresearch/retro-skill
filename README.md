@@ -47,6 +47,7 @@ An LLM reading the *actual* transcript classifies friction more accurately and f
 |---|---|
 | Claude Code | The host that runs the plugin and the `/retro` command |
 | `python3` | Mechanical pre-pass and the cross-session scan |
+| `uv` | Session scope and review feedback (`derive-session-scope.py`, `collect-review-findings.py`): installs the shell parser tree-sitter-bash the scripts declare; the first run downloads it |
 | `jq` | Skill discovery, manifest parsing, and the optional hook |
 | `gh` and/or `glab` | Creating pull/merge requests for skill updates |
 | `git` | Cloning source repos and materializing changes |

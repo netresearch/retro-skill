@@ -52,9 +52,12 @@ the wrong repository returns clean: a ✅ that measured nothing. The list comes
 from the transcript, which recorded every path verbatim:
 
 ```bash
-python3 "${CLAUDE_SKILL_DIR}/scripts/derive-session-scope.py" \
+uv run "${CLAUDE_SKILL_DIR}/scripts/derive-session-scope.py" \
   --transcript-file "$TF"        # $TF located as in workflow.md § Shared pipeline
 ```
+
+`uv run` installs the shell parser the script declares in its header
+(tree-sitter-bash); plain `python3` stops with a message saying so.
 
 It prints the repositories, the days, the tags, the forge slugs addressed by
 `-R`, and the paths it could not resolve — read that last group, because a path

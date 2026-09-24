@@ -1587,9 +1587,10 @@ class EighthRoundTest(unittest.TestCase):
                 self.assertEqual(set(urls.values()), {"created"})
 
     def test_a_loop_head_full_of_substitutions_does_not_backtrack(self):
-        # CodeQL py/redos on 3e701ea: overlapping head alternatives took ~5 s here.
+        # CodeQL py/redos on 3e701ea: overlapping regex head alternatives took
+        # ~5 s here. The loop is now read from the parse tree (#130).
         started = time.perf_counter()
-        self.assertIsNone(dss.LOOP_RE.search("for x " + "$()" * 26))
+        self.assertFalse(dss._in_loop("for x " + "$()" * 26, 6))
         self.assertLess(time.perf_counter() - started, 1.0)
         # A lone `$` and `(` still belong to the head.
         cmd = "for f in $HOME (x) $(ls); do gh pr create -R o/r --fill; done"
@@ -2159,6 +2160,57 @@ class EighteenthRoundTest(unittest.TestCase):
                 self.assertEqual(
                     (urls, len(data["unresolved_forge_commands"])), ({}, 1)
                 )
+
+
+class ShellParserTest(unittest.TestCase):
+    """The shell structure read from tree-sitter-bash (#130)."""
+
+    def urls(self, pairs):
+        data = dss.collect_artefacts(_transcript(pairs), gitlab_host="git.example.org")
+        return {a["url"]: a["origin"] for a in data["artefacts"]}, data
+
+    def test_non_ascii_text_before_a_write_keeps_positions(self):
+        # Tree offsets are bytes; "ä" and "✓" take two and three.
+        cmd = 'echo "Prüfung läuft ✓ äöü"; gh pr merge 5 -R o/r --merge'
+        urls, _ = self.urls([({"command": cmd}, "✓ Merged pull request o/r#5")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+        cmd = 'gh pr comment 5 -R o/r --body "Überprüfung ✓: gh pr merge 6 -R o/r"'
+        urls, _ = self.urls([({"command": cmd}, "https://github.com/o/r/pull/5#c1")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+
+    def test_two_lines_the_grammar_glues_together_are_unresolved(self):
+        # tree-sitter-bash 0.25.1 reads `… | head` and the next `a | b` line as
+        # one command without an ERROR node; 111 stored commands have the shape.
+        cmd = (
+            "gh pr view 5 -R o/r --json state | jq . | head\n"
+            "gh pr merge 5 -R o/r --merge 2>&1 | tail -3"
+        )
+        self.assertTrue(dss._shell(cmd).misparsed)
+        _, data = self.urls([({"command": cmd}, "✓ Merged pull request o/r#5")])
+        self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+        # Control: two ordinary lines, and a backslash continuation, read whole.
+        ordinary = "gh pr view 5 -R o/r\ngh pr merge 5 -R o/r --merge"
+        self.assertFalse(dss._shell(ordinary).misparsed)
+        self.assertFalse(dss._shell("gh pr merge 5 \\\n  -R o/r --merge").misparsed)
+
+    def test_a_substitution_in_an_unquoted_heredoc_body_is_code(self):
+        cmd = "cat > x.md <<EOF\nmerged: $(gh pr merge 5 -R o/r --merge)\nEOF"
+        write = dss.FORGE_WRITE_RE.search(cmd)
+        self.assertFalse(dss._is_text(cmd, write))
+        quoted = "cat > x.md <<'EOF'\nmerged: $(gh pr merge 5 -R o/r --merge)\nEOF"
+        self.assertTrue(dss._is_text(quoted, dss.FORGE_WRITE_RE.search(quoted)))
+
+    def test_a_quoted_script_path_stays_a_command(self):
+        # A quoted word without a space is a path, not a text: blanking it
+        # would hide the wrapper call.
+        cmd = 'bash "$GW/scripts/pr-merge.sh" -R o/r 5 --self-reviewed'
+        urls, _ = self.urls([({"command": cmd}, "pr-merge: o/r#5 merged (--merge)")])
+        self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
+
+    def test_the_loop_body_counts_the_condition_does_not(self):
+        cmd = "while gh pr create -R o/r --fill; do gh pr ready 5 -R o/r; done"
+        self.assertFalse(dss._in_loop(cmd, cmd.index("gh pr create")))
+        self.assertTrue(dss._in_loop(cmd, cmd.index("gh pr ready")))
 
 
 class UnresolvedSurfacedTest(unittest.TestCase):

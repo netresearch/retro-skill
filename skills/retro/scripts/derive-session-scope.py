@@ -1,4 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
+# /// script
+# requires-python = ">=3.10"
+# dependencies = ["tree-sitter==0.26.0", "tree-sitter-bash==0.25.1"]
+# ///
 """
 derive-session-scope.py — the repositories, days and artefacts a session touched.
 
@@ -34,6 +38,7 @@ dropped.
 from __future__ import annotations
 
 import argparse
+import functools
 import json
 import os
 import re
@@ -43,6 +48,18 @@ import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote as unquote_url
+
+try:
+    import tree_sitter_bash
+    from tree_sitter import Language, Parser
+except ImportError:  # pragma: no cover - depends on how the script is started
+    sys.exit(
+        "derive-session-scope.py reads shell commands with tree-sitter-bash, which "
+        "is not installed here. Run it with `uv run <path>/derive-session-scope.py` "
+        "(the dependencies are declared in the script header)."
+    )
+
+BASH = Parser(Language(tree_sitter_bash.language()))
 
 # `git -C <path>`, `cd <path>`, `-R owner/repo`, `--repo owner/repo`.
 GIT_C_RE = re.compile(r"git\s+-C\s+(?P<path>(?:\"[^\"]+\"|'[^']+'|[^\s;|&]+))")
@@ -138,17 +155,6 @@ FAILED_OUTPUT_RE = re.compile(
     r"|^\s*(?:[xX✗]\s|gh: |failed to |Cannot perform)"
     r"|Command running in background|moved to the background|^Monitor started \(",
     re.MULTILINE,
-)
-# A shell loop runs its body once per item: `for r in a b c; do gh pr create …; done`.
-# Matched on the command with heredoc bodies and quoted texts blanked, so a
-# `for` or a `done` inside a text neither opens nor closes one. The head's
-# alternatives are disjoint (a `$` or `(` is read by exactly one of them), so
-# a head full of `$()` cannot backtrack exponentially.
-LOOP_RE = re.compile(
-    r"\b(?:for|while|until)\b"
-    r"(?:\(\([^)]*\)\)|\$\([^)]*\)|\$(?!\()|\((?!\()|[^;\n$(])*(?:;|\n)\s*do\b"
-    r"(?P<body>.*?)\bdone\b",
-    re.DOTALL,
 )
 # A REST endpoint held in a variable: `gh api -X POST "$R/123/replies"`.
 VARIABLE_ENDPOINT_RE = re.compile(r"\bapi\b(?:\s+-\S+(?:\s+[^-\s]\S*)?)*\s+[\"']?\$")
@@ -447,8 +453,9 @@ def refused(result: str, is_error: bool) -> bool:
 
 
 def _segment(command: str, write: re.Match) -> str:
-    """The write's own simple command: up to the next newline, `;`, `|` or `&`."""
-    return re.match(r"[^\n;|&]*", command[write.start() :]).group(0)
+    """The write's own simple command: up to the next newline, `;`, `|` or `&`
+    outside quoted text and outside a later `$(…)`, as the parser reads it."""
+    return command[write.start() : _shell(command).segment_end(write.start())]
 
 
 def _named_lines(
@@ -518,94 +525,182 @@ def _json_url(line: str) -> dict[str, str] | None:
     return {"url": url} if isinstance(url, str) else None
 
 
-def _masked(command: str) -> str:
-    """The command with closed heredoc bodies blanked, same length, so a
-    quote inside a heredoc text does not open a span over the next command."""
-    return CLOSED_HEREDOC_RE.sub(
-        lambda m: (
-            m.group(0)[: m.start("body") - m.start()]
-            + re.sub(r"[^\n]", " ", m["body"])
-            + m.group(0)[m.end("body") - m.start() :]
-        ),
-        command,
-    )
+# Node types whose text is data, not commands, and those that make it code again.
+TEXT_NODES = frozenset(
+    [
+        "string",
+        "raw_string",
+        "ansi_c_string",
+        "translated_string",
+        "comment",
+        "heredoc_body",
+    ]
+)
+CODE_NODES = frozenset(["command_substitution", "process_substitution"])
+LOOP_NODES = frozenset(["for_statement", "c_style_for_statement", "while_statement"])
 
 
-def _substitutions(text: str, start: int, end: int) -> list[tuple[int, int]]:
-    """The `$(…)` command substitutions in `text[start:end]`, nesting counted."""
-    found = []
-    i = text.find("$(", start, end)
-    while i != -1:
-        if (i - len(text[start:i].rstrip("\\")) - start) % 2:
-            i = text.find("$(", i + 2, end)
-            continue  # `\$(` inside double quotes is literal
-        depth, j = 0, i + 1
-        while j < end:
-            depth += {"(": 1, ")": -1}.get(text[j], 0)
-            if depth == 0:
-                break
-            j += 1
-        found.append((i, j + 1))
-        i = text.find("$(", j + 1, end)
-    return found
+class _Shell:
+    """One command as tree-sitter-bash reads it, with positions in characters.
 
+    The regexes elsewhere find candidate writes in the raw command; this class
+    answers the questions a regex cannot: whether a position is text or code,
+    where the simple command around it ends, and whether it runs in a loop."""
 
-def _without_substitutions(text: str) -> str:
-    """The text with every `$(…)` body blanked, same length."""
-    for sub_start, sub_end in _substitutions(text, 0, len(text)):
-        text = (
-            text[: sub_start + 2]
-            + re.sub(r"[^\n]", " ", text[sub_start + 2 : sub_end - 1])
-            + text[sub_end - 1 :]
+    def __init__(self, source: str):
+        self.source = source
+        data = source.encode()
+        self.root = BASH.parse(data).root_node
+        # Tree offsets are bytes; every caller works in characters.
+        self._byte = [0]
+        for ch in source:
+            self._byte.append(self._byte[-1] + len(ch.encode()))
+        self._char = [0] * (len(data) + 1)
+        for index, offset in enumerate(self._byte):
+            self._char[offset] = index
+        self.blanked = self._blank()
+        self.substitutions = [
+            (self._char[n.start_byte], self._char[n.end_byte])
+            for n in self._walk()
+            if n.type == "command_substitution"
+        ]
+
+    def _walk(self):
+        stack = [self.root]
+        while stack:
+            node = stack.pop()
+            yield node
+            stack.extend(reversed(node.children))
+
+    def _node_at(self, index: int):
+        offset = self._byte[min(index, len(self.source))]
+        return self.root.descendant_for_byte_range(offset, offset + 1)
+
+    def _blank(self) -> str:
+        """The command with its texts blanked, same length: heredoc bodies and
+        comments whole, quoted strings with a space in them between their
+        quotes (a quoted path or slug stays). A `$(…)` inside a text is code
+        and stays."""
+        mask = [False] * len(self.source)
+
+        def paint(node, value: bool) -> None:
+            start, end = self._char[node.start_byte], self._char[node.end_byte]
+            if value and node.type in (
+                "string",
+                "raw_string",
+                "ansi_c_string",
+                "translated_string",
+            ):
+                if " " not in self.source[start:end]:
+                    return
+                start, end = start + 1, end - 1
+            for i in range(start, end):
+                mask[i] = value
+
+        stack = [(self.root, False)]
+        while stack:
+            node, in_text = stack.pop()
+            if node.type in CODE_NODES:
+                paint(node, False)
+                in_text = False
+            elif node.type in TEXT_NODES:
+                paint(node, True)
+                in_text = True
+            stack.extend((child, in_text) for child in reversed(node.children))
+        return "".join(
+            " " if hidden and ch != "\n" else ch
+            for ch, hidden in zip(self.source, mask)
         )
-    return text
+
+    def is_text(self, index: int) -> bool:
+        """Whether the character at `index` is data: the nearest enclosing text
+        or substitution node decides."""
+        node = self._node_at(index)
+        while node is not None:
+            if node.type in CODE_NODES:
+                return False
+            if node.type in TEXT_NODES:
+                # A quoted word without a space is a path or a slug
+                # (`"$HOME/…/jira-issue.py"`), not a text.
+                return (
+                    node.type in ("comment", "heredoc_body")
+                    or " "
+                    in (
+                        self.source[
+                            self._char[node.start_byte] : self._char[node.end_byte]
+                        ]
+                    )
+                )
+            node = node.parent
+        return False
+
+    def in_loop_body(self, index: int) -> bool:
+        node = self._node_at(index)
+        while node is not None:
+            if (
+                node.type == "do_group"
+                and node.parent is not None
+                and (node.parent.type in LOOP_NODES)
+            ):
+                return True
+            node = node.parent
+        return False
+
+    def own_text(self, index: int) -> str:
+        """The blanked command, same length, with every `$(…)` that starts
+        after `index` blanked too: another command's words, not this one's. A
+        `$(` around `index` starts before it and stays."""
+        text = list(self.blanked)
+        for start, end in self.substitutions:
+            if start > index:
+                for i in range(start + 2, end - 1):
+                    if text[i] != "\n":
+                        text[i] = " "
+        return "".join(text)
+
+    def segment_end(self, index: int) -> int:
+        """End of the simple command starting at `index`: the next newline,
+        `;`, `|` or `&` outside a text and outside a later `$(…)`."""
+        own = self.own_text(index)[index:]
+        return index + len(re.match(r"[^\n;|&]*", own).group(0))
+
+    def without_substitutions(self) -> str:
+        """The blanked command with every `$(…)` body blanked too, same length."""
+        return self.own_text(-1)
+
+    @functools.cached_property
+    def misparsed(self) -> bool:
+        """An ERROR or MISSING node, or two lines glued into one command: the
+        grammar joins `a | b` and a following `c | d` line without flagging it."""
+        if self.root.has_error:
+            return True
+        data = self.source.encode()
+        for node in self._walk():
+            if node.type != "command":
+                continue
+            for a, b in zip(node.children, node.children[1:]):
+                gap = data[a.end_byte : b.start_byte]
+                if b"\n" in gap and b"\\\n" not in gap:
+                    return True
+        return False
 
 
-def _quoted_spans(command: str) -> list[tuple[int, int]]:
-    """Quoted strings with a space in them: text, not a path or a slug. A
-    command substitution in double quotes (`"#5: $(gh pr merge …)"`) runs, so
-    only the text around it is a span."""
-    masked = _masked(command)
-    spans = []
-    for m in QUOTED_RE.finditer(masked):
-        if " " not in m.group(0):
-            continue
-        start = m.start()
-        if m.group(0).startswith('"'):
-            for sub_start, sub_end in _substitutions(masked, m.start(), m.end()):
-                spans.append((start, sub_start))
-                spans += [
-                    (q.start(), q.end())
-                    for q in QUOTED_RE.finditer(masked, sub_start + 2, sub_end - 1)
-                    if " " in q.group(0)
-                ]
-                start = sub_end - 1
-        spans.append((start, m.end()))
-    return spans
-
-
-def _inside(spans: list[tuple[int, int]], index: int) -> bool:
-    return any(start < index < end for start, end in spans)
-
-
-def _in_heredoc(command: str, index: int) -> bool:
-    return any(
-        m.start("body") <= index < m.end("body")
-        for m in CLOSED_HEREDOC_RE.finditer(command)
-    )
+@functools.lru_cache(maxsize=256)
+def _shell(command: str) -> _Shell:
+    return _Shell(command)
 
 
 def _writes(command: str) -> list[re.Match]:
     found = list(FORGE_WRITE_RE.finditer(command))
-    blank = _blank_texts(command)
+    shell = _shell(command)
     for m in API_WRITE_RE.finditer(command):
         call = _segment(command, m)
         # A `-X GET` inside a quoted body or a `$(…)` is not this write's method.
         # From the write onward, so a `$(` around the write is not included; a
         # `$(…)` further along is another command and is blanked before the
         # segment is cut, so a `|` or `;` inside it does not end the segment.
-        own = _without_substitutions(blank[m.start() :])
-        if EXPLICIT_GET_RE.search(re.match(r"[^\n;|&]*", own).group(0)):
+        own = shell.own_text(m.start())[m.start() : shell.segment_end(m.start())]
+        if EXPLICIT_GET_RE.search(own):
             continue
         if "graphql" in call and "mutation" not in command and "query=@" not in call:
             continue  # a GraphQL query (a query read from a file may be a mutation)
@@ -615,28 +710,17 @@ def _writes(command: str) -> list[re.Match]:
 
 def _blank_texts(command: str) -> str:
     """The command with heredoc bodies and quoted texts blanked, same length."""
-    masked = _masked(command)
-    for start, end in _quoted_spans(command):
-        masked = (
-            masked[: start + 1]
-            + re.sub(r"[^\n]", " ", masked[start + 1 : end - 1])
-            + masked[end - 1 :]
-        )
-    return masked
+    return _shell(command).blanked
 
 
 def _in_loop(command: str, index: int) -> bool:
-    return any(
-        m.start("body") <= index < m.end("body")
-        for m in LOOP_RE.finditer(_blank_texts(command))
-    )
+    return _shell(command).in_loop_body(index)
 
 
 def _is_text(command: str, write: re.Match) -> bool:
-    """A write that is part of a text: inside a heredoc body or a quoted string."""
-    return _in_heredoc(command, write.start()) or _inside(
-        _quoted_spans(command), write.start()
-    )
+    """A write that is part of a text: inside a heredoc body, a quoted string
+    or a comment, and not inside a `$(…)` within it."""
+    return _shell(command).is_text(write.start())
 
 
 class _Call:
@@ -829,7 +913,7 @@ def _took_the_failure_branch(command: str, result: str) -> bool:
     `test -f … && echo … || echo …` elsewhere in the call says nothing."""
     lines = {line.strip() for line in result.splitlines()}
     # A `|` inside a `$(…)` argument is another command's; blanked, same length.
-    plain = _without_substitutions(command)
+    plain = _shell(command).without_substitutions()
     for write in _writes(command):
         m = ECHO_BRANCHES_RE.match(plain, write.start())
         if not m:
@@ -852,7 +936,7 @@ def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     runs = [
         m
         for m in PR_MERGE_WRAPPER_RE.finditer(blank)
-        if "--dry-run" not in _segment(blank, m)
+        if "--dry-run" not in blank[m.start() : _shell(command).segment_end(m.start())]
     ]
     if not runs:
         return []
@@ -964,6 +1048,10 @@ def _forge_write_artefacts(
     # A script the call runs can write anywhere and print nothing about it;
     # its writes are never attributed, so the call is unresolved.
     if text_writes and _runs_a_program(command):
+        unresolved = True
+    # A command the parser could not read whole (truncated, not shell, or two
+    # lines the grammar glues together) may hide a write it reports as text.
+    if (writes or text_writes or wrapper) and _shell(command).misparsed:
         unresolved = True
     if about_prs and not unresolved:
         unresolved = _unclaimed(result, found, text_writes)

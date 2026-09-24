@@ -52,7 +52,7 @@ Read what reviewers, bots and ticket owners wrote about the session's work —
 most of it never entered the transcript:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/collect-review-findings.py \
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/collect-review-findings.py \
   --transcript-file <the transcript confirmed in Phase 1>
 ```
 
