@@ -210,6 +210,20 @@ with cause. "No owning skill" must be confirmed by inspecting the top candidate
 skills' **contents** (`SKILL.md` + `references/`), not just their one-line
 descriptions — descriptions under-state ownership; memory is the last resort.
 
+Whether an owning skill is **editable** is decided by the marketplace it comes
+from (the `marketplace` field of the `find-org-skills.py` output), not by its
+name or prefix. A skill from a marketplace the user or their org does not
+maintain (for example `addy-agent-skills`, which ships the `agent-skills:`
+skills) is not theirs to patch: settle this before proposing a `skill-update`,
+and either propose an upstream PR — an outward-facing artefact in a foreign
+project, see `destination-taxonomy.md` — or route to an owned skill that can
+carry the lesson. Before proposing a skill
+*feature*, grep that skill's **source repo** — its `scripts/` and
+`references/` — for the capability you believe is missing; the plugin cache
+can hold an older build that lacks it (see `skill-discovery.md`). The same
+check applies one scope wider: before hand-rolling a multi-step command in a
+repository, list its `scripts/`, `bin/` and `Makefile` targets.
+
 When a finding could still land at more than one scope, **escalate to the
 broadest destination that still fits**, in this order:
 

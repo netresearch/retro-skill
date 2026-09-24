@@ -395,6 +395,146 @@ class PruneIndexLineTest(unittest.TestCase):
         self.assertNotIn("b.md", index)
 
 
+class PruneIndexLineRealLinesTest(unittest.TestCase):
+    """Lines taken verbatim from a real MEMORY.md drain that went wrong.
+
+    Each case lost either the bullet marker, half of the removed link, or
+    rule text that belongs to no link at all.
+    """
+
+    def test_leading_link_keeps_bullet(self):
+        line = (
+            "- [NR public service needs proxy routers]"
+            "(reference_nr_public_service_proxy_routers.md) — intern AND extern"
+            " · [IPv6 baseline; check allow-lists before AAAA]"
+            "(feedback_ipv6_is_baseline_not_optional.md)\n"
+        )
+        self.assertEqual(
+            smi._prune_index_line(line, "reference_nr_public_service_proxy_routers.md"),
+            "- [IPv6 baseline; check allow-lists before AAAA]"
+            "(feedback_ipv6_is_baseline_not_optional.md)\n",
+        )
+
+    def test_leading_link_with_hook_keeps_bullet_and_sibling_hook(self):
+        line = (
+            "- [No ghost-context docs](feedback_no_ghost_context_docs.md)"
+            " — present tense · [ci-components/docker/build@1 limits]"
+            "(reference_nr_ci_components.md) — hand-roll buildx\n"
+        )
+        self.assertEqual(
+            smi._prune_index_line(line, "feedback_no_ghost_context_docs.md"),
+            "- [ci-components/docker/build@1 limits]"
+            "(reference_nr_ci_components.md) — hand-roll buildx\n",
+        )
+
+    def test_colon_inside_link_text_removes_whole_link(self):
+        line = (
+            "- [Secrets pasted in chat: work first, enforce revocation]"
+            "(feedback_secrets_in_chat.md) · [gitleaks scans full history]"
+            "(feedback_gitleaks_full_history_scan.md)\n"
+        )
+        self.assertEqual(
+            smi._prune_index_line(line, "feedback_secrets_in_chat.md"),
+            "- [gitleaks scans full history](feedback_gitleaks_full_history_scan.md)\n",
+        )
+
+    def test_leading_link_with_long_hook_keeps_bullet(self):
+        line = (
+            "- [nr-llm improvement roadmap](project_nr_llm_improvement_roadmap.md)"
+            " — 12 WS, Reihenfolge + Status · [nr-ai-search × nr-llm integration]"
+            "(project_nr_ai_search_nr_llm_integration.md) — PRs !37/#348-350\n"
+        )
+        self.assertEqual(
+            smi._prune_index_line(line, "project_nr_llm_improvement_roadmap.md"),
+            "- [nr-ai-search × nr-llm integration]"
+            "(project_nr_ai_search_nr_llm_integration.md) — PRs !37/#348-350\n",
+        )
+
+    def test_two_drains_on_one_line_keep_bullet(self):
+        line = (
+            "- [NR runner read-only /etc/ssl/certs]"
+            "(reference_nr_runner_readonly_ssl_certs.md)"
+            " · [Measure from the execution vantage]"
+            "(reference_measure_from_execution_vantage.md)"
+            " · [Debian gpgv is a separate package]"
+            "(reference_debian_gpgv_separate_package.md)\n"
+        )
+        once = smi._prune_index_line(line, "reference_nr_runner_readonly_ssl_certs.md")
+        twice = smi._prune_index_line(once, "reference_debian_gpgv_separate_package.md")
+        self.assertEqual(
+            twice,
+            "- [Measure from the execution vantage]"
+            "(reference_measure_from_execution_vantage.md)\n",
+        )
+
+    def test_rule_text_outside_links_survives(self):
+        line = (
+            "- **Jira**: NEVER mcp-atlassian MCP. Use `jira:jira-communication`"
+            " skill for jira.netresearch.de · [NR Atlassian split]"
+            "(reference_nr_atlassian_split.md) — Confluence Cloud; Jira on-prem\n"
+        )
+        self.assertEqual(
+            smi._prune_index_line(line, "reference_nr_atlassian_split.md"),
+            "- **Jira**: NEVER mcp-atlassian MCP. Use `jira:jira-communication`"
+            " skill for jira.netresearch.de\n",
+        )
+
+    def test_link_inside_prose_removes_only_the_link(self):
+        head = (
+            "- Repos: `usercentrics-widgets` (npm, Rollup IIFE+IE11, semistandard,"
+            " **rebase-only**) · `ofelia` (Go scheduler fork, merge-queue,"
+            " `release-slsa.yml`; dep `netresearch/go-cron`) ·"
+            " `sdk-api-central-station` (PHP CRM SDK; common fix: stale PHPStan"
+            " baseline) · glpi-docker-compose-stack (GLPI 11,"
+            " ghcr.io/netresearch/glpi-php-fpm) · archived,"
+            " unarchive→change→re-archive: vault-read"
+        )
+        line = head + " ([vault-read.md](vault-read.md)), node-vault, satis-git\n"
+        self.assertEqual(
+            smi._prune_index_line(line, "vault-read.md"),
+            head + ", node-vault, satis-git\n",
+        )
+
+    def test_label_kept_when_its_first_link_goes(self):
+        line = "- **G**: [one](a.md) — hook · [two](b.md)\n"
+        self.assertEqual(
+            smi._prune_index_line(line, "a.md"),
+            "- **G**: [two](b.md)\n",
+        )
+
+    def test_mid_line_label_goes_with_its_only_link(self):
+        line = "- Hosts: [a](a.md) · Other: [b](b.md) — hook\n"
+        self.assertEqual(
+            smi._prune_index_line(line, "b.md"),
+            "- Hosts: [a](a.md)\n",
+        )
+
+    def test_label_only_remainder_drops_line(self):
+        self.assertIsNone(
+            smi._prune_index_line("- **G**: [one](a.md) — hook\n", "a.md")
+        )
+
+    def test_rule_text_survives_drain_via_cmd(self):
+        root, memory = _make_root()
+        self.addCleanup(shutil.rmtree, root, ignore_errors=True)
+        path = _write(memory, "reference_nr_atlassian_split.md", FEEDBACK)
+        _write(
+            memory,
+            "MEMORY.md",
+            "- **Jira**: NEVER mcp-atlassian MCP. Use `jira:jira-communication`"
+            " skill for jira.netresearch.de · [NR Atlassian split]"
+            "(reference_nr_atlassian_split.md) — Confluence Cloud; Jira on-prem\n",
+        )
+        res = _run_drain(path, root)
+        self.assertEqual(res["rc"], 0)
+        index = (memory / "MEMORY.md").read_text(encoding="utf-8")
+        self.assertEqual(
+            index,
+            "- **Jira**: NEVER mcp-atlassian MCP. Use `jira:jira-communication`"
+            " skill for jira.netresearch.de\n",
+        )
+
+
 GLOBAL_RULES = """# Personal Preferences
 
 - always be nice

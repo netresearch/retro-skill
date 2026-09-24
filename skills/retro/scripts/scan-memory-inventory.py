@@ -379,34 +379,74 @@ def _print_text(envelope: dict[str, Any]) -> None:
         print(f"  [{f['signal']}] {f['title']} <- {f['source_path']}")
 
 
-INDEX_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
+INDEX_MARKER = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+INDEX_SEPARATOR = " · "
+
+
+def _prune_segment(segment: str, link: re.Pattern[str]) -> str:
+    """Remove the target link from one " · "-separated segment.
+
+    A link that opens the segment (optionally after a ``label:``) is an index
+    entry: it goes together with its trailing hook text, up to the segment's
+    end. A link inside prose goes alone — with the parentheses when it is
+    their only content — so the surrounding sentence survives.
+    """
+    while (m := link.search(segment)) is not None:
+        before = segment[: m.start()]
+        if not before.strip() or before.rstrip().endswith(":"):
+            segment = before.rstrip()
+            continue
+        start, end = m.start(), m.end()
+        if segment[start - 1 : start] == "(" and segment[end : end + 1] == ")":
+            start, end = start - 1, end + 1
+        if segment[start - 1 : start] == " ":
+            start -= 1
+        segment = segment[:start] + segment[end:]
+    return segment
 
 
 def _prune_index_line(line: str, name: str) -> str | None:
     """Remove one note's entry from an index line; None drops the whole line.
 
     MEMORY.md lines are often grouped bullets holding several links separated
-    by " · " — dropping the whole line on a match would take the sibling
-    entries' links with it (observed: a drain of one note removed a 8-link
-    group line). Only when the target link is the line's sole link does the
-    line itself go.
+    by " · ", or a rule written in prose followed by a link to its note. Only
+    the target link goes, with its own hook text and one adjacent separator;
+    the bullet marker, a leading label, sibling links and any text outside the
+    link stay. The line itself goes only when nothing but the marker, a label
+    and separators remains.
     """
-    links = INDEX_LINK.findall(line)
-    target = f"]({name})"
-    if sum(target in link for link in links) == len(links):
-        return None
-    if " · " not in line:
-        return None
     eol = "\n" if line.endswith("\n") else ""
     content = line.rstrip("\n")
-    prefix, sep, rest = content.partition(": ")
-    if not sep or target in prefix:
-        prefix, rest = "", content
-        sep = ""
-    segments = [s for s in rest.split(" · ") if target not in s]
-    if not segments:
+    marker_match = INDEX_MARKER.match(content)
+    marker = marker_match.group(0) if marker_match else ""
+    body = content[len(marker) :]
+    link = re.compile(r"\[[^\]]*\]\(" + re.escape(name) + r"\)")
+
+    segments: list[str] = []
+    bare_label = False
+    for index, segment in enumerate(body.split(INDEX_SEPARATOR)):
+        if not link.search(segment):
+            segments.append(segment)
+            continue
+        pruned = _prune_segment(segment, link)
+        if not pruned.strip():
+            continue
+        if pruned.rstrip().endswith(":"):
+            if index > 0:
+                continue  # a mid-line label with nothing left to introduce
+            bare_label = True
+        segments.append(pruned)
+
+    if bare_label:
+        # A label whose first link went ("**G**: [one](a.md) · [two](b.md)")
+        # joins the next entry with a space rather than a separator, and a
+        # label with nothing left to introduce goes with the line.
+        if len(segments) == 1:
+            return None
+        segments[:2] = [segments[0].rstrip() + " " + segments[1].lstrip()]
+    if not "".join(segments).strip():
         return None
-    return prefix + sep + " · ".join(segments) + eol
+    return marker + INDEX_SEPARATOR.join(segments) + eol
 
 
 def cmd_drain(args) -> int:
