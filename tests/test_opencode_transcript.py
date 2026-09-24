@@ -590,6 +590,21 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         pushes = detector.signal_main_branch_work(uses)
         self.assertEqual([f["signal"] for f in pushes], ["A14"])
 
+    def test_an_edit_or_write_between_two_reads_keeps_them_apart(self) -> None:
+        """`edit` and `write` must arrive as `Edit` and `Write` with a resolved
+        `file_path`, or A12 reports the second read as a re-read."""
+        read = ("read", {"path": "/repo/app.py"})
+        for name, claude in (("edit", "Edit"), ("write", "Write")):
+            uses = self._tool_uses(read, (name, {"path": "app.py"}), read)
+            self.assertEqual(uses[1][1:3], (claude, {"file_path": "/repo/app.py"}))
+            self.assertEqual(detector.signal_reread_same_file(uses), [], name)
+        # Claude's own MultiEdit counts too.
+        between = (1, "MultiEdit", {"file_path": "/repo/app.py"}, "ok", False)
+        reads = [(n, "Read", {"file_path": "/repo/app.py"}, "x", False) for n in (0, 2)]
+        self.assertEqual(
+            detector.signal_reread_same_file([reads[0], between, reads[1]]), []
+        )
+
     def test_a_patch_between_two_reads_is_an_edit_of_every_file_it_names(self) -> None:
         """Without it, read → patch → read looks like a re-read without an edit."""
         # The example from opencode's `packages/core/src/tool/patch.txt`, shortened.
