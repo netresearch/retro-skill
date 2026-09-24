@@ -511,6 +511,8 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         )
         conn = adapter._connect(self.db)
         self.assertEqual(adapter.schema_of(conn, "s1"), "v2")
+        # `--match` finds it in both schemas and names it once.
+        self.assertEqual(adapter.find_session(conn, "fix the CLI"), "s1")
 
         blocks = _blocks(self._render("s1"))
         self.assertIn("continued after the upgrade", [b.get("text") for b in blocks])
@@ -560,7 +562,7 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         every read under an empty path, so two different files look re-read.
         """
         uses = self._tool_uses(
-            ("read", {"path": "app.py"}),
+            ("read", {"path": "./src/../app.py"}),
             ("read", {"path": "lib.py"}),
             ("read", {"path": "/repo/app.py"}),
             ("shell", {"command": "git push origin main"}),
@@ -572,7 +574,8 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         self.assertEqual([u[1] for u in uses[-3:]], ["Grep", "Glob", "Skill"])
         # On `grep` the `path` is a directory, not a file: it keeps its key.
         self.assertEqual(uses[-3][2], {"pattern": "x", "path": "src"})
-        # `app.py` resolves against the session directory `/repo`.
+        # `./src/../app.py` resolves against the session directory `/repo`
+        # and is normalised, so it and `/repo/app.py` are the same file.
         reread = detector.signal_reread_same_file(uses)
         self.assertEqual([f["path"] for f in reread], ["/repo/app.py"])
         pushes = detector.signal_main_branch_work(uses)
