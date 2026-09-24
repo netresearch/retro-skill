@@ -50,10 +50,13 @@ its input as a partial JSON STRING, which the detector would call `.get` on.
 The other row types (`synthetic`, `shell`, `compaction`, `system`, …) are not
 rendered.
 
-TOOL NAMES. opencode names its tools `bash`, `read`, `edit`, … and its file tools
-take `filePath`; the detector's signals match Claude's `Bash`, `Read`, `Edit` and
-`file_path`. Both are renamed, or every shell and file signal passes over an
-opencode session without firing.
+TOOL NAMES. opencode names its tools `bash` (1.x) or `shell` (2.x), `read`,
+`edit`, … and its file tools take `filePath` (1.x) or `path` (2.x); the
+detector's signals match Claude's `Bash`, `Read`, `Edit` and `file_path`. Both
+are renamed, or every shell and file signal passes over an opencode session
+without firing. A migrated session keeps the 1.x names. Relative file paths are
+resolved against the session's directory, so a patch that names `src/app.py`
+and a read of `/repo/src/app.py` count as the same file.
 
 READ-ONLY. The database is opened with `mode=ro`, so pointing this at a live
 database cannot corrupt a session that is still being written.
@@ -74,21 +77,34 @@ DEFAULT_DB = "~/.local/share/opencode/opencode.db"
 #: whole: layer A only reads snippets, and a session's outputs run to megabytes.
 RESULT_CHARS = 6000
 
-#: opencode's tool names, as the detector knows them from Claude Code.
+#: opencode's tool names, 1.x and 2.x, as the detector knows them from Claude
+#: Code — only those a detector signal reads by name. `patch` has no Claude
+#: counterpart: it becomes `Patch`, which the detector's A12 counts as an edit
+#: of every file in `file_paths`.
 TOOL_NAMES = {
     "bash": "Bash",
+    "shell": "Bash",
     "read": "Read",
     "edit": "Edit",
     "write": "Write",
+    "apply_patch": "Patch",
+    "patch": "Patch",
     "grep": "Grep",
     "glob": "Glob",
     "skill": "Skill",
-    "task": "Task",
-    "webfetch": "WebFetch",
-    "todowrite": "TodoWrite",
 }
-#: opencode's input keys that the detector reads under Claude's name.
+#: opencode's input keys that the detector reads under Claude's name. The file
+#: tools take `filePath` in 1.x and `path` in 2.x; `path` is only renamed for
+#: them, because on `grep` and `glob` it names a directory.
 INPUT_KEYS = {"filePath": "file_path"}
+FILE_TOOLS = {"Read", "Edit", "Write"}
+#: The header lines of opencode's patch format that name a file.
+PATCH_FILE_MARKERS = (
+    "*** Add File: ",
+    "*** Update File: ",
+    "*** Delete File: ",
+    "*** Move to: ",
+)
 
 #: A 1.x call still running at the upgrade is copied into V2 as this error. The
 #: legacy path emits no result for a running call; neither does the V2 one, or
@@ -215,14 +231,35 @@ def _text(text: str | None) -> list[dict]:
     return [{"type": "text", "text": text}] if text and text.strip() else []
 
 
-def _tool_use(tool_id: str, name: str, payload: object) -> dict:
+def _resolve(path: object, directory: str | None) -> object:
+    if isinstance(path, str) and directory and not os.path.isabs(path):
+        return os.path.normpath(os.path.join(directory, path))
+    return path
+
+
+def _patch_files(text: object) -> list[str]:
+    """The files a patch adds, updates, deletes or moves to, in patch order."""
+    lines = text.splitlines() if isinstance(text, str) else []
+    return [
+        line[len(marker) :].strip()
+        for line in lines
+        for marker in PATCH_FILE_MARKERS
+        if line.startswith(marker)
+    ]
+
+
+def _tool_use(tool_id: str, name: str, payload: object, directory: str | None) -> dict:
+    name = TOOL_NAMES.get(name, name)
     inputs = payload if isinstance(payload, dict) else {}
-    return {
-        "type": "tool_use",
-        "id": tool_id,
-        "name": TOOL_NAMES.get(name, name),
-        "input": {INPUT_KEYS.get(key, key): value for key, value in inputs.items()},
-    }
+    inputs = {INPUT_KEYS.get(key, key): value for key, value in inputs.items()}
+    if name in FILE_TOOLS and "file_path" not in inputs and "path" in inputs:
+        inputs["file_path"] = inputs.pop("path")
+    if "file_path" in inputs:
+        inputs["file_path"] = _resolve(inputs["file_path"], directory)
+    if name == "Patch":
+        files = _patch_files(inputs.get("patchText"))
+        inputs["file_paths"] = [_resolve(path, directory) for path in files]
+    return {"type": "tool_use", "id": tool_id, "name": name, "input": inputs}
 
 
 def _tool_result(tool_id: str, output: str, is_error: bool) -> dict:
@@ -250,11 +287,12 @@ def _v2_output(state: dict) -> str:
     return "\n".join(text for text in texts if text)
 
 
-def _v2_tool(block: dict) -> tuple[dict, dict | None]:
+def _v2_tool(block: dict, directory: str | None) -> tuple[dict, dict | None]:
     """A V2 tool block as its `tool_use` and, once the call has finished, its result."""
     state = block.get("state") or {}
     # `streaming` stores the input as a partial JSON string; `_tool_use` drops it.
-    use = _tool_use(block.get("id"), block.get("name") or "tool", state.get("input"))
+    name = block.get("name") or "tool"
+    use = _tool_use(block.get("id"), name, state.get("input"), directory)
     status = state.get("status")
     error = state.get("error")
     interrupted = isinstance(error, dict) and error.get("type") == MIGRATION_INTERRUPTED
@@ -263,20 +301,21 @@ def _v2_tool(block: dict) -> tuple[dict, dict | None]:
     return use, _tool_result(block.get("id"), _v2_output(state), status == "error")
 
 
-def _v2_assistant(data: dict) -> tuple[list[dict], list[dict]]:
+def _v2_assistant(data: dict, directory: str | None) -> tuple[list[dict], list[dict]]:
     blocks: list[dict] = []
     results: list[dict] = []
     for block in data.get("content") or []:
         if block.get("type") == "text":
             blocks.extend(_text(block.get("text")))
         elif block.get("type") == "tool":
-            use, result = _v2_tool(block)
+            use, result = _v2_tool(block, directory)
             blocks.append(use)
             results.extend([result] if result else [])
     return blocks, results
 
 
 def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
+    directory = _directory(conn, "session_v2", session_id)
     lines: list[str] = []
     for role, data, timestamp in conn.execute(
         "SELECT type, data, time_created FROM session_message WHERE session_id=? ORDER BY seq",
@@ -286,18 +325,33 @@ def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
         if role == "user":
             lines.extend(_events("user", _text(data.get("text")), [], timestamp))
         elif role == "assistant":
-            lines.extend(_events("assistant", *_v2_assistant(data), timestamp))
+            blocks, results = _v2_assistant(data, directory)
+            lines.extend(_events("assistant", blocks, results, timestamp))
     return lines
 
 
-def _legacy_tool(row_id: str, part: dict) -> tuple[dict, dict | None]:
+def _directory(conn: sqlite3.Connection, table: str, session_id: str) -> str | None:
+    """The session's working directory, for resolving relative file paths."""
+    if not conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (table,)
+    ).fetchone():
+        return None
+    row = conn.execute(
+        f"SELECT directory FROM {table} WHERE id=?", (session_id,)
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _legacy_tool(
+    row_id: str, part: dict, directory: str | None
+) -> tuple[dict, dict | None]:
     """A legacy tool part as its `tool_use` and, once the call has finished, its result."""
     state = part.get("state") or {}
     call = part.get("call") or {}
     name = part.get("tool") or state.get("tool") or call.get("tool") or "tool"
     payload = state.get("input") or call.get("input") or {}
     tool_id = part.get("callID") or part.get("id") or row_id
-    use = _tool_use(tool_id, name, payload)
+    use = _tool_use(tool_id, name, payload, directory)
     # `pending` and `running` carry neither output nor error; emitting
     # a result for them files an unfinished call as a successful one.
     if state.get("status") in ("pending", "running"):
@@ -310,7 +364,7 @@ def _legacy_tool(row_id: str, part: dict) -> tuple[dict, dict | None]:
 
 
 def _legacy_blocks(
-    role: str, parts: list[tuple[str, dict]]
+    role: str, parts: list[tuple[str, dict]], directory: str | None
 ) -> tuple[list[dict], list[dict]]:
     blocks: list[dict] = []
     results: list[dict] = []
@@ -319,7 +373,7 @@ def _legacy_blocks(
         if kind == "text" and not part.get("synthetic"):
             blocks.extend(_text(part.get("text")))
         elif kind == "tool":
-            use, result = _legacy_tool(row_id, part)
+            use, result = _legacy_tool(row_id, part, directory)
             if role == "assistant":
                 blocks.append(use)
             results.extend([result] if result else [])
@@ -338,11 +392,13 @@ def _render_legacy(conn: sqlite3.Connection, session_id: str) -> list[str]:
     ):
         parts.setdefault(message_id, []).append((row_id, json.loads(data)))
 
+    directory = _directory(conn, "session", session_id)
     lines: list[str] = []
     for message_id, data, timestamp in messages:
         role = json.loads(data).get("role")
         if role in ("user", "assistant"):
-            blocks, results = _legacy_blocks(role, parts.get(message_id, []))
+            parts_of = parts.get(message_id, [])
+            blocks, results = _legacy_blocks(role, parts_of, directory)
             lines.extend(_events(role, blocks, results, timestamp))
     return lines
 

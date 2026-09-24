@@ -244,7 +244,8 @@ class OpencodeTranscriptTest(unittest.TestCase):
         self.assertEqual(len(detector.extract_tool_uses(events)), 1)
 
 
-def _v2_tool(call_id: str, state: dict, name: str = "bash") -> dict:
+def _v2_tool(call_id: str, state: dict, name: str = "shell") -> dict:
+    """A tool block; `shell` is what opencode 2.x names its shell tool."""
     return {
         "type": "tool",
         "id": call_id,
@@ -311,12 +312,14 @@ V2_ROWS = [
 def _v2_database(path: str, rows: list = V2_ROWS, session_id: str = "ses_v2") -> None:
     """The V2 tables, only as wide as the adapter reads."""
     conn = sqlite3.connect(path)
-    conn.execute("CREATE TABLE IF NOT EXISTS session_v2 (id TEXT PRIMARY KEY)")
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS session_v2 (id TEXT PRIMARY KEY, directory TEXT)"
+    )
     conn.execute(
         "CREATE TABLE IF NOT EXISTS session_message (id TEXT PRIMARY KEY, session_id TEXT,"
         " type TEXT, seq INTEGER, time_created INTEGER, time_updated INTEGER, data TEXT)"
     )
-    conn.execute("INSERT INTO session_v2 VALUES (?)", (session_id,))
+    conn.execute("INSERT INTO session_v2 VALUES (?, ?)", (session_id, "/repo"))
     # Inserted out of `seq` order, with `time_created` inverted, so a render
     # that sorts by anything but `seq` shows it.
     for message_id, kind, seq, data in reversed(rows):
@@ -471,54 +474,98 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
                 adapter.main([*argv, "--db", empty])
             self.assertIn("no supported schema", str(raised.exception))
 
-    def test_opencode_tools_reach_the_detectors_shell_and_file_signals(self) -> None:
-        """`bash`/`read` and `filePath` must arrive as `Bash`/`Read` and `file_path`.
+    def _tool_uses(self, *calls: tuple[str, dict]) -> list:
+        """The detector's tool uses for completed `(name, input)` calls, one turn each."""
+        self._sessions = getattr(self, "_sessions", 0) + 1
+        session_id = f"ses_sig{self._sessions}"
+        rows = [
+            (
+                f"m{n}",
+                "assistant",
+                n,
+                _v2_assistant(
+                    _v2_tool(
+                        f"call-{n}",
+                        {
+                            "status": "completed",
+                            "input": inputs,
+                            "content": [{"type": "text", "text": "ok"}],
+                        },
+                        name=name,
+                    )
+                ),
+            )
+            for n, (name, inputs) in enumerate(calls, start=1)
+        ]
+        _v2_database(self.db, rows, session_id)
+        out = self.dir / f"{session_id}.jsonl"
+        out.write_text("\n".join(self._render(session_id)) + "\n", encoding="utf-8")
+        return detector.extract_tool_uses(detector.load_jsonl(out))
 
-        The detector's signals match Claude's names; under opencode's, A12 and
-        A14 stay silent on a session that commits them.
+    def test_opencode_2x_tools_reach_the_detectors_shell_and_file_signals(self) -> None:
+        """2.x names its shell tool `shell` and its file key `path`.
+
+        The detector's signals match Claude's `Bash` and `file_path`. Under
+        opencode's names A14 stays silent on a push to main, and A12 files
+        every read under an empty path, so two different files look re-read.
         """
-        read = {"filePath": "/repo/app.py"}
-        _v2_database(
-            self.db,
-            [
-                (
-                    "m1",
-                    "assistant",
-                    1,
-                    _v2_assistant(
-                        *(
-                            _v2_tool(
-                                f"call-read-{n}",
-                                {
-                                    "status": "completed",
-                                    "input": read,
-                                    "content": [{"type": "text", "text": "x = 1"}],
-                                },
-                                name="read",
-                            )
-                            for n in (1, 2)
-                        ),
-                        _v2_tool(
-                            "call-push",
-                            {
-                                "status": "completed",
-                                "input": {"command": "git push origin main"},
-                                "content": [{"type": "text", "text": "ok"}],
-                            },
-                        ),
-                    ),
-                )
-            ],
-            session_id="ses_sig",
+        uses = self._tool_uses(
+            ("read", {"path": "app.py"}),
+            ("read", {"path": "lib.py"}),
+            ("read", {"path": "/repo/app.py"}),
+            ("shell", {"command": "git push origin main"}),
+            ("grep", {"pattern": "x", "path": "src"}),
+            ("glob", {"pattern": "*.py"}),
+            ("skill", {"name": "retro"}),
         )
-        out = self.dir / "signals.jsonl"
-        out.write_text("\n".join(self._render("ses_sig")) + "\n", encoding="utf-8")
-        tool_uses = detector.extract_tool_uses(detector.load_jsonl(out))
-
-        reread = detector.signal_reread_same_file(tool_uses)
+        # A5 reads `Grep`/`Glob`, A10 reads `Skill`.
+        self.assertEqual([u[1] for u in uses[-3:]], ["Grep", "Glob", "Skill"])
+        # On `grep` the `path` is a directory, not a file: it keeps its key.
+        self.assertEqual(uses[-3][2], {"pattern": "x", "path": "src"})
+        # `app.py` resolves against the session directory `/repo`.
+        reread = detector.signal_reread_same_file(uses)
         self.assertEqual([f["path"] for f in reread], ["/repo/app.py"])
-        pushes = detector.signal_main_branch_work(tool_uses)
+        pushes = detector.signal_main_branch_work(uses)
         self.assertEqual([f["signal"] for f in pushes], ["A14"])
+
+    def test_migrated_1x_tools_reach_the_same_signals(self) -> None:
+        """A migrated session keeps the 1.x names: `bash` and `filePath`."""
+        uses = self._tool_uses(
+            ("read", {"filePath": "/repo/app.py"}),
+            ("read", {"filePath": "/repo/app.py"}),
+            ("bash", {"command": "git push origin main"}),
+        )
+        reread = detector.signal_reread_same_file(uses)
+        self.assertEqual([f["path"] for f in reread], ["/repo/app.py"])
+        pushes = detector.signal_main_branch_work(uses)
+        self.assertEqual([f["signal"] for f in pushes], ["A14"])
+
+    def test_a_patch_between_two_reads_is_an_edit_of_every_file_it_names(self) -> None:
+        """Without it, read → patch → read looks like a re-read without an edit."""
+        # The example from opencode's `packages/core/src/tool/patch.txt`, shortened.
+        patch = (
+            "*** Begin Patch\n"
+            "*** Add File: new.py\n"
+            "+x = 1\n"
+            "*** Update File: app.py\n"
+            "*** Move to: main.py\n"
+            "@@\n"
+            "-a\n"
+            "+b\n"
+            "*** End Patch"
+        )
+        read = ("read", {"path": "/repo/app.py"})
+        for name in ("patch", "apply_patch"):
+            uses = self._tool_uses(read, (name, {"patchText": patch}), read)
+            self.assertEqual(
+                uses[1][2]["file_paths"],
+                ["/repo/new.py", "/repo/app.py", "/repo/main.py"],
+            )
+            self.assertEqual(detector.signal_reread_same_file(uses), [], name)
+        # The control: the same two reads with no patch between them.
+        self.assertNotEqual(
+            detector.signal_reread_same_file(self._tool_uses(read, read)), []
+        )
 
     def test_the_detector_accepts_the_rendered_v2_transcript(self) -> None:
         """The consumer contract, run end to end through the detector's own CLI."""
