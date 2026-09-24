@@ -229,6 +229,41 @@ class OpencodeTranscriptTest(unittest.TestCase):
         ]
         self.assertEqual(texts, ["please fix the CLI", "looking"])
 
+    def test_a_relative_file_path_resolves_against_the_session_directory(self) -> None:
+        conn = sqlite3.connect(self.db)
+        conn.execute("CREATE TABLE session (id TEXT, directory TEXT)")
+        conn.execute("INSERT INTO session VALUES ('s1', '/repo')")
+        state = {
+            "status": "completed",
+            "input": {"filePath": "src/app.py"},
+            "output": "x",
+        }
+        conn.execute(
+            "INSERT INTO part VALUES (?,?,?,?,?)",
+            (
+                "p7",
+                "m2",
+                "s1",
+                8,
+                json.dumps(
+                    {"type": "tool", "tool": "read", "id": "c7", "state": state}
+                ),
+            ),
+        )
+        conn.commit()
+        conn.close()
+
+        lines = adapter.render(adapter._connect(self.db), "s1")
+        read = next(
+            b
+            for line in lines
+            for b in json.loads(line)["message"]["content"]
+            if b.get("id") == "c7"
+        )
+        self.assertEqual(
+            (read["name"], read["input"]), ("Read", {"file_path": "/repo/src/app.py"})
+        )
+
     def test_an_unknown_session_id_is_refused_rather_than_rendered_empty(self) -> None:
         with self.assertRaises(SystemExit):
             adapter.main(["--session", "no-such-session", "--db", self.db])
@@ -552,6 +587,7 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
             "@@\n"
             "-a\n"
             "+b\n"
+            "*** Delete File: old.py\n"
             "*** End Patch"
         )
         read = ("read", {"path": "/repo/app.py"})
@@ -559,13 +595,83 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
             uses = self._tool_uses(read, (name, {"patchText": patch}), read)
             self.assertEqual(
                 uses[1][2]["file_paths"],
-                ["/repo/new.py", "/repo/app.py", "/repo/main.py"],
+                ["/repo/new.py", "/repo/app.py", "/repo/main.py", "/repo/old.py"],
             )
             self.assertEqual(detector.signal_reread_same_file(uses), [], name)
         # The control: the same two reads with no patch between them.
         self.assertNotEqual(
             detector.signal_reread_same_file(self._tool_uses(read, read)), []
         )
+
+    def test_a_1x_patch_header_without_a_space_still_names_its_file(self) -> None:
+        """1.x's parser matches `*** Update File:` and trims; the space is optional."""
+        # A header with no name at all names no file.
+        patch = "*** Begin Patch\n*** Update File:app.py\n*** Move to:main.py\n*** Add File:\n*** End Patch"
+        uses = self._tool_uses(("apply_patch", {"patchText": patch}))
+        self.assertEqual(uses[0][2]["file_paths"], ["/repo/app.py", "/repo/main.py"])
+
+    def test_a_home_relative_path_is_not_joined_onto_the_session_directory(
+        self,
+    ) -> None:
+        """opencode expands `~` to a home directory the database does not record."""
+        uses = self._tool_uses(("read", {"path": "~/.bashrc"}))
+        self.assertEqual(uses[0][2]["file_path"], "~/.bashrc")
+
+    def _moved_session(self, switch: dict) -> list:
+        """read, patch, read in `/old`; then the move; then one more patch."""
+        patch = {"patchText": "*** Begin Patch\n*** Update File: app.py\n*** End Patch"}
+        read = {"path": "/old/app.py"}
+        done = {"status": "completed", "content": [{"type": "text", "text": "ok"}]}
+        calls = [
+            ("read", read),
+            ("patch", patch),
+            ("read", read),
+            None,
+            ("patch", patch),
+        ]
+        rows = [
+            ("m4", "location-switched", 4, {**switch, "time": {"created": 4}})
+            if call is None
+            else (
+                f"m{n}",
+                "assistant",
+                n,
+                _v2_assistant(
+                    _v2_tool(f"c{n}", {**done, "input": call[1]}, name=call[0])
+                ),
+            )
+            for n, call in enumerate(calls, start=1)
+        ]
+        # The move has already rewritten the session's own directory.
+        _v2_database(self.db, rows, "ses_moved")
+        conn = sqlite3.connect(self.db)
+        conn.execute("UPDATE session_v2 SET directory='/new' WHERE id='ses_moved'")
+        conn.commit()
+        conn.close()
+        out = self.dir / "moved.jsonl"
+        out.write_text("\n".join(self._render("ses_moved")) + "\n", encoding="utf-8")
+        return detector.extract_tool_uses(detector.load_jsonl(out))
+
+    def test_a_moved_session_resolves_each_path_against_the_directory_it_had(
+        self,
+    ) -> None:
+        uses = self._moved_session(
+            {
+                "location": {"directory": "/new"},
+                "previous": {"location": {"directory": "/old"}},
+            }
+        )
+        patched = [u[2]["file_paths"] for u in uses if u[1] == "Patch"]
+        self.assertEqual(patched, [["/old/app.py"], ["/new/app.py"]])
+        self.assertEqual(detector.signal_reread_same_file(uses), [])
+
+    def test_a_move_without_a_previous_location_leaves_earlier_paths_relative(
+        self,
+    ) -> None:
+        """The start directory is then unknown; the current one would be wrong."""
+        uses = self._moved_session({"location": {"directory": "/new"}})
+        patched = [u[2]["file_paths"] for u in uses if u[1] == "Patch"]
+        self.assertEqual(patched, [["app.py"], ["/new/app.py"]])
 
     def test_the_detector_accepts_the_rendered_v2_transcript(self) -> None:
         """The consumer contract, run end to end through the detector's own CLI."""

@@ -56,7 +56,8 @@ detector's signals match Claude's `Bash`, `Read`, `Edit` and `file_path`. Both
 are renamed, or every shell and file signal passes over an opencode session
 without firing. A migrated session keeps the 1.x names. Relative file paths are
 resolved against the session's directory, so a patch that names `src/app.py`
-and a read of `/repo/src/app.py` count as the same file.
+and a read of `/repo/src/app.py` count as the same file. A 2.x session can be
+moved; its directory is followed through the `location-switched` rows.
 
 READ-ONLY. The database is opened with `mode=ro`, so pointing this at a live
 database cannot corrupt a session that is still being written.
@@ -98,12 +99,13 @@ TOOL_NAMES = {
 #: them, because on `grep` and `glob` it names a directory.
 INPUT_KEYS = {"filePath": "file_path"}
 FILE_TOOLS = {"Read", "Edit", "Write"}
-#: The header lines of opencode's patch format that name a file.
+#: The header lines of opencode's patch format that name a file. No trailing
+#: space: 1.x's parser accepts `*** Update File:app.py` and trims the rest.
 PATCH_FILE_MARKERS = (
-    "*** Add File: ",
-    "*** Update File: ",
-    "*** Delete File: ",
-    "*** Move to: ",
+    "*** Add File:",
+    "*** Update File:",
+    "*** Delete File:",
+    "*** Move to:",
 )
 
 #: A 1.x call still running at the upgrade is copied into V2 as this error. The
@@ -232,7 +234,10 @@ def _text(text: str | None) -> list[dict]:
 
 
 def _resolve(path: object, directory: str | None) -> object:
-    if isinstance(path, str) and directory and not os.path.isabs(path):
+    # A `~` path is left alone: opencode expands it to the session user's home,
+    # which the database does not record.
+    relative = isinstance(path, str) and not path.startswith("~")
+    if relative and directory and not os.path.isabs(path):
         return os.path.normpath(os.path.join(directory, path))
     return path
 
@@ -240,12 +245,13 @@ def _resolve(path: object, directory: str | None) -> object:
 def _patch_files(text: object) -> list[str]:
     """The files a patch adds, updates, deletes or moves to, in patch order."""
     lines = text.splitlines() if isinstance(text, str) else []
-    return [
+    files = [
         line[len(marker) :].strip()
         for line in lines
         for marker in PATCH_FILE_MARKERS
         if line.startswith(marker)
     ]
+    return [path for path in files if path]
 
 
 def _tool_use(tool_id: str, name: str, payload: object, directory: str | None) -> dict:
@@ -314,15 +320,43 @@ def _v2_assistant(data: dict, directory: str | None) -> tuple[list[dict], list[d
     return blocks, results
 
 
+def _location(data: dict, *keys: str) -> str | None:
+    """The directory of a `location-switched` row, at `data[keys…].location`."""
+    for key in keys:
+        data = data.get(key) or {}
+    return (data.get("location") or {}).get("directory")
+
+
+def _first_directory(
+    rows: list[tuple[str, dict, int]], current: str | None
+) -> str | None:
+    """The directory a V2 session started in.
+
+    A move rewrites `session_v2.directory` and appends a `location-switched`
+    row naming the new and the previous location, so the current directory is
+    only right from the last move on. Before the first move it is that row's
+    `previous` location — unknown when the row carries none.
+    """
+    for role, data, _ts in rows:
+        if role == "location-switched":
+            return _location(data, "previous")
+    return current
+
+
 def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
-    directory = _directory(conn, "session_v2", session_id)
+    rows = [
+        (role, json.loads(data), timestamp)
+        for role, data, timestamp in conn.execute(
+            "SELECT type, data, time_created FROM session_message WHERE session_id=? ORDER BY seq",
+            (session_id,),
+        )
+    ]
+    directory = _first_directory(rows, _directory(conn, "session_v2", session_id))
     lines: list[str] = []
-    for role, data, timestamp in conn.execute(
-        "SELECT type, data, time_created FROM session_message WHERE session_id=? ORDER BY seq",
-        (session_id,),
-    ):
-        data = json.loads(data)
-        if role == "user":
+    for role, data, timestamp in rows:
+        if role == "location-switched":
+            directory = _location(data)
+        elif role == "user":
             lines.extend(_events("user", _text(data.get("text")), [], timestamp))
         elif role == "assistant":
             blocks, results = _v2_assistant(data, directory)
