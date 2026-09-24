@@ -867,6 +867,63 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         )
         self.assertEqual(self._patched("ses_early"), ["/A/a.py", "/A/own.py"])
 
+    def test_each_fork_in_a_chain_compares_against_its_own_fork_time(self) -> None:
+        """The grandparent reverted and moved after the middle fork (60), but
+        before the outer fork (200). Only the middle fork's time rejects it."""
+        grandparent = [("patch", "a.py"), ("gone",), ("move", "/B", "/C")]
+        self._session("ses_g", grandparent, directory="/C")
+        one = [("patch", "a.py")]
+        self._session(
+            "ses_p", one, directory="/A", parent="ses_g", copied=1, created=60
+        )
+        self._session(
+            "ses_f", one, directory="/A", parent="ses_p", copied=1, created=200
+        )
+        self.assertEqual(self._patched("ses_f"), ["/A/a.py"])
+
+    def test_a_middle_forks_copied_move_keeps_its_original_time(self) -> None:
+        """The middle fork copied the grandparent's move, time and all, so it
+        predates both forks and still counts."""
+        steps = [("patch", "a.py"), ("move", "/A", "/B"), ("patch", "b.py")]
+        self._session("ses_g2", steps, directory="/B")
+        self._session(
+            "ses_p2", steps, directory="/B", parent="ses_g2", copied=3, created=500
+        )
+        self._session(
+            "ses_f2", steps[:1], directory="/B", parent="ses_p2", copied=1, created=600
+        )
+        self.assertEqual(self._patched("ses_f2"), ["/A/a.py"])
+
+    def test_a_move_in_the_forks_own_millisecond_counts_as_before_it(self) -> None:
+        """The move row's time is 98 (`100 - seq`), the fork's too."""
+        self._session(
+            "ses_pe", [("patch", "a.py"), ("move", "/A", "/B")], directory="/B"
+        )
+        self._session(
+            "ses_fe",
+            [("patch", "a.py")],
+            directory="/B",
+            parent="ses_pe",
+            copied=1,
+            created=98,
+        )
+        self.assertEqual(self._patched("ses_fe"), ["/A/a.py"])
+
+    def test_a_fork_time_of_zero_is_unknown_not_the_earliest(self) -> None:
+        """opencode stores 0 for an event that carried no time."""
+        self._session(
+            "ses_pz", [("patch", "a.py"), ("move", "/A", "/B")], directory="/B"
+        )
+        self._session(
+            "ses_fz",
+            [("patch", "a.py")],
+            directory="/B",
+            parent="ses_pz",
+            copied=1,
+            created=0,
+        )
+        self.assertEqual(self._patched("ses_fz"), ["/A/a.py"])
+
     def test_a_fork_of_a_fork_asks_each_parent_in_turn(self) -> None:
         """The grandparent moved after both fork points; only it knows `/A`."""
         self._session(

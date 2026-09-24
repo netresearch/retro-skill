@@ -408,8 +408,10 @@ def _directory_at(
             found, when = _directory_at(
                 conn, parent, boundary, seen, visiting | {session_id}
             )
+            # Both times are wall-clock epoch milliseconds. A fork time of 0
+            # is opencode's default for an event that carried none: unknown.
             forked = timeline["created"]
-            if when is not None and (forked is None or when < forked):
+            if when is not None and (not forked or when <= forked):
                 return found, when
     if later:
         return later[0][1], later[0][2]
