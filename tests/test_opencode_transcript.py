@@ -762,6 +762,13 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         umlaut = f"cat <<'E\u00d6F'\n{inner}\nE\u00d6F"
         self.assertEqual(self._files("patch", umlaut), [])
         self.assertEqual(self._files("apply_patch", umlaut), ["/repo/a.py"])
+        # After the closer, JavaScript's `\s` does not match U+0085, and
+        # `cat` needs whitespace before `<<`: 2.x unwraps neither.
+        for unwrapped in (f"cat <<EOF\n{inner}\nEOF\x85", f"cat<<EOF\n{inner}\nEOF"):
+            self.assertEqual(self._files("patch", unwrapped), [], repr(unwrapped))
+            self.assertEqual(
+                self._files("apply_patch", unwrapped), ["/repo/a.py"], repr(unwrapped)
+            )
 
     def test_a_home_relative_path_is_not_joined_onto_the_session_directory(
         self,
