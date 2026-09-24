@@ -255,7 +255,10 @@ def _resolve(path: object, directory: str | None, expands_home: bool) -> object:
 def _patch_files(text: object, trims_hunk_headers: bool) -> list[str]:
     """The files a patch adds, updates, deletes or moves to, in patch order."""
     files, in_update = [], False
-    for line in text.splitlines() if isinstance(text, str) else []:
+    # Split as opencode does, on "\n" only: `splitlines()` also breaks at a
+    # form feed or U+2028 inside patched content and invents headers there.
+    # A CRLF line's "\r" ends up in the name, which `.strip()` removes.
+    for line in text.split("\n") if isinstance(text, str) else []:
         header = line.strip() if trims_hunk_headers and not in_update else line
         marker = next((m for m in PATCH_HUNK_MARKERS if header.startswith(m)), None)
         if marker:

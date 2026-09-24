@@ -628,24 +628,38 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
     def test_an_indented_patch_header_counts_where_its_version_reads_it(self) -> None:
         """2.x trims a header line except inside an Update hunk, where an
         indented line is context; 1.x never trims."""
+        # The Update hunk ends at the unindented Add header; an indented
+        # `Move to` is context in both versions.
         patch = (
             "*** Begin Patch\n"
             "  *** Add File: new.py\n"
             "+x = 1\n"
             "  *** Update File: app.py\n"
+            "  *** Move to: moved.py\n"
             "@@\n"
             "-a\n"
             "+b\n"
             " *** Update File: context.py\n"
-            "*** Delete File: old.py\n"
+            "*** Add File: x.py\n"
+            "+1\n"
+            "  *** Delete File: old.py\n"
             "*** End Patch"
         )
         v2 = self._tool_uses(("patch", {"patchText": patch}))
         self.assertEqual(
-            v2[0][2]["file_paths"], ["/repo/new.py", "/repo/app.py", "/repo/old.py"]
+            v2[0][2]["file_paths"],
+            ["/repo/new.py", "/repo/app.py", "/repo/x.py", "/repo/old.py"],
         )
         v1 = self._tool_uses(("apply_patch", {"patchText": patch}))
-        self.assertEqual(v1[0][2]["file_paths"], ["/repo/old.py"])
+        self.assertEqual(v1[0][2]["file_paths"], ["/repo/x.py"])
+
+    def test_a_patch_splits_only_at_newlines(self) -> None:
+        """A form feed or U+2028 in patched content does not start a header."""
+        for sep in ("\x0c", " "):
+            patch = f"*** Begin Patch\n*** Add File: a.py\n+x{sep}*** Add File: b.py\n*** End Patch"
+            for name in ("patch", "apply_patch"):
+                uses = self._tool_uses((name, {"patchText": patch}))
+                self.assertEqual(uses[0][2]["file_paths"], ["/repo/a.py"], name)
 
     def test_a_home_relative_path_is_not_joined_onto_the_session_directory(
         self,
