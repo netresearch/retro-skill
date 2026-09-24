@@ -327,7 +327,11 @@ V2_ROWS = [
                     "status": "error",
                     "input": {"command": "make lint"},
                     "error": {"type": "unknown", "message": "lint failed"},
-                    "content": [{"type": "text", "text": "2 findings"}],
+                    # An empty text item adds no blank line to the result.
+                    "content": [
+                        {"type": "text", "text": ""},
+                        {"type": "text", "text": "2 findings"},
+                    ],
                 },
             ),
             _v2_tool(
@@ -1125,6 +1129,25 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
             )
         legacy = adapter._tool_use("c", "read", {"filePath": "~/.bashrc"}, "/repo")
         self.assertEqual(legacy["input"], {"file_path": "/repo/~/.bashrc"})
+
+    def test_a_migrated_1x_call_keeps_1x_home_rules_in_a_v2_session(self) -> None:
+        """2.x copies a 1.x call with its `filePath` or `apply_patch`; 1.x did
+        not expand `~`, so the V2 render resolves it like the legacy one."""
+        patch = "*** Begin Patch\n*** Add File: ~/notes.md\n+x\n*** End Patch"
+        uses = self._tool_uses(
+            ("read", {"filePath": "~/.bashrc"}),
+            ("apply_patch", {"patchText": patch}),
+            ("read", {"path": "~/.bashrc"}),
+        )
+        self.assertEqual(uses[0][2]["file_path"], "/repo/~/.bashrc")
+        self.assertEqual(uses[1][2]["file_paths"], ["/repo/~/notes.md"])
+        self.assertEqual(uses[2][2]["file_path"], "~/.bashrc")
+
+    def test_help_keeps_the_docstrings_line_breaks(self) -> None:
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), self.assertRaises(SystemExit):
+            adapter.main(["--help"])
+        self.assertIn("\n  · V2 (opencode 2.x)", out.getvalue())
 
     def test_the_detector_accepts_the_rendered_v2_transcript(self) -> None:
         """The consumer contract, run end to end through the detector's own CLI."""

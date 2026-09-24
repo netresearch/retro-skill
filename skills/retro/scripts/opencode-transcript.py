@@ -375,8 +375,14 @@ def _v2_tool(block: dict, directory: str | None) -> tuple[dict, dict | None]:
     state = block.get("state") or {}
     # `streaming` stores the input as a partial JSON string; `_tool_use` drops it.
     name = block.get("name") or "tool"
+    payload = state.get("input")
+    # A call 2.x copied from a 1.x session keeps its 1.x shape (`filePath`,
+    # `apply_patch`), and 1.x did not expand `~`.
+    migrated = name == "apply_patch" or (
+        isinstance(payload, dict) and "filePath" in payload
+    )
     use = _tool_use(
-        block.get("id"), name, state.get("input"), directory, expands_home=True
+        block.get("id"), name, payload, directory, expands_home=not migrated
     )
     status = state.get("status")
     error = state.get("error")
