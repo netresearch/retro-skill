@@ -62,7 +62,9 @@ without firing. A migrated session keeps the 1.x names. `patch` (2.x) and
 paths are resolved against the session's directory, so a patch that names
 `src/app.py` and a read of `/repo/src/app.py` count as the same file; 2.x
 expands `~` and `~/…` to a home directory the database does not record, so
-those stay as they are. A 2.x session can be moved or forked; each row is
+those stay as they are — except in a call 2.x copied from a 1.x session
+(`filePath`, `apply_patch`), which keeps 1.x's rule and is joined like any
+other relative path. A 2.x session can be moved or forked; each row is
 resolved against the directory it ran in, taken from the `location-switched`
 rows and, for a fork's copied rows, the parent's.
 
@@ -377,7 +379,9 @@ def _v2_tool(block: dict, directory: str | None) -> tuple[dict, dict | None]:
     name = block.get("name") or "tool"
     payload = state.get("input")
     # A call 2.x copied from a 1.x session keeps its 1.x shape (`filePath`,
-    # `apply_patch`), and 1.x did not expand `~`.
+    # `apply_patch`), and 1.x did not expand `~`. Checked against v2.0.15,
+    # where no native tool takes either; a TODO in its `write.ts` considers
+    # renaming `path` to `filePath`, which would end this distinction.
     migrated = name == "apply_patch" or (
         isinstance(payload, dict) and "filePath" in payload
     )
