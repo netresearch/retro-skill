@@ -117,6 +117,10 @@ Scan session JSONL across projects for related friction:
 python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>"
 ```
 
+For an audit, three modes read the whole window (see the Schicht C section of
+`friction-catalog.md`): `--user-correction-summary` (C1/C2),
+`--recurring-failures` (C1) and `--follow-up-sessions` (C5).
+
 ## Phase 4: Classification
 
 Run **Phase 5 skill discovery first** — the catalogue of all skills (installed

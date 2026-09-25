@@ -27,7 +27,7 @@ Ingestion of error trackers, monitoring and chat is out of scope — see "Future
 |---|---|---|
 | A — Mechanical | 18 | 18 (all of A1–A18) |
 | B — LLM inference | 20 | LLM-driven; B16–B20 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py` |
-| C — Cross-session | 5 | Partial (script `scan-cross-session.py`) |
+| C — Cross-session | 5 | Partial (script `scan-cross-session.py`: C1, C2, C5) |
 | D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
 
@@ -216,12 +216,30 @@ Not detectable from a single session. Session-file scan across projects.
 
 | # | Signal | Hint at | Source |
 |---|---|---|---|
-| C1 | Same friction again | Same correction across multiple sessions — memory didn't stick | Multi-session JSONL scan |
-| C2 | Cross-project pattern | Same friction class in N≥2 projects | Multi-session JSONL grouped by project |
+| C1 | Same friction again | Same correction across multiple sessions — memory didn't stick | `scan-cross-session.py --user-correction-summary` (`cross_session_corrections`) and `--recurring-failures` |
+| C2 | Cross-project pattern | Same friction class in N≥2 projects | `scan-cross-session.py --user-correction-summary` (`cross_project_corrections`) |
 | C3 | Memory drift | `feedback_*.md` exists but assistant violated it anyway → skill needs it more prominently | JSONL diff against memory files |
 | C4 | Skill update ineffective | Previous PR to skill X, same bug returned afterward | Git log of skill repo + JSONL |
 | C6 | Written rule violated repeatedly | A signal fired >=3x while a matching rule already exists in the always-loaded instructions | Prose has demonstrably failed — needs a mechanical gate, unless one is already deployed (see below) |
-| C5 | Follow-up-fix session | A later session exists primarily to fix what an earlier session broke (mentions earlier commits, works on same files within 7 days with reverting edits, or `git revert` of earlier commits) | Cross-session JSONL + git log |
+| C5 | Follow-up-fix session | A later session exists primarily to fix what an earlier session broke (mentions earlier commits, works on same files within 7 days with reverting edits, or `git revert` of earlier commits) | `scan-cross-session.py --follow-up-sessions`; the "mentions earlier commits" part stays model-read |
+
+The three C1/C5 modes read every tool call in the window, so they run on
+demand (`/retro audit`), not per event. Each reports only what recurs in at
+least two sessions, names the sessions, and caps its lists at `--limit`. A hit
+says where to look; the model still reads the two sessions before calling it a
+finding.
+
+- `--recurring-failures` groups failed tool calls by tool plus the line that
+  names the failure, with paths, hashes and numbers dropped. Calls a hook or
+  the harness refused are left out and counted — a refusal is a deployed gate
+  working, and C6 already reads it; `--include-refusals` lists them anyway.
+- `--follow-up-sessions` reports `reverted_commits` (a `git revert` of a commit
+  an earlier session wrote, matched through `git commit` output) and
+  `rewritten_edits` (a later `Edit`/`MultiEdit` whose `old_string` holds text an
+  earlier session wrote, `exact_revert` when it put the earlier text back).
+  Files are keyed by repository and path inside it, so the worktrees of one
+  repository — removed ones included — share a key. Edits made through Bash are
+  not counted yet.
 
 A C6 finding carries `gate_observed`. It is true when a PreToolUse hook denied
 a call in this same session for the rule C6 is escalating — the denial reaches

@@ -240,7 +240,7 @@ retro-skill/
 │       └── validate-evals.py         # validates retro's own evals (RT-40..42)
 ├── commands/retro.md             # /retro slash command (Claude Code plugin only)
 ├── hooks/session-end.json        # optional SessionEnd reminder (off by default; plugin-level, outside skills/retro/)
-├── tests/                        # no module yet for scan-cross-session.py or the shell scripts
+├── tests/                        # no module yet for the shell scripts
 │   ├── test_check_upstream_sources.py
 │   ├── test_collect_review_findings.py
 │   ├── test_detect_mechanical.py
