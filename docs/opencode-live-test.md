@@ -62,6 +62,8 @@ A local server accepts any value for `LOCAL_API_KEY`. From WSL, a server running
 
 ## Produce sessions and render them
 
+`--auto` lets the model run its tools without asking. The wrapper isolates only opencode's own data, so a shell command the model runs has your user's access to files, processes and the network. Run the test in a disposable container or VM with no host files mounted.
+
 `RETRO` is the root of this repository's checkout. The model works in `$O/proj`, so the scripts are called by absolute path:
 
 ```bash
