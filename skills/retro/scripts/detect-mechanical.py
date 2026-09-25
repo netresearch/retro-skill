@@ -1035,6 +1035,17 @@ def signal_skill_reminder_vs_invoke(events) -> list[dict]:
     return out
 
 
+def _edited_paths(name: str, inp: dict) -> list[str]:
+    """The files a tool call edits."""
+    if name in ("Edit", "Write", "MultiEdit"):
+        return [inp.get("file_path", "")]
+    if name == "Patch":
+        # opencode's patch tool, as `opencode-transcript.py` renders it: one
+        # call that edits every file its headers name.
+        return list(inp.get("file_paths", []))
+    return []
+
+
 def signal_reread_same_file(tool_uses) -> list[dict]:
     out = []
     reads: dict[str, list[int]] = defaultdict(list)
@@ -1042,8 +1053,8 @@ def signal_reread_same_file(tool_uses) -> list[dict]:
     for i, name, inp, result, is_error in tool_uses:
         if name == "Read":
             reads[inp.get("file_path", "")].append(i)
-        elif name in ("Edit", "Write", "MultiEdit"):
-            edits[inp.get("file_path", "")].append(i)
+        for path in _edited_paths(name, inp):
+            edits[path].append(i)
     for path, read_turns in reads.items():
         if len(read_turns) < 2:
             continue

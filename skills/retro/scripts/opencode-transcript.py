@@ -6,25 +6,67 @@
 
 WHY THIS EXISTS. `detect-mechanical.py` parses a Claude Code transcript, and an
 agent running under opencode keeps its session somewhere else entirely: a SQLite
-database, `~/.local/share/opencode/opencode.db`, with the messages in `message.data`
-and their blocks in `part.data` as JSON. Without this, layer A simply cannot run on
-those sessions — the operator is left doing the LLM pass by hand, which is the cost
-this project exists to remove.
+database, `~/.local/share/opencode/opencode.db`, as JSON in one of two schemas.
+Without this, layer A simply cannot run on those sessions — the operator is left
+doing the LLM pass by hand, which is the cost this project exists to remove.
+
+TWO SCHEMAS, chosen per session by which table holds its rows:
+
+  · V2 (opencode 2.x): `session_v2` + `session_message`, one row per message,
+    ordered by `seq`. The role is the `type` COLUMN — `data` carries no `role` —
+    and an assistant's blocks sit in `data.content[]`;
+  · legacy (opencode 1.x): `message` + `part`, the role in `message.data` and the
+    blocks in `part.data`, one row each.
+
+A session found in both is rendered from V2. opencode 2.x copies every 1.x
+session into the V2 tables under the same id and never deletes the legacy rows,
+but writes new messages only to V2 — a fresh 2.x database has no `message` or
+`part` table at all — so the legacy copy of such a session stops at the upgrade.
+A database that has neither table set is refused.
 
 THE SESSION IS FOUND BY CONTENT. `--match` takes any token from the session under
-review and greps the parts for it, exactly as `references/workflow.md` requires of
-the Claude path: several sessions share one project, so the newest row is regularly
-somebody else's. `--session` skips the search when the id is already known.
+review and greps the stored JSON for it, exactly as `references/workflow.md`
+requires of the Claude path: several sessions share one project, so the newest row
+is regularly somebody else's. `--session` skips the search when the id is known.
 
-THE MAPPING, and the two places it had to be discovered by measuring:
+THE LEGACY MAPPING, and the two places it had to be discovered by measuring:
 
-  · a `text` part becomes a `text` block;
+  · a `text` part becomes a `text` block; a `synthetic` one, which opencode
+    injected rather than the user typed, is dropped;
   · a `tool` part holds BOTH the call and its result, so it becomes a `tool_use`
     block on the assistant turn AND a `tool_result` block on a user turn
     immediately after — which is where Claude puts it;
   · every `tool_use` NEEDS an `id` and every `tool_result` a matching `tool_use_id`.
     Without them `detect-mechanical.py` raises `KeyError: 'id'` on its first tool
     block, so the id falls back through `callID` to the part's own row id.
+
+THE V2 MAPPING, read from opencode's `packages/schema/src/session-message.ts` at
+v2.0.15: a `user` row's `data.text` becomes a `text` block; an `assistant` row's
+`text` blocks stay, `reasoning` blocks are dropped as in the legacy path, and a
+`tool` block (`id`, `name`, `state.input`) becomes the same `tool_use` +
+`tool_result` pair. Its output is `state.content[]` and its error
+`state.error.message`; there is no `state.output`. A `streaming` call carries
+its input as a partial JSON STRING, which the detector would call `.get` on.
+A `running` or `streaming` call gets no result, and neither does a
+`tool.interrupted` error, which is how 2.x copies a 1.x call that was still
+running at the upgrade. The other row types (`synthetic`, `shell`,
+`compaction`, `system`, …) are not rendered.
+
+TOOL NAMES. opencode names its tools `bash` (1.x) or `shell` (2.x), `read`,
+`edit`, … and its file tools take `filePath` (1.x) or `path` (2.x); the
+detector's signals match Claude's `Bash`, `Read`, `Edit` and `file_path`. Both
+are renamed, or every shell and file signal passes over an opencode session
+without firing. A migrated session keeps the 1.x names. `patch` (2.x) and
+`apply_patch` (1.x) become `Patch`, with the files the patch headers name in
+`file_paths`; the detector's A12 counts it as an edit of each. Relative file
+paths are resolved against the session's directory, so a patch that names
+`src/app.py` and a read of `/repo/src/app.py` count as the same file; 2.x
+expands `~` and `~/…` to a home directory the database does not record, so
+those stay as they are — except in a call 2.x copied from a 1.x session
+(`filePath`, `apply_patch`), which keeps 1.x's rule and is joined like any
+other relative path. A 2.x session can be moved or forked; each row is
+resolved against the directory it ran in, taken from the `location-switched`
+rows and, for a fork's copied rows, the parent's.
 
 READ-ONLY. The database is opened with `mode=ro`, so pointing this at a live
 database cannot corrupt a session that is still being written.
@@ -35,6 +77,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import sqlite3
 import sys
 from urllib.parse import quote
@@ -44,6 +87,64 @@ DEFAULT_DB = "~/.local/share/opencode/opencode.db"
 #: (an error is at the top, a stack trace at the bottom) and not worth carrying
 #: whole: layer A only reads snippets, and a session's outputs run to megabytes.
 RESULT_CHARS = 6000
+
+#: opencode's tool names, 1.x and 2.x, as the detector knows them from Claude
+#: Code — only those a detector signal reads by name. `patch` has no Claude
+#: counterpart: it becomes `Patch`, which the detector's A12 counts as an edit
+#: of every file in `file_paths`.
+TOOL_NAMES = {
+    "bash": "Bash",
+    "shell": "Bash",
+    "read": "Read",
+    "edit": "Edit",
+    "write": "Write",
+    "apply_patch": "Patch",
+    "patch": "Patch",
+    "grep": "Grep",
+    "glob": "Glob",
+    "skill": "Skill",
+}
+#: opencode's input keys that the detector reads under Claude's name. The file
+#: tools take `filePath` in 1.x and `path` in 2.x; `path` is only renamed for
+#: them, because on `grep` and `glob` it names a directory.
+INPUT_KEYS = {"filePath": "file_path"}
+FILE_TOOLS = {"Read", "Edit", "Write"}
+#: The header lines of opencode's patch format that name a file, as its two
+#: parsers read them (`packages/util/src/patch.ts` at v2.0.15 for 2.x's
+#: `patch`, `src/patch/index.ts` for 1.x's `apply_patch`):
+#:
+#:   · only lines between `*** Begin Patch` and `*** End Patch` count. 2.x
+#:     requires them as the first and the last line; 1.x takes the first of
+#:     each, anywhere;
+#:   · no space is needed after the colon: 1.x accepts `*** Update File:app.py`;
+#:   · 2.x trims a line before matching a hunk header, except inside an Update
+#:     hunk, where an indented line is context; 1.x matches the raw line;
+#:   · `*** Move to:` counts only directly after an Update header — in 2.x
+#:     after any `*** End of File` lines — and never indented.
+PATCH_BEGIN, PATCH_END, PATCH_END_OF_FILE = (
+    "*** Begin Patch",
+    "*** End Patch",
+    "*** End of File",
+)
+PATCH_UPDATE_MARKER = "*** Update File:"
+PATCH_HUNK_MARKERS = ("*** Add File:", PATCH_UPDATE_MARKER, "*** Delete File:")
+PATCH_MOVE_MARKER = "*** Move to:"
+#: What JavaScript's `trim()` and `\s` remove, which opencode's parsers use.
+#: Python's `str.strip()` differs: it also strips U+001C-U+001F and U+0085,
+#: and keeps the byte-order mark U+FEFF.
+JS_WHITESPACE = "\t\n\v\f\r \xa0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+_JS_S = "[" + re.escape(JS_WHITESPACE) + "]"
+#: How 2.x unwraps a patch sent as a shell heredoc (`\w` is ASCII in
+#: JavaScript). 1.x's regex does not require the two quotes to match; it
+#: finds the markers anywhere in the text, so the files it names are the same.
+PATCH_HEREDOC = re.compile(
+    rf"^(?:cat{_JS_S}+)?<<(['\"]?)([A-Za-z0-9_]+)\1{_JS_S}*\n([\s\S]*?)\n\2{_JS_S}*$"
+)
+
+#: A 1.x call still running at the upgrade is copied into V2 as this error. The
+#: legacy path emits no result for a running call; neither does the V2 one, or
+#: every interrupted call of a migrated session reads as a failed command.
+MIGRATION_INTERRUPTED = "tool.interrupted"
 
 
 def _snippet(output: str) -> str:
@@ -66,17 +167,57 @@ def _connect(path: str) -> sqlite3.Connection:
     )
 
 
+#: Per schema: the tables that identify it, the table with one row per message,
+#: and the table whose `data` holds the session's content. V2 is listed first:
+#: a session in both schemas is rendered from V2.
+SCHEMAS = {
+    "v2": ({"session_v2", "session_message"}, "session_message", "session_message"),
+    "legacy": ({"message", "part"}, "message", "part"),
+}
+
+
+def _schemas(conn: sqlite3.Connection) -> list[str]:
+    """The schemas this database carries, or a refusal when it carries neither."""
+    tables = {
+        row[0]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    found = [name for name, (needed, _, _) in SCHEMAS.items() if needed <= tables]
+    if not found:
+        raise SystemExit(
+            "opencode-transcript: no supported schema: expected the tables"
+            " session_v2 + session_message (opencode 2.x) or message + part (1.x)"
+        )
+    return found
+
+
+def schema_of(conn: sqlite3.Connection, session_id: str) -> str | None:
+    """The first schema whose message table holds `session_id`, or None."""
+    for name in _schemas(conn):
+        query = f"SELECT 1 FROM {SCHEMAS[name][1]} WHERE session_id=? LIMIT 1"
+        if conn.execute(query, (session_id,)).fetchone() is not None:
+            return name
+    return None
+
+
 def find_session(conn: sqlite3.Connection, token: str) -> str:
-    """The session whose parts carry `token`, or a refusal naming the ambiguity."""
+    """The session whose content carries `token`, or a refusal naming the ambiguity."""
     # `_` and `%` are LIKE wildcards, so an unescaped token matches more than it
     # says: `foo_bar` also finds `fooXbar`, and the extra session shows up as the
     # ambiguity refusal below rather than as a wrong answer — but a token that is
     # only wildcards matches everything.
     escaped = token.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
-    rows = conn.execute(
-        "SELECT DISTINCT session_id FROM part WHERE data LIKE ? ESCAPE '\\'",
-        (f"%{escaped}%",),
-    ).fetchall()
+    rows = sorted(
+        {
+            row
+            for name in _schemas(conn)
+            for row in conn.execute(
+                f"SELECT DISTINCT session_id FROM {SCHEMAS[name][2]}"
+                " WHERE data LIKE ? ESCAPE '\\'",
+                (f"%{escaped}%",),
+            )
+        }
+    )
     if not rows:
         raise SystemExit(f"opencode-transcript: no session carries {token!r}")
     if len(rows) > 1:
@@ -88,6 +229,361 @@ def find_session(conn: sqlite3.Connection, token: str) -> str:
 
 
 def render(conn: sqlite3.Connection, session_id: str) -> list[str]:
+    """The session as detector JSONL lines, from whichever schema holds it."""
+    schema = schema_of(conn, session_id)
+    # A mistyped id otherwise renders nothing and exits 0, which reads as an
+    # empty session. Asked of the message tables, not of `session`: those are
+    # the rows the adapter goes on to read.
+    if schema is None:
+        raise SystemExit(f"opencode-transcript: no messages for session {session_id!r}")
+    if schema == "v2":
+        return _render_v2(conn, session_id)
+    return _render_legacy(conn, session_id)
+
+
+def _event(role: str, content: list[dict], timestamp: int) -> str:
+    return json.dumps(
+        {
+            "type": role,
+            "message": {"role": role, "content": content},
+            "timestamp": timestamp,
+        },
+        ensure_ascii=False,
+    )
+
+
+def _events(
+    role: str, blocks: list[dict], results: list[dict], timestamp: int
+) -> list[str]:
+    """One turn's blocks, then its tool results on a user turn — where Claude puts them."""
+    lines = [_event(role, blocks, timestamp)] if blocks else []
+    if results:
+        lines.append(_event("user", results, timestamp))
+    return lines
+
+
+def _text(text: str | None) -> list[dict]:
+    return [{"type": "text", "text": text}] if text and text.strip() else []
+
+
+def _resolve(path: object, directory: str | None, expands_home: bool) -> object:
+    # opencode 2.x expands `~` and `~/…` to the session user's home, which the
+    # database does not record, so those stay as they are. 1.x resolves them
+    # against the directory like any other relative path.
+    if not isinstance(path, str) or not directory or os.path.isabs(path):
+        return path
+    if expands_home and (path == "~" or path.startswith("~/")):
+        return path
+    return os.path.normpath(os.path.join(directory, path))
+
+
+def _patch_lines(text: object, v2: bool) -> list[str]:
+    """The lines between a patch's Begin and End markers; none when it has none."""
+    if not isinstance(text, str):
+        return []
+    text = text.strip(JS_WHITESPACE)
+    heredoc = PATCH_HEREDOC.match(text)
+    # Split as opencode does, on "\n" only: `splitlines()` also breaks at a
+    # form feed or U+2028 inside patched content and invents headers there.
+    # A CRLF line's "\r" ends up in the name, which the strip removes.
+    lines = (heredoc.group(3) if heredoc else text).split("\n")
+    marks = [line.strip(JS_WHITESPACE) for line in lines]
+    if v2:
+        framed = len(lines) > 1 and marks[0] == PATCH_BEGIN and marks[-1] == PATCH_END
+        return lines[1:-1] if framed else []
+    begin = marks.index(PATCH_BEGIN) if PATCH_BEGIN in marks else None
+    end = marks.index(PATCH_END) if PATCH_END in marks else None
+    if begin is None or end is None or begin >= end:
+        return []
+    return lines[begin + 1 : end]
+
+
+def _patch_files(text: object, v2: bool) -> list[str]:
+    """The files a patch adds, updates, deletes or moves to, in patch order."""
+    files, in_update, expect_move = [], False, False
+    for line in _patch_lines(text, v2):
+        found, in_update, expect_move = _patch_step(line, v2, in_update, expect_move)
+        if found:
+            files.append(found)
+    return files
+
+
+def _patch_step(
+    line: str, v2: bool, in_update: bool, expect_move: bool
+) -> tuple[str, bool, bool]:
+    """One patch line: the file it names, if any, and the parser state after it."""
+    header = line.strip(JS_WHITESPACE) if v2 and not in_update else line
+    marker = next((m for m in PATCH_HUNK_MARKERS if header.startswith(m)), None)
+    if marker:
+        name = header[len(marker) :].strip(JS_WHITESPACE)
+        update = marker == PATCH_UPDATE_MARKER
+        # A header without a name is no header: 1.x skips it, Move and all.
+        return name, update, update and bool(name)
+    if expect_move and line.startswith(PATCH_MOVE_MARKER):
+        move = line[len(PATCH_MOVE_MARKER) :].strip(JS_WHITESPACE)
+        return move, in_update, False
+    end_of_file = v2 and line.rstrip(JS_WHITESPACE) == PATCH_END_OF_FILE
+    return "", in_update, expect_move and end_of_file
+
+
+def _tool_use(
+    tool_id: str,
+    name: str,
+    payload: object,
+    directory: str | None,
+    expands_home: bool = False,
+) -> dict:
+    v2_patch = name == "patch"
+    name = TOOL_NAMES.get(name, name)
+    inputs = payload if isinstance(payload, dict) else {}
+    inputs = {INPUT_KEYS.get(key, key): value for key, value in inputs.items()}
+    if name in FILE_TOOLS and "file_path" not in inputs and "path" in inputs:
+        inputs["file_path"] = inputs.pop("path")
+    if "file_path" in inputs:
+        inputs["file_path"] = _resolve(inputs["file_path"], directory, expands_home)
+    if name == "Patch":
+        files = _patch_files(inputs.get("patchText"), v2_patch)
+        inputs["file_paths"] = [_resolve(p, directory, expands_home) for p in files]
+    return {"type": "tool_use", "id": tool_id, "name": name, "input": inputs}
+
+
+def _tool_result(tool_id: str, output: str, is_error: bool) -> dict:
+    return {
+        "type": "tool_result",
+        "tool_use_id": tool_id,
+        "content": _snippet(output),
+        "is_error": is_error,
+    }
+
+
+def _v2_output(state: dict) -> str:
+    """A V2 tool result as text: the error message first, then the content items."""
+    texts = []
+    error = state.get("error")
+    if isinstance(error, dict):
+        error = error.get("message")
+    if error:
+        texts.append(str(error))
+    for item in state.get("content") or []:
+        if item.get("type") == "text":
+            texts.append(item.get("text") or "")
+        elif item.get("type") == "file":
+            texts.append(f"[file {item.get('name') or item.get('uri') or ''}]")
+    return "\n".join(text for text in texts if text)
+
+
+def _v2_tool(block: dict, directory: str | None) -> tuple[dict, dict | None]:
+    """A V2 tool block as its `tool_use` and, once the call has finished, its result."""
+    state = block.get("state") or {}
+    # `streaming` stores the input as a partial JSON string; `_tool_use` drops it.
+    name = block.get("name") or "tool"
+    payload = state.get("input")
+    # A call 2.x copied from a 1.x session keeps its 1.x shape (`filePath`,
+    # `apply_patch`), and 1.x did not expand `~`. Checked against v2.0.15,
+    # where no native tool takes either; a TODO in its `write.ts` considers
+    # renaming `path` to `filePath`, which would end this distinction.
+    migrated = name == "apply_patch" or (
+        isinstance(payload, dict) and "filePath" in payload
+    )
+    use = _tool_use(
+        block.get("id"), name, payload, directory, expands_home=not migrated
+    )
+    status = state.get("status")
+    error = state.get("error")
+    interrupted = isinstance(error, dict) and error.get("type") == MIGRATION_INTERRUPTED
+    if status not in ("completed", "error") or interrupted:
+        return use, None
+    return use, _tool_result(block.get("id"), _v2_output(state), status == "error")
+
+
+def _v2_assistant(data: dict, directory: str | None) -> tuple[list[dict], list[dict]]:
+    blocks: list[dict] = []
+    results: list[dict] = []
+    for block in data.get("content") or []:
+        if block.get("type") == "text":
+            blocks.extend(_text(block.get("text")))
+        elif block.get("type") == "tool":
+            use, result = _v2_tool(block, directory)
+            blocks.append(use)
+            results.extend([result] if result else [])
+    return blocks, results
+
+
+def _location(data: dict, *keys: str) -> str | None:
+    """The directory of a `location-switched` row, at `data[keys…].location`."""
+    for key in keys:
+        data = data.get(key) or {}
+    return (data.get("location") or {}).get("directory")
+
+
+def _timeline(conn: sqlite3.Connection, session_id: str) -> dict:
+    """What decides a V2 session's directory at a given `seq`.
+
+    A move rewrites `session_v2.directory` and appends a `location-switched`
+    row naming the previous location, so the current directory holds only
+    after the last move. A fork starts in its parent's directory at fork time
+    and copies the parent's rows with their `seq`, under ids ending `_<seq>` —
+    moves included, so the fork's own copies say where most copied rows ran.
+    """
+    # `SELECT *`: a database from before forks has no `fork_session_id`.
+    cursor = conn.execute("SELECT * FROM session_v2 WHERE id=?", (session_id,))
+    session = cursor.fetchone()
+    names = [column[0] for column in cursor.description]
+    info = dict(zip(names, session)) if session else {}
+    switches, copied, seqs = [], set(), set()
+    for row_id, kind, seq, data, created in conn.execute(
+        "SELECT id, type, seq, data, time_created FROM session_message"
+        " WHERE session_id=? ORDER BY seq",
+        (session_id,),
+    ):
+        seqs.add(seq)
+        if kind == "location-switched":
+            previous = _location(json.loads(data), "previous")
+            switches.append((seq, previous, created))
+        if row_id.endswith(f"_{seq}"):
+            copied.add(seq)
+    return {
+        "directory": info.get("directory"),
+        "created": info.get("time_created"),
+        "parent": info.get("fork_session_id"),
+        "switches": switches,
+        "copied": copied,
+        # The fork boundary: the last row the fork copied.
+        "boundary": max(copied, default=None),
+        "seqs": seqs,
+    }
+
+
+def _directory_at(
+    conn: sqlite3.Connection,
+    session_id: str,
+    seq: int,
+    timelines: dict,
+    visiting: frozenset = frozenset(),
+) -> tuple[str | None, int | None]:
+    """The directory the row at `seq` ran in, and when the move that says so ran.
+
+    A row's directory is the previous location of the next move after it, or
+    the session's directory when none follows (then the time is None). A
+    fork's copied row with no copied move after it ran where the parent was at
+    the fork boundary. The parent is asked only while it still holds the
+    boundary row, and its answer counts only when a move row made before the
+    fork gives it. A revert deletes rows from a boundary on without restoring
+    the directory, so neither the parent's directory nor a move made after a
+    revert need name where the copied rows ran; a move made after the fork adds
+    nothing the fork's own directory — the parent's at fork time — does not
+    already say.
+    """
+    timeline = _cached_timeline(conn, session_id, timelines)
+    later = [switch for switch in timeline["switches"] if switch[0] > seq]
+    copied_move_follows = any(switch[0] in timeline["copied"] for switch in later)
+    if seq in timeline["copied"] and not copied_move_follows:
+        answer = _parent_answer(conn, session_id, timelines, visiting)
+        if answer:
+            return answer
+    if later:
+        return later[0][1], later[0][2]
+    return timeline["directory"], None
+
+
+def _parent_answer(
+    conn: sqlite3.Connection, session_id: str, timelines: dict, visiting: frozenset
+) -> tuple[str | None, int] | None:
+    """Where a fork's parent was at the fork boundary, if a move made before
+    the fork says so; None when the parent cannot answer."""
+    timeline = timelines[session_id]
+    parent, boundary = timeline["parent"], timeline["boundary"]
+    if not parent or parent in visiting:
+        return None
+    if boundary not in _cached_timeline(conn, parent, timelines)["seqs"]:
+        return None
+    found, when = _directory_at(
+        conn, parent, boundary, timelines, visiting | {session_id}
+    )
+    # Both times are wall-clock epoch milliseconds. A fork time of 0 is
+    # opencode's default for an event that carried none: unknown.
+    forked = timeline["created"]
+    if when is not None and (not forked or when <= forked):
+        return found, when
+    return None
+
+
+def _cached_timeline(
+    conn: sqlite3.Connection, session_id: str, timelines: dict
+) -> dict:
+    if session_id not in timelines:
+        timelines[session_id] = _timeline(conn, session_id)
+    return timelines[session_id]
+
+
+def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
+    timelines: dict = {}
+    lines: list[str] = []
+    for role, data, timestamp, seq in conn.execute(
+        "SELECT type, data, time_created, seq FROM session_message WHERE session_id=? ORDER BY seq",
+        (session_id,),
+    ).fetchall():
+        data = json.loads(data)
+        if role == "user":
+            lines.extend(_events("user", _text(data.get("text")), [], timestamp))
+        elif role == "assistant":
+            directory, _ = _directory_at(conn, session_id, seq, timelines)
+            blocks, results = _v2_assistant(data, directory)
+            lines.extend(_events("assistant", blocks, results, timestamp))
+    return lines
+
+
+def _legacy_directory(conn: sqlite3.Connection, session_id: str) -> str | None:
+    """A 1.x session's working directory, for resolving relative file paths."""
+    if not conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='session'"
+    ).fetchone():
+        return None
+    row = conn.execute(
+        "SELECT directory FROM session WHERE id=?", (session_id,)
+    ).fetchone()
+    return row[0] if row else None
+
+
+def _legacy_tool(
+    row_id: str, part: dict, directory: str | None
+) -> tuple[dict, dict | None]:
+    """A legacy tool part as its `tool_use` and, once the call has finished, its result."""
+    state = part.get("state") or {}
+    call = part.get("call") or {}
+    name = part.get("tool") or state.get("tool") or call.get("tool") or "tool"
+    payload = state.get("input") or call.get("input") or {}
+    tool_id = part.get("callID") or part.get("id") or row_id
+    use = _tool_use(tool_id, name, payload, directory)
+    # `pending` and `running` carry neither output nor error; emitting
+    # a result for them files an unfinished call as a successful one.
+    if state.get("status") in ("pending", "running"):
+        return use, None
+    output = state.get("output")
+    if output is None:
+        output = state.get("error") or ""
+    is_error = state.get("status") in ("error", "failed")
+    return use, _tool_result(tool_id, str(output), is_error)
+
+
+def _legacy_blocks(
+    role: str, parts: list[tuple[str, dict]], directory: str | None
+) -> tuple[list[dict], list[dict]]:
+    blocks: list[dict] = []
+    results: list[dict] = []
+    for row_id, part in parts:
+        kind = part.get("type")
+        if kind == "text" and not part.get("synthetic"):
+            blocks.extend(_text(part.get("text")))
+        elif kind == "tool":
+            use, result = _legacy_tool(row_id, part, directory)
+            if role == "assistant":
+                blocks.append(use)
+            results.extend([result] if result else [])
+    return blocks, results
+
+
+def _render_legacy(conn: sqlite3.Connection, session_id: str) -> list[str]:
     messages = conn.execute(
         "SELECT id, data, time_created FROM message WHERE session_id=? ORDER BY time_created",
         (session_id,),
@@ -99,78 +595,24 @@ def render(conn: sqlite3.Connection, session_id: str) -> list[str]:
     ):
         parts.setdefault(message_id, []).append((row_id, json.loads(data)))
 
+    directory = _legacy_directory(conn, session_id)
     lines: list[str] = []
     for message_id, data, timestamp in messages:
         role = json.loads(data).get("role")
-        if role not in ("user", "assistant"):
-            continue
-        blocks: list[dict] = []
-        results: list[dict] = []
-        for row_id, part in parts.get(message_id, []):
-            kind = part.get("type")
-            if kind == "text":
-                text = part.get("text") or ""
-                if text.strip():
-                    blocks.append({"type": "text", "text": text})
-            elif kind == "tool":
-                state = part.get("state") or {}
-                call = part.get("call") or {}
-                name = (
-                    part.get("tool") or state.get("tool") or call.get("tool") or "tool"
-                )
-                payload = state.get("input") or call.get("input") or {}
-                tool_id = part.get("callID") or part.get("id") or row_id
-                if role == "assistant":
-                    blocks.append(
-                        {
-                            "type": "tool_use",
-                            "id": tool_id,
-                            "name": name,
-                            "input": payload,
-                        }
-                    )
-                # `pending` and `running` carry neither output nor error; emitting
-                # a result for them files an unfinished call as a successful one.
-                if state.get("status") in ("pending", "running"):
-                    continue
-                output = state.get("output")
-                if output is None:
-                    output = state.get("error") or ""
-                results.append(
-                    {
-                        "type": "tool_result",
-                        "tool_use_id": tool_id,
-                        "content": _snippet(str(output)),
-                        "is_error": state.get("status") in ("error", "failed"),
-                    }
-                )
-        if blocks:
-            lines.append(
-                json.dumps(
-                    {
-                        "type": role,
-                        "message": {"role": role, "content": blocks},
-                        "timestamp": timestamp,
-                    },
-                    ensure_ascii=False,
-                )
-            )
-        if results:
-            lines.append(
-                json.dumps(
-                    {
-                        "type": "user",
-                        "message": {"role": "user", "content": results},
-                        "timestamp": timestamp,
-                    },
-                    ensure_ascii=False,
-                )
-            )
+        if role in ("user", "assistant"):
+            parts_of = parts.get(message_id, [])
+            blocks, results = _legacy_blocks(role, parts_of, directory)
+            lines.extend(_events(role, blocks, results, timestamp))
     return lines
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(prog="opencode-transcript", description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="opencode-transcript",
+        description=__doc__,
+        # The docstring's lists and usage block keep their line breaks.
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--match", help="a token from the session under review")
     parser.add_argument("--session", help="the opencode session id, when it is known")
     parser.add_argument("--db", default=DEFAULT_DB)
@@ -180,22 +622,7 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("pass --match <token> or --session <id>")
 
     conn = _connect(os.path.expanduser(args.db))
-    if args.session:
-        session_id = args.session
-        # A mistyped id otherwise renders nothing and exits 0, which reads as an
-        # empty session. Asked of `message`, not of `session`: those are the rows
-        # the adapter goes on to read.
-        if (
-            conn.execute(
-                "SELECT 1 FROM message WHERE session_id=? LIMIT 1", (session_id,)
-            ).fetchone()
-            is None
-        ):
-            raise SystemExit(
-                f"opencode-transcript: no messages for session {session_id!r}"
-            )
-    else:
-        session_id = find_session(conn, args.match or "")
+    session_id = args.session or find_session(conn, args.match or "")
     lines = render(conn, session_id)
     sys.stdout.write("\n".join(lines) + "\n")
     return 0
