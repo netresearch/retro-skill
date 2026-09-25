@@ -114,6 +114,27 @@ classifies to it. Rules:
   materialization first), so a partially-landed proposal leaves the
   unmaterialized notes in place.
 
+### Classifying a large backlog
+
+Past roughly fifty notes, reading every note and every candidate target in the
+main context does not fit. What worked on a 190-note store:
+
+1. Split the inventory into topic buckets of 20–60 notes (one forge, one
+   tracker, the skill fleet, one product family, general behaviour rules), so
+   each bucket has two to five candidate target skills.
+2. Give each bucket to a read-only classifier agent with the bucket's file list
+   and `content_sha256` values. It fetches each candidate skill repo and greps
+   its `origin/main` (never the installed copy), checks the global rules file,
+   and returns one verdict per note — covered, partial, new, stale, historical
+   — with a `file:line` it actually saw. Run at most three at a time.
+3. Build the destination-shaped proposals from the merged verdict tables, and
+   keep the tables in a durable file next to the proposals.
+4. Materialize one agent per target repository, again read-only except for its
+   own worktree, and drain each note only after its PR or MR URL is read back.
+
+The classifier verdicts are claims. Before a correction ("the skill says X,
+which is false") reaches the user, re-check its `file:line` yourself.
+
 ## Verify before promoting — stale facts and paraphrase duplicates
 
 Two checks run at Phase 7, before a note enters a proposal:
@@ -174,6 +195,15 @@ Source deletion is **last** and **gated on confirmed materialization**, per item
 
 On any verification failure, **keep the source** and report it. Rejected
 proposals are never drained.
+
+**A memory store that is itself versioned needs a sync after the drain.** When
+the store is backed up in a dotfiles repository, the drained notes still sit in
+that repository. An installer that copies the repository back onto the machine
+then restores every drained note, and a capture that copies only tracked files
+from the machine neither removes them nor picks up the new tombstones. After
+the drain, mirror the store's directory into the repository — note removals
+and new `.promoted/` files included — and commit it before anyone runs the
+installer. Git records each drained note as a rename into `.promoted/`.
 
 ## Risk controls
 
