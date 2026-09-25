@@ -68,6 +68,13 @@ Use case: quarterly or monthly system health check
 
 Different output class from per-session retro. Destinations typically include ADR creation/update (via project-rule).
 
+With `--scope project` or `--scope repo`, run the cross-session pre-pass
+first: `scripts/scan-cross-session.py --recurring-failures` (C1) and
+`--follow-up-sessions` (C5), each with `--project <slug>` to narrow it. Both
+read every transcript in the window, which is why they belong here and not in
+the per-session sweep. Read the sessions a hit names before calling it a
+finding.
+
 With `--scope skill`, run the mechanical drift pre-pass first:
 `scripts/check-upstream-sources.py --skill-dir <repo>` probes every
 `[upstream]`-labelled link and every checkpoint `source:` URL (dead links →
