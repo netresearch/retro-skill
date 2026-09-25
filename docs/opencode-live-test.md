@@ -23,7 +23,7 @@ got="sha512-$(openssl dgst -sha512 -binary cli.tgz | base64 -w0)"
 
 ## Run it isolated
 
-A wrapper, saved as `oc2.sh`, that redirects every path opencode uses:
+A wrapper, saved as `$O/oc2.sh` and made executable, that redirects every path opencode uses:
 
 ```bash
 #!/usr/bin/env bash
@@ -37,7 +37,7 @@ mkdir -p "$XDG_DATA_HOME/opencode" "$XDG_CONFIG_HOME/opencode"
 exec "$O/package/bin/opencode" "$@"
 ```
 
-Check the isolation before the first session: `oc2.sh debug paths db` must print the path under `$O`.
+Check the isolation before the first session: `"$O/oc2.sh" debug paths db` must print the path under `$O`.
 
 ## Point it at a model
 
@@ -62,14 +62,17 @@ A local server accepts any value for `LOCAL_API_KEY`. From WSL, a server running
 
 ## Produce sessions and render them
 
+`RETRO` is the root of this repository's checkout. The model works in `$O/proj`, so the scripts are called by absolute path:
+
 ```bash
+RETRO=/path/to/retro-skill
 cd "$O/proj"
-LOCAL_API_KEY=x oc2.sh run --standalone --auto --model local/<model-id> \
+LOCAL_API_KEY=x "$O/oc2.sh" run --standalone --auto --model local/<model-id> \
   "Use your tools. Read app.py, edit it, run it, read it again."
 DB="$O/home/.local/share/opencode/opencode.db"
 sqlite3 "file:$DB?mode=ro" "select id from session_v2"
-python3 skills/retro/scripts/opencode-transcript.py --db "$DB" --session <id> > session.jsonl
-python3 skills/retro/scripts/detect-mechanical.py --transcript-file session.jsonl
+python3 "$RETRO/skills/retro/scripts/opencode-transcript.py" --db "$DB" --session <id> > "$O/session.jsonl"
+python3 "$RETRO/skills/retro/scripts/detect-mechanical.py" --transcript-file "$O/session.jsonl"
 ```
 
 `run --session <id> --fork "…"` creates a fork: its copied rows carry ids ending in `_<seq>`, and `session_v2.fork_session_id` names the parent. A prompt that reads a missing file produces a failed tool call (`state.error`, `content: []`).
