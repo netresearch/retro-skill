@@ -249,6 +249,7 @@ retro-skill/
 │   ├── test_scan_memory_inventory.py
 │   └── test_validate_evals.py
 ├── docs/specs/                   # retro-skill.md (authoritative spec), retro-promote-mode.md
+├── docs/opencode-live-test.md    # checking the opencode adapter against a real, isolated opencode 2.x
 ├── .github/workflows/            # lint.yml, validate.yml, release.yml
 ├── AGENTS.md
 ├── composer.json
