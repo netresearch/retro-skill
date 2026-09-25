@@ -50,3 +50,4 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 ## See also
 
 - [Spec](docs/specs/retro-skill.md) — Authoritative specification
+- [opencode live test](docs/opencode-live-test.md) — Checking `opencode-transcript.py` against a real, isolated opencode 2.x
