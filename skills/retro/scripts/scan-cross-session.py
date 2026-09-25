@@ -351,31 +351,42 @@ def normalise(line: str) -> str:
     return re.sub(r"\s+", " ", line).strip()[:MAX_KEY_CHARS]
 
 
+def _failure_key(
+    call: dict[str, Any], include_refusals: bool
+) -> tuple[str | None, tuple[str, str, str], str]:
+    """(reason it is excluded or None, grouping key, the line it came from)."""
+    refusal = is_refusal(call["name"], call["result"])
+    if refusal and not include_refusals:
+        return "refusals", ("", "", ""), ""
+    line = failure_line(call["name"], call["result"])
+    key_text = normalise(line)
+    if len(WORD_RE.findall(PLACEHOLDER_RE.sub(" ", key_text))) < MIN_KEY_WORDS:
+        return "without_message", ("", "", ""), ""
+    kind = "refusal" if refusal else "failure"
+    return None, (kind, call["name"], key_text), line
+
+
 def recurring_failures(
     sessions: list[dict[str, Any]], include_refusals: bool = False
 ) -> dict[str, Any]:
     by_key: dict[tuple[str, str, str], dict[str, Any]] = {}
     excluded = Counter()
-    for session in sessions:
-        for call in session["calls"]:
-            if not call["is_error"]:
-                continue
-            refusal = is_refusal(call["name"], call["result"])
-            if refusal and not include_refusals:
-                excluded["refusals"] += 1
-                continue
-            line = failure_line(call["name"], call["result"])
-            key_text = normalise(line)
-            if len(WORD_RE.findall(PLACEHOLDER_RE.sub(" ", key_text))) < MIN_KEY_WORDS:
-                excluded["without_message"] += 1
-                continue
-            kind = "refusal" if refusal else "failure"
-            entry = by_key.setdefault(
-                (kind, call["name"], key_text),
-                {"example": line[:200], "sessions": set(), "projects": set()},
-            )
-            entry["sessions"].add(session["id"])
-            entry["projects"].add(session["project"])
+    failed = (
+        (session, call)
+        for session in sessions
+        for call in session["calls"]
+        if call["is_error"]
+    )
+    for session, call in failed:
+        reason, key, line = _failure_key(call, include_refusals)
+        if reason:
+            excluded[reason] += 1
+            continue
+        entry = by_key.setdefault(
+            key, {"example": line[:200], "sessions": set(), "projects": set()}
+        )
+        entry["sessions"].add(session["id"])
+        entry["projects"].add(session["project"])
     recurring = sorted(
         (
             {
@@ -499,19 +510,18 @@ def _same_commit(a: str, b: str) -> bool:
     return a.startswith(b) or b.startswith(a)
 
 
-def follow_up_sessions(
-    sessions: list[dict[str, Any]], window: timedelta
-) -> dict[str, list[dict[str, Any]]]:
-    """Session pairs where the later one undid or rewrote the earlier one's work."""
-    edits: dict[tuple[str | None, str], dict[str, list[tuple[str, str]]]] = defaultdict(
-        lambda: defaultdict(list)
-    )
+Edits = dict[tuple[str | None, str], dict[str, list[tuple[str, str]]]]
+
+
+def _collect_work(
+    sessions: list[dict[str, Any]],
+) -> tuple[Edits, dict[str, list[str]], dict[str, list[str]]]:
+    """Per session: the edits by file, the commits written, the commits reverted."""
+    edits: Edits = defaultdict(lambda: defaultdict(list))
     commits: dict[str, list[str]] = defaultdict(list)
     reverts: dict[str, list[str]] = defaultdict(list)
     for session in sessions:
-        for call in session["calls"]:
-            if call["is_error"]:
-                continue
+        for call in (c for c in session["calls"] if not c["is_error"]):
             pairs = _edit_pairs(call)
             path = call["input"].get("file_path")
             if pairs and isinstance(path, str) and path:
@@ -520,25 +530,36 @@ def follow_up_sessions(
                 command = str(call["input"].get("command", ""))
                 commits[session["id"]].extend(COMMIT_LINE_RE.findall(call["result"]))
                 reverts[session["id"]].extend(_revert_targets(command))
+    return edits, commits, reverts
 
+
+def _pairs_in_window(
+    sessions: list[dict[str, Any]], window: timedelta
+) -> list[tuple[dict[str, Any], dict[str, Any]]]:
+    """(earlier, later) sessions whose gap is at most `window`."""
     ordered = sorted(
         (s for s in sessions if s["start"] and s["end"]), key=lambda s: s["start"]
     )
-    pairs_in_window = [
+    return [
         (a, b)
         for i, a in enumerate(ordered)
         for b in ordered[i + 1 :]
         if b["start"] > a["start"] and b["start"] - a["end"] <= window
     ]
 
+
+def _rewrites(earlier: list[tuple[str, str]], later: list[tuple[str, str]]) -> bool:
+    """The later edits replace text the earlier edits wrote."""
+    written = [n for _o, n in earlier if len(n.strip()) >= MIN_REWRITE_CHARS]
+    return any(n in old for n in written for old, _n in later)
+
+
+def _rewritten_edits(edits: Edits, pairs: list) -> list[dict[str, Any]]:
     rewritten = []
     for (repository, rel), by_session in edits.items():
-        for a, b in pairs_in_window:
+        for a, b in pairs:
             earlier, later = by_session.get(a["id"]), by_session.get(b["id"])
-            if not earlier or not later:
-                continue
-            written = [n for _o, n in earlier if len(n.strip()) >= MIN_REWRITE_CHARS]
-            if not any(n in old for n in written for old, _n in later):
+            if not earlier or not later or not _rewrites(earlier, later):
                 continue
             rewritten.append(
                 {
@@ -558,20 +579,31 @@ def follow_up_sessions(
                 }
             )
     rewritten.sort(key=lambda r: (not r["exact_revert"], r["hours_apart"]))
+    return rewritten
 
-    reverted = []
-    for a, b in pairs_in_window:
-        for target in reverts.get(b["id"], []):
-            for sha in commits.get(a["id"], []):
-                if _same_commit(sha, target):
-                    reverted.append(
-                        {
-                            "commit": sha,
-                            "earlier_session": a["id"],
-                            "later_session": b["id"],
-                        }
-                    )
-    return {"rewritten_edits": rewritten, "reverted_commits": reverted}
+
+def _reverted_commits(
+    commits: dict[str, list[str]], reverts: dict[str, list[str]], pairs: list
+) -> list[dict[str, Any]]:
+    return [
+        {"commit": sha, "earlier_session": a["id"], "later_session": b["id"]}
+        for a, b in pairs
+        for target in reverts.get(b["id"], [])
+        for sha in commits.get(a["id"], [])
+        if _same_commit(sha, target)
+    ]
+
+
+def follow_up_sessions(
+    sessions: list[dict[str, Any]], window: timedelta
+) -> dict[str, list[dict[str, Any]]]:
+    """Session pairs where the later one undid or rewrote the earlier one's work."""
+    edits, commits, reverts = _collect_work(sessions)
+    pairs = _pairs_in_window(sessions, window)
+    return {
+        "rewritten_edits": _rewritten_edits(edits, pairs),
+        "reverted_commits": _reverted_commits(commits, reverts, pairs),
+    }
 
 
 def cmd_follow_up_sessions(args, files) -> int:
