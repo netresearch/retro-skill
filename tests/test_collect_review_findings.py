@@ -2232,6 +2232,40 @@ class UnresolvedSurfacedTest(unittest.TestCase):
         )
 
 
+class ArtifactTabTest(unittest.TestCase):
+    """A link to a tab of a PR or MR names that PR or MR (adversarial review)."""
+
+    def test_a_tab_url_is_read_natively_under_its_artifact_url(self):
+        cases = {
+            "https://github.com/netresearch/retro-skill/pull/1/files": (
+                "github",
+                "https://github.com/netresearch/retro-skill/pull/1",
+            ),
+            "https://github.com/o/r/pull/7/commits/": (
+                "github",
+                "https://github.com/o/r/pull/7",
+            ),
+            "https://git.example.org/g/p/-/merge_requests/3/diffs": (
+                "gitlab",
+                "https://git.example.org/g/p/-/merge_requests/3",
+            ),
+        }
+        for ref, (forge, url) in cases.items():
+            with self.subTest(ref=ref):
+                item = crf.parse_ref(ref)
+                self.assertEqual((item["forge"], item["url"]), (forge, url))
+
+    def test_a_lookalike_path_on_another_host_stays_external(self):
+        ref = "https://tracker.example/browse/pull/5/files"
+        item = crf.parse_ref(ref)
+        self.assertEqual((item["forge"], item["url"]), ("external", ref))
+
+    def test_a_feedback_file_cannot_supply_a_pr_through_its_tab_url(self):
+        tab = "https://github.com/netresearch/retro-skill/pull/1/files"
+        external = {"artefacts": {tab: {}}}
+        self.assertEqual(crf.native_urls_supplied(external), [tab])
+
+
 class MainTest(unittest.TestCase):
     def test_an_unparsable_since_is_an_error(self):
         with (
