@@ -14,6 +14,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -187,6 +188,182 @@ class BareLayoutTest(unittest.TestCase):
         scope = dss.collect(transcript)
         self.assertEqual(scope["repositories"], [str(self.bare.resolve())])
         self.assertEqual(scope["unresolved_paths"], [])
+
+
+def _bash_events(commands: list[str], cwd: str | None = None) -> list[dict]:
+    """One Bash call per command with its result, as Claude Code writes them;
+    `cwd` on every event when given."""
+    events = []
+    for n, command in enumerate(commands):
+        use = {"type": "tool_use", "id": f"c{n}", "name": "Bash"}
+        use["input"] = {"command": command}
+        result = {"type": "tool_result", "tool_use_id": f"c{n}", "content": ""}
+        for event in (
+            {"type": "assistant", "message": {"content": [use]}},
+            {"type": "user", "message": {"content": [result]}},
+        ):
+            event["timestamp"] = "2026-09-25T10:00:00Z"
+            if cwd is not None:
+                event["cwd"] = cwd
+            events.append(event)
+    return events
+
+
+def _write(path: Path, events: list) -> Path:
+    path.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    return path
+
+
+class RelativePathTest(unittest.TestCase):
+    """A-F1: a relative `git -C` or `cd` path was resolved against the
+    directory the script ran in, so the same transcript named different
+    repositories from different places, and nothing from elsewhere."""
+
+    # The reviewer's reproducer (ra_gen3.py), verbatim.
+    COMMANDS = ("git -C .bare fetch origin", "cd ../fix-x && git status")
+
+    def setUp(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        self.project = root / "proj"
+        self.bare = self.project / ".bare"
+        _git("init", "--bare", "-q", str(self.bare))
+        (self.project / "main").mkdir()
+        self.elsewhere = root / "elsewhere"
+        self.elsewhere.mkdir()
+        self.addCleanup(os.chdir, os.getcwd())
+
+    def test_without_a_cwd_nothing_is_resolved_against_the_scripts_directory(
+        self,
+    ) -> None:
+        # Run from inside the project, where `.bare` would resolve.
+        os.chdir(self.project)
+        path = _write(self.elsewhere / "s.jsonl", _bash_events(list(self.COMMANDS)))
+        scope = dss.collect(path)
+        self.assertEqual(scope["repositories"], [])
+        self.assertEqual(scope["unresolved_paths"], ["../fix-x", ".bare"])
+
+    def test_the_events_cwd_is_the_base(self) -> None:
+        os.chdir(self.elsewhere)
+        events = _bash_events(list(self.COMMANDS), cwd=str(self.project / "main"))
+        events[0]["cwd"] = events[1]["cwd"] = str(self.project)
+        scope = dss.collect(_write(self.elsewhere / "s.jsonl", events))
+        # `.bare` from the project; `../fix-x` from main: a removed worktree.
+        self.assertEqual(scope["repositories"], [str(self.bare.resolve())])
+        self.assertEqual(scope["unresolved_paths"], [])
+
+    def test_a_relative_path_after_a_cd_is_relative_to_the_cd(self) -> None:
+        other = self.elsewhere / "repoB"
+        _git("init", "-q", str(other))
+        os.chdir(self.project)
+        events = _bash_events([f"cd {self.elsewhere} && git -C repoB status"])
+        scope = dss.collect(_write(self.elsewhere / "s.jsonl", events))
+        self.assertEqual(scope["repositories"], [str(other.resolve())])
+        self.assertEqual(scope["unresolved_paths"], [str(self.elsewhere)])
+
+
+class CommandShapeTest(unittest.TestCase):
+    """A-F4 and A-F10: shell syntax the regexes did not read."""
+
+    def setUp(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        self.root = root
+        self.repo = root / "repoA"
+        _git("init", "-q", str(self.repo))
+
+    def _scope(self, commands: list[str]) -> dict:
+        return dss.collect(_write(self.root / "s.jsonl", _bash_events(commands)))
+
+    def test_a_cd_on_the_second_line_is_read(self) -> None:
+        # scope1.jsonl, first call, with the reviewer's repoA replaced.
+        scope = self._scope([f"set -o pipefail\ncd {self.repo} && make test | tail -3"])
+        self.assertEqual(scope["repositories"], [str(self.repo.resolve())])
+
+    def test_a_cd_after_a_line_the_grammar_glues_on_is_read(self) -> None:
+        # tree-sitter-bash reads the lines after `a | b || c` as arguments of
+        # one command; a newline between two words starts the next command.
+        scope = self._scope(
+            [f"ps -eo cmd | grep x | head -5 || echo none\ncd {self.repo} && make"]
+        )
+        self.assertEqual(scope["repositories"], [str(self.repo.resolve())])
+
+    def test_release_tags_with_git_c_and_options_before_the_name(self) -> None:
+        # scope1.jsonl, second and third call, verbatim.
+        scope = self._scope(
+            [
+                "git -C /nonexistent/x tag -s v1.2.3 -m 'v1.2.3'",
+                "git -C /nonexistent/x push origin v1.2.3",
+            ]
+        )
+        self.assertEqual(scope["tags"], ["v1.2.3"])
+
+    def test_tag_forms_that_name_no_release(self) -> None:
+        scope = self._scope(
+            [
+                'git tag -a v2.0.0 -m "1.9.9"',  # the message is not a tag
+                "git tag -d v9.9.9",  # deleting one
+                "git push --delete origin v8.8.8",
+                "git commit -m 'git tag v7.7.7'",  # text
+            ]
+        )
+        self.assertEqual(scope["tags"], ["v2.0.0"])
+
+    def test_a_shell_given_its_program_as_a_string_is_read(self) -> None:
+        scope = self._scope([f"bash -lc 'cd {self.repo} && git status'"])
+        self.assertEqual(scope["repositories"], [str(self.repo.resolve())])
+
+
+class MalformedTranscriptTest(unittest.TestCase):
+    """A-F12: a line that is JSON but not an event must not end the scan."""
+
+    def test_lines_that_are_not_events_are_skipped(self) -> None:
+        good = {"type": "user", "timestamp": "2026-09-25T10:00:00Z"}
+        good["message"] = {"role": "user", "content": "hi"}
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "s.jsonl"
+            # bad_nondict.jsonl from the review, then a message that is text.
+            path.write_text(
+                json.dumps(good) + "\n[1,2]\n"
+                '{"type": "user", "message": "not an object"}\n',
+                encoding="utf-8",
+            )
+            out = subprocess.run(
+                [sys.executable, str(SCRIPT), "--transcript-file", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertIn("2026-09-25", out.stdout)
+
+
+class SlashBranchWorktreeTest(unittest.TestCase):
+    """A-F8 (repo_root half): the worktree of a branch `fix/x` lives in
+    `<project>/fix/x`; removing it leaves the empty `fix/` behind, and the
+    nearest existing directory has no `.bare` beside it."""
+
+    def test_a_removed_worktree_of_a_branch_with_a_slash(self) -> None:
+        root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, root, True)
+        project = root / "proj"
+        bare = project / ".bare"
+        worktree = project / "fix" / "x"
+        _git("init", "--bare", "-q", str(bare))
+        _git(
+            "-C",
+            str(bare),
+            "worktree",
+            "add",
+            "-q",
+            "--orphan",
+            "-b",
+            "fix/x",
+            str(worktree),
+        )
+        _git("-C", str(bare), "worktree", "remove", str(worktree))
+        self.assertTrue((project / "fix").is_dir())
+        self.assertEqual(dss.repo_root(worktree / "a.md"), bare.resolve())
 
 
 if __name__ == "__main__":
