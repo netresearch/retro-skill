@@ -40,12 +40,31 @@ ALTERNATIVES: dict[str, str] = {
     # the base64 run that follows when the text was cut before the footer.
     "pem_private_key": r"-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----"
     r"(?:[\s\S]*?-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|[A-Za-z0-9+/=\s]*)",
-    "authorization_header": r"(?P<authorization_header_keep>(?i:\bauthorization:\s*"
-    r"(?:basic|bearer|token)\s+))[^\s'\"]+",
+    # `Authorization: Bearer …` as a header, and as a JSON or YAML key
+    # (`{"authorization":"Bearer …"}`).
+    "authorization_header": r"(?P<authorization_header_keep>(?i:\bauthorization"
+    r"[\"']?\s*:\s*[\"']?(?:basic|bearer|token)\s+))[^\s'\"]+",
+    # GitLab's header takes any token, not only a `glpat-` one. A token has
+    # twenty characters or more and a digit, which keeps a variable (`$T`) or
+    # a program's identifier (`{"PRIVATE-TOKEN": token}`) readable.
+    "private_token_header": r"(?P<private_token_header_keep>(?i:\bprivate-token"
+    r"[\"']?\s*:\s*[\"']?))(?=[A-Za-z0-9_.-]*\d)[A-Za-z0-9_.-]{20,}",
     "jwt": r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*",
     # `https://user:token@host` — the userinfo is masked, scheme and host stay.
+    # The user may be empty (`redis://:password@host`), and the password may
+    # hold an `@`: the userinfo runs to the last `@` before the path.
     "url_credentials": r"(?P<url_credentials_keep>\b[A-Za-z][A-Za-z0-9+.-]*://)"
-    r"[^\s/@:]+:[^\s/@]+(?=@)",
+    r"[^\s/@:'\"]*:[^\s/'\"]+(?=@)",
+    # `curl -u user:password`: the password is masked, the user stays. Only
+    # after `curl`, so `docker run -u 1000:1000` keeps its ids.
+    "curl_user": r"(?P<curl_user_keep>\bcurl\b[^\n|;&]*?\s(?:-u|--user(?![\w-]))"
+    r"[\s=]*[\"']?[^\s:'\"]*:)(?!\$)[^\s'\"]+",
+    "vault_token": r"\bhv[sbr]\.[A-Za-z0-9_-]{20,}",
+    "npm_token": r"\bnpm_[A-Za-z0-9]{36}\b",
+    "google_api_key": r"\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])",
+    # The secret half of an AWS key pair, named by its variable or config key.
+    "aws_secret_key": r"(?P<aws_secret_key_keep>(?i:\baws_secret_access_key"
+    r"[\"']?\s*[=:]\s*[\"']?))[A-Za-z0-9/+=]{40}(?![A-Za-z0-9/+=])",
 }
 
 SECRET = re.compile("|".join(f"(?P<{n}>{rx})" for n, rx in ALTERNATIVES.items()))
