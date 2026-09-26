@@ -127,9 +127,15 @@ contexts. Conflicting bindings and duplicate canonical URLs, including across
 files, fail validation. All files are validated before any native API call.
 Files larger than 10 MiB and duplicate JSON keys are rejected.
 
-The contract deliberately does not standardize `GH-`, `GL-`, `gh/`, `gl/`,
-commit trailers or branch names. Those conventions can supply context through
-the owning project, but are not universal rules of this skill.
+One short form is not a convention but GitHub's own syntax: in a GitHub PR's
+title or description, `GH-N` links to issue or pull request N of the same
+repository, exactly like `#N` ([Autolinked references and URLs](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/autolinked-references-and-urls)).
+The collector reads it natively, one hop deep like `Closes #N`. A `GH-N` branch
+name stays an unresolved hint, because GitHub links nothing in branch names.
+
+The contract deliberately does not standardize `GL-`, `gh/`, `gl/`, commit
+trailers or branch names. Those conventions can supply context through the
+owning project, but are not universal rules of this skill.
 
 ## Coverage and exit status
 

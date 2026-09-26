@@ -115,6 +115,12 @@ GITLAB_TOKEN_BOT_RE = re.compile(r"(?:group|project)_\d+_bot(?:_|$)")
 ISSUE_KEYWORD_RE = re.compile(
     r"\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)\b", re.IGNORECASE
 )
+# GitHub's own reference syntax: in a conversation on GitHub, `GH-26` links to
+# issue or pull request 26 of the same repository, exactly like `#26`
+# (docs.github.com, "Autolinked references and URLs"). Branch names are not
+# conversation text and GitHub links nothing there, so a `GH-26` branch stays
+# an unresolved hint.
+GH_AUTOLINK_RE = re.compile(r"(?<![\w/-])GH-(\d+)\b")
 
 Runner = Callable[[list[str]], Any]
 GH_GRAPHQL = "gh api graphql"
@@ -553,6 +559,10 @@ def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any
     _gh_comments(pr, url, "pr-comment", commits, self_logins, out)
     linked = [n["url"] for n in _nodes(pr, "closingIssuesReferences")]
     linked += _issue_urls_in(pr.get("body") or "", url)
+    linked += _gh_autolinks(pr.get("title") or "", url)
+    # A `GH-N` the PR's own text links natively is not also an open hint.
+    text = f"{pr.get('title') or ''}\n{pr.get('body') or ''}"
+    native = {f"GH-{n}" for n in GH_AUTOLINK_RE.findall(text)}
     return {
         "url": url,
         "title": pr.get("title"),
@@ -562,7 +572,11 @@ def parse_github_pr(raw: dict[str, Any], self_logins: set[str]) -> dict[str, Any
         "findings": out.findings,
         "self_comments": out.self_count,
         "linked": sorted(set(linked)),
-        "tickets": tickets_named(pr.get("title", ""), pr.get("headRefName", "")),
+        "tickets": [
+            k
+            for k in tickets_named(pr.get("title", ""), pr.get("headRefName", ""))
+            if k not in native
+        ],
         "truncated": _gh_truncated(
             pr,
             "reviewThreads",
@@ -597,14 +611,23 @@ def _graphql_error(raw: dict[str, Any]) -> str:
 
 
 def _issue_urls_in(text: str, own_url: str) -> list[str]:
-    """Issue URLs in a PR/MR description, plus `Closes #N` in the same project."""
+    """Issue URLs in a PR/MR description, plus `Closes #N` and `GH-N` in the
+    same GitHub repository."""
     urls = [a["url"] for a in scope.artefacts_in_text(text) if a["kind"] == "issue"]
     # Compared by host, never by substring: `github.com` can stand anywhere in
     # a URL that points somewhere else.
     if urlparse(own_url).hostname == scope.GITHUB_HOST:
         base = own_url.rsplit("/", 2)[0]
         urls += [f"{base}/issues/{n}" for n in ISSUE_KEYWORD_RE.findall(text)]
+        urls += _gh_autolinks(text, own_url)
     return [u for u in urls if u != own_url]
+
+
+def _gh_autolinks(text: str, own_url: str) -> list[str]:
+    """`GH-N` in GitHub conversation text, as issue URLs of the same repository.
+    The PR's own number is not a link to follow."""
+    base, _, own = own_url.rsplit("/", 2)
+    return [f"{base}/issues/{n}" for n in GH_AUTOLINK_RE.findall(text) if n != own]
 
 
 # --------------------------------------------------------------------------
