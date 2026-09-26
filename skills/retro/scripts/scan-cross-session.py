@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import importlib.util
 import json
 import os
 import re
@@ -33,6 +34,19 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+
+def _load_masking():
+    """mask-secrets.py, loaded by path: its name is hyphenated like ours."""
+    path = Path(__file__).resolve().parent / "mask-secrets.py"
+    spec = importlib.util.spec_from_file_location("mask_secrets", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_masking = _load_masking()
+mask, squeeze = _masking.mask, _masking.squeeze
 
 DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 CORRECTION_PATTERNS = re.compile(
@@ -228,8 +242,9 @@ def read_sessions(
 
 
 def _correction_key(text: str) -> str:
-    """Normalize the first 80 chars as a fingerprint."""
-    return re.sub(r"\s+", " ", text.strip().lower())[:80]
+    """Normalize the first 80 chars as a fingerprint, credentials masked
+    before lowercasing (AKIA…, eyJ… only match in their own case)."""
+    return squeeze(text, 80).lower()
 
 
 def cmd_pattern(args, files) -> int:
@@ -241,7 +256,7 @@ def cmd_pattern(args, files) -> int:
                 hits[proj].append(
                     {
                         "session": path.name,
-                        "snippet": txt[:300],
+                        "snippet": squeeze(txt, 300),
                     }
                 )
                 break  # one hit per session is enough for cross-session signal
@@ -359,7 +374,9 @@ def _failure_key(
     refusal = is_refusal(call["name"], call["result"])
     if refusal and not include_refusals:
         return "refusals", ("", "", ""), ""
-    line = failure_line(call["name"], call["result"])
+    # Masked before normalise(), which would otherwise leave a token's
+    # letters in the key with only its digits replaced.
+    line = mask(failure_line(call["name"], call["result"]))
     key_text = normalise(line)
     if len(WORD_RE.findall(PLACEHOLDER_RE.sub(" ", key_text))) < MIN_KEY_WORDS:
         return "without_message", ("", "", ""), ""

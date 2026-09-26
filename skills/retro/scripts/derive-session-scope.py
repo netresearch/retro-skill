@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import importlib.util
 import json
 import os
 import re
@@ -48,6 +49,19 @@ import sys
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote as unquote_url
+
+
+def _load_masking():
+    """mask-secrets.py, loaded by path: its name is hyphenated like ours."""
+    path = Path(__file__).resolve().parent / "mask-secrets.py"
+    spec = importlib.util.spec_from_file_location("mask_secrets", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_masking = _load_masking()
+mask, squeeze = _masking.mask, _masking.squeeze
 
 try:
     import tree_sitter_bash
@@ -1234,7 +1248,7 @@ class _ArtefactScan:
             )
             self.keep(found)
             if lost:
-                self.unresolved.append(command[:200])
+                self.unresolved.append(squeeze(command, 200))
         elif MCP_WRITE_RE.search(name):
             self.keep(
                 _mcp_write_artefacts(payload, result, bool(block.get("is_error")))
