@@ -589,6 +589,29 @@ class GlobalRulesSourceTest(unittest.TestCase):
             self.assertTrue(f["content_sha256"])
         self.assertIn("silently fail", c2[0]["why"])
 
+    def test_hash_lines_inside_a_code_fence_are_not_headings(self):
+        """`# ` and `## ` in a fenced shell block are comments; they neither end
+        the section nor open a new one."""
+        self.rules.write_text(
+            "# Rules\n\n## Setup\n\n```bash\n# 1. create the dir\n"
+            "## not a heading, a shell comment\nmkdir x\n```\n\n"
+            "**Why:** the fence stays inside Setup.\n\n"
+            "~~~\n## tilde fence too\n~~~\n\n## Other\n\nbody\n",
+            encoding="utf-8",
+        )
+        res = _run_scan(
+            memory_root=self.root,
+            include_global_rules=True,
+            global_rules_file=self.rules,
+        )
+        c2 = [
+            f
+            for f in res["json"]["findings"]
+            if f["current_location"] == "global-claude-md"
+        ]
+        self.assertEqual([f["title"] for f in c2], ["Setup", "Other"])
+        self.assertIn("fence stays inside Setup", c2[0]["why"])
+
     def test_missing_rules_file_is_not_an_error(self):
         res = _run_scan(
             memory_root=self.root,
