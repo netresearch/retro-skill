@@ -14,7 +14,8 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/scripts/find-org-skills.py` — Skill discovery: every marketplace skill, installed or not
 - `skills/retro/scripts/find-installed-skills.sh` — Installed-only detail (paths, git remotes)
 - `skills/retro/scripts/scan-cross-session.py` — Cross-session JSONL scanner (Schicht-C)
-- `skills/retro/scripts/collect-review-findings.py` — Review threads, bot reviews, issue and Jira comments on the PRs/MRs a session wrote to (input for B18–B20, D4, D6); takes the artefact list from `derive-session-scope.py`
+- `skills/retro/scripts/collect-review-findings.py` — Review threads, bot reviews, native issue comments and supplied tracker feedback on the PRs/MRs a session wrote to (input for B18–B20, D4, D6); takes the artefact list from `derive-session-scope.py`
+- `skills/retro/scripts/feedback-contract.py` — Validates local, tracker-neutral feedback; no discovery or execution
 - `skills/retro/scripts/scan-memory-inventory.py` — Promote-mode pre-pass over the memory backlog
 - `skills/retro/scripts/check-upstream-sources.py` — Drift check against canonical sources
 - `skills/retro/scripts/materialize-pr.sh` — Opens the skill-update PR against the source repo
@@ -39,6 +40,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - Per-private-repo confirmation before any PR
 - One approval per materialization (not per candidate)
 - No auto-merge; no continuous background hooks (except optional SessionEnd)
+- Tracker-neutral core: no implicit tracker, external CLI discovery or organization billing policy; see `skills/retro/references/feedback-contract.md`
 
 ## Relationships
 

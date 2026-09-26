@@ -19,10 +19,9 @@ This script reads them from the forge and the tracker:
 - per MR (GitLab): discussions (threads and plain notes), commits
 - linked issues: GitHub `closingIssuesReferences`, GitLab `closes_issues`, and
   issue URLs in the PR/MR description — their comments
-- Jira tickets: the key at the start of the PR/MR title or in a branch segment,
-  plus the tickets the session ran a jira script against or booked time on —
-  their comments and status changes, read through the `jira-communication`
-  skill's `jira-issue.py`
+- additional trackers: normalized evidence explicitly supplied with --feedback-file
+- short references in titles, branches and tool exchanges: unresolved hints,
+  never an instruction to discover a tracker or try its default account
 
 Every answer by somebody else inside a thread is its own `review-reply`
 finding: a human's "please do fix it" under a bot finding the agent rejected is
@@ -36,15 +35,15 @@ the PR/MR dated after the finding. That is a necessary sign that the finding
 changed the code, not proof — any later commit qualifies, and a rebase re-dates
 them all. Read it together with `resolved` and `last_self_reply`.
 
-`self` is the account running this script (GitHub `viewer`, GitLab `user`, Jira
-`me`) plus every `--self-login`. When the session ran under another account —
-Outcome mode run by somebody else — pass that account, or its comments are
-listed as `human`.
+`self` is the account running the native readers (GitHub `viewer`, GitLab
+`user`) plus every `--self-login`. External integrations classify their own
+accounts before supplying feedback; login names do not identify people across
+systems.
 
 Usage:
     collect-review-findings.py --transcript-file <session.jsonl> [--since ISO]
         [--include-mentioned] [--output-format text|json]
-    collect-review-findings.py --ref <PR/MR/issue URL or Jira key> [--ref …]
+    collect-review-findings.py --ref <artifact URL or unresolved short reference> [--ref …]
 
 Failure stays distinguishable from silence: an artefact that could not be read
 is listed with `fetched: false` and the error, never as an artefact with no
@@ -60,7 +59,6 @@ import importlib.util
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 from collections.abc import Callable
@@ -82,6 +80,18 @@ def _load_scope():
 
 
 scope = _load_scope()
+
+
+def _load_contract():
+    spec = importlib.util.spec_from_file_location(
+        "feedback_contract", HERE / "feedback-contract.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+contract = _load_contract()
 
 # Logins that are bots although GraphQL reports them as users, and GitLab
 # service accounts, which carry no bot flag at all: group/project access tokens
@@ -121,11 +131,6 @@ BOT_REFUSAL_RE = re.compile(
 # A refusal is a sentence or two; a long review body that mentions a limit in
 # passing still carries findings.
 REFUSAL_MAX_LENGTH = 600
-# A key Jira answers with "issue does not exist" is not a ticket this account
-# can see — usually a key-shaped name (`TYPO3-14` in a branch): listed apart,
-# not counted as a read failure. Jira Cloud says the same for a missing
-# permission and then names it; that stays a read failure.
-ABSENT_RE = re.compile(r"\bissue does not exist\b(?!.*permission)", re.IGNORECASE)
 # A ticket key the PR/MR is *about*: at the start of the title (`NRS-12: …`,
 # `[NRS-12] …`) or at the start of a branch path segment (`NRS-12/…`,
 # `feature/NRS-12-…`). A key in running text (`PHP-8.4`, `TYPO3-14`) is not.
@@ -140,7 +145,7 @@ BRANCH_TICKET_RE = re.compile(r"(?:^|/)(?P<key>[A-Z][A-Z0-9]{1,9}-\d+)(?=[-_/]|$
 
 
 def parse_time(value: str | None) -> datetime | None:
-    """ISO 8601 from GitHub, GitLab or Jira (`+0000` without a colon)."""
+    """ISO 8601, including offsets such as `+0000` without a colon."""
     if not value:
         return None
     text = value.strip().replace("Z", "+00:00")
@@ -703,154 +708,6 @@ def _flatten(value: Any) -> list[dict[str, Any]]:
 
 
 # --------------------------------------------------------------------------
-# Jira
-
-
-JIRA_CLI_CANDIDATES = (
-    Path.home() / ".agents/skills/jira-communication/scripts/core/jira-issue.py",
-    Path.home() / ".claude/skills/jira-communication/scripts/core/jira-issue.py",
-)
-JIRA_USER_NAME = "jira-user.py"
-
-
-def _installed_jira_clis() -> list[Path]:
-    """jira-issue.py of the jira plugin Claude Code has installed — the active
-    version from installed_plugins.json, never a guess among cached ones."""
-    index = Path.home() / ".claude/plugins/installed_plugins.json"
-    try:
-        plugins = json.loads(index.read_text(encoding="utf-8")).get("plugins") or {}
-    except (OSError, ValueError, AttributeError):
-        return []
-    if not isinstance(plugins, dict):
-        return []
-    paths = []
-    for installs in plugins.values():
-        for install in installs if isinstance(installs, list) else [installs]:
-            if not isinstance(install, dict):
-                continue
-            root = Path(str(install.get("installPath", "")))
-            paths.append(root / "skills/jira-communication/scripts/core/jira-issue.py")
-    return paths
-
-
-def find_jira_cli(explicit: str | None) -> Path | None:
-    if explicit:
-        path = Path(explicit)
-        return path if path.is_file() else None
-    candidates = [*JIRA_CLI_CANDIDATES, *_installed_jira_clis()]
-    return next((p for p in candidates if p.is_file()), None)
-
-
-def _python_for(script: Path) -> list[str]:
-    """The jira skill's scripts declare their dependencies inline (PEP 723),
-    so they run under `uv run`; plain python3 is the fallback."""
-    return (
-        ["uv", "run", str(script)] if shutil.which("uv") else ["python3", str(script)]
-    )
-
-
-def fetch_jira(key: str, cli: Path, run: Runner) -> dict[str, Any]:
-    me = cli.parent.parent / "utility" / JIRA_USER_NAME
-    fields = ["--fields", "summary,status,comment", "--expand", "changelog", "--raw"]
-    return {
-        "self": run([*_python_for(me), "--json", "me"]) if me.is_file() else {},
-        "issue": run([*_python_for(cli), "--json", "get", key, *fields]),
-    }
-
-
-def _jira_login(person: dict[str, Any] | None) -> str | None:
-    """Server/DC names people by `name`; Cloud only by `accountId`."""
-    person = person or {}
-    return person.get("name") or person.get("accountId") or person.get("displayName")
-
-
-def _jira_comments(comments, url, self_logins, out: _Collected) -> None:
-    for comment in comments:
-        login = _jira_login(comment.get("author"))
-        klass = author_class(login, None, self_logins)
-        if klass == "self":
-            out.self_count += 1
-            continue
-        out.findings.append(
-            finding(
-                url,
-                "ticket-comment",
-                login,
-                klass,
-                comment.get("created"),
-                comment.get("body", ""),
-            )
-        )
-
-
-def _jira_transitions(histories, url, self_logins, out: _Collected) -> None:
-    """A status change by somebody else — a ticket sent back from QA — is
-    feedback even without a word of comment."""
-    for history in histories:
-        login = _jira_login(history.get("author"))
-        klass = author_class(login, None, self_logins)
-        if klass == "self":
-            continue
-        out.findings += [
-            finding(
-                url,
-                "ticket-transition",
-                login,
-                klass,
-                history.get("created"),
-                f"{change.get('fromString')} → {change.get('toString')}",
-            )
-            for change in history.get("items") or []
-            if change.get("field") == "status"
-        ]
-
-
-def _jira_url(issue: dict[str, Any], browse: str) -> str:
-    browse = browse or (issue.get("self") or "").split("/rest/", 1)[0]
-    return f"{browse.rstrip('/')}/browse/{issue['key']}" if browse else issue["key"]
-
-
-def _jira_truncated(fields: dict[str, Any], changelog: dict[str, Any]) -> list[str]:
-    comments = (fields.get("comment") or {}).get("comments") or []
-    histories = changelog.get("histories") or []
-    cut = []
-    if (fields.get("comment") or {}).get("total", len(comments)) > len(comments):
-        cut.append("comments")
-    if changelog.get("total", len(histories)) > len(histories):
-        cut.append("changelog")
-    return cut
-
-
-def parse_jira(
-    raw: dict[str, Any], self_logins: set[str], browse: str
-) -> dict[str, Any]:
-    issue = raw["issue"]
-    if not isinstance(issue, dict) or "key" not in issue:
-        errors = issue.get("errorMessages") if isinstance(issue, dict) else None
-        raise LookupError("; ".join(errors or []) or "not a Jira issue")
-    me = raw.get("self") or {}
-    self_logins = self_logins | {me.get(k, "") for k in ("name", "key", "accountId")}
-    url = _jira_url(issue, browse)
-    fields = issue.get("fields") or {}
-    changelog = issue.get("changelog") or {}
-    out = _Collected()
-    _jira_comments(
-        (fields.get("comment") or {}).get("comments") or [], url, self_logins, out
-    )
-    _jira_transitions(changelog.get("histories") or [], url, self_logins, out)
-    return {
-        "url": url,
-        "title": fields.get("summary"),
-        "state": (fields.get("status") or {}).get("name"),
-        "findings": out.findings,
-        "self_comments": out.self_count,
-        "linked": [],
-        "tickets": [],
-        "truncated": _jira_truncated(fields, changelog),
-    }
-
-
-# --------------------------------------------------------------------------
 # orchestration
 
 
@@ -887,15 +744,34 @@ def _decode_stream(text: str) -> Any:
     return values[0] if len(values) == 1 else values
 
 
-def ticket_item(key: str, origin: str) -> dict[str, Any]:
-    return {"forge": "jira", "kind": "ticket", "key": key, "url": key, "origin": origin}
+def ticket_item(key: str, origin: str, context: str = "explicit") -> dict[str, Any]:
+    """An opaque candidate, not an identity or a choice of tracker."""
+    return {
+        "forge": "unresolved",
+        "kind": "reference",
+        "key": key,
+        "url": key,
+        "origin": origin,
+        "context": context,
+    }
 
 
 def parse_ref(ref: str) -> dict[str, Any] | None:
-    found = scope.artefacts_in_text(ref)
-    if found:
-        return dict(found[0], origin="named")
-    return ticket_item(ref, "named") if scope.TICKET_RE.fullmatch(ref) else None
+    if not isinstance(ref, str) or not ref or any(c.isspace() for c in ref):
+        return None
+    if "://" not in ref:
+        return ticket_item(ref, "named")
+    try:
+        url = contract.canonical_url(ref)
+    except ValueError:
+        return None
+    # The complete URL must match, not a GitHub URL embedded in another URL.
+    path_url = urlparse(url)._replace(query="", fragment="").geturl()
+    if scope.GITHUB_URL_RE.fullmatch(path_url) or scope.GITLAB_URL_RE.fullmatch(
+        path_url
+    ):
+        return dict(scope.artefacts_in_text(path_url)[0], origin="named", url=url)
+    return {"forge": "external", "kind": "ticket", "url": url, "origin": "named"}
 
 
 def _require_dict(value: Any, what: str) -> dict[str, Any]:
@@ -932,28 +808,39 @@ def _read_gitlab(item, run, self_logins, gitlab_hosts) -> dict[str, Any]:
     return parse_gitlab(raw, self_logins)
 
 
-def read_one(item, run, self_logins, jira_cli, jira_browse, gitlab_hosts=()) -> dict:
-    """Fetch and parse one artefact. Raises when it cannot be read."""
+def read_one(item, run, self_logins, gitlab_hosts=()) -> dict:
+    """Read through an explicitly selected native integration; no fallback."""
     if item["forge"] == "github":
         return _read_github(item, run, self_logins)
     if item["forge"] == "gitlab":
         return _read_gitlab(item, run, self_logins, gitlab_hosts)
-    if jira_cli is None:
-        raise RuntimeError(
-            "no jira-issue.py found — install the jira-communication skill"
-            " or pass --jira-cli"
-        )
-    return parse_jira(fetch_jira(item["key"], jira_cli, run), self_logins, jira_browse)
+    raise ValueError(f"no native reader for provider {item['forge']!r}")
+
+
+def native_urls_supplied(external: dict[str, dict]) -> list[str]:
+    """Supplied artifacts that a built-in reader owns.
+
+    A GitHub or GitLab artifact is always read natively. Accepting a supplied
+    record for one would replace the forge's own review threads with whatever
+    the file says, and spellings that differ only in case or query would read
+    the same artifact twice."""
+    return sorted(
+        url
+        for url in external["artefacts"]
+        if parse_ref(url)["forge"] in {"github", "gitlab"}
+    )
 
 
 def links_of(parsed: dict[str, Any]) -> list[dict[str, Any]]:
-    """The issues and tickets one artefact links to, as queue items."""
+    """Follow native links; preserve short references with their source context."""
     found = [
         dict(linked, origin="linked")
         for url in parsed["linked"]
         for linked in scope.artefacts_in_text(url)
     ]
-    return found + [ticket_item(key, "linked") for key in parsed["tickets"]]
+    return found + [
+        ticket_item(key, "linked", parsed["url"]) for key in parsed["tickets"]
+    ]
 
 
 def collect(
@@ -961,40 +848,87 @@ def collect(
     since: datetime | None,
     run: Runner = default_runner,
     self_logins: set[str] | None = None,
-    jira_cli: Path | None = None,
-    jira_browse: str = "",
     gitlab_hosts: tuple[str, ...] = (),
+    external: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
-    """Read every artefact, follow its links once, and gather the findings."""
+    """Collect native or supplied evidence without guessing a tracker."""
     self_logins = set(self_logins or ())
+    external = external or {"artefacts": {}, "references": {}}
+    supplied = external["artefacts"]
     queue = list(items)
-    seen: set[str] = set()
+    # Passing a feedback file explicitly adds its evidence to this run. It
+    # never causes link-following or a network call; native URLs are refused
+    # by native_urls_supplied() before collection starts.
+    queue += [dict(parse_ref(url), origin="provided") for url in supplied]
+    seen: set[tuple[str, str]] = set()
     artefacts: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
     earlier = 0
 
     while queue:
         item = queue.pop(0)
-        if item["url"] in seen:
+        if item["forge"] == "unresolved":
+            resolved = external["references"].get((item["key"], item["context"]))
+            if resolved:
+                item = dict(parse_ref(resolved), origin=item["origin"])
+        identity = (item["url"], item.get("context", ""))
+        if identity in seen:
             continue
-        seen.add(item["url"])
+        seen.add(identity)
         record = {k: item.get(k) for k in ("url", "forge", "kind", "origin")}
-        try:
-            parsed = read_one(
-                item, run, self_logins, jira_cli, jira_browse, gitlab_hosts
-            )
-        except Exception as exc:  # noqa: BLE001 — one artefact never ends the run
-            error = f"{type(exc).__name__}: {exc}"
-            absent = item["forge"] == "jira" and bool(ABSENT_RE.search(str(exc)))
+        if item["forge"] == "unresolved":
             artefacts.append(
-                {**record, "fetched": False, "absent": absent, "error": error}
+                {
+                    **record,
+                    "context": item["context"],
+                    "fetched": False,
+                    "status": "unresolved",
+                    "reason": "short reference has no evidenced tracker, instance and artifact identity",
+                }
             )
             continue
-        if parsed["url"] != item["url"]:
-            # `issues/5` read as `pull/5`: the same PR may already be read.
-            if parsed["url"] in seen:
+        if item["url"] in supplied:
+            parsed = dict(supplied[item["url"]])
+            record["evidence"] = "provided"
+            if parsed["status"] != "fetched":
+                artefacts.append(
+                    {
+                        **record,
+                        "fetched": False,
+                        "status": parsed["status"],
+                        "error": parsed["error"],
+                    }
+                )
                 continue
-            seen.add(parsed["url"])
+        elif item["forge"] not in {"github", "gitlab"}:
+            artefacts.append(
+                {
+                    **record,
+                    "fetched": False,
+                    "status": "unsupported",
+                    "error": "use the owning integration and supply --feedback-file; no fallback reader",
+                }
+            )
+            continue
+        else:
+            try:
+                parsed = read_one(item, run, self_logins, gitlab_hosts)
+            except Exception as exc:  # noqa: BLE001 - one artifact never ends the run
+                artefacts.append(
+                    {
+                        **record,
+                        "fetched": False,
+                        "status": "read_failed",
+                        "error": f"{type(exc).__name__}: {exc}",
+                    }
+                )
+                continue
+        if parsed["url"] != item["url"]:
+            # Native APIs may reveal that an issue URL actually names a PR.
+            canonical = (parsed["url"], "")
+            if canonical in seen:
+                continue
+            seen.add(canonical)
         kept, skipped = _split_by_since(parsed.pop("findings"), since)
         earlier += skipped
         findings += kept
@@ -1003,13 +937,12 @@ def collect(
                 **record,
                 **parsed,
                 "fetched": True,
+                "status": "fetched",
                 "findings": len(kept),
                 "before_since": skipped,
             }
         )
-        # Follow links one level: the issue a PR closes, the ticket its branch
-        # names. What those link to in turn is not this session's work.
-        if item.get("origin") != "linked":
+        if item.get("origin") != "linked" and record.get("evidence") != "provided":
             queue += links_of(parsed)
 
     return {
@@ -1017,6 +950,7 @@ def collect(
         "artefacts": artefacts,
         "findings": findings,
         "findings_before_since": earlier,
+        "complete": all(a["fetched"] and not a.get("truncated") for a in artefacts),
     }
 
 
@@ -1026,7 +960,16 @@ def items_from_scope(
     items = [
         a for a in data["artefacts"] if include_mentioned or a["origin"] != "mentioned"
     ]
-    items += [ticket_item(k, "acted") for k in data["tickets"]]
+    if "reference_candidates" in data:
+        items += [
+            ticket_item(ref["ref"], "observed", ref["context"])
+            for ref in data["reference_candidates"]
+        ]
+    else:
+        # Legacy scope files contain only bare keys. They prove no provider.
+        items += [
+            ticket_item(k, "observed", "legacy-scope") for k in data.get("tickets", [])
+        ]
     return items
 
 
@@ -1038,31 +981,44 @@ TEXT_BODY_LIMIT = 400
 TEXT_REPORT_LIMIT = 160
 
 
+CONTROL_RE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+
+
+def oneline(text: str) -> str:
+    """One line without control characters: a title, author or error from a
+    forge or a feedback file must not forge report lines or drive the terminal."""
+    return " ".join(CONTROL_RE.sub(" ", text).split())
+
+
 def plain(body: str) -> str:
     """Body text without HTML comments, tags, images and link targets."""
     text = re.sub(r"<!--.*?-->", " ", body, flags=re.DOTALL)
     text = re.sub(r"<[^>]+>", " ", text)
     text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
-    return " ".join(text.split())
+    return oneline(text)
 
 
 def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
     arts = result["artefacts"]
     read = [a for a in arts if a["fetched"]]
     silent = sum(1 for a in read if a["findings"] == 0)
+    unresolved = [a for a in arts if a.get("status") == "unresolved"]
+    unsupported = [a for a in arts if a.get("status") == "unsupported"]
+    failed = [a for a in arts if a.get("status") == "read_failed"]
     by_class: dict[str, int] = {}
     for f in result["findings"]:
         by_class[f["author_class"]] = by_class.get(f["author_class"], 0) + 1
     classes = ", ".join(f"{v} {k}" for k, v in sorted(by_class.items()))
     line = (
-        f"{len(arts)} artefacts: {len(read)} read ({silent} with no finding),"
-        f" {len(arts) - len(read)} could not be read · {len(result['findings'])} findings"
+        f"{len(arts)} artefacts: {len(read)} read ({silent} with no finding), "
+        f"{len(failed)} read failures, {len(unsupported)} unsupported, "
+        f"{len(unresolved)} unresolved references; {len(result['findings'])} findings"
     )
     if classes:
         line += f" ({classes})"
     if result["since"]:
-        line += f" · since {result['since']}"
+        line += f"; since {result['since']}"
     lines = [line]
     if result["findings_before_since"]:
         lines.append(
@@ -1073,21 +1029,21 @@ def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
             f"{mentioned_skipped} artefacts only mentioned in the transcript were not read"
             " (--include-mentioned reads them)."
         )
+    lines += [f"NOT READ  {a['url']}: {oneline(a['error'])}" for a in failed]
+    lines += [f"UNSUPPORTED {a['url']}: {oneline(a['error'])}" for a in unsupported]
     lines += [
-        f"NOT READ  {a['url']}: {a['error']}"
-        for a in arts
-        if not a["fetched"] and not a.get("absent")
-    ]
-    lines += [
-        f"NO SUCH   {a['url']}: Jira says no such issue (or none this account may see)"
-        for a in arts
-        if a.get("absent")
+        f"UNRESOLVED REF {a['url']} (context: {a['context']}): {a['reason']}"
+        for a in unresolved
     ]
     lines += [
         f"TRUNCATED {a['url']}: {', '.join(a['truncated'])} held more than one page"
         for a in read
         if a.get("truncated")
     ]
+    if not result.get("complete", True):
+        lines.append(
+            "Evidence is incomplete; unresolved does not mean absent or no feedback."
+        )
     return lines + _unresolved_lines(result.get("unresolved_forge_commands") or [])
 
 
@@ -1134,17 +1090,24 @@ def _clip(text: str, limit: int, marker: str) -> str:
 def _render_artefact(a: dict[str, Any], own: list[dict[str, Any]]) -> list[str]:
     lines = [
         "",
-        f"== {a['url']} ({a['origin']}, {a.get('state')}) — {a.get('title') or ''}",
+        (
+            f"== {a['url']} ({a['origin']}, {oneline(str(a.get('state')))})"
+            f" — {oneline(a.get('title') or '')}"
+        ),
     ]
     for f in (f for f in own if not f["report"]):
         lines.append(
-            f"- [{f['source']} · {f['author_class']} {f['author']}{_where(f)}]{_flags(f)}"
+            oneline(
+                f"- [{f['source']} · {f['author_class']} {f['author']}{_where(f)}]"
+                f"{_flags(f)}"
+            )
         )
         lines.append(
             "  " + _clip(plain(f["body"]), TEXT_BODY_LIMIT, " …[trimmed; json has all]")
         )
     lines += [
-        f"  report · {f['author']}: " + _clip(plain(f["body"]), TEXT_REPORT_LIMIT, " …")
+        f"  report · {oneline(f['author'])}: "
+        + _clip(plain(f["body"]), TEXT_REPORT_LIMIT, " …")
         for f in own
         if f["report"]
     ]
@@ -1189,7 +1152,9 @@ def _items_from_args(args, gitlab_host: str):
     for ref in args.ref:
         item = parse_ref(ref)
         if item is None:
-            raise ValueError(f"not a PR/MR/issue URL or Jira key: {ref}")
+            raise ValueError(
+                f"not an artifact URL or unresolved short reference: {ref}"
+            )
         items.append(item)
     return items, mentioned_skipped, start, unresolved
 
@@ -1200,18 +1165,22 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument("--transcript-file", type=Path)
     parser.add_argument(
-        "--ref", action="append", default=[], help="PR/MR/issue URL or Jira key"
+        "--ref",
+        action="append",
+        default=[],
+        help="artifact URL or unresolved short reference",
     )
     parser.add_argument(
         "--since", help="ISO time; default: the transcript's first timestamp"
     )
     parser.add_argument("--include-mentioned", action="store_true")
     parser.add_argument("--self-login", action="append", default=[])
-    parser.add_argument("--jira-cli", help="path to jira-communication's jira-issue.py")
     parser.add_argument(
-        "--jira-browse",
-        default=os.environ.get("JIRA_URL", ""),
-        help="Jira base URL for ticket links (default: $JIRA_URL)",
+        "--feedback-file",
+        type=Path,
+        action="append",
+        default=[],
+        help="local version-1 normalized feedback JSON from the owning integration; repeatable",
     )
     parser.add_argument(
         "--gitlab-host",
@@ -1223,13 +1192,20 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--output-format", choices=("text", "json"), default="text")
     args = parser.parse_args(argv[1:])
 
-    if not args.transcript_file and not args.ref:
-        parser.error("give --transcript-file or at least one --ref")
+    if not args.transcript_file and not args.ref and not args.feedback_file:
+        parser.error("give --transcript-file, --ref or --feedback-file")
     since = parse_time(args.since) if args.since else None
     if args.since and since is None:
         parser.error(f"--since is not an ISO 8601 time: {args.since}")
     gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
     try:
+        external = contract.load_files(args.feedback_file)
+        native = native_urls_supplied(external)
+        if native:
+            raise ValueError(
+                "GitHub/GitLab artifacts are read by the built-in readers and"
+                " cannot be supplied in --feedback-file: " + ", ".join(native)
+            )
         items, mentioned_skipped, start, unresolved = _items_from_args(
             args, gitlab_hosts[0]
         )
@@ -1242,17 +1218,22 @@ def main(argv: list[str]) -> int:
         items,
         since,
         self_logins=set(args.self_login),
-        jira_cli=find_jira_cli(args.jira_cli),
-        jira_browse=args.jira_browse,
+        external=external,
         gitlab_hosts=gitlab_hosts,
     )
     result["unresolved_forge_commands"] = unresolved
+    result["complete"] = result["complete"] and not unresolved
     if args.output_format == "json":
         print(json.dumps(result, indent=2, default=str))
     else:
         print(render_text(result, mentioned_skipped))
     unread = [
-        a for a in result["artefacts"] if not a["fetched"] and not a.get("absent")
+        a
+        for a in result["artefacts"]
+        if not a["fetched"]
+        and not (
+            a.get("status") == "unresolved" and a["origin"] in {"linked", "observed"}
+        )
     ]
     return 1 if unread else 0
 
