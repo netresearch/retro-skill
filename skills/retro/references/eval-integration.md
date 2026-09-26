@@ -85,9 +85,9 @@ Two cases the requirement does not cover:
   as the pattern, but this validator's samples machinery reads only assertion
   *objects*, taking `pattern` or `value` from each — a bare string carries
   neither key. Bringing them in would change what `samples`
-  means for the evals that already carry them, which is a decision for
-  [#92](https://github.com/netresearch/retro-skill/issues/92) rather than a
-  patch.
+  means for the evals that already carry them; when
+  [#92](https://github.com/netresearch/retro-skill/issues/92) was settled, they
+  were left out of the requirement.
 - retro's own Markdown fixtures under `evals/` — a different schema with no
   samples concept (see `evals/README.md`).
 
@@ -183,11 +183,14 @@ across the 23 `evals.json` files installed here, **12 of 518 evals carry
 `samples.passing`**, so for the rest the gate has nothing to compare and
 validates shape only.
 
-**What does not exist is a runner that produces an answer and grades it.** No CI
-job feeds a prompt to a model and applies the assertions to what comes back, and
-`claude plugin eval` expects a different layout entirely (`<eval dir>/**/case.yaml`,
-or `prompt.md` plus `graders/*.md`). So a green `eval-validate` says the eval
-file is internally coherent — not that the skill passes it. `/retro` itself reads
+**What does not run is the grading of real answers.** skill-repo-skill has a
+runner that feeds each prompt to the `claude` CLI with and without the skill and
+grades the answers (`scripts/run-ab-evals.sh`, wired as `ab-evals-caller.yml`),
+but its weekly schedule was removed because no `ANTHROPIC_API_KEY` is
+configured, so it runs only when started by hand. `claude plugin eval` expects
+a different layout entirely (`<eval dir>/**/case.yaml`, or `prompt.md` plus
+`graders/*.md`). So a green `eval-validate` says the eval file is internally
+coherent — not that the skill passes it. `/retro` itself reads
 these files as text and hands them to the LLM as context.
 
 **Negation does exist.** The grader handles `must_not` and `not_content`, and the
