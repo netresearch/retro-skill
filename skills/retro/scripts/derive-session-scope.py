@@ -585,12 +585,14 @@ class _Shell:
 
     def __init__(self, source: str):
         self.source = source
-        data = source.encode()
+        # A transcript's JSON can hold an unpaired surrogate escape, which a
+        # plain encode() refuses; surrogatepass keeps one code unit per char.
+        data = self._data = source.encode("utf-8", "surrogatepass")
         self.root = BASH.parse(data).root_node
         # Tree offsets are bytes; every caller works in characters.
         self._byte = [0]
         for ch in source:
-            self._byte.append(self._byte[-1] + len(ch.encode()))
+            self._byte.append(self._byte[-1] + len(ch.encode("utf-8", "surrogatepass")))
         self._char = [0] * (len(data) + 1)
         for index, offset in enumerate(self._byte):
             self._char[offset] = index
@@ -712,7 +714,7 @@ class _Shell:
         grammar joins `a | b` and a following `c | d` line without flagging it."""
         if self.root.has_error:
             return True
-        data = self.source.encode()
+        data = self._data
         for node in self._walk():
             if node.type != "command":
                 continue

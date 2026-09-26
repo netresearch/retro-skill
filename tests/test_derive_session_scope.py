@@ -47,6 +47,47 @@ def _git(*args: str) -> None:
     subprocess.run(["git", *args], check=True, capture_output=True, env=_clean_env())
 
 
+class LoneSurrogateTest(unittest.TestCase):
+    # json.loads turns an unpaired "\ud800" escape in a transcript into a lone
+    # surrogate, which str.encode() refuses; one such command must not end
+    # the whole scan.
+    COMMAND = "echo \ud800 && gh pr comment 7 --body x"
+
+    def test_shell_reads_a_command_with_a_lone_surrogate(self):
+        shell = dss._Shell(self.COMMAND)
+        self.assertFalse(shell.misparsed)
+        self.assertEqual(len(shell.source), len(self.COMMAND))
+
+    def test_scan_survives_a_transcript_line_with_a_lone_surrogate(self):
+        events = [
+            {
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "id": "t1",
+                            "name": "Bash",
+                            "input": {"command": self.COMMAND},
+                        }
+                    ]
+                }
+            },
+            {
+                "message": {
+                    "content": [
+                        {"type": "tool_result", "tool_use_id": "t1", "content": "ok"}
+                    ]
+                }
+            },
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.jsonl"
+            # json.dumps escapes the surrogate, as the harness writes it.
+            path.write_text("\n".join(json.dumps(e) for e in events))
+            data = dss.collect_artefacts(path, "gitlab.com")
+        self.assertIn("artefacts", data)
+
+
 class BareLayoutTest(unittest.TestCase):
     def setUp(self) -> None:
         root = Path(tempfile.mkdtemp())
