@@ -56,8 +56,10 @@ uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/collect-review-findings.py \
   --transcript-file <the transcript confirmed in Phase 1>
 ```
 
-It reads native PRs, MRs and linked issues. Short references in titles, branches
-and tool exchanges stay `UNRESOLVED REF` with their source context. Resolve
+It reads native PRs, MRs and linked issues, including `GH-N` in a GitHub PR's
+title or description, which GitHub itself links to issue N. Other short
+references in titles, branches and tool exchanges stay `UNRESOLVED REF` with
+their source context. Resolve
 relevant hints from explicit evidence or project conventions through the owning
 integration, not a default tracker. Supply that integration's normalized data
 with `--feedback-file`; see `skills/retro/references/feedback-contract.md`.

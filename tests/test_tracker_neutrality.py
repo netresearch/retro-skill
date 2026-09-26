@@ -51,6 +51,89 @@ class TrackerNeutralityTest(unittest.TestCase):
         self.assertFalse(result["complete"])
 
 
+class GitHubAutolinkTest(unittest.TestCase):
+    """`GH-N` is GitHub's own reference syntax in conversation text (#137)."""
+
+    def pr(self, title="Fix the reported problem", body="", branch="topic"):
+        raw = json.loads(
+            (
+                ROOT / "tests/fixtures/review-findings/github-pr-retro-skill-122.json"
+            ).read_text(encoding="utf-8")
+        )
+        pr = raw["data"]["repository"]["pullRequest"]
+        pr.update(title=title, body=body, headRefName=branch)
+        pr["closingIssuesReferences"] = {"totalCount": 0, "nodes": []}
+        return raw, pr["url"]
+
+    def test_gh_reference_in_title_reads_the_issue_of_the_same_repository(self):
+        raw, url = self.pr(title="GH-160: fix the parser", branch="GH-160")
+        base = url.rsplit("/", 2)[0]
+        parsed = crf.parse_github_pr(raw, set())
+        self.assertIn(f"{base}/issues/160", parsed["linked"])
+        # Linked natively, so neither the title nor the branch key is a hint.
+        self.assertNotIn("GH-160", parsed["tickets"])
+
+    def test_gh_reference_in_body_is_linked(self):
+        raw, url = self.pr(body="Follow-up to GH-5, see also GH-6.")
+        base = url.rsplit("/", 2)[0]
+        self.assertEqual(
+            [u for u in crf.parse_github_pr(raw, set())["linked"] if "/issues/" in u],
+            [f"{base}/issues/5", f"{base}/issues/6"],
+        )
+
+    def test_branch_alone_stays_an_unresolved_hint(self):
+        # GitHub links nothing in a branch name.
+        raw, _ = self.pr(branch="GH-161")
+        parsed = crf.parse_github_pr(raw, set())
+        self.assertEqual(parsed["tickets"], ["GH-161"])
+        self.assertFalse([u for u in parsed["linked"] if u.endswith("/161")])
+
+    def test_only_the_documented_shape_is_a_reference(self):
+        for text in ("XGH-5", "GH-5a", "foo/GH-5", "gh-5", "GH-", "ABC-GH-5"):
+            with self.subTest(text=text):
+                self.assertEqual(
+                    crf._gh_autolinks(text, "https://github.com/o/r/pull/7"), []
+                )
+
+    def test_own_number_is_not_followed(self):
+        self.assertEqual(
+            crf._gh_autolinks("GH-7 and GH-8", "https://github.com/o/r/pull/7"),
+            ["https://github.com/o/r/issues/8"],
+        )
+
+    def test_gitlab_description_does_not_use_github_syntax(self):
+        self.assertEqual(
+            crf._issue_urls_in("see GH-5", "https://gitlab.com/g/p/-/merge_requests/3"),
+            [],
+        )
+
+    def test_linked_issue_is_read_one_hop_deep(self):
+        raw, url = self.pr(title="GH-160: fix the parser")
+        issue = {
+            "data": {
+                "viewer": {"login": "me"},
+                "repository": {
+                    "issue": {
+                        "url": url.rsplit("/", 2)[0] + "/issues/160",
+                        "title": "The parser drops keys",
+                        "state": "OPEN",
+                        "comments": {"totalCount": 0, "nodes": []},
+                    }
+                },
+            }
+        }
+        calls = []
+
+        def runner(command):
+            calls.append(command)
+            return issue if len(calls) > 1 else raw
+
+        result = crf.collect([crf.parse_ref(url)], None, run=runner)
+        read = {a["url"]: a for a in result["artefacts"]}
+        self.assertTrue(read[url.rsplit("/", 2)[0] + "/issues/160"]["fetched"])
+        self.assertEqual(len(calls), 2)
+
+
 URL = "https://tracker.example/work/42"
 CONTEXT = "https://github.com/acme/app/pull/9"
 
