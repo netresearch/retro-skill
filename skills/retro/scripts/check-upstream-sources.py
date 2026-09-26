@@ -17,6 +17,10 @@ half of the audit and is deliberately out of scope here; this script only
 tells the auditor which sources are dead, redirected away, or overdue for a
 re-read.
 
+A redirect is followed. When it ends on a different host or path (a login
+wall, a moved page), ``upstream_source_redirected`` names the final URL; a
+change of scheme alone or of a trailing slash is not reported.
+
 Probe discipline: a failed request is a transport fact before it is a
 finding. Only 404/410 count as ``upstream_source_dead``; timeouts, TLS
 errors, 403s and 5xx are emitted as ``upstream_probe_failed`` (unknown →
@@ -24,8 +28,8 @@ re-check), never as "the page is gone".
 
 Output mirrors detect-mechanical.py: a JSON envelope with ``findings``
 carrying ``signal: B14`` (doc drift) candidates for the classifier. Exit
-code is 0 unless ``--strict`` is given and at least one dead or stale
-finding exists.
+code is 0 unless ``--strict`` is given and at least one dead, stale or
+invalid-date finding exists.
 
 checkpoints.yaml is read line-based for three scalar keys (``provenance:``,
 ``source:``, ``verified:``) so the script stays stdlib-only; the keys are
@@ -43,10 +47,13 @@ import re
 import ssl
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
-MD_LINK = re.compile(r"\[[^\]]*\]\((https?://[^)\s]+)\)")
+# One level of balanced parentheses inside the URL, as in Wikipedia's
+# `Foo_(bar)`; `[^)\s]+` stopped at the first `)` and probed a truncated URL.
+MD_LINK = re.compile(r"\[[^\]]*\]\((https?://(?:[^()\s]|\([^()\s]*\))+)\)")
 BARE_URL = re.compile(r"(?<!\()(https?://[^\s)\"'`>]+)")
 UPSTREAM_MARK = re.compile(r"\[upstream\]", re.IGNORECASE)
 VERIFIED_RE = re.compile(r"^\s*verified:\s*[\"']?(\d{4}-\d{2}-\d{2})")
@@ -139,8 +146,18 @@ def collect_checkpoints(root: Path) -> tuple[list[dict], list[dict]]:
     return urls, verified
 
 
+def _moved(requested: str, final: str) -> bool:
+    """True when a redirect changed the host or the path, not only the scheme."""
+    a, b = urllib.parse.urlsplit(requested), urllib.parse.urlsplit(final)
+    return (a.hostname, a.path.rstrip("/"), a.query) != (
+        b.hostname,
+        b.path.rstrip("/"),
+        b.query,
+    )
+
+
 def probe(url: str, timeout: float) -> tuple[str, int | None, str]:
-    """→ (verdict, status, detail); verdict ∈ ok|dead|probe_failed."""
+    """→ (verdict, status, detail); verdict ∈ ok|redirected|dead|probe_failed."""
     ctx = ssl.create_default_context()
     ctx.minimum_version = ssl.TLSVersion.TLSv1_2
     last_status: int | None = None
@@ -150,6 +167,9 @@ def probe(url: str, timeout: float) -> tuple[str, int | None, str]:
         )
         try:
             with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+                final = resp.geturl()
+                if _moved(url, final):
+                    return "redirected", resp.status, f"redirected to {final}"
                 return "ok", resp.status, ""
         except urllib.error.HTTPError as exc:
             last_status = exc.code
@@ -179,7 +199,8 @@ def main() -> int:
     ap.add_argument(
         "--strict",
         action="store_true",
-        help="exit 1 when dead links or stale verifications were found",
+        help="exit 1 when dead links, stale verifications or invalid verified: "
+        "dates were found",
     )
     args = ap.parse_args()
 
@@ -221,7 +242,12 @@ def main() -> int:
     render(envelope, args.output_format)
 
     if args.strict and any(
-        f["name"] in ("upstream_source_dead", "upstream_verification_stale")
+        f["name"]
+        in (
+            "upstream_source_dead",
+            "upstream_verification_stale",
+            "upstream_verification_invalid",
+        )
         for f in findings
     ):
         return 1
@@ -232,7 +258,23 @@ def stale_findings(candidates: list[dict], max_age_days: int) -> list[dict]:
     out: list[dict] = []
     today = _dt.datetime.now(_dt.timezone.utc).date()
     for entry in candidates:
-        age = (today - _dt.date.fromisoformat(entry["date"])).days
+        try:
+            verified = _dt.date.fromisoformat(entry["date"])
+        except ValueError:
+            # Matches the date pattern but names no real day (2026-02-30).
+            out.append(
+                {
+                    "signal": "B14",
+                    "name": "upstream_verification_invalid",
+                    "file": entry["file"],
+                    "line": entry["line"],
+                    "checkpoint": entry["checkpoint"],
+                    "verified": entry["date"],
+                    "detail": f"verified: {entry['date']} is not a calendar date",
+                }
+            )
+            continue
+        age = (today - verified).days
         if age > max_age_days:
             out.append(
                 {
@@ -262,7 +304,10 @@ def probe_findings(unique: dict[str, list[dict]], timeout: float) -> list[dict]:
         verdict, status, detail = results[url]
         if verdict == "ok":
             continue
-        name = "upstream_source_dead" if verdict == "dead" else "upstream_probe_failed"
+        name = {
+            "dead": "upstream_source_dead",
+            "redirected": "upstream_source_redirected",
+        }.get(verdict, "upstream_probe_failed")
         for occ in occs:
             out.append(
                 {
