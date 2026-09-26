@@ -561,6 +561,82 @@ TEXT_SCOPE_NODES = frozenset(["string", "raw_string", "heredoc_body"])
 MAY_NAME_A_DIRECTORY_RE = re.compile(r"\b(?:git|cd|pushd)\b")
 
 
+def _text_scope(shell: _Shell, node, depth: int) -> list[str]:
+    """The absolute paths of a text node read again as a command, when it is
+    not too deep and may name a directory."""
+    text = _word(shell, node)
+    if depth >= MAX_TEXT_DEPTH or not MAY_NAME_A_DIRECTORY_RE.search(text):
+        return []
+    found, _tags = _shell_scope(_Shell(text), None, depth + 1)
+    return [p for p in found if p.startswith("/")]
+
+
+def _unwrapped(
+    group: list[Any], words: list[str]
+) -> tuple[list[Any], list[str], str] | None:
+    """(word nodes, words, head) of one simple command with a leading wrapper
+    peeled off: `sudo -u me git …` starts at git or cd. None when a wrapper
+    wraps neither."""
+    head = os.path.basename(words[0])
+    if head not in COMMAND_WRAPPERS:
+        return group, words, head
+    starts = [i for i, w in enumerate(words) if w in ("git", "cd")]
+    if not starts:
+        return None
+    return group[starts[0] :], words[starts[0] :], words[starts[0]]
+
+
+def _cd_step(words: list[str], base: str | None) -> tuple[list[str], str | None]:
+    """(paths named, base after it) of one `cd` / `pushd`."""
+    targets = [w for w in words[1:] if not w.startswith("-")]
+    if not targets:
+        return [], None  # `cd` (home) or `cd -` (the previous directory)
+    target = _within(base, targets[0])
+    return [target], target if target.startswith("/") else None
+
+
+def _shell_program(shell: _Shell, group: list[Any]):
+    """The program string node of a shell given one with `-c`, or None."""
+    for flag, program in itertools.pairwise(group[1:]):
+        text = _word(shell, flag)
+        if (
+            text.startswith("-")
+            and not text.startswith("--")
+            and "c" in text
+            and program.type in ("raw_string", "string")
+        ):
+            return program
+    return None
+
+
+def _group_scope(
+    shell: _Shell,
+    group: list[Any],
+    base: str | None,
+    depth: int,
+    programs: set[tuple[int, int]],
+) -> tuple[list[str], set[str], str | None]:
+    """(paths, tags, base after it) of one simple command. A `bash -c`
+    program read here is recorded in `programs`, so the text walk skips it."""
+    unwrapped = _unwrapped(group, [_word(shell, w) for w in group])
+    if unwrapped is None:
+        return [], set(), base
+    group, words, head = unwrapped
+    if head in ("cd", "pushd"):
+        found, base = _cd_step(words, base)
+        return found, set(), base
+    if head == "git":
+        found, named = _git_scope(words, base)
+        return found, named, base
+    if head in SHELLS:
+        program = _shell_program(shell, group)
+        if program is not None:
+            programs.add((program.start_byte, program.end_byte))
+            found, named = _shell_scope(_Shell(_word(shell, program)), base, depth)
+            return found, named, base
+    return [], set(), base
+
+
 def _shell_scope(
     shell: _Shell, cwd: str | None, depth: int
 ) -> tuple[list[str], set[str]]:
@@ -570,56 +646,13 @@ def _shell_scope(
     programs: set[tuple[int, int]] = set()  # `bash -c` strings, read as programs
     for node in shell._walk():
         if node.type in TEXT_SCOPE_NODES:
-            span = (node.start_byte, node.end_byte)
-            text = _word(shell, node)
-            if (
-                span not in programs
-                and depth < MAX_TEXT_DEPTH
-                and MAY_NAME_A_DIRECTORY_RE.search(text)
-            ):
-                found, _tags = _shell_scope(_Shell(text), None, depth + 1)
-                paths += [p for p in found if p.startswith("/")]
-            continue
-        if node.type != "command":
-            continue
-        for group in _simple_commands(shell, node):
-            words = [_word(shell, w) for w in group]
-            head = os.path.basename(words[0])
-            if head in COMMAND_WRAPPERS:
-                # `sudo -u me git …`: the wrapped command starts at git or cd.
-                starts = [i for i, w in enumerate(words) if w in ("git", "cd")]
-                if not starts:
-                    continue
-                group, words = group[starts[0] :], words[starts[0] :]
-                head = words[0]
-            if head in ("cd", "pushd"):
-                targets = [w for w in words[1:] if not w.startswith("-")]
-                if not targets:
-                    base = None  # `cd` (home) or `cd -` (the previous directory)
-                    continue
-                target = _within(base, targets[0])
-                paths.append(target)
-                base = target if target.startswith("/") else None
-            elif head == "git":
-                found, named = _git_scope(words, base)
+            if (node.start_byte, node.end_byte) not in programs:
+                paths += _text_scope(shell, node, depth)
+        elif node.type == "command":
+            for group in _simple_commands(shell, node):
+                found, named, base = _group_scope(shell, group, base, depth, programs)
                 paths += found
                 tags |= named
-            elif head in SHELLS:
-                for flag, program in itertools.pairwise(group[1:]):
-                    text = _word(shell, flag)
-                    if (
-                        text.startswith("-")
-                        and not text.startswith("--")
-                        and "c" in text
-                        and program.type in ("raw_string", "string")
-                    ):
-                        programs.add((program.start_byte, program.end_byte))
-                        found, named = _shell_scope(
-                            _Shell(_word(shell, program)), base, depth
-                        )
-                        paths += found
-                        tags |= named
-                        break
     return paths, tags
 
 

@@ -536,11 +536,15 @@ def _branch_names(bare: str) -> frozenset[str]:
     return frozenset(names)
 
 
+# The directory name of the bare repository in a bare-repository layout.
+BARE_DIR = ".bare"
+
+
 def _bare_project(directory: Path) -> Path | None:
     """The nearest directory at or above `directory` that holds a bare
     repository named `.bare`, or None."""
     for candidate in (directory, *directory.parents):
-        bare = candidate / ".bare"
+        bare = candidate / BARE_DIR
         if bare.is_dir() and _rev_parse(str(bare), "--is-bare-repository") == [
             "true",
             "",
@@ -563,7 +567,7 @@ def _worktree_depth(project: Path, probe: Path, parts: tuple[str, ...]) -> int:
     deepest one that still exists: a `fix/x` whose branch is deleted
     everywhere and whose `fix/` was removed as well keys as `x/…`."""
     existing = len(probe.relative_to(project).parts)
-    names = _branch_names(str(project / ".bare"))
+    names = _branch_names(str(project / BARE_DIR))
     for depth in range(len(parts) - 1, existing, -1):
         if "/".join(parts[:depth]) in names:
             return depth
@@ -612,7 +616,7 @@ def file_key(path: str) -> tuple[str | None, str]:
         # At least one directory of the worktree that is gone, then the file.
         if len(parts) >= len(probe.relative_to(project).parts) + 2:
             depth = _worktree_depth(project, probe, parts)
-            return str((project / ".bare").resolve()), "/".join(parts[depth:])
+            return str((project / BARE_DIR).resolve()), "/".join(parts[depth:])
     if found:
         common, top = found
         try:
