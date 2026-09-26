@@ -11,11 +11,13 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 SCRIPT = (
     Path(__file__).resolve().parent.parent
@@ -36,8 +38,13 @@ def _load():
 dss = _load()
 
 
+def _clean_env() -> dict[str, str]:
+    """The environment without the variables that override `git -C`."""
+    return {k: v for k, v in os.environ.items() if k not in dss.GIT_LOCATION_VARS}
+
+
 def _git(*args: str) -> None:
-    subprocess.run(["git", *args], check=True, capture_output=True)
+    subprocess.run(["git", *args], check=True, capture_output=True, env=_clean_env())
 
 
 class BareLayoutTest(unittest.TestCase):
@@ -90,6 +97,25 @@ class BareLayoutTest(unittest.TestCase):
 
     def test_a_directory_outside_any_repository_has_none(self) -> None:
         self.assertIsNone(dss.repo_root(self.outside / "x.md"))
+
+    def test_a_plain_directory_named_bare_is_no_repository(self) -> None:
+        (self.outside / ".bare").mkdir()
+        self.assertIsNone(dss.repo_root(self.outside / "gone" / "a.md"))
+
+    def test_the_bare_repository_wins_over_an_enclosing_work_tree(self) -> None:
+        _git("init", "-q", str(self.project.parent))
+        self.assertEqual(
+            dss.repo_root(self.removed / "docs" / "a.md"), self.bare.resolve()
+        )
+        self.assertEqual(dss.repo_root(self.live / "a.md"), self.live.resolve())
+
+    def test_git_dir_in_the_environment_does_not_redirect_the_probe(self) -> None:
+        other = self.outside / "other"
+        _git("init", "-q", str(other))
+        with mock.patch.dict(os.environ, {"GIT_DIR": str(other / ".git")}):
+            self.assertEqual(
+                dss.repo_root(self.removed / "docs" / "a.md"), self.bare.resolve()
+            )
 
     def test_scope_of_a_session_whose_worktree_was_removed(self) -> None:
         transcript = self.outside / "session.jsonl"
