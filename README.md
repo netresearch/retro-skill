@@ -14,7 +14,7 @@
 - [Why](#why)
 - [Requirements](#requirements)
 - [Install](#install)
-- [Usage — the four modes](#usage--the-four-modes)
+- [Usage — the six modes](#usage--the-six-modes)
 - [A worked example](#a-worked-example)
 - [The seven destinations](#the-seven-destinations)
 - [How it works](#how-it-works)
@@ -80,7 +80,7 @@ Alternatively, install via Composer (the skill-repo convention):
 composer require netresearch/retro-skill
 ```
 
-## Usage — the four modes
+## Usage — the six modes
 
 | Command | Mode | When to use |
 |---|---|---|
@@ -89,6 +89,7 @@ composer require netresearch/retro-skill
 | `/retro outcome [session-id\|--since N]` | **Outcome** (layer D) — replay a *past* session through what happened to its output afterwards (reverted commits, rejected PRs, CI failures, follow-up fix sessions) | Periodically, e.g. monthly. **Do not run within 24h of the session** — the outcomes have not landed yet |
 | `/retro audit [--scope project\|repo\|skill]` | **Constitutional audit** — cross-session architectural review (design drift, convention erosion) over weeks/months | Monthly or quarterly health check |
 | `/retro promote` | **Promote** — inventory accumulated project-local memory (all slugs) and re-home each note upward (canonical-source › skill-update › project-rule › personal-rule; never project-local memory), draining the source only after the upward write is verified | When local memory has piled up and you want it shared and emptied |
+| `/retro done` | **Done** — definition-of-done gate: seven evidence-backed checks (task, findings, retro, cleanup, questions, tickets, time) | As the last command of a session, before calling it finished |
 
 Sweep and Spotlight answer *"what went wrong this session?"*. Outcome and Audit answer *"did our past decisions survive contact with reality?"* and *"is the system still on track?"* — friction that does not show up inside a single session.
 
@@ -148,8 +149,8 @@ The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — la
    Then `skills/retro/scripts/collect-review-findings.py` reads native PR/MR review threads and linked issue feedback, including issues a GitHub PR names as `GH-N` in its title or description (GitHub's own reference syntax). Other tracker integrations supply normalized local evidence with `--feedback-file`. Short branch/title/tool references remain contextual hints until explicitly resolved; they never select a tracker. See [the feedback contract](skills/retro/references/feedback-contract.md) for delegation, coverage states and migration from the removed Jira CLI flags.
 2. **LLM enrichment (layer B)** — adds **20** inferential signals, B16–B20 of them reusable-learning signals (wrong skill choice, skill capability gap, hallucination, convention violation, missing skill, repeated mistake, assumption-without-asking, doc drift, …) and filters layer-A false positives. Includes a trigger-coverage sweep over every installed skill's description.
 3. **Cross-session enrichment (layer C, optional)** — scans `~/.claude/projects/<slug>/*.jsonl` across projects via `skills/retro/scripts/scan-cross-session.py`. **6** signals: same-friction-again, cross-project pattern, memory drift, ineffective skill update, follow-up-fix session, written rule violated repeatedly.
-4. **Classification** — map each finding to one of the seven destinations, authority first (`skills/retro/references/classification-heuristic.md`).
-5. **Skill discovery (runtime)** — `skills/retro/scripts/find-installed-skills.sh` matches the friction topic against each `SKILL.md` description and resolves the source-repo URL.
+4. **Skill discovery (runtime)** — `skills/retro/scripts/find-org-skills.py` lists every skill in every configured marketplace, installed or not, to match the friction topic against its description and resolve the source-repo URL; `skills/retro/scripts/find-installed-skills.sh` adds on-disk paths and git remotes of installed skills.
+5. **Classification** — map each finding to one of the seven destinations, authority first (`skills/retro/references/classification-heuristic.md`), using the catalogue from step 4.
 6. **Eval consultation** — if the matched skill has an `evals/` directory, read it for context and propose an eval stub (TDD style). retro ships its **own** evals under `skills/retro/evals/` testing its classification, validated by `skills/retro/scripts/validate-evals.py`.
 7. **Proposal generation** — per finding: a *Why* paragraph and a *How-to-apply* paragraph, grouped by destination, ≤10 items.
 8. **Per-proposal approval** — approve / edit / reject, one decision per materialization.
@@ -213,7 +214,8 @@ retro-skill/
 ├── skills/retro/                     # the self-contained skill subtree (ships via npx-skills)
 │   ├── SKILL.md                  # main skill definition (all modes)
 │   ├── checkpoints.yaml          # skill quality gates
-│   ├── references/               # 10 reference docs
+│   ├── references/               # 11 reference docs
+│   │   ├── feedback-contract.md
 │   │   ├── friction-catalog.md
 │   │   ├── destination-taxonomy.md
 │   │   ├── classification-heuristic.md
@@ -229,7 +231,10 @@ retro-skill/
 │   │   └── *.md                  # validated by skills/retro/scripts/validate-evals.py
 │   └── scripts/
 │       ├── detect-mechanical.py      # layer-A pre-pass
+│       ├── derive-session-scope.py   # repositories, artefacts and days a session touched
 │       ├── collect-review-findings.py # review, issue and ticket feedback on the session's PRs/MRs
+│       ├── feedback-contract.py      # validates supplied tracker feedback (--feedback-file)
+│       ├── mask-secrets.py           # credential masking for emitted transcript text
 │       ├── opencode-transcript.py    # renders an opencode session as layer-A JSONL
 │       ├── scan-memory-inventory.py  # Promote: memory backlog pre-pass
 │       ├── scan-cross-session.py     # layer-C JSONL scanner
@@ -237,20 +242,14 @@ retro-skill/
 │       ├── find-installed-skills.sh  # installed-only detail (paths, remotes)
 │       ├── check-upstream-sources.py # canonical-source drift check
 │       ├── materialize-pr.sh         # skill-update PR helper
+│       ├── check-eval-samples.py     # refuses a new or tightened eval without samples
 │       └── validate-evals.py         # validates retro's own evals (RT-40..42)
 ├── commands/retro.md             # /retro slash command (Claude Code plugin only)
 ├── hooks/session-end.json        # optional SessionEnd reminder (off by default; plugin-level, outside skills/retro/)
-├── tests/                        # no module yet for the shell scripts
-│   ├── test_check_upstream_sources.py
-│   ├── test_collect_review_findings.py
-│   ├── test_detect_mechanical.py
-│   ├── test_find_org_skills.py
-│   ├── test_opencode_transcript.py
-│   ├── test_scan_memory_inventory.py
-│   └── test_validate_evals.py
-├── docs/specs/                   # retro-skill.md (authoritative spec), retro-promote-mode.md
+├── tests/                        # test_*.py, run with python -m unittest discover -s tests
+├── docs/specs/                   # retro-skill.md (original spec, superseded), retro-promote-mode.md
 ├── docs/opencode-live-test.md    # checking the opencode adapter against a real, isolated opencode 2.x
-├── .github/workflows/            # lint.yml, validate.yml, release.yml
+├── .github/workflows/            # lint.yml, validate.yml, release.yml, auto-merge-deps.yml
 ├── AGENTS.md
 ├── composer.json
 ├── .claude-plugin/plugin.json
@@ -269,7 +268,7 @@ retro-skill/
 | [skill-repo-skill](https://github.com/netresearch/skill-repo-skill) | PR/branch convention for `skill-update`; scaffolding for `new-skill` |
 | [automated-assessment-skill](https://github.com/netresearch/automated-assessment-skill) | Checkpoint YAML schema for `checkpoint` materialization |
 
-Deeper reading: the authoritative spec at [`docs/specs/retro-skill.md`](docs/specs/retro-skill.md), the [`skills/retro/references/`](skills/retro/references/) docs, and [`AGENTS.md`](AGENTS.md).
+Deeper reading: the [`skills/retro/references/`](skills/retro/references/) docs, [`AGENTS.md`](AGENTS.md), and the original spec at [`docs/specs/retro-skill.md`](docs/specs/retro-skill.md), which is superseded and kept as a historical record.
 
 ## Contributing
 
@@ -277,7 +276,7 @@ Issues and PRs are welcome at <https://github.com/netresearch/retro-skill/issues
 
 - **DCO sign-off is required** — commit with `git commit -s`. Without the `Signed-off-by` trailer the PR is blocked even when all checks pass.
 - Use **Conventional Commits** (`feat:`, `fix:`, `chore:`, …).
-- The `lint` workflow runs python compile, bash syntax, shellcheck, JSON/YAML validation, the unit tests, and the DCO check — run them locally before pushing.
+- The `lint` workflow runs python compile, the unit tests and `validate-evals.py`; the `validate` workflow runs validate-skill, markdownlint, yamllint, plugin/SKILL version parity, actionlint, JSON syntax, manifest sync, ShellCheck, ruff and the checkpoint-schema check — run them locally before pushing.
 
 ## License
 

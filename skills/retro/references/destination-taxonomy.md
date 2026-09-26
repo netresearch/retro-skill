@@ -210,7 +210,7 @@ Rules, all binding:
   exist before the skill's copy is reduced to a reference.
 - **Two parts maximum.** No three-part materializations. If a finding seems to
   need a third, it is more than one finding.
-- **Both parts appear as separate rows in the Phase-11 report**, so a pair that
+- **Both parts appear as separate rows in the Phase-10 report**, so a pair that
   half-fails is visible rather than reported as done.
 
 Pair only when the second half is real. A gate that is meaningful in exactly

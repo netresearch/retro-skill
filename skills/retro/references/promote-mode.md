@@ -76,7 +76,7 @@ can judge it. Three binding rules:
 
 Each finding carries the source note's verbatim `**Why:**` / `**How to apply:**`
 prose, its `origin_session_id`, a `current_location` tag (the load-bearing
-evidence the LLM reads at Phase 4), and a `content_sha256` used as both an
+evidence the LLM reads at Phase 5), and a `content_sha256` used as both an
 idempotency key and a drain race-check.
 
 ### Scope
@@ -209,7 +209,7 @@ installer. Git records each drained note as a rename into `.promoted/`.
 
 1. **Naming.** `promote` names exactly what Phases 7–9 do (re-home upward by
    reach) and fits the `/retro <verb>` convention. (`dream` / `upsert` rejected.)
-2. **Team-visibility of personal notes.** Two layers: (a) at Phase 4, personal
+2. **Team-visibility of personal notes.** Two layers: (a) at Phase 5, personal
    content (a `$HOME` path, an "I prefer…" style note) is **not** auto-escalated
    past personal-rule; (b) at Phase 8, every `project-rule` / `skill-update`
    proposal triggers a mandatory, default-**N** warning stating exactly where it

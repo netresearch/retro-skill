@@ -15,17 +15,19 @@ Cache (`~/.claude/plugins/cache/`) is overwritten on plugin update. Edits there 
 
 For each skill-update target, select a working directory in this order:
 
-1. **Existing worktree:** `~/p/<skill-name>/main/` exists as worktree AND is clean
-   → Use it. Enables seamless manual follow-up by user.
-2. **Existing flat checkout:** `~/p/<skill-name>/` exists as flat git checkout AND is clean AND on main
-   → Use it.
-3. **Fresh clone:** Otherwise clone into `/tmp/retro-workspace/<skill-name>/`
+1. **Existing local checkout:** look in the user's projects directory (if known)
+   for a checkout whose `origin` remote matches the skill's repository URL.
+   Bare layout (`<project>/.bare`): create a fresh worktree off the fetched
+   default branch with `scripts/materialize-pr.sh start <project> <branch>`;
+   never edit in `<project>/main/`. Plain clone: use it if it is clean and on
+   the default branch. Enables seamless manual follow-up by user.
+2. **Fresh clone:** Otherwise clone into `/tmp/retro-workspace/<skill-name>/`
    → Tell user where the clone lives in case they want to inspect.
 
 If the existing checkout is **dirty** (uncommitted changes), do NOT use it — fall back to /tmp clone. Tell the user why:
 
 ```
-~/p/<skill>/main/ has 3 uncommitted changes; using /tmp/retro-workspace/<skill>/ instead.
+<checkout> has 3 uncommitted changes; using /tmp/retro-workspace/<skill>/ instead.
 ```
 
 ## Dedup check: has the fix already landed?
@@ -131,8 +133,8 @@ diff and check:
   behaviour, drop it — it is noise the next retro will re-flag.
 - **Run the target skill's own gates locally — reading the diff is not enough.**
   Before pushing, run the destination repo's validator (`skill-repo`'s
-  `validate-skill.sh`: SKILL.md word cap, frontmatter, structure), its linters,
-  and any script self-tests. A structural gate like the 500-word SKILL.md limit
+  `validate-skill.sh`: SKILL.md line cap, frontmatter, structure), its linters,
+  and any script self-tests. A structural gate like the 500-body-line SKILL.md limit
   fails in CI, never in a re-read — and note SKILL.md often sits *at* the cap, so
   put new prose in a reference file, not SKILL.md.
 - **An eval you add or tighten carries `samples`.** A pattern-bearing assertion
@@ -155,7 +157,7 @@ Observed failures: a retro shipped a self-contradictory `--force-with-lease`
 recipe and a contradictory escaping example, both caught only by an external
 reviewer, plus a wrong "main lags origin" root cause that only the user caught. A
 later retro broke the target's Skill Validation CI (the SKILL.md edit went over
-the 500-word cap, invisible to a diff read), and a policy change patched one spot
+the SKILL.md size cap, invisible to a diff read), and a policy change patched one spot
 at a time, leaving a SKILL.md step contradicting its own reference across several
 review rounds until the user demanded it be done in one coherent pass. A
 30-second self-review plus running the target's validator would have caught all
@@ -170,10 +172,11 @@ gh pr create --title "<title>" --body "<body>"
 
 GitLab (Netresearch internal):
 ```bash
-glab mr create --hostname git.netresearch.de --title "<title>" --description "<body>"
+glab mr create --title "<title>" --description "<body>"
 ```
 
-If `$GITLAB_HOST` is set, omit `--hostname`.
+`glab mr create` has no `--hostname` flag. The host comes from `GITLAB_HOST`
+(e.g. `git.netresearch.de`) or from `-R <host>/<group>/<repo>`.
 
 ### PR body template
 
@@ -272,7 +275,7 @@ the check cannot run in CI at all, which is rare.
 Branch protection and rulesets are the only instruments nobody bypasses, and
 they are an API call, not a file. They cannot be materialized as a patch and
 must never be applied silently. Emit the command for the user to run and mark
-the row `manual` in the Phase-11 report:
+the row `manual` in the Phase-10 report:
 
 ```bash
 gh api -X PUT repos/<owner>/<repo>/branches/<branch>/protection --input <spec>.json
@@ -330,7 +333,7 @@ Server-side instruments are reported `manual`; they are never applied by retro.
 - `references/skill-discovery.md` — How targets are identified
 - `references/destination-taxonomy.md` — Materialization formats per destination
 - [skill-repo-skill/skills/skill-repo/references/materialization-contract.md](https://github.com/netresearch/skill-repo-skill/blob/main/skills/skill-repo/references/materialization-contract.md) — Canonical failure-pattern schema
-- User memory: `feedback_preserve-commit-signing`, `feedback_merge-strategy`
+- Signing and merging: keep commit signing (Commit conventions above); retro never merges (SKILL.md, "Never: auto-merge")
 
 ## Bulk / outward materializations: deterministic text, byte verification
 

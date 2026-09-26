@@ -4,7 +4,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 
 ## Structure
 
-- `skills/retro/SKILL.md` — Main skill definition (sweep, spotlight, outcome, audit, promote, auto modes)
+- `skills/retro/SKILL.md` — Main skill definition (sweep, spotlight, outcome, audit, promote, done, auto modes)
 - `skills/retro/checkpoints.yaml` — Skill quality gates
 - `commands/retro.md` — `/retro` slash command definition
 - `hooks/session-end.json` — Optional SessionEnd hook: prints a reminder to run `/retro`, does not invoke it (off by default)
@@ -23,7 +23,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/scripts/validate-evals.py` — Validates retro's own eval scenarios (RT-40..42)
 - `skills/retro/scripts/check-eval-samples.py` — Refuses an eval retro adds or tightens without `samples` (called by `materialize-pr.sh finish`)
 - `skills/retro/evals/` — retro's own classification evals (LLM-graded fixtures; see `skills/retro/evals/README.md`)
-- `docs/specs/retro-skill.md` — Mirror of authoritative spec
+- `docs/specs/retro-skill.md` — Original spec, superseded (header says why); kept as a historical record
 
 ## Commands
 
@@ -52,5 +52,5 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 
 ## See also
 
-- [Spec](docs/specs/retro-skill.md) — Authoritative specification
+- [Spec](docs/specs/retro-skill.md) — Original specification, superseded; historical record
 - [opencode live test](docs/opencode-live-test.md) — Checking `opencode-transcript.py` against a real, isolated opencode 2.x

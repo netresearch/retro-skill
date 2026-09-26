@@ -2,12 +2,12 @@
 name: retro
 description: "Use when a Claude Code session ends or is declared finished, a friction needs fixing, a reusable learning needs capturing, local memory needs promoting upward, or for cross-session audits — detect friction AND learnings, route each to the right destination, and gate 'done'. Triggers: /retro, /retro done, 'retrospective', 'capture this learning', 'fix this skill', 'promote memory', 'audit', 'alles erledigt'."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
-compatibility: "Requires python3, jq, and gh and/or glab (PR creation)."
+compatibility: "Requires python3, uv, jq, and gh and/or glab (PR creation)."
 metadata:
   author: Netresearch DTT GmbH
   version: "1.11.0"
   repository: https://github.com/netresearch/retro-skill
-allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*) Bash(bash ${CLAUDE_SKILL_DIR}/scripts/*) Bash(${CLAUDE_SKILL_DIR}/scripts/*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) Bash(grep:*) Bash(jq:*) Read Write Edit Glob Grep Task
+allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*) Bash(bash ${CLAUDE_SKILL_DIR}/scripts/*) Bash(${CLAUDE_SKILL_DIR}/scripts/*) Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) Bash(grep:*) Bash(jq:*) Read Write Edit Glob Grep Task
 ---
 
 # Retro — LLM-driven Session Retrospection
@@ -38,7 +38,7 @@ approval.
   See `references/done-mode.md`.
 - **Auto** — optional SessionEnd hook, off by default. It is plugin-level, not
   part of this skill directory: `hooks/session-end.json` at the repository root
-  (see README, "Optional SessionEnd hook").
+  (see README, "Optional auto-trigger").
 
 ## Pipeline (all modes)
 
