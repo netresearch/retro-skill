@@ -247,7 +247,7 @@ retro-skill/
 ├── commands/retro.md             # /retro slash command (Claude Code plugin only)
 ├── hooks/session-end.json        # optional SessionEnd reminder (off by default; plugin-level, outside skills/retro/)
 ├── tests/                        # test_*.py, run with python -m unittest discover -s tests
-├── docs/specs/                   # retro-skill.md (authoritative spec), retro-promote-mode.md
+├── docs/specs/                   # retro-skill.md (original spec, superseded), retro-promote-mode.md
 ├── docs/opencode-live-test.md    # checking the opencode adapter against a real, isolated opencode 2.x
 ├── .github/workflows/            # lint.yml, validate.yml, release.yml, auto-merge-deps.yml
 ├── AGENTS.md
@@ -268,7 +268,7 @@ retro-skill/
 | [skill-repo-skill](https://github.com/netresearch/skill-repo-skill) | PR/branch convention for `skill-update`; scaffolding for `new-skill` |
 | [automated-assessment-skill](https://github.com/netresearch/automated-assessment-skill) | Checkpoint YAML schema for `checkpoint` materialization |
 
-Deeper reading: the authoritative spec at [`docs/specs/retro-skill.md`](docs/specs/retro-skill.md), the [`skills/retro/references/`](skills/retro/references/) docs, and [`AGENTS.md`](AGENTS.md).
+Deeper reading: the [`skills/retro/references/`](skills/retro/references/) docs, [`AGENTS.md`](AGENTS.md), and the original spec at [`docs/specs/retro-skill.md`](docs/specs/retro-skill.md), which is superseded and kept as a historical record.
 
 ## Contributing
 
