@@ -28,6 +28,12 @@ Signals implemented (Schicht A — full catalog):
     A16 Outdated tool warnings
     A17 Upstream failure (git push / gh pr checks)
     A18 Permission re-approval (same prompt ≥3× spread over session)
+    A19 Repeated command shape (repeated_command_shape — one probe run often
+        enough to be a script)
+    A20 Wait loop (wait_loop / wait_loop_terminal_condition — hand-rolled
+        polling)
+    C6  Written rule violated repeatedly (written_rule_violated_repeatedly —
+        a rule in CLAUDE.md that A11/A13/A14/A15 keep tripping)
 """
 
 from __future__ import annotations
@@ -117,6 +123,11 @@ INLINE_SKILL_MIN_CHARS = 1500
 #: Measured at well under 200 characters for every slash command of one session.
 EXPANSION_HEAD_CHARS = 400
 GIT_BRANCH_MAIN = re.compile(r"\b(?:main|master)\b")
+# git's own options that take a value and come before the subcommand:
+# `git -C <dir> commit`, `git -c key=value push`. Without skipping them every
+# pattern below that expects the subcommand right after `git` misses the
+# `git -C <worktree> …` form — the form the worktree convention uses most.
+_GIT_GLOBAL_OPTS = r"(?:-[Cc]\s+\S+\s+)*"
 # Each alternative skips the flags that come before its branch-creating one via
 # its own negative lookahead (`(?!-b\b)` / `(?!-c\b)`), so the `*` cannot eat the
 # flag it is looking for: `git checkout -q -b feat` creates a branch just as
@@ -124,9 +135,11 @@ GIT_BRANCH_MAIN = re.compile(r"\b(?:main|master)\b")
 # does, but without this the switch went unrecognised and the tracked branch
 # stayed on whatever was checked out before it.
 GIT_CHECKOUT_B = re.compile(
-    r"git\s+checkout\s+(?:(?!-b\b)-\S+\s+)*-b\b"
-    r"|git\s+switch\s+(?:(?!-c\b)-\S+\s+)*-c\b"
-    r"|git\s+worktree\s+add\s+(?:(?!-b\b)-\S+\s+)*-b\b"
+    rf"git\s+{_GIT_GLOBAL_OPTS}checkout\s+(?:(?!-b\b)-\S+\s+)*-b\b"
+    rf"|git\s+{_GIT_GLOBAL_OPTS}switch\s+(?:(?!-c\b)-\S+\s+)*-c\b"
+    # `worktree add` takes `-b` after the path as well as before it
+    # (`git worktree add ../feat -b feat origin/main`), so any token may precede it.
+    rf"|git\s+{_GIT_GLOBAL_OPTS}worktree\s+add\s+(?:(?!-b\b)[^\s;&|]+\s+)*-b\b"
 )
 # A14 branch-state tracking: a checkout/switch to a named branch, a worktree
 # added on an existing branch, or a branch reported in command output. Used to
@@ -136,10 +149,16 @@ GIT_CHECKOUT_B = re.compile(
 # `(?:-[^\s;&|]+\s+)*` skips optional flags (e.g. `-f`, `--quiet`) that may
 # precede the branch name/path before the capture group.
 GIT_SWITCH_TO = re.compile(
-    r"\bgit\s+(?:checkout|switch)\s+(?:-[^\s;&|]+\s+)*(?P<br>[^\s;&|]+)"
+    rf"\bgit\s+{_GIT_GLOBAL_OPTS}(?:checkout|switch)\s+(?:-[^\s;&|]+\s+)*"
+    r"(?P<br>[^\s;&|]+)"
 )
+# `git checkout <ref> -- <path>` (and `git checkout -- <path>`) restores files
+# and leaves HEAD where it was. Checked against the rest of the matched
+# statement, up to the next shell separator.
+GIT_PATHSPEC_SEPARATOR = re.compile(r"(?:^|\s)--(?:\s|$)")
 GIT_WORKTREE_ADD_BRANCH = re.compile(
-    r"\bgit\s+worktree\s+add\s+(?:-[^\s;&|]+\s+)*\S+\s+(?P<br>[^\s;&|-][^\s;&|]*)"
+    rf"\bgit\s+{_GIT_GLOBAL_OPTS}worktree\s+add\s+(?:-[^\s;&|]+\s+)*\S+\s+"
+    r"(?P<br>[^\s;&|-][^\s;&|]*)"
 )
 # `On branch` is followed by a space, the other two by an optional quote. The
 # missing `\s+` meant the `git status` header — the most common way a branch
@@ -147,7 +166,14 @@ GIT_WORKTREE_ADD_BRANCH = re.compile(
 GIT_ON_BRANCH_OUT = re.compile(
     r"(?:On branch\s+|Switched to(?: a new)? branch '?|Already on '?)(?P<br>[\w./-]+)"
 )
-GIT_COMMIT = re.compile(r"\bgit\s+commit\b")
+# The first line `git commit` prints names the branch the commit landed on:
+# `[main 1a2b3c4] msg`, `[main (root-commit) 1a2b3c4] msg`,
+# `[detached HEAD 1a2b3c4] msg`.
+GIT_COMMIT_OUT = re.compile(
+    r"^\[(?P<br>detached HEAD|[^\s\]]+)(?: \(root-commit\))? [0-9a-f]{7,}\]",
+    re.MULTILINE,
+)
+GIT_COMMIT = re.compile(rf"\bgit\s+{_GIT_GLOBAL_OPTS}commit\b")
 # `(?![\w-])` requires main/master as a full token so "main-menu" / "master2"
 # (where `\b` would otherwise match the "main"/"master" prefix) do not fire.
 # `[^\n;&|]*` stops at a shell command separator so the match stays inside the
@@ -155,7 +181,7 @@ GIT_COMMIT = re.compile(r"\bgit\s+commit\b")
 # mentions main in a *later, read-only* command, and spanning into it flagged
 # an ordinary feature-branch push as work on main.
 GIT_PUSH_TO_MAIN = re.compile(
-    r"\bgit\s+push\b[^\n;&|]*\b(?:HEAD:)?(?:main|master)(?![\w-])"
+    rf"\bgit\s+{_GIT_GLOBAL_OPTS}push\b[^\n;&|]*\b(?:HEAD:)?(?:main|master)(?![\w-])"
 )
 
 # A1: textual error markers, used as a fallback only when the harness `is_error`
@@ -292,10 +318,20 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             if not line:
                 continue
             try:
-                events.append(json.loads(line))
+                ev = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            # Every reader below calls `ev.get`; a line holding a JSON array,
+            # string or number is as unusable as one that does not parse.
+            if isinstance(ev, dict):
+                events.append(ev)
     return events
+
+
+def _message(ev: dict) -> dict:
+    """The event's `message` object, or {} when it is missing, null or not an object."""
+    msg = ev.get("message")
+    return msg if isinstance(msg, dict) else {}
 
 
 # Turns that carry the "user" role but were not typed by a human: harness
@@ -352,7 +388,7 @@ def extract_user_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
     for j, ev in enumerate(events):
         if ev.get("type") != "assistant":
             continue
-        content = (ev.get("message") or {}).get("content")
+        content = _message(ev).get("content")
         if not isinstance(content, list):
             continue
         for block in content:
@@ -361,7 +397,8 @@ def extract_user_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
                 and block.get("type") == "tool_use"
                 and block.get("name") == "ScheduleWakeup"
             ):
-                prompt = (block.get("input") or {}).get("prompt")
+                inp = block.get("input")
+                prompt = inp.get("prompt") if isinstance(inp, dict) else None
                 if isinstance(prompt, str) and prompt.strip():
                     wakeup_prompts.setdefault(prompt.strip(), j)
     for i, ev in enumerate(events):
@@ -378,8 +415,7 @@ def extract_user_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
         # present (the banner marker above covers older transcripts).
         if ev.get("isCompactSummary"):
             continue
-        msg = ev.get("message", {})
-        content = msg.get("content")
+        content = _message(ev).get("content")
         texts = []
         if isinstance(content, str):
             texts.append(content)
@@ -406,7 +442,7 @@ def extract_assistant_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
     for i, ev in enumerate(events):
         if ev.get("type") != "assistant":
             continue
-        content = (ev.get("message") or {}).get("content")
+        content = _message(ev).get("content")
         if isinstance(content, str):
             out.append((i, content))
         elif isinstance(content, list):
@@ -416,12 +452,41 @@ def extract_assistant_texts(events: Iterable[dict]) -> list[tuple[int, str]]:
     return out
 
 
-def extract_tool_uses(events: Iterable[dict]) -> list[tuple[int, str, dict, str, bool]]:
-    """Yield (event_index, tool_name, input, result_text, is_error)."""
+class ToolUse(tuple):
+    """(event_index, tool_name, input, result_text, is_error), plus `message_id`.
+
+    Claude Code writes each tool_use of one assistant message as its OWN event,
+    all carrying the same `message.id` and each followed by its tool_result —
+    so calls issued in parallel sit at different event indexes, and only the
+    message id says they were one turn. It rides along as an attribute rather
+    than a sixth field because every signal unpacks exactly five.
+    """
+
+    message_id: str | None
+
+    def __new__(cls, fields: tuple, message_id: str | None = None):
+        obj = super().__new__(cls, fields)
+        obj.message_id = message_id
+        return obj
+
+
+def message_key(tool_use: tuple) -> tuple:
+    """Identity of the assistant message that issued a tool call.
+
+    The message id where the transcript has one; otherwise the event index,
+    which is the right answer for a layout that puts a whole message in one
+    event, and for hand-built plain tuples.
+    """
+    mid = getattr(tool_use, "message_id", None)
+    return ("id", mid) if mid else ("event", tool_use[0])
+
+
+def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
+    """Return (event_index, tool_name, input, result_text, is_error) per paired call."""
     out = []
-    tool_uses_pending: dict[str, tuple[int, str, dict]] = {}
+    tool_uses_pending: dict[str, tuple[int, str, dict, str | None]] = {}
     for i, ev in enumerate(events):
-        msg = ev.get("message", {})
+        msg = _message(ev)
         content = msg.get("content") or []
         if not isinstance(content, list):
             continue
@@ -429,15 +494,20 @@ def extract_tool_uses(events: Iterable[dict]) -> list[tuple[int, str, dict, str,
             if not isinstance(block, dict):
                 continue
             if block.get("type") == "tool_use":
-                tool_uses_pending[block["id"]] = (
+                use_id = block.get("id")
+                if not use_id:
+                    continue  # no result can ever pair with it
+                inp = block.get("input")
+                tool_uses_pending[use_id] = (
                     i,
-                    block["name"],
-                    block.get("input", {}),
+                    str(block.get("name") or ""),
+                    inp if isinstance(inp, dict) else {},
+                    msg.get("id") if isinstance(msg.get("id"), str) else None,
                 )
             elif block.get("type") == "tool_result":
                 use_id = block.get("tool_use_id")
                 if use_id in tool_uses_pending:
-                    i_use, name, inp = tool_uses_pending.pop(use_id)
+                    i_use, name, inp, message_id = tool_uses_pending.pop(use_id)
                     result = block.get("content", "")
                     if isinstance(result, list):
                         result = " ".join(
@@ -445,7 +515,11 @@ def extract_tool_uses(events: Iterable[dict]) -> list[tuple[int, str, dict, str,
                             for b in result
                         )
                     is_error = block.get("is_error", False)
-                    out.append((i_use, name, inp, str(result), bool(is_error)))
+                    out.append(
+                        ToolUse(
+                            (i_use, name, inp, str(result), bool(is_error)), message_id
+                        )
+                    )
     return out
 
 
@@ -782,8 +856,12 @@ def command_shapes(cmd: str) -> list[str]:
         # argument, so `git push origin` and `git push` must not split apart.
         # gh/glab/docker nest two deep (`gh pr view`, `docker compose up`).
         depth = 1 if prog == "git" else 2
+        args = toks[1:]
+        # `git -C <dir> push` is the shape `git push`, not `git`.
+        while prog == "git" and len(args) >= 2 and args[0] in ("-C", "-c"):
+            args = args[2:]
         parts = [prog]
-        for t in toks[1 : 1 + depth]:
+        for t in args[:depth]:
             if _VALUEISH.match(t) or "=" in t:
                 break
             if not re.match(r"^[a-z][a-z0-9:_-]*$", t):
@@ -835,7 +913,17 @@ def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list
     out = []
     # Grouped by command shape: "Bash three times" says nothing, "gh pr view
     # three times in five turns" is the finding.
-    by_tool = shape_histogram(tool_uses)
+    # Counted once per assistant message: a retry needs the previous result, so
+    # it is always a later message, while calls issued together in one message
+    # (a parallel batch) are not retries of each other.
+    by_tool: dict[str, list[int]] = defaultdict(list)
+    seen: set[tuple[str, tuple]] = set()
+    for use in tool_uses:
+        key = message_key(use)
+        for sh in shape_of(use[1], use[2]):
+            if (sh, key) not in seen:
+                seen.add((sh, key))
+                by_tool[sh].append(use[0])
     for name, turns in by_tool.items():
         if len(turns) < 3:
             continue
@@ -978,7 +1066,7 @@ def signal_tool_sequence_repetition(
 def signal_skill_reminder_vs_invoke(events) -> list[dict]:
     out = []
     for i, ev in enumerate(events):
-        msg = ev.get("message", {}) or {}
+        msg = _message(ev)
         content = msg.get("content", "")
         if isinstance(content, list):
             text = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
@@ -1001,7 +1089,7 @@ def signal_skill_reminder_vs_invoke(events) -> list[dict]:
         body = text
         if i + 1 < len(events):
             ev_next = events[i + 1]
-            nxt = ev_next.get("message", {}) or {}
+            nxt = _message(ev_next)
             # The role sits on the event in some transcripts and inside the
             # message in others; either one identifies the expansion.
             if "user" in (ev_next.get("type"), nxt.get("role")):
@@ -1027,7 +1115,7 @@ def signal_skill_reminder_vs_invoke(events) -> list[dict]:
         # Look at next 3 events for Skill tool invocation
         invoked = False
         for j in range(i + 1, min(i + 4, len(events))):
-            content_j = events[j].get("message", {}).get("content", [])
+            content_j = _message(events[j]).get("content", [])
             if isinstance(content_j, list):
                 for block in content_j:
                     if (
@@ -1062,26 +1150,45 @@ def _edited_paths(name: str, inp: dict) -> list[str]:
     return []
 
 
+#: Lines the Read tool returns when no `limit` is given ("Reads up to 2000 lines
+#: by default", per its own description).
+READ_DEFAULT_LIMIT = 2000
+
+
+def _read_range(inp: dict) -> tuple[int, int]:
+    """The 1-based, inclusive line range a Read call covers."""
+    offset, limit = inp.get("offset"), inp.get("limit")
+    start = offset if isinstance(offset, int) and offset > 0 else 1
+    count = limit if isinstance(limit, int) and limit > 0 else READ_DEFAULT_LIMIT
+    return start, start + count - 1
+
+
 def signal_reread_same_file(tool_uses) -> list[dict]:
+    """A12: a file read again, with no edit in between, over lines already read.
+
+    Paging through a long file — offset/limit (1, 700), (700, 750), (1450, 740) — is one
+    read of it, not three: a later range only counts when it overlaps an
+    earlier one (since the last edit) by more than the single boundary line
+    that consecutive pages share.
+    """
     out = []
     reads: dict[str, list[int]] = defaultdict(list)
-    edits: dict[str, list[int]] = defaultdict(list)
-    for i, name, inp, result, is_error in tool_uses:
+    # Ranges read since the path was last edited.
+    fresh: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    suspicious_paths: set[str] = set()
+    for i, name, inp, _result, _err in tool_uses:
         if name == "Read":
-            reads[inp.get("file_path", "")].append(i)
+            path = inp.get("file_path", "")
+            lo, hi = _read_range(inp)
+            for a, b in fresh[path]:
+                if min(hi, b) - max(lo, a) + 1 > 1:
+                    suspicious_paths.add(path)
+            fresh[path].append((lo, hi))
+            reads[path].append(i)
         for path in _edited_paths(name, inp):
-            edits[path].append(i)
+            fresh[path] = []
     for path, read_turns in reads.items():
-        if len(read_turns) < 2:
-            continue
-        # Check if there was an Edit between any two consecutive reads
-        edit_turns = sorted(edits.get(path, []))
-        suspicious = False
-        for a, b in itertools.pairwise(read_turns):
-            if not any(a < e < b for e in edit_turns):
-                suspicious = True
-                break
-        if suspicious:
+        if path in suspicious_paths:
             out.append(
                 {
                     "signal": "A12",
@@ -1115,7 +1222,17 @@ def signal_main_branch_work(tool_uses) -> list[dict]:
         if GIT_CHECKOUT_B.search(cmd):  # checkout -b / switch -c / worktree add -b
             on_main = False
         else:
-            m = GIT_SWITCH_TO.search(cmd)
+            # A checkout that names a pathspec restores files; it is not a switch.
+            m = next(
+                (
+                    s
+                    for s in GIT_SWITCH_TO.finditer(cmd)
+                    if not GIT_PATHSPEC_SEPARATOR.search(
+                        re.split(r"[;&|\n]", cmd[s.start() :], maxsplit=1)[0]
+                    )
+                ),
+                None,
+            )
             mw = GIT_WORKTREE_ADD_BRANCH.search(cmd)
             if m and not m.group("br").startswith("-"):
                 on_main = m.group("br") in ("main", "master")
@@ -1124,7 +1241,10 @@ def signal_main_branch_work(tool_uses) -> list[dict]:
         # Take the LAST branch reported in the output, not the first: a block
         # like `git checkout main && git checkout -b feat` echoes two switches,
         # and the final one is the branch the next command runs on.
-        branch_lines = list(GIT_ON_BRANCH_OUT.finditer(result))
+        branch_lines = sorted(
+            [*GIT_ON_BRANCH_OUT.finditer(result), *GIT_COMMIT_OUT.finditer(result)],
+            key=lambda bm: bm.start(),
+        )
         if branch_lines:
             on_main = branch_lines[-1].group("br") in ("main", "master")
 
@@ -1154,7 +1274,7 @@ def signal_bot_attribution(tool_uses) -> list[dict]:
         if name != "Bash":
             continue
         cmd = inp.get("command", "")
-        if "git commit" in cmd and BOT_ATTRIBUTION.search(cmd):
+        if GIT_COMMIT.search(cmd) and BOT_ATTRIBUTION.search(cmd):
             out.append(
                 {
                     "signal": "A15",
@@ -1189,7 +1309,9 @@ def signal_upstream_failure(tool_uses) -> list[dict]:
             continue
         cmd = inp.get("command", "")
         if is_error and re.search(
-            r"\bgit\s+push\b|\bgh\s+pr\s+(checks|create|merge)\b|\bglab\s+mr\b", cmd
+            rf"\bgit\s+{_GIT_GLOBAL_OPTS}push\b"
+            r"|\bgh\s+pr\s+(checks|create|merge)\b|\bglab\s+mr\b",
+            cmd,
         ):
             out.append(
                 {
@@ -1243,30 +1365,35 @@ def signal_sequential_parallelizable(tool_uses) -> list[dict]:
     """A5: ≥N parallelizable tools (Read/Glob/Grep/Bash) in *separate* assistant
     messages, back-to-back, without an interleaving non-parallelizable call.
 
-    Two tool_use blocks emitted from the same assistant message share the same
-    event index in the 5-tuple, so a parallel batch inside one assistant
-    message is naturally not counted as a multi-message run.
+    Calls are grouped by the assistant message that issued them (`message_key`),
+    not by event index: Claude Code writes every tool_use of one message as its
+    own event, so a parallel batch spans several event indexes and would
+    otherwise read as the sequential run this signal exists to report.
+    `assistant_messages` lists the first event index of each message.
     """
     out = []
-    run: list[tuple[int, str]] = []  # (event_index, name)
+    run: list[tuple[int, tuple, str]] = []  # (event_index, message_key, name)
 
     def flush(run):
         if len(run) < A5_MIN_SERIAL_RUN:
             return
-        distinct_msgs = {ev for ev, _ in run}
-        if len(distinct_msgs) >= A5_MIN_SERIAL_RUN:
+        first_event: dict[tuple, int] = {}
+        for ev, key, _ in run:
+            first_event[key] = min(ev, first_event.get(key, ev))
+        if len(first_event) >= A5_MIN_SERIAL_RUN:
             out.append(
                 {
                     "signal": "A5",
                     "name": "sequential_parallelizable",
-                    "tools": [n for _, n in run],
-                    "assistant_messages": sorted(distinct_msgs),
+                    "tools": [n for _, _, n in run],
+                    "assistant_messages": sorted(first_event.values()),
                 }
             )
 
-    for ev_idx, name, _inp, _result, _err in tool_uses:
+    for use in tool_uses:
+        ev_idx, name = use[0], use[1]
         if name in A5_PARALLELIZABLE_TOOLS:
-            run.append((ev_idx, name))
+            run.append((ev_idx, message_key(use), name))
         else:
             flush(run)
             run = []
