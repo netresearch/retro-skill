@@ -33,6 +33,7 @@ Signals implemented (Schicht A — full catalog):
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import itertools
 import json
 import re
@@ -42,6 +43,19 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+
+def _load_masking():
+    """mask-secrets.py, loaded by path: its name is hyphenated like ours."""
+    path = Path(__file__).resolve().parent / "mask-secrets.py"
+    spec = importlib.util.spec_from_file_location("mask_secrets", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+_masking = _load_masking()
+mask, squeeze = _masking.mask, _masking.squeeze
 
 # Line-start correction openers (EN + DE). Anchored so a mid-sentence "no" /
 # "nicht" inside ordinary prose does not trip the signal.
@@ -811,7 +825,7 @@ def signal_tool_errors(tool_uses) -> list[dict]:
                     "name": "tool_error",
                     "turn": i,
                     "tool": name,
-                    "snippet": result[:200],
+                    "snippet": squeeze(result, 200),
                 }
             )
     return out
@@ -865,7 +879,7 @@ def signal_user_corrections(user_texts) -> list[dict]:
                     "signal": "A6",
                     "name": "user_correction",
                     "turn": i,
-                    "snippet": text[:200],
+                    "snippet": squeeze(text, 200),
                 }
             )
         elif ALL_CAPS_RUN.search(text) and len(text) < 500:
@@ -874,7 +888,7 @@ def signal_user_corrections(user_texts) -> list[dict]:
                     "signal": "A6",
                     "name": "all_caps_emphasis",
                     "turn": i,
-                    "snippet": text[:200],
+                    "snippet": squeeze(text, 200),
                 }
             )
         elif MULTIPLE_EXCLAIM.search(text):
@@ -883,7 +897,7 @@ def signal_user_corrections(user_texts) -> list[dict]:
                     "signal": "A6",
                     "name": "exclamation_emphasis",
                     "turn": i,
-                    "snippet": text[:200],
+                    "snippet": squeeze(text, 200),
                 }
             )
     return out
@@ -894,7 +908,9 @@ def signal_prompt_repetition(user_texts) -> list[dict]:
     out = []
     seen: dict[str, list[int]] = defaultdict(list)
     for i, text in user_texts:
-        key = re.sub(r"\s+", " ", text.strip().lower())[:200]
+        # Masked before lowercasing: AKIA…, eyJ… and the like only match
+        # in their original case.
+        key = squeeze(text, 200).lower()
         if len(key) < 10:
             continue
         seen[key].append(i)
@@ -917,7 +933,7 @@ def signal_prompt_sequence_repetition(
     out = []
     if len(user_texts) < n * 2:
         return out
-    norm = [re.sub(r"\s+", " ", t[1].strip().lower())[:60] for t in user_texts]
+    norm = [squeeze(t[1], 60).lower() for t in user_texts]
     counter: Counter[tuple[str, ...]] = Counter()
     for i in range(len(norm) - n + 1):
         ngram = tuple(norm[i : i + n])
@@ -1126,7 +1142,7 @@ def signal_main_branch_work(tool_uses) -> list[dict]:
                     "signal": "A14",
                     "name": "git_op_without_branch",
                     "turn": i,
-                    "command": cmd[:200],
+                    "command": squeeze(cmd, 200),
                 }
             )
     return out
@@ -1144,7 +1160,7 @@ def signal_bot_attribution(tool_uses) -> list[dict]:
                     "signal": "A15",
                     "name": "bot_attribution_in_commit",
                     "turn": i,
-                    "snippet": cmd[:300],
+                    "snippet": squeeze(cmd, 300),
                 }
             )
     return out
@@ -1160,7 +1176,7 @@ def signal_outdated_tool(tool_uses) -> list[dict]:
                     "name": "outdated_tool_warning",
                     "turn": i,
                     "tool": name,
-                    "snippet": result[:300],
+                    "snippet": squeeze(result, 300),
                 }
             )
     return out
@@ -1180,8 +1196,8 @@ def signal_upstream_failure(tool_uses) -> list[dict]:
                     "signal": "A17",
                     "name": "upstream_failure",
                     "turn": i,
-                    "command": cmd[:200],
-                    "stderr": result[:500],
+                    "command": squeeze(cmd, 200),
+                    "stderr": squeeze(result, 500),
                 }
             )
     return out
@@ -1649,9 +1665,9 @@ def _a11_statement_misuse(i: int, cmd: str, pipeline: list[list[str]]) -> dict |
                     "name": "structured_file_misuse",
                     "turn": i,
                     "tool_invoked": tool,
-                    "file": tok,
+                    "file": mask(tok),
                     "hint": "use data-tools (jq / yq / dasel) instead of grep/sed/awk on structured formats",
-                    "snippet": cmd[:200],
+                    "snippet": squeeze(cmd, 200),
                 }
     return None
 
@@ -1736,7 +1752,7 @@ def _a11_cat_instead_of_read(i: int, cmd: str, tokens: list[str]) -> dict | None
                 "turn": i,
                 "tool_invoked": sub[0],
                 "hint": "use the Read tool (line-numbered output, ranged reads) instead of cat/head/tail",
-                "snippet": cmd[:200],
+                "snippet": squeeze(cmd, 200),
             }
     return None
 
@@ -1814,7 +1830,7 @@ def signal_skipped_verification(assistant_texts, tool_uses) -> list[dict]:
                 "name": "claim_without_verification",
                 "turn": i,
                 "claim": m.group(0),
-                "snippet": text[:200],
+                "snippet": squeeze(text, 200),
             }
         )
     return out
@@ -1839,7 +1855,8 @@ def signal_permission_reapproval(
         if name != "Bash":
             continue
         cmd = (inp.get("command") or "").strip()
-        prefix = " ".join(cmd.split()[:A18_BASH_PREFIX_TOKENS])
+        # `GH_TOKEN=ghp_… gh` is a two-token prefix too.
+        prefix = mask(" ".join(cmd.split()[:A18_BASH_PREFIX_TOKENS]))
         if not prefix:
             continue
         grouped[prefix].append(i)
@@ -1933,7 +1950,7 @@ def signal_wait_loop_inefficiency(tool_uses) -> list[dict]:
                 "name": "wait_loop_terminal_condition" if terminal else "wait_loop",
                 "turn": i,
                 "waits_for_everything": terminal,
-                "snippet": cmd[:180],
+                "snippet": squeeze(cmd, 180),
                 "hint": (
                     "Loop waits for every check to settle. Return on the first "
                     "actionable event instead (a failure, a thread needing an "
