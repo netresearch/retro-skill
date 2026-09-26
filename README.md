@@ -145,7 +145,7 @@ Every finding routes to exactly one destination — chosen authority-first: befo
 The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — layer A/B/C/D). The deterministic layer runs first to cut token cost; the LLM is always the primary classifier.
 
 1. **Mechanical pre-pass (layer A)** — `skills/retro/scripts/detect-mechanical.py` parses the transcript for exactly **20** deterministic signals (A1–A20): tool errors, retry clusters, output verbosity, tool-call inefficiency, sequential-vs-parallel, user-correction phrases, prompt/prompt-sequence/tool-sequence repetition, skill-reminder-vs-invoke, wrong-tool choice, re-read-same-file, skipped verification, work on `main`/`master`, bot attribution in commits, outdated-tool warnings, upstream failure, permission re-approval, repeated command shapes, and wait-loop polling. Deterministic; it does **not** classify.
-   Then `skills/retro/scripts/collect-review-findings.py` reads the review threads, bot reviews and comments on the session's PRs/MRs, their linked issues and the Jira tickets named at the start of their titles or in a branch segment, and the tickets the session ran a jira script against.
+   Then `skills/retro/scripts/collect-review-findings.py` reads native PR/MR review threads and linked issue feedback. Other tracker integrations supply normalized local evidence with `--feedback-file`. Short branch/title/tool references remain contextual hints until explicitly resolved; they never select a tracker. See [the feedback contract](skills/retro/references/feedback-contract.md) for delegation, coverage states and migration from the removed Jira CLI flags.
 2. **LLM enrichment (layer B)** — adds **20** inferential signals, B16–B20 of them reusable-learning signals (wrong skill choice, skill capability gap, hallucination, convention violation, missing skill, repeated mistake, assumption-without-asking, doc drift, …) and filters layer-A false positives. Includes a trigger-coverage sweep over every installed skill's description.
 3. **Cross-session enrichment (layer C, optional)** — scans `~/.claude/projects/<slug>/*.jsonl` across projects via `skills/retro/scripts/scan-cross-session.py`. **6** signals: same-friction-again, cross-project pattern, memory drift, ineffective skill update, follow-up-fix session, written rule violated repeatedly.
 4. **Classification** — map each finding to one of the seven destinations, authority first (`skills/retro/references/classification-heuristic.md`).
@@ -170,7 +170,7 @@ The full signal catalog lives in [`skills/retro/references/friction-catalog.md`]
 `/retro` detects friction **observable in or near the session**. It does **not** detect:
 
 - **Silent badness** — choices that "work" but are wrong and generate no friction signal.
-- **External signals outside forge and tracker** — customer complaints, production alerts, Slack/Matrix/Sentry feedback. Feedback on the session's PRs, MRs, linked issues and Jira tickets is read.
+- **External signals outside forge and tracker** — customer complaints, production alerts, Slack/Matrix/Sentry feedback. Native PR/MR and linked-issue feedback is read; other tracker feedback is supplied through its owning integration.
 - **Constitutional drift over time** *without* `audit` mode — per-session retro can't see slow erosion.
 - **Outcomes the agent never saw** — unless work was reverted, a PR rejected, or a follow-up session occurred.
 

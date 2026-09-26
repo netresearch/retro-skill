@@ -3,9 +3,8 @@
 derive-session-scope.py it builds on.
 
 The GitHub fixture is a recorded GraphQL answer for netresearch/retro-skill#122
-(bodies cut to 240 characters). The GitLab and Jira fixtures keep the recorded
-shape of `glab api` and `jira-issue.py --json … --raw` with names and text
-replaced, because the originals are internal.
+(bodies cut to 240 characters). The GitLab fixture keeps the recorded API shape with internal names replaced.
+The tracker fixture is normalized external evidence, not a provider API payload.
 """
 
 from __future__ import annotations
@@ -162,7 +161,7 @@ class SessionArtefactsTest(unittest.TestCase):
         self.assertEqual(data["artefacts"], [])
         self.assertEqual(len(data["unresolved_forge_commands"]), 1)
 
-    def test_tickets_from_jira_scripts_and_bookings_not_standards(self):
+    def test_keys_from_successful_tool_calls_not_standards(self):
         data = dss.collect_artefacts(
             _transcript(
                 [
@@ -301,9 +300,10 @@ class GitLabParseTest(unittest.TestCase):
         self.assertEqual(self.parsed["tickets"], ["OPS-901"])
 
 
-class JiraParseTest(unittest.TestCase):
+class ExternalParseTest(unittest.TestCase):
     def setUp(self):
-        self.parsed = crf.parse_jira(_fixture("jira-ticket.json"), set(), "")
+        data = crf.contract.parse_document(_fixture("normalized-feedback.json"))
+        self.parsed = next(iter(data["artefacts"].values()))
 
     def test_foreign_comments_and_status_changes(self):
         self.assertEqual(
@@ -314,16 +314,19 @@ class JiraParseTest(unittest.TestCase):
                 ("ticket-transition", "team.lead"),
             ],
         )
-        self.assertEqual(self.parsed["findings"][-1]["body"], "QA → In Progress")
+        self.assertEqual(self.parsed["findings"][-1]["body"], "QA \u2192 In Progress")
         self.assertEqual(self.parsed["self_comments"], 1)
 
-    def test_link_from_the_api_self_url(self):
+    def test_canonical_url_is_supplied_not_inferred_from_a_key(self):
         self.assertEqual(self.parsed["url"], "https://jira.example.org/browse/OPS-901")
 
     def test_more_comments_than_returned_is_named(self):
-        raw = _fixture("jira-ticket.json")
-        raw["issue"]["fields"]["comment"]["total"] = 50
-        self.assertEqual(crf.parse_jira(raw, set(), "")["truncated"], ["comments"])
+        raw = _fixture("normalized-feedback.json")
+        raw["artefacts"][0]["truncated"] = ["comments"]
+        parsed = crf.contract.parse_document(raw)
+        self.assertEqual(
+            next(iter(parsed["artefacts"].values()))["truncated"], ["comments"]
+        )
 
 
 class CollectTest(unittest.TestCase):
@@ -399,7 +402,7 @@ class CollectTest(unittest.TestCase):
             "origin": "created"
         }
         result = crf.collect(
-            [item], None, run=runner, jira_cli=None, gitlab_hosts=("git.example.org",)
+            [item], None, run=runner, gitlab_hosts=("git.example.org",)
         )
         origins = sorted((a["origin"], a["url"]) for a in result["artefacts"])
         self.assertEqual(
@@ -413,7 +416,7 @@ class CollectTest(unittest.TestCase):
         )
         jira = next(a for a in result["artefacts"] if a["url"] == "OPS-901")
         self.assertFalse(jira["fetched"])
-        self.assertIn("jira-issue.py", jira["error"])
+        self.assertEqual(jira["status"], "unresolved")
 
 
 class ReviewFixesArtefactTest(unittest.TestCase):
@@ -484,7 +487,7 @@ class ReviewFixesArtefactTest(unittest.TestCase):
 
     def test_jira_key_inside_the_comment_text_is_not_the_ticket(self):
         self.assertEqual(
-            dss.jira_command_tickets(
+            dss.command_reference_candidates(
                 'uv run jira-comment.py add NRS-1 "see ABC-2"',
                 "added to NRS-1, see ABC-2",
             ),
@@ -626,31 +629,19 @@ class ReviewFixesParseTest(unittest.TestCase):
             crf.tickets_named(title, "ops-901-pipeline-var-check"), ["OPS-901"]
         )
 
-    def test_jira_cloud_accounts_and_error_bodies(self):
-        raw = {
-            "self": {"accountId": "acc-me"},
-            "issue": {
-                "key": "OPS-1",
-                "self": "https://x.atlassian.net/rest/api/2/issue/1",
-                "fields": {
-                    "comment": {
-                        "total": 2,
-                        "comments": [
-                            {"author": {"accountId": "acc-me"}, "created": "2026-09-20T10:00:00.000+0000", "body": "mine"},
-                            {"author": {"accountId": "acc-lead"}, "created": "2026-09-20T11:00:00.000+0000", "body": "theirs"},
-                        ],
-                    }
-                },
-            },
-        }  # fmt: skip
-        parsed = crf.parse_jira(raw, set(), "")
+    def test_external_identity_is_classified_by_owning_integration(self):
+        raw = _fixture("normalized-feedback.json")
+        for finding in raw["artefacts"][0]["findings"]:
+            finding["author"] = "account-id-not-a-login"
+        parsed = crf.contract.parse_document(raw)
+        record = next(iter(parsed["artefacts"].values()))
+        self.assertEqual(record["self_comments"], 1)
         self.assertEqual(
-            ([f["body"] for f in parsed["findings"]], parsed["self_comments"]),
-            (["theirs"], 1),
+            {f["author"] for f in record["findings"]}, {"account-id-not-a-login"}
         )
-        with self.assertRaisesRegex(LookupError, "Issue does not exist"):
-            crf.parse_jira(
-                {"issue": {"errorMessages": ["Issue does not exist"]}}, set(), ""
+        with self.assertRaises(ValueError):
+            crf.contract.parse_document(
+                {"version": 1, "artefacts": [{"errorMessages": ["denied"]}]}
             )
 
 
@@ -780,7 +771,7 @@ class SecondRoundTest(unittest.TestCase):
 
     def test_a_quoted_jira_script_path_is_found(self):
         self.assertEqual(
-            dss.jira_command_tickets(
+            dss.command_reference_candidates(
                 'uv run "$HOME/x/jira-issue.py" get NRS-5', "NRS-5: x"
             ),
             {"NRS-5"},
@@ -843,21 +834,22 @@ class SecondRoundTest(unittest.TestCase):
         )
         self.assertEqual((refusal["report"], long_one["report"]), (True, False))  # fmt: skip
 
-    def test_a_ticket_jira_does_not_know_is_absent_not_unread(self):
-        def runner(command):
-            raise RuntimeError("✗ Failed to get issue TYPO3-14: Issue Does Not Exist")
-
-        item = crf.ticket_item("TYPO3-14", "linked")
-        result = crf.collect([item], None, run=runner, jira_cli=Path(__file__))
-        self.assertTrue(result["artefacts"][0]["absent"])
+    def test_a_key_shaped_product_version_is_unresolved_not_absent(self):
+        runner = mock.Mock(side_effect=AssertionError("must not fetch a guessed key"))
+        result = crf.collect([crf.ticket_item("TYPO3-14", "linked")], None, run=runner)
+        runner.assert_not_called()
+        self.assertEqual(result["artefacts"][0]["status"], "unresolved")
         text = crf.render_text(result)
-        self.assertIn("NO SUCH   TYPO3-14", text)
-        self.assertNotIn("NOT READ", text)
+        self.assertIn("UNRESOLVED REF TYPO3-14", text)
+        self.assertNotIn("NO SUCH", text)
 
     def test_truncated_changelog_and_thread_comments_are_named(self):
-        raw = _fixture("jira-ticket.json")
-        raw["issue"]["changelog"]["total"] = 99
-        self.assertIn("changelog", crf.parse_jira(raw, set(), "")["truncated"])
+        raw = _fixture("normalized-feedback.json")
+        raw["artefacts"][0]["truncated"] = ["changelog"]
+        parsed = crf.contract.parse_document(raw)
+        self.assertIn(
+            "changelog", next(iter(parsed["artefacts"].values()))["truncated"]
+        )
         thread = {
             "comments": {
                 "totalCount": 150,
@@ -866,30 +858,16 @@ class SecondRoundTest(unittest.TestCase):
         }
         self.assertIn("reviewThreads.comments", crf.parse_github_pr(_pr(threads=[thread]), set())["truncated"])  # fmt: skip
 
-    def test_the_installed_jira_plugin_is_found(self):
-        home = Path(TMP.name) / f"home{next(_COUNTER)}"
-        cli = (
-            home
-            / "cache/jira/3.32.0/skills/jira-communication/scripts/core/jira-issue.py"
-        )
-        cli.parent.mkdir(parents=True)
-        cli.write_text("")
-        index = home / ".claude/plugins/installed_plugins.json"
-        index.parent.mkdir(parents=True)
-        index.write_text(
-            json.dumps(
-                {
-                    "plugins": {
-                        "jira": [{"installPath": str(home / "cache/jira/3.32.0")}]
-                    }
-                }
-            )
-        )
-        with (
-            mock.patch.object(crf.Path, "home", return_value=home),
-            mock.patch.object(crf, "JIRA_CLI_CANDIDATES", ()),
+    def test_installed_plugins_are_not_a_source_of_tracker_authority(self):
+        with mock.patch.object(
+            crf.Path, "home", side_effect=AssertionError("no discovery")
         ):
-            self.assertEqual(crf.find_jira_cli(None), cli)  # fmt: skip
+            runner = mock.Mock(side_effect=AssertionError("no hidden subprocess"))
+            result = crf.collect(
+                [crf.ticket_item("GH-160", "linked")], None, run=runner
+            )
+        runner.assert_not_called()
+        self.assertEqual(result["artefacts"][0]["status"], "unresolved")
 
     def test_gitlab_host_with_a_scheme_is_compared_bare(self):
         self.assertEqual(
@@ -985,7 +963,7 @@ class CorroborationTest(unittest.TestCase):
     def test_a_jira_script_named_inside_a_commit_message_is_not_a_call(self):
         cmd = 'git commit -m "docs: jira-issue.py get NRS-9 example"'
         result = "[b 1a2b] docs: jira-issue.py get NRS-9"
-        self.assertEqual(dss.jira_command_tickets(cmd, result), set())
+        self.assertEqual(dss.command_reference_candidates(cmd, result), set())
 
     def test_a_create_beside_another_write(self):
         cmd = "gh pr create -R o/r --fill && gh pr comment 3 -R x/y --body hi"
@@ -1002,12 +980,12 @@ class CorroborationTest(unittest.TestCase):
     def test_a_refused_jira_call_quoting_its_key_names_no_ticket(self):
         cmd = "uv run jira-comment.py add NRS-9 -"
         refused = "PreToolUse:Bash hook error: [uv run jira-comment.py add NRS-9 -] lint failed"
-        self.assertEqual(dss.jira_command_tickets(cmd, refused), set())
+        self.assertEqual(dss.command_reference_candidates(cmd, refused), set())
 
     def test_a_jira_call_that_failed_names_no_ticket(self):
         cmd = "uv run jira-comment.py add NRS-9 -"
         result = "Usage: jira-comment.py add [OPTIONS] ISSUE_KEY"
-        self.assertEqual(dss.jira_command_tickets(cmd, result), set())
+        self.assertEqual(dss.command_reference_candidates(cmd, result), set())
 
 
 class ThirdRoundCollectorTest(unittest.TestCase):
@@ -1031,18 +1009,24 @@ class ThirdRoundCollectorTest(unittest.TestCase):
         )
 
     def test_no_permission_is_a_read_failure_not_absent(self):
-        def runner(command):
-            raise RuntimeError(
-                "Issue does not exist or you do not have permission to see it."
-            )
-
-        result = crf.collect(
-            [crf.ticket_item("OPS-1", "linked")],
-            None,
-            run=runner,
-            jira_cli=Path(__file__),
+        url = "https://tracker.example/items/1"
+        feedback = crf.contract.parse_document(
+            {
+                "version": 1,
+                "artefacts": [
+                    {
+                        "url": url,
+                        "status": "read_failed",
+                        "error": "Issue does not exist or you do not have permission to see it.",
+                    }
+                ],
+            }
         )
-        self.assertFalse(result["artefacts"][0]["absent"])
+        result = crf.collect([crf.parse_ref(url)], None, external=feedback)
+        record = result["artefacts"][0]
+        self.assertEqual(record["status"], "read_failed")
+        self.assertNotIn("absent", record)
+        self.assertIn("NOT READ", crf.render_text(result))
 
     def test_an_issue_read_as_the_pr_already_read_is_not_read_twice(self):
         def runner(command):
@@ -1061,13 +1045,19 @@ class ThirdRoundCollectorTest(unittest.TestCase):
             [a["url"] for a in result["artefacts"]], ["https://github.com/o/r/pull/1"]
         )
 
-    def test_a_malformed_plugin_index_does_not_end_the_run(self):
-        home = Path(TMP.name) / f"home{next(_COUNTER)}"
-        index = home / ".claude/plugins/installed_plugins.json"
-        index.parent.mkdir(parents=True)
-        index.write_text(json.dumps({"plugins": {"x": ["not-a-dict", None]}}))
-        with mock.patch.object(crf.Path, "home", return_value=home):
-            self.assertEqual(crf._installed_jira_clis(), [])
+    def test_malformed_feedback_cannot_look_like_an_empty_success(self):
+        with self.assertRaisesRegex(ValueError, "findings list"):
+            crf.contract.parse_document(
+                {
+                    "version": 1,
+                    "artefacts": [
+                        {
+                            "url": "https://tracker.example/items/1",
+                            "status": "fetched",
+                        }
+                    ],
+                }
+            )
 
     def test_more_dismissals_than_read_is_named(self):
         pr = _pr()
@@ -1096,7 +1086,9 @@ class FourthRoundTest(unittest.TestCase):
         urls, data = self.urls([(cmd, gate)])
         self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
         jira = "uv run jira-comment.py add NRS-9999 -"
-        self.assertEqual(dss.jira_command_tickets(jira, "lint: NRS-9999", True), set())
+        self.assertEqual(
+            dss.command_reference_candidates(jira, "lint: NRS-9999", True), set()
+        )
 
     def test_a_failed_run_is_still_a_run(self):
         cmd = {"command": "gh pr merge 3 -R o/r --merge", "__error": True}
@@ -1185,16 +1177,12 @@ class FourthRoundTest(unittest.TestCase):
             "uv run jira-comment.py add NRS-5 - < c.txt; echo 'all done'"
         )
         self.assertEqual(
-            dss.jira_command_tickets(cmd, "Comment added to NRS-5"), {"NRS-5"}
+            dss.command_reference_candidates(cmd, "Comment added to NRS-5"), {"NRS-5"}
         )
 
-    def test_a_plugin_index_whose_plugins_is_a_list(self):
-        home = Path(TMP.name) / f"home{next(_COUNTER)}"
-        index = home / ".claude/plugins/installed_plugins.json"
-        index.parent.mkdir(parents=True)
-        index.write_text(json.dumps({"plugins": ["x"]}))
-        with mock.patch.object(crf.Path, "home", return_value=home):
-            self.assertEqual(crf._installed_jira_clis(), [])
+    def test_a_feedback_artifact_must_be_an_object(self):
+        with self.assertRaisesRegex(ValueError, "object"):
+            crf.contract.parse_document({"version": 1, "artefacts": [[]]})
 
 
 class FifthRoundTest(unittest.TestCase):

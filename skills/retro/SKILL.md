@@ -50,8 +50,10 @@ approval.
    Then `uv run ${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py` on the
    same transcript (`uv run`, because its header declares the tree-sitter
    parser; plain `python3` stops with a message): review threads, bot reviews,
-   and comments on the session's PRs/MRs, their linked issues and Jira tickets
-   (input for B18–B20, D4, D6).
+   and comments on the session's PRs/MRs, their linked issues, plus normalized tracker feedback supplied via
+   `--feedback-file` (input for B18–B20, D4, D6). Resolve relevant opaque
+   hints through the owning integration, never by key shape. See
+   `references/feedback-contract.md`; incomplete coverage is not silence.
 2. LLM enrichment — inferential signals, both classes (friction + learnings
    B16–B20); filter false positives.
 3. Cross-session enrichment (optional) — JSONL scan via `${CLAUDE_SKILL_DIR}/scripts/scan-cross-session.py`.
@@ -68,6 +70,9 @@ approval.
 ## Boundaries
 
 **Scope:** session-end/cross-session analysis, skill-PR routing, done gate.
+Tracker identity and access belong to the owning integration; QA and time
+policy belong to project/organization rules. No implicit tracker, CLI discovery
+or organization-specific billing defaults in the core.
 
 **Always:** LLM is primary classifier. Patches go to source repos, never the
 cache. Per-private-repo confirmation. Conventional Commits. DCO sign-off
@@ -86,6 +91,7 @@ processes or worktrees.
 
 | File | Purpose |
 |---|---|
+| `references/feedback-contract.md` | Tracker-neutral evidence and reference resolution |
 | `references/friction-catalog.md` | All signals: friction + learnings (A/B/C, B16–B20) |
 | `references/destination-taxonomy.md` | The seven destinations |
 | `references/classification-heuristic.md` | Friction → destination mapping |

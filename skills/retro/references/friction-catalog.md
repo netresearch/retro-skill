@@ -12,7 +12,7 @@ propagating.
 
 ## Scope and honest limitations
 
-This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, cross-session JSONL data, and the feedback written on the session's PRs, MRs, linked issues and Jira tickets (`collect-review-findings.py`, see [Feedback from outside the transcript](#feedback-from-outside-the-transcript)).
+This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, cross-session JSONL data, and the feedback written on the session's PRs, MRs, linked issues and supplied tracker evidence (`collect-review-findings.py`, see [Feedback from outside the transcript](#feedback-from-outside-the-transcript)).
 
 **It does NOT detect:**
 - Architectural choices that are wrong but "work" (no friction signal)
@@ -180,31 +180,35 @@ script that only reads is listed too, a lost write is not possible. A
 body file (`cat > pr.md <<…` then `--body-file pr.md`) change nothing.
 `--dry-run` stops only the `pr-merge.sh` command it is given to. A status
 line `! … #N is already …` means the write to `#N` found nothing to do.
-It follows each one's linked issues (closing references,
-issue URLs in the description) and the Jira key at the start of its title or in
-a branch segment one level, plus the tickets the session ran a jira script
-against or booked time on, and lists every comment by somebody else — each
-answer inside a thread as its own `review-reply`. Jira goes through the
-`jira-communication` skill's `jira-issue.py`; without that skill a ticket is
-listed as not read. GitLab is read only on the hosts given with `--gitlab-host`
+It follows native linked issues (closing references and issue URLs in the
+description) one level, and lists every foreign comment, including each answer
+inside a thread as its own `review-reply`. Short title/branch/tool references
+remain contextual hints, not known tickets. Delegate relevant reference
+resolution and retrieval to the owning integration, then supply normalized
+local evidence via `--feedback-file`. No tracker is inferred from a prefix or
+installed CLI. See [the feedback contract](feedback-contract.md).
+GitLab is read only on the hosts given with `--gitlab-host`
 (default `$GITLAB_HOST`, else `gitlab.com`), because `glab` sends its token to any host it is
 pointed at. The text output trims bodies; read a finding in full from
 `--output-format json` before classifying it. Each finding carries:
 
 | Field | Meaning |
 |---|---|
-| `source` | `review-thread`, `review-reply` (an answer by somebody else inside a thread, with `thread`, `path`, `resolved`; the opening bot's own follow-ups are not listed), `review`, `pr-comment`, `mr-comment`, `issue-comment`, `ticket-comment`, `ticket-transition` |
-| `author_class` | `human`, `bot`, `self`. `self` is the account running the script plus `--self-login`; in Outcome mode run by another account, pass the session's login. The agent's own comments and replies are counted, not listed; in a thread it opened, the answers by others are listed as `review-reply` |
+| `source` | `review-thread`, `review-reply` (an answer by somebody else inside a thread, with `thread`, `path`, `resolved`; the opening bot's own follow-ups are not listed), `review`, `pr-comment`, `mr-comment`, `issue-comment`; supplied tracker evidence uses `ticket-comment` and `ticket-transition` (see the feedback contract; other values are the integration's own and are classified from the body) |
+| `author_class` | `human`, `bot`, `self`. `self` for native reads is the account running the script plus `--self-login`; imported identity classification belongs to its integration; in Outcome mode run by another account, pass the session's login. The agent's own comments and replies are counted, not listed; in a thread it opened, the answers by others are listed as `review-reply` |
 | `report` | a bot's comment on the whole PR/MR (quality gate, coverage, summary), or a bot review that says it did not review (quota, rate limit); rendered apart from the findings. Any other bot review is a finding: its body can carry findings outside the diff. Bot approvals, also those GitHub dismissed on a later push, are not listed |
 | `resolved` | the forge's thread state, where it has one |
 | `commit_after` | the first PR/MR commit dated after the finding. A necessary sign that the finding changed the code, not proof: any later commit qualifies, and a rebase re-dates them all. Read it with `resolved` and `last_self_reply` |
 | `last_self_reply` | the agent's last answer in the thread — the reason, when it rejected the finding. A later `review-reply` by a human can overturn it |
 | `last_activity` | the latest entry in the thread; `--since` keeps a thread whose latest entry is at or after it |
 
-Read the `NOT READ` and `UNRESOLVED` lines first: an artefact that could not be
-read, and a write whose target the transcript does not name, are unknowns, not
-artefacts without findings. A `NO SUCH` line is a key-shaped name Jira does
-not know (`TYPO3-14` in a branch) — an answer, not a read failure. A finding answered and followed by no commit was
+Read `UNRESOLVED REF`, `UNSUPPORTED`, `NOT READ`, `TRUNCATED` and unresolved
+forge-write lines first. These are coverage gaps, not artifacts without
+findings. JSON `complete: false` makes the same distinction. A key-shaped name
+such as `TYPO3-14` is not sent to a tracker to test whether it exists. Resolve
+relevant hints through their owning context, or explicitly reject an irrelevant
+candidate with a reason. An authorization failure is never proof of absence.
+A finding answered and followed by no commit was
 rejected; when a bot's findings are rejected again and again, the learning is
 the reviewer's configuration in that repository (`project-rule`), not the
 agent's work. At session end many reviews have not arrived yet — Outcome mode
@@ -271,7 +275,7 @@ sweep was friction-only, outcome was failure-only.)
 | D3 | Session PR closed without merge | `gh pr view --json closedAt,merged,state` shows closed, not merged | Output rejected |
 | D4 | Session PR required major changes | `collect-review-findings.py` lists human or bot review threads and replies, or findings with `commit_after` — GitHub and GitLab — or a `CHANGES_REQUESTED` review (GitHub; GitLab approvals are not read) | Output below standard; each finding is a B19 candidate |
 | D5 | CI failed on session commit | `gh run list --commit $sha --json conclusion` | Output was broken |
-| D6 | Issue or ticket feedback after the session | `collect-review-findings.py --since <session end>`: comments and status changes on the linked issues and Jira tickets; plus `gh issue list --search "filename after:$session_date"` for issues that link nothing | Output caused a bug, or the acceptance happened in the ticket |
+| D6 | Issue or ticket feedback after the session | `collect-review-findings.py --since <session end>`: comments and status changes on the linked issues and supplied tracker evidence; plus `gh issue list --search "filename after:$session_date"` for issues that link nothing | Output caused a bug, or the acceptance happened in the ticket |
 | D7 | Follow-up session detected | Schicht C5 cross-referenced from outcome perspective | Session output didn't last |
 | D8 | Regression in test suite | Test that passed at session end now fails on a later commit | Output regressed |
 | D9 | Code reverted in same file within 30 days | Diff-based: session's net contribution to file is largely undone | Output not durable |
@@ -332,7 +336,7 @@ E mode is best for **monthly or quarterly reviews**, with tech-lead-level actor 
 External-feedback ingestion would extend the catalog significantly:
 
 - **Sentry / error tracker integration** — production crashes correlated to session-touched files
-- **Jira / Linear bug filings not linked from the session's PRs** — `collect-review-findings.py` reads the tickets a PR/MR names; a ticket that mentions session output without being linked is not found
+- **Unlinked tracker filings** — native issue links and supplied tracker evidence are in scope; finding other bug reports needs the owning integration
 - **Slack / Matrix mentions** — customer/team feedback referencing session commits
 - **PagerDuty / OnCall** — production incidents correlated to session output
 - **Documentation drift detection** — docs changed but corresponding code didn't (or vice versa)

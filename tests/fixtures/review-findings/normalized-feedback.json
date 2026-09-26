@@ -1,0 +1,41 @@
+{
+  "version": 1,
+  "artefacts": [
+    {
+      "url": "https://jira.example.org/browse/OPS-901",
+      "status": "fetched",
+      "title": "Route status messages through the board",
+      "state": "In Progress",
+      "findings": [
+        {
+          "source": "ticket-comment",
+          "author": "agent.owner",
+          "author_class": "self",
+          "created_at": "2026-09-17T09:15:11.286+0000",
+          "body": "Rolled out to 22 projects."
+        },
+        {
+          "source": "ticket-comment",
+          "author": "team.lead",
+          "author_class": "human",
+          "created_at": "2026-09-18T08:00:00.000+0000",
+          "body": "Can we agree on global rollouts across all projects before they happen?"
+        },
+        {
+          "source": "ticket-comment",
+          "author": "colleague",
+          "author_class": "human",
+          "created_at": "2026-09-10T08:00:00.000+0000",
+          "body": "Original request: fewer status messages in the channels."
+        },
+        {
+          "source": "ticket-transition",
+          "author": "team.lead",
+          "author_class": "human",
+          "created_at": "2026-09-18T08:05:00.000+0000",
+          "body": "QA \u2192 In Progress"
+        }
+      ]
+    }
+  ]
+}

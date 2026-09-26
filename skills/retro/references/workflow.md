@@ -114,13 +114,13 @@ session may be called finished — task delivered, findings triaged, retro run,
 cleanup done, no open questions, tickets updated, time booked.
 
 ```
-Input: live state of the session's artefacts (forge, tracker, TimeTracker,
+Input: live state of the session's artefacts (forge, tracker, configured time service,
        host), plus this session's Sweep result if one exists
 Output: scope line + gate table (✅ / ❌ / ⏸ / N-A + evidence); writes only
        after approval
 Use case: the last command of a session; the answer to "alles erledigt?"
 Token cost: moderate — no transcript pass, but one live-state read per
-       artefact, one sweep per repository and one get_day per day; a
+       artefact, one sweep per repository and one read of existing time entries per applicable day; a
        chained Sweep adds its own
 ```
 
@@ -225,7 +225,8 @@ re-presented.
 
 ```
 1. Mechanical pre-pass (Schicht A)
-1b. Review and ticket feedback (collect-review-findings.py)
+1b. Native reviews plus supplied tracker feedback (collect-review-findings.py);
+    delegate contextual reference resolution per feedback-contract.md
 2. LLM enrichment (Schicht B)
 3. Cross-session enrichment (Schicht C, optional)
 4. Classification → 7 destinations (authority first)
@@ -356,12 +357,13 @@ retro detects friction *and* reusable learnings observable in or near the sessio
 (Sweep / Spotlight) or in the stored backlog (Promote). A learning is detectable
 only when it surfaced in the session (a technique the agent worked out, an
 improvement it named) or was written on the session's PRs, MRs, linked issues
-and Jira tickets, which Phase 1b reads (`collect-review-findings.py`); retro does
+and tracker evidence supplied by the owning integration, which Phase 1b reads
+(`collect-review-findings.py --feedback-file`); retro does
 **not** detect: silent badness (architecturally wrong but friction-free choices
 the agent never recognized as a learning); external signals outside forge and
 tracker (customer complaints, prod alerts, Slack / Matrix / Sentry); feedback on
-a ticket that neither a PR/MR of the session nor a jira script or time
-booking in it names; a write whose output named no target (listed as an
+an external ticket for which no owning integration supplied evidence; an opaque
+reference whose tracker, instance and artifact identity remain unresolved; a write whose output named no target (listed as an
 unresolved forge command instead); a write through `curl` or another tool
 than `gh`, `glab`, the GitHub MCP tools and `pr-merge.sh`; slow constitutional drift
 without `audit`; or outcomes the agent never saw (a reverted commit or rejected

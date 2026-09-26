@@ -56,13 +56,16 @@ uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/collect-review-findings.py \
   --transcript-file <the transcript confirmed in Phase 1>
 ```
 
-It reads the PRs, MRs and issues the session created or wrote to, their linked
-issues, the Jira tickets named at the start of their titles or in a branch
-segment, and the tickets the session ran a jira script against. Bodies are
-trimmed in text; read a finding in full from `--output-format json` before
-classifying it. A GitLab host other than `--gitlab-host` is not contacted. Treat `NOT READ`
+It reads native PRs, MRs and linked issues. Short references in titles, branches
+and tool exchanges stay `UNRESOLVED REF` with their source context. Resolve
+relevant hints from explicit evidence or project conventions through the owning
+integration, not a default tracker. Supply that integration's normalized data
+with `--feedback-file`; see `skills/retro/references/feedback-contract.md`.
+Treat `complete: false`, `UNSUPPORTED` and `TRUNCATED` as incomplete evidence,
+not silence. Bodies are trimmed in text; read a finding in full from
+`--output-format json` before classifying it. A GitLab host other than `--gitlab-host` is not contacted. Treat `NOT READ`
 and `UNRESOLVED` lines as unknown, never as "no findings": an `UNRESOLVED` line
-is a write whose target the transcript does not name — read the command and add
+without `REF` is a write whose target the transcript does not name — read the command and add
 the PR, MR or issue it wrote to by hand. Field meanings and how to read them:
 `skills/retro/references/friction-catalog.md` § Feedback from outside the transcript.
 
@@ -348,8 +351,9 @@ time booked per day — each ✅ / ⏸ / ❌ with its evidence. Full detail in
 
 - Phases 1–3 are skipped (announce it) unless gate 3 finds no Sweep has run —
   then run the Sweep in full first
-- Phase 8 applies to every write the gate proposes: TimeTracker bookings
-  (`log_time`, dual-write, `get_day` first, never a Jira worklog), ticket
-  comments, worktree removals
+- Phase 8 applies to every write the gate proposes: time entries in the
+  project's configured system (read before writing to prevent duplicates),
+  ticket comments and worktree removals. Apply the owning project's QA and
+  billing rules; a missing integration is not evidence that a requirement is N/A.
 - Phase 10 report is the gate table; the word **done** appears only when all
-  seven rows are ✅ — a ⏸ (waiting on the user) or ❌ ends with what closes it
+  seven rows are ✅ or justified N/A — a ⏸ (waiting on the user) or ❌ ends with what closes it

@@ -156,6 +156,14 @@ FAILED_OUTPUT_RE = re.compile(
     r"|Command running in background|moved to the background|^Monitor started \(",
     re.MULTILINE,
 )
+
+# An MCP tool that fails often returns its error as ordinary text with
+# is_error unset: "Error: 404 not found", "Issue does not exist".
+TOOL_ERROR_TEXT_RE = re.compile(
+    r"^\s*(?:error|failed|failure|denied|forbidden|unauthori[sz]ed)\b"
+    r"|\b(?:not found|does not exist|permission denied)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
 # A REST endpoint held in a variable: `gh api -X POST "$R/123/replies"`.
 VARIABLE_ENDPOINT_RE = re.compile(r"\bapi\b(?:\s+-\S+(?:\s+[^-\s]\S*)?)*\s+[\"']?\$")
 REST_KIND_RE = re.compile(
@@ -230,10 +238,8 @@ MCP_WRITE_RE = re.compile(
     r"add_comment_to_pending_review|issue_write|add_issue_comment|request_copilot_review"
     r"|sub_issue_write|assign_copilot_to_issue)"
 )
-# A Jira key a session acted on: the key on a command line that runs one of the
-# jira skill's scripts, or the `ticket` a time booking named. Prefixes that are
-# standards, not projects, are refused — `UTF-8`, `SHA-256`, `CVE-2025-1` would
-# otherwise all read as tickets.
+# Key-shaped arguments are only reference candidates, never tracker identities.
+# Exclude common standards to reduce noise, not to infer a provider by exclusion.
 TICKET_RE = re.compile(r"\b(?P<key>[A-Z][A-Z0-9]{1,9}-\d+)\b")
 NOT_A_TICKET_PREFIX = frozenset(
     {
@@ -258,7 +264,6 @@ NOT_A_TICKET_PREFIX = frozenset(
         "AES",
     }
 )
-JIRA_COMMAND_RE = re.compile(r"\bjira-[a-z-]+\.py\b(?P<rest>[^;&|\n]*)")
 QUOTED_RE = re.compile(r"'[^']*'|\"(?:[^\"\\]|\\.)*\"")
 
 
@@ -661,7 +666,7 @@ class _Shell:
                 return False
             if node.type in TEXT_NODES:
                 # A quoted word without a space is a path or a slug
-                # (`"$HOME/…/jira-issue.py"`), not a text.
+                # (`"$HOME/…/tracker.py"`), not a text.
                 return (
                     node.type in ("comment", "heredoc_body")
                     or " "
@@ -1098,22 +1103,44 @@ def _forge_write_artefacts(
     return found, unresolved
 
 
-def jira_command_tickets(command: str, result: str, is_error: bool = False) -> set[str]:
-    """The ticket a jira script was run against, when its output names it.
+def command_reference_candidates(
+    command: str, result: str, is_error: bool = False
+) -> set[str]:
+    """Find literal key arguments corroborated by a successful tool result.
 
-    The key is the script's first positional argument. A script name inside a
-    quoted text (`git commit -m "… jira-issue.py get NRS-9 …"`) or a heredoc
-    is not a call; a quoted path without spaces (`"$HOME/…/jira-issue.py"`) is."""
-    if refused(result, is_error):
+    The shell parser, not executable names, separates arguments from quoted
+    prose and heredocs. These remain hints: a successful command may merely
+    print a key; it proves neither an issue's existence nor its provider.
+    """
+    if is_error or refused(result, is_error) or FAILED_OUTPUT_RE.search(result):
         return set()
-    command = _joined(command)
+    shell = _shell(_joined(command))
+    if shell.misparsed:
+        return set()
+    result_keys = tickets_in(result)
     found = set()
-    for m in JIRA_COMMAND_RE.finditer(command):
-        if _is_text(command, m):
+    for node in shell._walk():
+        if node.type != "command":
             continue
-        key = next((t for t in _tokens(m["rest"]) if TICKET_RE.fullmatch(t)), None)
-        if key and key.split("-", 1)[0] not in NOT_A_TICKET_PREFIX and key in result:
-            found.add(key)
+        for arg in node.children_by_field_name("argument"):
+            # Do not interpret substitutions, expansions or concatenations as
+            # literal IDs. Commands inside substitutions are visited separately.
+            if arg.type not in {"word", "string", "raw_string"}:
+                continue
+            text = shell.source[shell._char[arg.start_byte] : shell._char[arg.end_byte]]
+            key = unquote(text)
+            if TICKET_RE.fullmatch(key) and key in result_keys:
+                found.add(key)
+    return found
+
+
+def payload_reference_candidates(payload: dict[str, Any]) -> set[str]:
+    """Hints from explicit reference fields; no MCP tool-name assumptions."""
+    found = set()
+    for field in ("ticket", "issue_key", "work_item", "reference"):
+        value = payload.get(field)
+        if isinstance(value, str) and TICKET_RE.fullmatch(value):
+            found |= tickets_in(value)
     return found
 
 
@@ -1173,8 +1200,10 @@ def tickets_in(text: str) -> set[str]:
 class _ArtefactScan:
     """State of one pass over a transcript: pending tool calls and what they named."""
 
-    def __init__(self, gitlab_host: str) -> None:
+    def __init__(self, gitlab_host: str, context: str) -> None:
         self.gitlab_host = gitlab_host
+        self.context = context
+        self.reference_candidates: list[dict[str, str]] = []
         self.pending: dict[str, tuple[str, dict[str, Any]]] = {}
         self.by_url: dict[str, dict[str, Any]] = {}
         self.tickets: set[str] = set()
@@ -1194,8 +1223,6 @@ class _ArtefactScan:
         if not isinstance(payload, dict):
             return
         self.pending[block.get("id", "")] = (block.get("name", ""), payload)
-        if block.get("name") == "mcp__tt__log_time":
-            self.tickets |= tickets_in(str(payload.get("ticket", "")))
 
     def tool_result(self, block: dict[str, Any]) -> None:
         name, payload = self.pending.pop(block.get("tool_use_id", ""), ("", {}))
@@ -1208,13 +1235,25 @@ class _ArtefactScan:
             self.keep(found)
             if lost:
                 self.unresolved.append(command[:200])
-            self.tickets |= jira_command_tickets(
-                command, result, bool(block.get("is_error"))
-            )
         elif MCP_WRITE_RE.search(name):
             self.keep(
                 _mcp_write_artefacts(payload, result, bool(block.get("is_error")))
             )
+        if not block.get("is_error") and not refused(result, False):
+            if isinstance(command, str):
+                refs = command_reference_candidates(command, result)
+            elif FAILED_OUTPUT_RE.search(result) or TOOL_ERROR_TEXT_RE.search(result):
+                # A tool that reports an error in its text proves no reference,
+                # even when the harness did not flag the result as an error.
+                refs = set()
+            else:
+                refs = payload_reference_candidates(payload)
+            context = f"{self.context}#tool={block.get('tool_use_id', '')}"
+            self.tickets |= refs
+            self.reference_candidates += [
+                {"ref": ref, "context": context, "source": "tool-result", "tool": name}
+                for ref in sorted(refs)
+            ]
         self.mention(result)
 
     def event(self, event: dict[str, Any]) -> None:
@@ -1233,14 +1272,14 @@ class _ArtefactScan:
 
 
 def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
-    """The PRs, MRs, issues and Jira tickets a session created, acted on or mentioned.
+    """Native artifacts plus unassigned, context-preserving reference hints.
 
     `origin` says how much the transcript supports the link: `created` (the
     command's own output printed the URL), `acted` (a write command named it),
     `mentioned` (a URL appeared somewhere, which includes documentation
     placeholders such as `OWNER/REPO` — a reader weighs those, a fetch skips them).
     """
-    scan = _ArtefactScan(gitlab_host)
+    scan = _ArtefactScan(gitlab_host, transcript.resolve().as_uri())
     for event in iter_events(transcript):
         scan.event(event)
     items = sorted(
@@ -1248,7 +1287,9 @@ def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]
     )
     return {
         "artefacts": items,
+        # Compatibility projection only; never sufficient to select a tracker.
         "tickets": sorted(scan.tickets),
+        "reference_candidates": scan.reference_candidates,
         "unresolved_forge_commands": scan.unresolved,
     }
 
@@ -1270,10 +1311,7 @@ def collect(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
         # entries a long session most needs to see.
         "unresolved_paths": sorted(unresolved),
         "commands_scanned": len(commands),
-        # PRs, MRs and issues with how the transcript links them; the tickets a
-        # jira script or a time booking named; forge writes whose target could
-        # not be identified. collect-review-findings.py reads the artefacts and
-        # tickets, and lists the unresolved writes as UNRESOLVED.
+        # Native artifacts, opaque references and unresolved writes stay distinct.
         **forge_artefacts,
     }
 
@@ -1281,6 +1319,20 @@ def collect(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
 # How many unresolved paths the text rendering shows before pointing at the
 # JSON. The JSON is never truncated.
 TEXT_UNRESOLVED_LIMIT = 20
+
+
+def _written_lines(scope: dict[str, Any], owned: list[dict[str, Any]]) -> list[str]:
+    if not owned and not scope["tickets"]:
+        return []
+    lines = ["", "PRs, MRs and issues this session created or wrote to:"]
+    lines += [f"  {a['origin']:<8} {a['url']}" for a in owned]
+    if scope["tickets"]:
+        lines.append("  Unresolved reference candidates (not tracker identities):")
+        lines += [
+            f"    {ref['ref']} (context: {ref['context']})"
+            for ref in scope.get("reference_candidates", [])
+        ]
+    return lines
 
 
 def render_text(scope: dict[str, Any]) -> str:
@@ -1295,11 +1347,7 @@ def render_text(scope: dict[str, Any]) -> str:
         lines += ["", "Forge repositories addressed by slug (may have no local clone):"]
         lines += [f"  {s}" for s in scope["forge_slugs"]]
     owned = [a for a in scope["artefacts"] if a["origin"] != "mentioned"]
-    if owned or scope["tickets"]:
-        lines += ["", "PRs, MRs and issues this session created or wrote to:"]
-        lines += [f"  {a['origin']:<8} {a['url']}" for a in owned]
-        if scope["tickets"]:
-            lines.append(f"  tickets  {', '.join(scope['tickets'])}")
+    lines += _written_lines(scope, owned)
     mentioned = len(scope["artefacts"]) - len(owned)
     if mentioned:
         lines.append(

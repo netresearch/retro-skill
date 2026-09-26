@@ -22,13 +22,12 @@ doing.
 | ⏸ | **waiting on the user**, and the user can close it | one named answer or action |
 | N/A | does not apply here, with the reason | nothing — it is already settled |
 
-**⏸ and N/A are not interchangeable, and confusing them breaks the gate.** A
-session on a skill or infrastructure repo has no ticket, so gate 7 can never
-reach ✅ — booking without a ticket is forbidden two sections down. Marked ⏸ it
-reads as "waiting for something", but nothing will ever arrive: the row stands
-forever, `done` can never be said, and after the third run the whole table gets
-skipped, including the rows that report something real. Marked `N/A — no ticket,
-no billable context: skill-repo work` it is settled and visible.
+**⏸ and N/A are not interchangeable.** Determine applicability from the
+project/organization policy, not from the repository type or the presence of a
+ticket. Work without a ticket may still require time recording. A missing
+integration or unknown required booking target is not N/A: name the person and
+action that can unblock it. Use N/A only with evidence that the requirement does
+not apply; do not invent a ticket or a time-accounting obligation.
 
 So: **⏸ only when a named person can close it with a named action.** Everything
 structurally absent is N/A with its reason. `done` may be said when every row is
@@ -37,12 +36,12 @@ structurally absent is N/A with its reason. `done` may be said when every row is
 | # | Gate | Evidence that closes it |
 |---|------|-------------------------|
 | 1 | **Task** — the original request, as the user phrased it, is delivered | Every artefact named with its live state: PR/MR (state, checks, threads, `mergeStateStatus` / `detailed_merge_status`), issue, tag, deploy. "I pushed" is not a state. |
-| 2 | **Findings** — every interim finding is *fixed*, *filed* or *rejected* | One row per finding: fixed (commit SHA) · filed (issue/ticket URL in the row — "filed" without a URL is not filed) · rejected (one-line reason the user has seen). The findings on the session's PRs/MRs, linked issues and tickets are listed by `collect-review-findings.py --transcript-file <session.jsonl>` — every open thread and every human comment there is a row. |
+| 2 | **Findings** — every interim finding is *fixed*, *filed* or *rejected* | One row per finding: fixed (commit SHA) · filed (issue/ticket URL in the row — "filed" without a URL is not filed) · rejected (one-line reason the user has seen). The native and explicitly supplied tracker findings are listed by `collect-review-findings.py --transcript-file <session.jsonl>` — every open thread and every human comment there is a row. Resolve relevant coverage gaps from `complete: false` before passing this gate; see `feedback-contract.md`. |
 | 3 | **Retro** — the Sweep ran for this session | A materialized artefact from it: a memory file written, a skill PR opened, a rule edited — each named with its path or URL. "I ran it" is the same self-report the other gates refuse. No such artefact and no explicit *all rejected* record → Done mode runs the Sweep now (Phases 1–10) before continuing. |
 | 4 | **Cleanup** — nothing of the session's own making is left running or lying around | The sweep list below, each line with its command output. |
 | 5 | **Questions** — nothing is pending on the user that the task still needs | Either no open question, or exactly one human-gated decision stated once with the exact command, and the loop stopped there. Re-listing a parked decision is a ❌. |
-| 6 | **Tickets** — every ticket touched carries the outcome | Per ticket, the state **printed** as `KEY · status · assignee`, read back after the writes — not described. Plus: comment with what/why/evidence; the transition done or the hand-back posted; the assignee being whoever owes the *next* action; the last work summary current (`netresearch-jira` › QA Best Practices). **N/A** when the session touched no ticket — say which work it was instead. |
-| 7 | **Time** — every day of the session is booked | TimeTracker entries listed per day with ticket, project, activity, minutes. See *Booking* below. **N/A** when there is no ticket and no billable context (skill or infrastructure work) — never ⏸, which would wait for something that does not exist. |
+| 6 | **Tickets** — required outcomes are recorded on the confirmed work items | Print each canonical URL, native state and responsible party where applicable, read back after approved writes. Apply the owning project's QA, hand-back and assignment rules; do not invent status names or transitions. N/A only when no ticket obligation applies. Unresolved relevant references or unavailable required integrations are not a pass. |
+| 7 | **Time** — applicable time-accounting obligations are met | List the required per-day entries and read-back evidence from the configured service. Apply the project/organization policy, not a default provider. N/A requires an explicit applicability reason; missing tickets alone are not enough. See *Booking* below. |
 
 ## Cleanup sweep (gate 4)
 
@@ -161,41 +160,38 @@ done" in the session this mode came out of:
 
 ## Booking (gate 7)
 
-- **TimeTracker, never a Jira worklog.** TimeTracker (`tt` MCP, `log_time`)
-  syncs into Tempo; a direct Jira worklog double-books.
-- **Per day, not per session.** A session can span days; derive the days from
-  commit timestamps, scratch-file mtimes and the transcript, not from "today".
-- **Derive the hours from the transcript, and say how.** Sort **every** timed
-  entry — user, assistant *and* task notifications, which arrive as their own
-  entries and are what ends a wait on your own background run. Leaving them out
-  of the sort makes a gap look longer than it was and files it under the wrong
-  heading. Split on gaps over 30 minutes, sum the blocks, then classify each
-  long gap by what *ended* it: a genuine user message means the agent was idle
-  and the gap stays out; a task notification means the agent's own work was
-  running and the gap counts. Both numbers belong in the report, because "254
-  minutes" without the method is a figure nobody can check.
-- **`get_day` immediately before every `log_time`** — a parallel session may
-  have booked the same window (or your own work) already.
-- **Project/activity from precedent:** `list_recent_entries` (write the result
-  to a file and `jq` it — it overflows the context), match the ticket prefix.
-- **Dual-write:** `agentWalltimeMinutes` + `humanMinutes` + `touchpoints`
-  (`prompts`, `reviews`, `interventions`), description ≤255 characters, factual.
-- **No ticket, no booking.** If the ticket key is unknown, search the tracker
-  (JQL: `project = "<KEY>" AND text ~ "<repo>"`) before asking. Then the two
-  cases part: a ticket that plausibly exists but was not found is **⏸** with the
-  proposed entries and one question. Work that has no ticket by its nature —
-  a skill repository, own tooling, infrastructure — is **N/A** with that reason.
-  Asking for a ticket key that will never exist is the failure this distinction
-  prevents.
+Determine whether time recording is required, which service owns the record,
+and what identifiers and units it requires from the active project or
+organization policy. Delegate service-specific operations to its integration.
+Do not infer these rules from an installed skill, a ticket prefix, or the fact
+that the repository contains skills or infrastructure.
 
-## Forge and tracker bindings
+Prepare entries for the applicable days with their evidence and estimation
+method. Distinguish human effort, agent elapsed time and billable time; do not
+silently equate them or apply a universal gap threshold. Project/activity,
+required ticket linkage and field constraints come from the owning policy.
+When policy permits ticketless work, do not invent a ticket requirement.
 
-| System | Read the state with | Write with |
-|--------|---------------------|------------|
-| GitHub | `git-workflow`'s `pr-status.sh -R owner/repo <pr>` (checks, reviews, rulesets, threads, `NEXT:`) | `gh pr edit/comment`, `gh issue create`, GraphQL `resolveReviewThread` |
-| GitLab | `glab api projects/:id/merge_requests/<iid>` → `detailed_merge_status`; `…/discussions` for unresolved threads (`pr-status.sh` is GitHub-only) | `glab mr note`, `glab issue create` |
-| Jira | `netresearch-jira` conventions; status + assignee from the issue itself | comment, transition, assignee |
-| TimeTracker | `get_day`, `list_recent_entries` | `log_time` (dual-write) |
+Read existing entries immediately before each approved write to prevent
+duplicates, including entries from parallel sessions or synchronized systems.
+Read back the result. Never write independently to both sides of a synchronized
+service. Missing access, policy or a required identifier remains a visible
+blocker with a named next action; it is not permission to guess or mark N/A.
+
+## Integration boundary
+
+Use the responsible forge/tracker/time integration for native reads and
+approved writes. Retro owns the evidence gate, not credentials, tool paths,
+provider response formats or organization workflow rules. Built-in GitHub and
+GitLab feedback readers keep their existing access restrictions. Other tracker
+feedback enters through [the local feedback contract](feedback-contract.md).
+
+A bare key or branch name is a hint. Resolve it with its source context before
+any external lookup. An unavailable integration, read failure or incomplete
+page is unknown evidence, not an empty result. A user may explicitly reject an
+irrelevant candidate with a reason: record it as a *rejected* row in gate 2. The
+collector does not remember the rejection, so the candidate reappears on the
+next run; do not silently discard it.
 
 ## Pipeline mapping
 
@@ -222,8 +218,8 @@ Scope (derive-session-scope.py): t3x-nr-llm, agent-rules-skill, retro-skill · 2
 | 3 | Retro     | ✅    | 3 memory files written (paths), 1 skill PR #81 |
 | 4 | Cleanup   | ✅    | 3 repos swept: 0 own containers (6 foreign, untouched), 0 processes, 0 stashes, worktree pr169 removed, pr174 kept (PR open) |
 | 5 | Questions | ✅    | none; CI wiring parked by user (stated once) |
-| 6 | Tickets   | ✅    | NEXT-155 · Closed · — · NEXT-156 · Closed · — (assignee cleared: project closes with no owner) |
-| 7 | Time      | N/A   | no ticket, no billable context |
+| 6 | Tickets   | ✅    | https://tracker.example/NEXT-155 · Closed · — · https://tracker.example/NEXT-156 · Closed · — (assignee cleared: project closes with no owner) |
+| 7 | Time      | N/A   | project policy explicitly exempts this work from time recording |
 ```
 
 A ⏸ or ❌ row ends the report with what is needed to close it — not with
@@ -235,11 +231,11 @@ The word **done** may be said when every row is ✅ or N/A.
 **Never:** stop or remove a container, process or worktree belonging to another
 session; mark a structurally impossible row ⏸ instead of N/A; merge, tag or
 deploy from Done mode (those are the task's own,
-explicitly authorized steps); book time without a ticket; dismiss a scanner
+explicitly authorized steps); book time without approval or required policy context; dismiss a scanner
 alert to turn a gate green; delete a worktree or branch holding unpushed
 commits; declare done with a ⏸ or ❌ in the table.
 
-**Ask first:** the ticket key when no precedent exists; removal of anything
+**Ask first:** missing required tracker identity or policy after checking the owning context; removal of anything
 with unpushed work; any ticket transition that closes a ticket someone else
 owns.
 
