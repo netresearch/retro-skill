@@ -170,6 +170,46 @@ class CorrectionSummaryTest(TempDirCase):
         out = _run(self.root, "--user-correction-summary")
         self.assertEqual(out["cross_session_corrections"], [])
 
+    def _synthetic(self, transcript: Transcript, content, **flags) -> None:
+        event = {"type": "user", "timestamp": transcript._ts()}
+        event["message"] = {"role": "user", "content": content}
+        transcript.events.append({**event, **flags})
+
+    def test_harness_text_is_not_a_correction(self) -> None:
+        # A-F3: every cross-session correction the review measured was
+        # harness text stamped isMeta — `Stop hook feedback: …` matches
+        # `^stop\b`. A human's correction in the same sessions still counts.
+        for session in ("a", "b"):
+            t = Transcript()
+            self._synthetic(
+                t, "Stop hook feedback:\nname the waiter before ending", isMeta=True
+            )
+            self._synthetic(t, "No, that is the summary", isCompactSummary=True)
+            self._synthetic(
+                t,
+                [
+                    {
+                        "type": "text",
+                        "text": "<command-message>pr-finish</command-message>",
+                    },
+                    {"type": "text", "text": "# /pr-finish\nno merge without green"},
+                ],
+            )
+            t.user("No, use the Read tool").write(self.root, "-p", session)
+        out = _run(self.root, "--user-correction-summary")
+        self.assertEqual(
+            [hit["snippet"] for hit in out["cross_session_corrections"]],
+            ["no, use the read tool"],
+        )
+
+    def test_the_markers_match_detect_mechanicals(self) -> None:
+        spec = importlib.util.spec_from_file_location(
+            "detect_mechanical", SCRIPT.parent / "detect-mechanical.py"
+        )
+        detector = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(detector)
+        self.assertEqual(scs.SYNTHETIC_USER_MARKERS, detector._SYNTHETIC_USER_MARKERS)
+
 
 class FailureLineTest(unittest.TestCase):
     def test_takes_the_marked_line_of_a_bash_failure(self) -> None:
@@ -328,6 +368,68 @@ class FileKeyTest(TempDirCase):
         with mock.patch.dict(os.environ, {"GIT_DIR": str(other / ".git")}):
             key = scs.file_key(str(project / "gone" / "docs" / "a.md"))
         self.assertEqual(key, (str((project / ".bare").resolve()), "docs/a.md"))
+
+    # A-F8: the worktree of a branch with a slash (`fix/x`) sits in
+    # `<project>/fix/x`. After `git worktree remove` its files must key like
+    # every other worktree's: the bare repository and the path inside it.
+    def _removed_slash_worktree(self) -> tuple[Path, Path]:
+        project = self._bare_project()
+        bare = project / ".bare"
+        worktree = project / "fix" / "x"
+        _git(
+            "-C",
+            str(bare),
+            "worktree",
+            "add",
+            "-q",
+            "--orphan",
+            "-b",
+            "fix/x",
+            str(worktree),
+        )
+        _git(
+            "-C",
+            str(worktree),
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.org",
+            "commit",
+            "-q",
+            "--allow-empty",
+            "--no-gpg-sign",
+            "-m",
+            "x",
+        )
+        _git("-C", str(bare), "worktree", "remove", str(worktree))
+        return bare.resolve(), worktree
+
+    def test_a_removed_slash_worktree_whose_parent_directory_remains(self) -> None:
+        bare, worktree = self._removed_slash_worktree()
+        self.assertTrue(worktree.parent.is_dir())  # the empty `fix/`
+        self.assertEqual(scs.file_key(str(worktree / "a.txt")), (str(bare), "a.txt"))
+
+    def test_a_removed_slash_worktree_is_found_by_its_branch(self) -> None:
+        bare, worktree = self._removed_slash_worktree()
+        worktree.parent.rmdir()
+        self.assertEqual(
+            scs.file_key(str(worktree / "docs" / "a.txt")), (str(bare), "docs/a.txt")
+        )
+
+    def test_a_remote_tracking_branch_outlives_the_local_one(self) -> None:
+        bare, worktree = self._removed_slash_worktree()
+        worktree.parent.rmdir()
+        _git("-C", str(bare), "update-ref", "refs/remotes/origin/fix/x", "fix/x")
+        _git("-C", str(bare), "branch", "-D", "fix/x")
+        self.assertEqual(scs.file_key(str(worktree / "a.txt")), (str(bare), "a.txt"))
+
+    def test_without_a_trace_the_first_directory_is_the_worktree(self) -> None:
+        # The documented limit: branch deleted everywhere, `fix/` removed as
+        # well — nothing says the worktree was two levels deep.
+        bare, worktree = self._removed_slash_worktree()
+        worktree.parent.rmdir()
+        _git("-C", str(bare), "branch", "-D", "fix/x")
+        self.assertEqual(scs.file_key(str(worktree / "a.txt")), (str(bare), "x/a.txt"))
 
 
 class FollowUpSessionsTest(TempDirCase):

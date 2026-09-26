@@ -146,21 +146,59 @@ def load_events(path: Path) -> list[dict[str, Any]] | None:
     return events
 
 
+# Turns that carry the "user" role but were not typed by a human. A copy of
+# `_SYNTHETIC_USER_MARKERS` in detect-mechanical.py, which explains each one;
+# tests/test_scan_cross_session.py fails when the two drift apart.
+SYNTHETIC_USER_MARKERS = (
+    "<task-notification>",
+    "[SYSTEM NOTIFICATION",
+    "<system-reminder>",
+    "<command-message>",
+    "<teammate-message",
+    "<agent-message",
+    "This session is being continued from a previous conversation",
+)
+
+
+def _is_synthetic_user_text(text: str) -> bool:
+    head = text.lstrip()[:400]
+    return any(marker in head for marker in SYNTHETIC_USER_MARKERS)
+
+
 def extract_user_texts(path: Path) -> list[str]:
+    """What a human typed: the text of every user turn the harness did not
+    write itself.
+
+    The harness stamps its own user turns — hook feedback (`Stop hook
+    feedback: …`), slash-command expansions, notifications — with `isMeta`,
+    and a compaction recap with `isCompactSummary`; the markers are the
+    fallback for transcripts older than those flags, as in
+    detect-mechanical.py. Without this, `--user-correction-summary` counted a
+    hook's `Stop …` feedback, repeated in every session, as a correction."""
     texts = []
     for ev in load_events(path) or []:
         if ev.get("type") != "user":
+            continue
+        if ev.get("isMeta") or ev.get("isCompactSummary"):
             continue
         msg = ev.get("message", {}) or {}
         if not isinstance(msg, dict):
             continue
         content = msg.get("content")
+        found = []
         if isinstance(content, str):
-            texts.append(content)
+            found.append(content)
         elif isinstance(content, list):
             for block in content:
                 if isinstance(block, dict) and block.get("type") == "text":
-                    texts.append(block.get("text", ""))
+                    text = block.get("text", "")
+                    found.append(text if isinstance(text, str) else "")
+        # A slash-command expansion delivers its template as a sibling text
+        # block of the <command-message> marker: one synthetic block makes the
+        # whole message synthetic.
+        if any(_is_synthetic_user_text(t) for t in found):
+            continue
+        texts.extend(found)
     return texts
 
 
@@ -456,13 +494,12 @@ GIT_LOCATION_VARS = frozenset(
 )
 
 
-@functools.cache
-def _rev_parse(directory: str, *query: str) -> list[str] | None:
-    """The answer lines of `git rev-parse` in a directory, or None."""
+def _git_lines(directory: str, *args: str) -> list[str] | None:
+    """The output lines of one git command in a directory, or None."""
     env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_VARS}
     try:
         out = subprocess.run(
-            ["git", "-C", directory, "rev-parse", *query],
+            ["git", "-C", directory, *args],
             capture_output=True,
             text=True,
             timeout=10,
@@ -472,6 +509,69 @@ def _rev_parse(directory: str, *query: str) -> list[str] | None:
     except (OSError, subprocess.SubprocessError):
         return None
     return out.stdout.split("\n") if out.returncode == 0 else None
+
+
+@functools.cache
+def _rev_parse(directory: str, *query: str) -> list[str] | None:
+    """The answer lines of `git rev-parse` in a directory, or None."""
+    return _git_lines(directory, "rev-parse", *query)
+
+
+@functools.cache
+def _branch_names(bare: str) -> frozenset[str]:
+    """The branch names a bare repository knows: its own, and those of its
+    remote-tracking branches without the remote's name (`origin/fix/x` is
+    `fix/x`)."""
+    lines = _git_lines(
+        bare, "for-each-ref", "--format=%(refname)", "refs/heads", "refs/remotes"
+    )
+    names = set()
+    for ref in lines or []:
+        if ref.startswith("refs/heads/"):
+            names.add(ref[len("refs/heads/") :])
+        elif ref.startswith("refs/remotes/"):
+            _remote, _, name = ref[len("refs/remotes/") :].partition("/")
+            if name and name != "HEAD":
+                names.add(name)
+    return frozenset(names)
+
+
+# The directory name of the bare repository in a bare-repository layout.
+BARE_DIR = ".bare"
+
+
+def _bare_project(directory: Path) -> Path | None:
+    """The nearest directory at or above `directory` that holds a bare
+    repository named `.bare`, or None."""
+    for candidate in (directory, *directory.parents):
+        bare = candidate / BARE_DIR
+        if bare.is_dir() and _rev_parse(str(bare), "--is-bare-repository") == [
+            "true",
+            "",
+        ]:
+            return candidate
+    return None
+
+
+def _worktree_depth(project: Path, probe: Path, parts: tuple[str, ...]) -> int:
+    """How many leading components of `parts` (a path below `project`) named
+    the directory of a worktree that no longer exists.
+
+    `git worktree remove` deletes the worktree's own directory and nothing
+    above it, so when a branch with a slash (`fix/x`) had its worktree in
+    `<project>/fix/x`, the empty `fix/` that remains says the worktree sat one
+    level below it. When that is gone too, a branch of the same name says how
+    deep it went — `worktree remove` keeps the branch, and a remote-tracking
+    copy outlives a local `branch -d` until the next `fetch --prune`. With
+    neither, the worktree is taken to be the first directory below the
+    deepest one that still exists: a `fix/x` whose branch is deleted
+    everywhere and whose `fix/` was removed as well keys as `x/…`."""
+    existing = len(probe.relative_to(project).parts)
+    names = _branch_names(str(project / BARE_DIR))
+    for depth in range(len(parts) - 1, existing, -1):
+        if "/".join(parts[:depth]) in names:
+            return depth
+    return existing + 1
 
 
 def _repository_of_dir(directory: str) -> tuple[str, str] | None:
@@ -492,23 +592,31 @@ def file_key(path: str) -> tuple[str | None, str]:
     repository's common git directory plus the path inside the work tree, and a
     removed worktree of a bare-repository layout (`<project>/.bare` beside
     `<project>/<worktree>/`) is recognised from the project directory that
-    remains. That `.bare` is asked first: a project directory inside another
-    work tree would otherwise answer with the outer one. A file outside any
-    repository keeps its absolute path.
+    remains. The `.bare` is looked for in every directory above the file, since
+    a worktree of a branch with a slash (`fix/x`) leaves an empty `fix/`
+    behind, and the worktree's own part of the path (`fix/x/`) is dropped —
+    see `_worktree_depth`. That `.bare` is asked first: a project directory
+    inside another work tree would otherwise answer with the outer one; only a
+    work tree below the project directory — a live worktree — answers. A file
+    outside any repository keeps its absolute path.
     """
     target = Path(path)
     probe = target.parent
     while not probe.is_dir() and probe != probe.parent:
         probe = probe.parent
-    bare = probe / ".bare"
-    parts = target.relative_to(probe).parts
-    if (
-        len(parts) >= 2
-        and bare.is_dir()
-        and _rev_parse(str(bare), "--is-bare-repository") == ["true", ""]
-    ):
-        return str(bare.resolve()), "/".join(parts[1:])
     found = _repository_of_dir(str(probe))
+    project = _bare_project(probe)
+    live = (
+        found is not None
+        and project is not None
+        and project.resolve() in Path(found[1]).resolve().parents
+    )
+    if project is not None and not live:
+        parts = target.relative_to(project).parts
+        # At least one directory of the worktree that is gone, then the file.
+        if len(parts) >= len(probe.relative_to(project).parts) + 2:
+            depth = _worktree_depth(project, probe, parts)
+            return str((project / BARE_DIR).resolve()), "/".join(parts[depth:])
     if found:
         common, top = found
         try:

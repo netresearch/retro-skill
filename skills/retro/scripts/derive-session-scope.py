@@ -40,6 +40,7 @@ from __future__ import annotations
 import argparse
 import functools
 import importlib.util
+import itertools
 import json
 import os
 import re
@@ -75,20 +76,33 @@ except ImportError:  # pragma: no cover - depends on how the script is started
 
 BASH = Parser(Language(tree_sitter_bash.language()))
 
-# `git -C <path>`, `cd <path>`, `-R owner/repo`, `--repo owner/repo`.
-GIT_C_RE = re.compile(r"git\s+-C\s+(?P<path>(?:\"[^\"]+\"|'[^']+'|[^\s;|&]+))")
-CD_RE = re.compile(
-    r"(?:^|[;&|]\s*|\&\&\s*)cd\s+(?P<path>(?:\"[^\"]+\"|'[^']+'|[^\s;|&]+))"
-)
+# `-R owner/repo`, `--repo owner/repo`. The directories a command works in
+# (`git -C <path>`, `cd <path>`) and the release tags it names are read from
+# the parse tree, in `_command_scope`.
 FORGE_RE = re.compile(
     r"(?:-R|--repo)[\s=]['\"]?(?P<scheme>https?://)?"
     r"(?P<slug>[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+)+)['\"]?"
 )
-# Artefacts worth naming in the scope line.
-ARTEFACT_RE = re.compile(
-    r"\b(?:gh|glab)\s+(?:pr|mr|release|issue)\s+(?:create|merge|edit)\b"
-    r"|\bgit\s+(?:tag|push)\s+(?:-s\s+)?(?:origin\s+)?(?P<tag>v?\d+\.\d+\.\d+)\b"
+# A release tag, as a whole argument of `git tag` or `git push`.
+RELEASE_TAG_RE = re.compile(r"v?\d+\.\d+\.\d+")
+# Commands that run the command after their own options: `sudo git -C …`.
+COMMAND_WRAPPERS = frozenset(
+    {"sudo", "env", "command", "exec", "nice", "nohup", "timeout", "time"}
 )
+# Options of git itself that take the next word as their value.
+GIT_VALUE_OPTIONS = frozenset({"-c", "--git-dir", "--work-tree", "--namespace"})
+# Options of `git tag` / `git push` that take the next word as their value:
+# `-m 1.2.3` is a message, not a tag.
+TAG_VALUE_OPTIONS = frozenset(
+    {"-m", "-F", "-u", "--message", "--file", "--local-user", "--cleanup"}
+)
+PUSH_VALUE_OPTIONS = frozenset(
+    {"-o", "--push-option", "--repo", "--receive-pack", "--exec"}
+)
+# A `git tag` or `git push` with one of these deletes, lists or checks a tag.
+NOT_A_RELEASE = frozenset({"-d", "--delete", "-l", "--list", "-v", "--verify"})
+# A shell given its program as a string: `bash -lc 'cd /r && git status'`.
+SHELLS = frozenset({"bash", "sh", "zsh"})
 
 GITHUB_HOST = "github.com"
 # Public forges a `-R` value can name without a scheme; any other dotted
@@ -300,22 +314,38 @@ def repo_root(path: Path) -> Path | None:
     transcript still names while the directory is gone. Each resolves to the
     bare repository, where `git worktree list` answers for all of them;
     otherwise a session that ends with a clean merge sweeps nothing. The
-    `.bare` beside the path is asked first: a project directory that sits
-    inside another work tree would otherwise answer with that outer one.
+    `.bare` is looked for in every directory above the path, not only the
+    nearest one that still exists: a worktree of a branch with a slash
+    (`fix/x`) lives in `<project>/fix/x`, and removing it leaves the empty
+    `fix/` behind. The `.bare` is asked first: a project directory that sits
+    inside another work tree would otherwise answer with that outer one; only
+    a work tree below the project directory — a live worktree — answers.
     """
     probe = path if path.is_dir() else path.parent
     while not probe.is_dir() and probe != probe.parent:
         probe = probe.parent
     if not probe.is_dir():
         return None
-    bare = probe / ".bare"
-    if bare.is_dir() and _git_path(bare, "--is-bare-repository") == Path("true"):
-        return bare.resolve()
     top = _git_path(probe, "--show-toplevel")
+    project = _bare_project(probe)
+    if project is not None:
+        if top is not None and project.resolve() in top.resolve().parents:
+            return top
+        return (project / ".bare").resolve()
     if top is not None:
         return top
     if _git_path(probe, "--is-bare-repository") == Path("true"):
         return _git_path(probe, "--path-format=absolute", "--git-dir")
+    return None
+
+
+def _bare_project(directory: Path) -> Path | None:
+    """The nearest directory at or above `directory` that holds a bare
+    repository named `.bare`, or None."""
+    for candidate in (directory, *directory.parents):
+        bare = candidate / ".bare"
+        if bare.is_dir() and _git_path(bare, "--is-bare-repository") == Path("true"):
+            return candidate
     return None
 
 
@@ -359,15 +389,25 @@ def iter_events(path: Path):
     with path.resolve().open(encoding="utf-8", errors="replace") as fh:
         for line in fh:
             try:
-                yield json.loads(line)
+                event = json.loads(line)
             except json.JSONDecodeError:
                 continue
+            # A line that is valid JSON but not an object (`[1, 2]`, `null`)
+            # is no event; every reader below calls `.get` on one.
+            if isinstance(event, dict):
+                yield event
+
+
+def _message(event: dict[str, Any]) -> dict[str, Any]:
+    """The event's message, or {} when it is missing, null or not an object."""
+    message = event.get("message")
+    return message if isinstance(message, dict) else {}
 
 
 def _tool_inputs(event: dict[str, Any]):
     """Every tool_use input in one transcript event."""
-    message = event.get("message") or {}
-    for block in message.get("content") or []:
+    content = _message(event).get("content")
+    for block in content if isinstance(content, list) else []:
         if isinstance(block, dict) and block.get("type") == "tool_use":
             payload = block.get("input") or {}
             if isinstance(payload, dict):
@@ -389,37 +429,246 @@ def _day_of(event: dict[str, Any]) -> str | None:
     return stamp[:10] if isinstance(stamp, str) and len(stamp) >= 10 else None
 
 
-def _read_transcript(transcript: Path) -> tuple[list[str], set[str], set[str]]:
-    """The Bash commands, the absolute file paths, and the days."""
-    commands: list[str] = []
+def _read_transcript(
+    transcript: Path,
+) -> tuple[list[tuple[str, str | None]], set[str], set[str]]:
+    """The Bash commands with the directory each ran in, the absolute file
+    paths, and the days.
+
+    Claude Code stamps every event with the session's working directory at
+    that moment (`cwd`), and it follows the `cd`s of earlier calls. A command
+    from a transcript without it — an opencode rendering, an old or hand-made
+    one — has no directory, and its relative paths stay unresolved."""
+    commands: list[tuple[str, str | None]] = []
     file_paths: set[str] = set()
     days: set[str] = set()
     for event in iter_events(transcript):
         day = _day_of(event)
         if day:
             days.add(day)
+        cwd = event.get("cwd")
+        cwd = cwd if isinstance(cwd, str) and cwd.startswith("/") else None
         for payload in _tool_inputs(event):
             command = payload.get("command")
             if isinstance(command, str):
-                commands.append(command)
+                commands.append((command, cwd))
             file_paths |= _absolute_paths(payload)
     return commands, file_paths, days
 
 
-def _scan_commands(commands: list[str]) -> tuple[set[str], set[str], set[str]]:
+def _word(shell: _Shell, node) -> str:
+    """A command word as written, without its surrounding quotes."""
+    return unquote(
+        shell.source[shell._char[node.start_byte] : shell._char[node.end_byte]]
+    )
+
+
+def _within(base: str | None, raw: str) -> str:
+    """`raw` as an absolute path when it can be one without guessing: as
+    written when absolute, joined to `base` when relative and `base` is known.
+    Otherwise `raw` itself, which `_resolve_roots` lists as unresolved."""
+    if "$" in raw or "`" in raw or raw.startswith("~"):
+        return raw
+    if raw.startswith("/"):
+        return os.path.normpath(raw)
+    return os.path.normpath(os.path.join(base, raw)) if base else raw
+
+
+def _release_tags(args: list[str], value_options: frozenset[str]) -> set[str]:
+    """The release tags among a `git tag` / `git push` command's arguments."""
+    if NOT_A_RELEASE.intersection(args):
+        return set()
+    tags, skip = set(), False
+    for arg in args:
+        if skip:
+            skip = False
+        elif arg in value_options:
+            skip = True
+        elif RELEASE_TAG_RE.fullmatch(arg):
+            tags.add(arg)
+    return tags
+
+
+def _git_scope(words: list[str], base: str | None) -> tuple[list[str], set[str]]:
+    """The `-C` directories and release tags of one git command's words
+    (`words[0]` is git). Each `-C` is relative to the one before it."""
+    paths: list[str] = []
+    index = 1
+    while index < len(words) and words[index].startswith("-"):
+        option = words[index]
+        if option == "-C" and index + 1 < len(words):
+            target = _within(base, words[index + 1])
+            paths.append(target)
+            base = target if target.startswith("/") else None
+            index += 2
+        elif option in GIT_VALUE_OPTIONS:
+            index += 2
+        else:
+            index += 1
+    if index >= len(words):
+        return paths, set()
+    subcommand, args = words[index], words[index + 1 :]
+    if subcommand == "tag":
+        return paths, _release_tags(args, TAG_VALUE_OPTIONS)
+    if subcommand == "push":
+        return paths, _release_tags(args, PUSH_VALUE_OPTIONS)
+    return paths, set()
+
+
+def _command_scope(command: str, cwd: str | None) -> tuple[list[str], set[str]]:
+    """The directories one Bash command worked in and the release tags it named.
+
+    Read from the parse tree, so a `cd` on the second line counts as much as
+    one after `&&`, and a quoted message is not a command. A relative path is
+    joined to the directory the command started in (`cwd`) or, after a `cd`
+    earlier in the same command, to that `cd`'s target; with neither known it
+    is returned as written and stays unresolved — never joined to the
+    directory this script runs in. The commands are followed in the order
+    they are written; a `cd` inside `( … )` or `$( … )` is taken as if it
+    changed the directory for the rest, since which of them ran is not in the
+    transcript. A shell given its program as a string (`bash -c '…'`) is
+    read the same way.
+
+    Any other text — a quoted string, a heredoc body — may still be a
+    command that runs: `G="git -C /p/.bare"; $G fetch`, a script written by
+    `cat > x.sh <<EOF` and run after, `tmux-run.py "cd /p && make"`. Its
+    absolute paths are candidates too; its relative paths and tags are not,
+    since neither its directory nor whether it ran is known. That recall
+    costs some noise from quoted examples and remote `ssh host 'cd /srv/x'`
+    paths, which land in `unresolved_paths` when nothing local is there."""
+    return _shell_scope(_shell(command), cwd, 0)
+
+
+def _simple_commands(shell: _Shell, node) -> list[list[Any]]:
+    """The word nodes of one `command` node, a list per simple command. The
+    grammar glues the lines after `a | b || c` into one command node (see
+    `_Shell.misparsed`); a newline between two words starts the next one."""
+    nodes = [node.child_by_field_name("name")]
+    nodes += node.children_by_field_name("argument")
+    groups: list[list[Any]] = []
+    for word in (n for n in nodes if n is not None):
+        gap = shell._data[groups[-1][-1].end_byte : word.start_byte] if groups else b""
+        if not groups or (b"\n" in gap and b"\\\n" not in gap):
+            groups.append([word])
+        else:
+            groups[-1].append(word)
+    return groups
+
+
+# How deep text inside text is read again as a command.
+MAX_TEXT_DEPTH = 3
+TEXT_SCOPE_NODES = frozenset(["string", "raw_string", "heredoc_body"])
+MAY_NAME_A_DIRECTORY_RE = re.compile(r"\b(?:git|cd|pushd)\b")
+
+
+def _text_scope(shell: _Shell, node, depth: int) -> list[str]:
+    """The absolute paths of a text node read again as a command, when it is
+    not too deep and may name a directory."""
+    text = _word(shell, node)
+    if depth >= MAX_TEXT_DEPTH or not MAY_NAME_A_DIRECTORY_RE.search(text):
+        return []
+    found, _tags = _shell_scope(_Shell(text), None, depth + 1)
+    return [p for p in found if p.startswith("/")]
+
+
+def _unwrapped(
+    group: list[Any], words: list[str]
+) -> tuple[list[Any], list[str], str] | None:
+    """(word nodes, words, head) of one simple command with a leading wrapper
+    peeled off: `sudo -u me git …` starts at git or cd. None when a wrapper
+    wraps neither."""
+    head = os.path.basename(words[0])
+    if head not in COMMAND_WRAPPERS:
+        return group, words, head
+    starts = [i for i, w in enumerate(words) if w in ("git", "cd")]
+    if not starts:
+        return None
+    return group[starts[0] :], words[starts[0] :], words[starts[0]]
+
+
+def _cd_step(words: list[str], base: str | None) -> tuple[list[str], str | None]:
+    """(paths named, base after it) of one `cd` / `pushd`."""
+    targets = [w for w in words[1:] if not w.startswith("-")]
+    if not targets:
+        return [], None  # `cd` (home) or `cd -` (the previous directory)
+    target = _within(base, targets[0])
+    return [target], target if target.startswith("/") else None
+
+
+def _shell_program(shell: _Shell, group: list[Any]):
+    """The program string node of a shell given one with `-c`, or None."""
+    for flag, program in itertools.pairwise(group[1:]):
+        text = _word(shell, flag)
+        if (
+            text.startswith("-")
+            and not text.startswith("--")
+            and "c" in text
+            and program.type in ("raw_string", "string")
+        ):
+            return program
+    return None
+
+
+def _group_scope(
+    shell: _Shell,
+    group: list[Any],
+    base: str | None,
+    depth: int,
+    programs: set[tuple[int, int]],
+) -> tuple[list[str], set[str], str | None]:
+    """(paths, tags, base after it) of one simple command. A `bash -c`
+    program read here is recorded in `programs`, so the text walk skips it."""
+    unwrapped = _unwrapped(group, [_word(shell, w) for w in group])
+    if unwrapped is None:
+        return [], set(), base
+    group, words, head = unwrapped
+    if head in ("cd", "pushd"):
+        found, base = _cd_step(words, base)
+        return found, set(), base
+    if head == "git":
+        found, named = _git_scope(words, base)
+        return found, named, base
+    if head in SHELLS:
+        program = _shell_program(shell, group)
+        if program is not None:
+            programs.add((program.start_byte, program.end_byte))
+            found, named = _shell_scope(_Shell(_word(shell, program)), base, depth)
+            return found, named, base
+    return [], set(), base
+
+
+def _shell_scope(
+    shell: _Shell, cwd: str | None, depth: int
+) -> tuple[list[str], set[str]]:
+    base = cwd
+    paths: list[str] = []
+    tags: set[str] = set()
+    programs: set[tuple[int, int]] = set()  # `bash -c` strings, read as programs
+    for node in shell._walk():
+        if node.type in TEXT_SCOPE_NODES:
+            if (node.start_byte, node.end_byte) not in programs:
+                paths += _text_scope(shell, node, depth)
+        elif node.type == "command":
+            for group in _simple_commands(shell, node):
+                found, named, base = _group_scope(shell, group, base, depth, programs)
+                paths += found
+                tags |= named
+    return paths, tags
+
+
+def _scan_commands(
+    commands: list[tuple[str, str | None]],
+) -> tuple[set[str], set[str], set[str]]:
     """Candidate paths, forge slugs and release tags named on command lines."""
     candidates: set[str] = set()
     forges: set[str] = set()
     tags: set[str] = set()
-    for command in commands:
-        for pattern in (GIT_C_RE, CD_RE):
-            for match in pattern.finditer(command):
-                candidates.add(unquote(match.group("path")))
+    for command, cwd in commands:
+        paths, named = _command_scope(command, cwd)
+        candidates.update(paths)
+        tags |= named
         for match in FORGE_RE.finditer(command):
             forges.add(match.group("slug"))
-        for match in ARTEFACT_RE.finditer(command):
-            if match.group("tag"):
-                tags.add(match.group("tag"))
     return candidates, forges, tags
 
 
@@ -428,16 +677,17 @@ def _resolve_roots(candidates: set[str]) -> tuple[set[str], set[str]]:
     roots: set[str] = set()
     unresolved: set[str] = set()
     for raw in candidates:
-        # A path built from a shell variable cannot be resolved without running
-        # the shell, and guessing at it would put a wrong repository in the
-        # scope line, which is worse than a short one.
-        if "$" in raw or "`" in raw:
+        # A path built from a shell variable, or a relative path whose base
+        # the transcript does not name, cannot be resolved without running the
+        # shell, and guessing at it would put a wrong repository in the scope
+        # line, which is worse than a short one. It is listed, not dropped.
+        if "$" in raw or "`" in raw or not raw.startswith("/"):
             unresolved.add(raw)
             continue
         root = repo_root(Path(raw))
         if root is not None:
             roots.add(str(root))
-        elif raw.startswith("/"):
+        else:
             unresolved.add(raw)
     return roots, unresolved
 
@@ -1271,9 +1521,11 @@ class _ArtefactScan:
         self.mention(result)
 
     def event(self, event: dict[str, Any]) -> None:
-        content = (event.get("message") or {}).get("content")
+        content = _message(event).get("content")
         if isinstance(content, str):
             self.mention(content)
+            return
+        if not isinstance(content, list):
             return
         handlers = {
             "tool_use": self.tool_use,
@@ -1378,8 +1630,9 @@ def render_text(scope: dict[str, Any]) -> str:
         lines += [
             "",
             f"{len(unresolved)} paths could not be resolved to a repository — read these,",
-            "they are where a missing entry hides (a shell variable, or a directory",
-            "since removed):",
+            "they are where a missing entry hides (a shell variable, a relative path",
+            "whose directory the transcript does not record, or a directory since",
+            "removed):",
         ]
         lines += [f"  {p}" for p in shown]
         if len(unresolved) > len(shown):

@@ -47,6 +47,12 @@ SAMPLES = {
     "authorization_header": 'curl -H "Authorization: Bearer ' + "tk9" * 10 + '" x',
     "jwt": "jwt eyJ" + "hbGciOiJI" + ".eyJ" + "zdWIiOiIx" + "." + "SflKxwRJ" * 3,
     "url_credentials": "https://oauth2:" + "s3cr" * 5 + "@git.example.org/g/r.git",
+    "private_token_header": "curl -H 'PRIVATE-" + "TOKEN: " + "tok3" * 6 + "' x",
+    "curl_user": "curl -u sebastian:" + "hunt3r" * 3 + " https://x.example.org",
+    "vault_token": "VAULT_TOKEN=hvs." + "CAES" + "Qx7" * 8,
+    "npm_token": "npm_" + "Zx8" * 12,
+    "google_api_key": "key AIza" + "Sy" + "Kq9" * 11,
+    "aws_secret_key": "AWS_SECRET_" + "ACCESS_KEY=" + "Ab1/" * 10,
 }
 SECRET_PART = {
     "gitlab_pat": "x1Y2z3x1Y2z3",
@@ -59,6 +65,12 @@ SECRET_PART = {
     "authorization_header": "tk9tk9",
     "jwt": "SflKxwRJ",
     "url_credentials": "s3cr",
+    "private_token_header": "tok3tok3",
+    "curl_user": "hunt3r",
+    "vault_token": "Qx7Qx7",
+    "npm_token": "Zx8Zx8",
+    "google_api_key": "Kq9Kq9",
+    "aws_secret_key": "Ab1/Ab1/",
 }
 
 NEGATIVES = [
@@ -71,6 +83,16 @@ NEGATIVES = [
     "https://github.com/o/r/pull/1",
     "Authorization header missing",
     "AKIA is a prefix, AKIAshort is not a key",
+    # One look-alike per alternative added for the review's A-F9.
+    "PRIVATE-TOKEN header missing",
+    'curl -H "PRIVATE-TOKEN: $GITLAB_TOKEN" and {"PRIVATE-TOKEN": token}',
+    "curl -u sebastian https://x.example.org",
+    "docker run -u 1000:1000 img and git push -u origin a:b",
+    "hvs.short is no vault token",
+    "npm_config_registry and npm_" + "a" * 20,
+    "AIzaShort is no key",
+    "AWS_SECRET_ACCESS_KEY=$SECRET",
+    "https://example.org:8443/path@x",
 ]
 
 
@@ -111,6 +133,22 @@ class AlternativesTest(unittest.TestCase):
         self.assertEqual(
             ms.mask(SAMPLES["url_credentials"]),
             "https://[REDACTED]@git.example.org/g/r.git",
+        )
+
+    def test_widened_alternatives_mask_the_reviews_forms(self):
+        # A-F9: forms of two existing alternatives that shipped in clear.
+        # The sample table holds one sample per alternative, so these stand here.
+        password = "hunt" + "er2" * 4
+        self.assertEqual(
+            ms.mask('{"authorization":"Bearer ' + "abcd" * 4 + '1234"}'),
+            '{"authorization":"Bearer [REDACTED]"}',
+        )
+        self.assertEqual(
+            ms.mask(f"redis://:{password}@host:6379"), "redis://[REDACTED]@host:6379"
+        )
+        # An `@` in the password: nothing of it may follow the marker.
+        self.assertEqual(
+            ms.mask("https://user:p@" + "ss9x@host/"), "https://[REDACTED]@host/"
         )
 
     def test_pem_body_without_footer_is_masked(self):

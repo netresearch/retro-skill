@@ -1171,5 +1171,39 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
         json.loads(run.stdout)
 
 
+class TimestampTest(unittest.TestCase):
+    """A-F7: opencode's `time_created` is epoch milliseconds; rendered as an
+    integer, every reader that takes the day from the first ten characters or
+    parses ISO 8601 found no time at all (`days: []`), and
+    collect-review-findings' `parse_time` raised on `.strip()`."""
+
+    def test_the_timestamp_is_claude_codes_iso_form(self) -> None:
+        line = json.loads(adapter._event("user", [], 1758794401000))
+        self.assertEqual(line["timestamp"], "2025-09-25T10:00:01.000Z")
+        line = json.loads(adapter._event("user", [], 1758794401557))
+        self.assertEqual(line["timestamp"], "2025-09-25T10:00:01.557Z")
+
+    def test_a_value_that_is_not_a_number_passes_unchanged(self) -> None:
+        self.assertIsNone(json.loads(adapter._event("user", [], None))["timestamp"])
+
+    def test_derive_session_scope_reads_the_day(self) -> None:
+        # The reviewer's scope_oc.jsonl, built as ra_gen2.py builds it.
+        scope = _load("derive_session_scope", "derive-session-scope.py")
+        with tempfile.TemporaryDirectory() as tmp:
+            lines = [
+                adapter._event(
+                    "user", [{"type": "text", "text": "fix it"}], 1758794400000
+                ),
+                adapter._event(
+                    "assistant",
+                    [adapter._tool_use("t1", "edit", {"filePath": "app.py"}, tmp)],
+                    1758794401000,
+                ),
+            ]
+            path = Path(tmp) / "scope_oc.jsonl"
+            path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+            self.assertEqual(scope.collect(path)["days"], ["2025-09-25"])
+
+
 if __name__ == "__main__":
     unittest.main()

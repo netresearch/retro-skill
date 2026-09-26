@@ -80,6 +80,8 @@ import os
 import re
 import sqlite3
 import sys
+from datetime import datetime, timezone
+from typing import Any
 from urllib.parse import quote
 
 DEFAULT_DB = "~/.local/share/opencode/opencode.db"
@@ -241,12 +243,27 @@ def render(conn: sqlite3.Connection, session_id: str) -> list[str]:
     return _render_legacy(conn, session_id)
 
 
+def _iso_timestamp(value: Any) -> Any:
+    """opencode's `time_created` (epoch milliseconds) in the form a Claude Code
+    transcript carries, `2026-09-26T18:17:04.557Z`: the readers take the day
+    from its first ten characters and parse it as ISO 8601, and an integer
+    gave every opencode session no days at all. Anything but a number is
+    passed on unchanged."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return value
+    try:
+        stamp = datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+    except (OverflowError, OSError, ValueError):
+        return value
+    return stamp.strftime("%Y-%m-%dT%H:%M:%S.") + f"{stamp.microsecond // 1000:03d}Z"
+
+
 def _event(role: str, content: list[dict], timestamp: int) -> str:
     return json.dumps(
         {
             "type": role,
             "message": {"role": role, "content": content},
-            "timestamp": timestamp,
+            "timestamp": _iso_timestamp(timestamp),
         },
         ensure_ascii=False,
     )
