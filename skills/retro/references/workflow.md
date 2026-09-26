@@ -70,7 +70,7 @@ Different output class from per-session retro. Destinations typically include AD
 
 With `--scope project` or `--scope repo`, run the cross-session pre-pass
 first: `scripts/scan-cross-session.py --recurring-failures` (C1) and
-`--follow-up-sessions` (C5), each with `--project <slug>` to narrow it. Both
+`--follow-up-sessions` (C5), each with `--project=<slug>` to narrow it. Both
 read every transcript in the window, which is why they belong here and not in
 the per-session sweep. Read the sessions a hit names before calling it a
 finding.
@@ -229,15 +229,14 @@ re-presented.
     delegate contextual reference resolution per feedback-contract.md
 2. LLM enrichment (Schicht B)
 3. Cross-session enrichment (Schicht C, optional)
-4. Classification → 7 destinations (authority first)
-5. Skill discovery (for skill-update / new-skill)
-5b. Project-harness inspection (for project-rule / harness-artefact)
+4. Skill discovery (full catalogue, input to classification)
+4b. Project-harness inspection (for project-rule / harness-artefact)
+5. Classification → 7 destinations (authority first)
 6. Eval consultation (when present)
 7. Proposal generation (prose Why + How-to-apply)
-8. Grouped presentation to user
-9. Per-proposal approval
-10. Materialization per destination convention
-11. Report
+8. Approval (grouped presentation, then per-proposal decision)
+9. Materialization per destination convention
+10. Report
 ```
 
 Differences between modes:
@@ -248,18 +247,18 @@ Differences between modes:
 | 1b (review/ticket feedback) | Session's PRs/MRs/issues/tickets | Only if the argument is about a review | **Primary** with Phase 3b, `--since` the session end | Skipped | Same as Sweep |
 | 2 (LLM enrich B) | Full transcript | Argument-focused | Past session highlights | Cross-session prose | Full transcript |
 | 2b (trigger-coverage B15) | Yes | Only the argument's skill area | Skipped | **Exhaustive** (whole inventory) | Yes |
-| 5b (project harness) | Yes | Only the argument's surface | Skipped | **Primary** (with E) | Yes |
+| 4b (project harness) | Yes | Only the argument's surface | Skipped | **Primary** (with E) | Yes |
 | 3 (cross-session C) | Yes | Yes (filtered) | Yes | Yes (wider window) | Yes |
 | 3b (outcome D) | No | No | **Primary** | Some | No |
 | 3c (constitutional E) | No | No | No | **Primary** | No |
-| 4-10 | Same | Same (fewer findings) | D-focused | E-focused | Same |
-| 11 (report) | Detailed | Targeted | Outcome-table | Architectural-table | Reminder only |
+| 4-9 | Same | Same (fewer findings) | D-focused | E-focused | Same |
+| 10 (report) | Detailed | Targeted | Outcome-table | Architectural-table | Reminder only |
 
 **Promote** substitutes Phase 1 with `${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py` (a
 filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
-2/2b/3/3b/3c, runs Phases 4–10, and adds a verified **materialize-then-drain**
+1b/2/2b/3/3b/3c, runs Phases 4–10, and adds a verified **materialize-then-drain**
 post-step to Phase 9 — drain via `scan-memory-inventory.py drain <path>` only
-after the upward write is confirmed (tombstone move, never `rm`). The Phase-11
+after the upward write is confirmed (tombstone move, never `rm`). The Phase-10
 report gains a "Source drained?" column.
 
 ## Efficiency targets
@@ -281,10 +280,10 @@ with the reason:
 
 ```
 Phase 3 (cross-session): skipped — single-project session, no cross-session pattern found.
-Phase 5 (skill discovery): used `find … SKILL.md | grep` instead of find-installed-skills.sh because <reason>.
+Phase 4 (skill discovery): used `find … SKILL.md | grep` instead of find-installed-skills.sh because <reason>.
 ```
 
-Silent skips make the Phase-11 report read as "all phases ran" when they did
+Silent skips make the Phase-10 report read as "all phases ran" when they did
 not — which is itself a friction signal a future retro will (correctly) flag.
 Prefer the prescribed scripts (`find-installed-skills.sh`, `scan-cross-session.py`)
 over ad-hoc substitutes; reach for an ad-hoc step only when the script genuinely

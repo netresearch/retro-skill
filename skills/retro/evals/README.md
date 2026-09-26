@@ -1,6 +1,6 @@
 # retro's own evals
 
-These scenarios test **retro's own classification behaviour** — the Phase-4
+These scenarios test **retro's own classification behaviour** — the Phase-5
 judgement calls that are retro's entire value: skill-bug vs skill-gap, when to
 prune an instruction, and when *not* to propose anything at all. retro ships
 them so it is a regression target for its own reasoning, and so that
@@ -24,7 +24,7 @@ them so it is a regression target for its own reasoning, and so that
 ---
 id: <slug — must equal the filename without .md>
 skill_under_test: retro
-mode: sweep | spotlight | outcome | audit | promote
+mode: sweep | spotlight | outcome | audit | promote | done
 trigger: <one-line friction or user statement that starts the scenario>
 expected:
   - <behaviour retro should exhibit — classification + bounded action>

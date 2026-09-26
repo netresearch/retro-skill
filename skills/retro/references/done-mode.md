@@ -141,8 +141,9 @@ dropping it: `git stash show --stat`, then look for its content in the target
 Three stashes from March, April and June were each already merged by another
 route; the SHA goes in the report so the drop stays reversible.
 
-**A skills grep needs `-R`, not `-r`.** `~/.claude/skills/<name>` is a symlink
-into `~/.agents/skills/<name>`, and `grep -r` does not follow a symlinked
+**A skills grep needs `-R`, not `-r`.** `~/.claude/skills/<name>` can be a
+symlink into `~/.agents/skills/<name>` (on installs that link skills from
+there), and `grep -r` does not follow a symlinked
 directory given as a path argument. A coverage check run with `-r` therefore
 reports "not covered" for every term — a clean, confident, wholly wrong
 negative that sends the retro on to propose what the skills already say.

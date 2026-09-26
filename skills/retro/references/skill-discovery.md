@@ -63,8 +63,9 @@ ls ~/.claude/plugins/cache/<marketplace>/<skill>/
 # 1.3.0  1.3.9  1.3.10  1.4.0   → head -1 gave 1.3.0, source was at 1.3.9
 ```
 
-For the Phase 5 content check (and for every patch), read the **source repo** —
-an existing clone under `~/p/<skill>-skill/`, or a fresh clone of `repo_url`
+For the Phase 4 content check (and for every patch), read the **source repo** —
+an existing local checkout whose `origin` matches `repo_url` (see
+`patch-workflow.md`, "Workspace selection"), or a fresh clone of `repo_url`
 after `git fetch`. Use the cached paths only to learn *that* a skill is
 installed and where its remote points.
 
@@ -90,7 +91,7 @@ For each matched skill, try these sources in order:
 1. `<skill-root>/.claude-plugin/plugin.json` → `repository` field
 2. `<skill-root>/composer.json` → `support.source` or `homepage`
 3. `<skill-root>/.git/config` → `remote.origin.url` (if skill is a git repo)
-4. Plugin manifest in `~/.claude/plugins/installed.json`
+4. Plugin manifest in `~/.claude/plugins/installed_plugins.json`
 5. Last resort: ask user
 
 Convert SSH URLs to HTTPS for display:

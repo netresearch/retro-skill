@@ -42,7 +42,7 @@ python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py \
 JSONL under a slug is frequently another session's. Confirm the file contains a
 verbatim phrase from **this** conversation before analysing it — the selection
 procedure, its guards and the reasons behind them are in
-`skills/retro/references/workflow.md` § Shared pipeline.
+`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/workflow.md` § Shared pipeline.
 
 Output is a structured list of candidate findings. Read this before scanning the transcript yourself — it saves tokens.
 
@@ -62,14 +62,14 @@ references in titles, branches and tool exchanges stay `UNRESOLVED REF` with
 their source context. Resolve
 relevant hints from explicit evidence or project conventions through the owning
 integration, not a default tracker. Supply that integration's normalized data
-with `--feedback-file`; see `skills/retro/references/feedback-contract.md`.
+with `--feedback-file`; see `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/feedback-contract.md`.
 Treat `complete: false`, `UNSUPPORTED` and `TRUNCATED` as incomplete evidence,
 not silence. Bodies are trimmed in text; read a finding in full from
 `--output-format json` before classifying it. A GitLab host other than `--gitlab-host` is not contacted. Treat `NOT READ`
 and `UNRESOLVED` lines as unknown, never as "no findings": an `UNRESOLVED` line
 without `REF` is a write whose target the transcript does not name — read the command and add
 the PR, MR or issue it wrote to by hand. Field meanings and how to read them:
-`skills/retro/references/friction-catalog.md` § Feedback from outside the transcript.
+`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` § Feedback from outside the transcript.
 
 ## Phase 2: LLM Enrichment
 
@@ -112,7 +112,7 @@ For each learning ask: **"Would a future agent re-derive this, and does an
 existing skill already say it?"** If re-derivable and not covered → it is a
 finding.
 
-See `skills/retro/references/friction-catalog.md` Schicht B for the full list.
+See `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
 ## Phase 3: Cross-Session (Optional)
 
@@ -126,21 +126,7 @@ For an audit, three modes read the whole window (see the Schicht C section of
 `friction-catalog.md`): `--user-correction-summary` (C1/C2),
 `--recurring-failures` (C1) and `--follow-up-sessions` (C5).
 
-## Phase 4: Classification
-
-Run **Phase 5 skill discovery first** — the catalogue of all skills (installed
-*and* available) is a required input to classification, not a consequence of it.
-Then map each finding to one of seven destinations using
-`skills/retro/references/classification-heuristic.md` — authority first: a fact
-owned by an artefact outside the agent system (upstream docs, code, schema)
-routes to `canonical-source`, not into a skill — then check the catalogue for
-an owning skill before any narrower destination. When uncertain, ask the user.
-
-`user-memory` is a deprecated alias of `personal-rule`. Accept it wherever a
-destination arrives as input — the user's phrasing, an older proposal, an
-archived report — and always emit `personal-rule` in proposals and reports.
-
-## Phase 5: Skill Discovery
+## Phase 4: Skill Discovery
 
 Run up front, for **every** candidate learning (not only once a destination is
 chosen) — discover the full catalogue:
@@ -175,9 +161,22 @@ narrower destination) correct.
 For installed skills' on-disk paths / git remotes when patching, also:
 `bash ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-installed-skills.sh`.
 
+## Phase 5: Classification
+
+The Phase 4 catalogue of all skills (installed *and* available) is a required
+input to classification, not a consequence of it. Map each finding to one of seven destinations using
+`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/classification-heuristic.md` — authority first: a fact
+owned by an artefact outside the agent system (upstream docs, code, schema)
+routes to `canonical-source`, not into a skill — then check the catalogue for
+an owning skill before any narrower destination. When uncertain, ask the user.
+
+`user-memory` is a deprecated alias of `personal-rule`. Accept it wherever a
+destination arrives as input — the user's phrasing, an older proposal, an
+archived report — and always emit `personal-rule` in proposals and reports.
+
 ## Phase 6: Eval Consultation
 
-If matched skill has `evals/` directory: read evals for context. If proposing a skill-update, also propose an eval stub (TDD style) when no existing eval covers the area. If the matched skill is **retro itself**, its own `evals/` apply — they test retro's classification (see `skills/retro/references/eval-integration.md`).
+If matched skill has `evals/` directory: read evals for context. If proposing a skill-update, also propose an eval stub (TDD style) when no existing eval covers the area. If the matched skill is **retro itself**, its own `evals/` apply — they test retro's classification (see `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/eval-integration.md`).
 
 ## Phase 7: Proposal Generation
 
@@ -186,7 +185,7 @@ Per finding, generate prose:
 - **How to apply:** 1-2 paragraphs describing the concrete fix
 
 Group proposals by destination. Show ≤10 items, ranked by severity (see
-`skills/retro/references/classification-heuristic.md` → "Severity inference").
+`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/classification-heuristic.md` → "Severity inference").
 
 **Do not let friction crowd out learnings.** When more than 10 candidates exist
 and the list is trimmed to fit, reserve slots so the top reusable-learning
@@ -199,7 +198,7 @@ For **skill-update** proposals, also include a **Skill instruction delta**:
 
 - **Current instruction(s):** the exact line(s) being changed or removed.
 - **Proposed edit:** add / replace / **remove** (removal is valid — see
-  `skills/retro/references/classification-heuristic.md` → "Instruction pruning").
+  `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/classification-heuristic.md` → "Instruction pruning").
 - **Why bounded:** what the edit does *not* touch.
 
 Cite eval evidence only when an eval **already** covers the area (read, never a
@@ -219,7 +218,7 @@ Present grouped proposals. Per item:
 
 ## Phase 9: Materialization
 
-Per destination, follow `skills/retro/references/patch-workflow.md` and the destination-specific convention. **Patches go to source repos, never to cache.**
+Per destination, follow `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/patch-workflow.md` and the destination-specific convention. **Patches go to source repos, never to cache.**
 
 For each created PR / file:
 - Use Conventional Commits format
@@ -275,7 +274,7 @@ only. It has two jobs, co-equal:
 
 Steps:
 
-- Skip Phases 1 and 2 (the session is in the past; mechanical pre-pass on a stale transcript is low value)
+- Skip Phase 1 (the session is in the past; mechanical pre-pass on a stale transcript is low value) and Phase 2b; Phase 2 reads only the past session's highlights
 - Phase 3 runs against the target session(s)
 - **Phase 3b is the primary detection step:** walk forward from session end with `collect-review-findings.py --transcript-file <past session> --since <session end>` (reviews, issue and ticket feedback that arrived later, GitHub and GitLab), `git log`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the failures, the durable successes, and superseded temporary copies (D12: a tracked canonical-source upstream PR merged → propose pruning the skill's labelled copy).
 - Phase 3c may also fire if the window is large
@@ -292,7 +291,7 @@ Requires latency. Don't run within 24h of the session — most D signals (includ
 /retro audit --scope skill           # Skill drift only
 ```
 
-- Skip Phases 1 and 2
+- Skip Phases 1 and 1b; Phase 2 runs over cross-session prose, and Phase 2b (trigger coverage) is exhaustive
 - **Phase 3c is the primary detection step:** ADR adherence, AGENTS.md rule compliance trends, coverage trends, skill-inventory drift
 - Output class is "architectural finding", not friction
 - Destinations skew toward `project-rule` (new ADR or AGENTS.md update) and `harness-artefact` (enforcement hook)
@@ -307,9 +306,9 @@ Requires latency. Don't run within 24h of the session — most D signals (includ
 
 Re-homes already-written local memory (the **stock**, not the session flow)
 upward into its correct destination, draining the source once the upward write
-is confirmed. Full detail in `skills/retro/references/promote-mode.md`.
+is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/promote-mode.md`.
 
-- **Phase 1 is substituted** by `skills/retro/scripts/scan-memory-inventory.py` — a
+- **Phase 1 is substituted** by `${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py` — a
   filesystem inventory of `~/.claude/projects/<slug>/memory/*.md`, not a
   transcript:
 
@@ -322,7 +321,7 @@ is confirmed. Full detail in `skills/retro/references/promote-mode.md`.
   without it the scanner reads every slug, so a narrowed request would
   otherwise pull other projects' notes into Phases 4–10.
 
-- Skip Phases 2, 2b, 3b, 3c (no transcript) — announce the skip in one line
+- Skip Phases 1b, 2, 2b, 3, 3b, 3c (no transcript) — announce the skip in one line
 - Phases 4–10 run verbatim; destination skew is **upward** per scope-escalation
   (skill-update › project-rule › personal-rule), **never** project-local memory
 - Phase 8 adds a mandatory default-**N** warning on every `project-rule` /
@@ -349,7 +348,7 @@ Answers "are we actually finished?" with evidence, not memory. Seven gates —
 task delivered (live state of every PR/MR/issue), interim findings fixed / filed
 (URL) / rejected, retro run, cleanup sweep, no open questions, tickets updated,
 time booked per day — each ✅ / ⏸ / ❌ with its evidence. Full detail in
-`skills/retro/references/done-mode.md`.
+`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/done-mode.md`.
 
 - Phases 1–3 are skipped (announce it) unless gate 3 finds no Sweep has run —
   then run the Sweep in full first

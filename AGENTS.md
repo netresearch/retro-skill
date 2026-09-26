@@ -4,7 +4,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 
 ## Structure
 
-- `skills/retro/SKILL.md` — Main skill definition (sweep, spotlight, outcome, audit, promote, auto modes)
+- `skills/retro/SKILL.md` — Main skill definition (sweep, spotlight, outcome, audit, promote, done, auto modes)
 - `skills/retro/checkpoints.yaml` — Skill quality gates
 - `commands/retro.md` — `/retro` slash command definition
 - `hooks/session-end.json` — Optional SessionEnd hook: prints a reminder to run `/retro`, does not invoke it (off by default)

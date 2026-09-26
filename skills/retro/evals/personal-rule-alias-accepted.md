@@ -6,7 +6,7 @@ trigger: "The user says 'that one is a user-memory thing, put it in my global ru
 expected:
   - route the finding to `personal-rule` and materialize it as a titled rule in `~/.claude/CLAUDE.md`
   - accept `user-memory` as input without asking the user to rephrase — it is a documented deprecated alias
-  - name the destination `personal-rule` in the proposal and in the Phase-11 report, not the alias the user typed
+  - name the destination `personal-rule` in the proposal and in the Phase-10 report, not the alias the user typed
 negative_expected:
   - reject or query the destination because `user-memory` is not in the current seven
   - report the destination back as `user-memory`, leaving two names in circulation for one destination

@@ -1,6 +1,7 @@
 name: lint
 
-# Python compile + unit tests via the shared skill-repo-skill reusable.
+# Python compile + unit tests + eval validation via the shared
+# skill-repo-skill reusable.
 # The reusable provides no interpreter of its own (no setup-python, no
 # `uv python install`), so the test command consumes the matrix value
 # explicitly via `uv run --python "$PYTHON_VERSION"`.
@@ -30,3 +31,4 @@ jobs:
       test-command: |
         uv run --python "$PYTHON_VERSION" python -m py_compile skills/retro/scripts/*.py
         uv run --python "$PYTHON_VERSION" --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 python -m unittest discover -s tests -v
+        uv run --python "$PYTHON_VERSION" python skills/retro/scripts/validate-evals.py
