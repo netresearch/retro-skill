@@ -831,6 +831,19 @@ def native_urls_supplied(external: dict[str, dict]) -> list[str]:
     )
 
 
+def load_feedback(paths: list[Path]) -> dict[str, dict]:
+    """Validate every feedback file before anything is read.
+    Raises ValueError on invalid input or a supplied native artifact."""
+    external = contract.load_files(paths)
+    native = native_urls_supplied(external)
+    if native:
+        raise ValueError(
+            "GitHub/GitLab artifacts are read by the built-in readers and"
+            " cannot be supplied in --feedback-file: " + ", ".join(native)
+        )
+    return external
+
+
 def links_of(parsed: dict[str, Any]) -> list[dict[str, Any]]:
     """Follow native links; preserve short references with their source context."""
     found = [
@@ -843,16 +856,80 @@ def links_of(parsed: dict[str, Any]) -> list[dict[str, Any]]:
     ]
 
 
+def _resolved(item: dict[str, Any], references: dict) -> dict[str, Any]:
+    """An unresolved hint bound by (ref, context) in supplied evidence."""
+    if item["forge"] != "unresolved":
+        return item
+    bound = references.get((item["key"], item["context"]))
+    return dict(parse_ref(bound), origin=item["origin"]) if bound else item
+
+
+def _unread(record: dict[str, Any], status: str, error: str) -> dict[str, Any]:
+    return {**record, "fetched": False, "status": status, "error": error}
+
+
+def _read_item(item, record, supplied, run, self_logins, gitlab_hosts):
+    """(parsed, None) for a read artifact, (None, entry) for one not read.
+
+    Supplied evidence is used as it stands; only GitHub and GitLab have a
+    reader, and every other provider is unsupported rather than guessed."""
+    if item["forge"] == "unresolved":
+        return None, {
+            **record,
+            "context": item["context"],
+            "fetched": False,
+            "status": "unresolved",
+            "reason": "short reference has no evidenced tracker, instance and artifact identity",
+        }
+    if item["url"] in supplied:
+        parsed = dict(supplied[item["url"]])
+        record["evidence"] = "provided"
+        if parsed["status"] != "fetched":
+            return None, _unread(record, parsed["status"], parsed["error"])
+        return parsed, None
+    if item["forge"] not in {"github", "gitlab"}:
+        return None, _unread(
+            record,
+            "unsupported",
+            "use the owning integration and supply --feedback-file; no fallback reader",
+        )
+    try:
+        return read_one(item, run, self_logins, gitlab_hosts), None
+    except Exception as exc:  # noqa: BLE001 - one artifact never ends the run
+        return None, _unread(record, "read_failed", f"{type(exc).__name__}: {exc}")
+
+
+def _follows_links(item: dict[str, Any], record: dict[str, Any]) -> bool:
+    """One hop only, and never from supplied evidence."""
+    return item.get("origin") != "linked" and record.get("evidence") != "provided"
+
+
+def _read_whole(artefact: dict[str, Any]) -> bool:
+    return artefact["fetched"] and not artefact.get("truncated")
+
+
+def _new_identity(seen, item: dict[str, Any], parsed: dict[str, Any]) -> bool:
+    """Native APIs may reveal that an issue URL actually names a PR."""
+    return parsed["url"] == item["url"] or _first_visit(seen, (parsed["url"], ""))
+
+
+def _first_visit(seen: set[tuple[str, str]], key: tuple[str, str]) -> bool:
+    if key in seen:
+        return False
+    seen.add(key)
+    return True
+
+
 def collect(
     items: list[dict[str, Any]],
     since: datetime | None,
     run: Runner = default_runner,
-    self_logins: set[str] | None = None,
+    self_logins: set[str] = frozenset(),
     gitlab_hosts: tuple[str, ...] = (),
     external: dict[str, dict] | None = None,
 ) -> dict[str, Any]:
     """Collect native or supplied evidence without guessing a tracker."""
-    self_logins = set(self_logins or ())
+    self_logins = set(self_logins)
     external = external or {"artefacts": {}, "references": {}}
     supplied = external["artefacts"]
     queue = list(items)
@@ -866,69 +943,18 @@ def collect(
     earlier = 0
 
     while queue:
-        item = queue.pop(0)
-        if item["forge"] == "unresolved":
-            resolved = external["references"].get((item["key"], item["context"]))
-            if resolved:
-                item = dict(parse_ref(resolved), origin=item["origin"])
-        identity = (item["url"], item.get("context", ""))
-        if identity in seen:
+        item = _resolved(queue.pop(0), external["references"])
+        if not _first_visit(seen, (item["url"], item.get("context", ""))):
             continue
-        seen.add(identity)
         record = {k: item.get(k) for k in ("url", "forge", "kind", "origin")}
-        if item["forge"] == "unresolved":
-            artefacts.append(
-                {
-                    **record,
-                    "context": item["context"],
-                    "fetched": False,
-                    "status": "unresolved",
-                    "reason": "short reference has no evidenced tracker, instance and artifact identity",
-                }
-            )
+        parsed, unread = _read_item(
+            item, record, supplied, run, self_logins, gitlab_hosts
+        )
+        if unread:
+            artefacts.append(unread)
             continue
-        if item["url"] in supplied:
-            parsed = dict(supplied[item["url"]])
-            record["evidence"] = "provided"
-            if parsed["status"] != "fetched":
-                artefacts.append(
-                    {
-                        **record,
-                        "fetched": False,
-                        "status": parsed["status"],
-                        "error": parsed["error"],
-                    }
-                )
-                continue
-        elif item["forge"] not in {"github", "gitlab"}:
-            artefacts.append(
-                {
-                    **record,
-                    "fetched": False,
-                    "status": "unsupported",
-                    "error": "use the owning integration and supply --feedback-file; no fallback reader",
-                }
-            )
+        if not _new_identity(seen, item, parsed):
             continue
-        else:
-            try:
-                parsed = read_one(item, run, self_logins, gitlab_hosts)
-            except Exception as exc:  # noqa: BLE001 - one artifact never ends the run
-                artefacts.append(
-                    {
-                        **record,
-                        "fetched": False,
-                        "status": "read_failed",
-                        "error": f"{type(exc).__name__}: {exc}",
-                    }
-                )
-                continue
-        if parsed["url"] != item["url"]:
-            # Native APIs may reveal that an issue URL actually names a PR.
-            canonical = (parsed["url"], "")
-            if canonical in seen:
-                continue
-            seen.add(canonical)
         kept, skipped = _split_by_since(parsed.pop("findings"), since)
         earlier += skipped
         findings += kept
@@ -942,7 +968,7 @@ def collect(
                 "before_since": skipped,
             }
         )
-        if item.get("origin") != "linked" and record.get("evidence") != "provided":
+        if _follows_links(item, record):
             queue += links_of(parsed)
 
     return {
@@ -950,7 +976,7 @@ def collect(
         "artefacts": artefacts,
         "findings": findings,
         "findings_before_since": earlier,
-        "complete": all(a["fetched"] and not a.get("truncated") for a in artefacts),
+        "complete": all(_read_whole(a) for a in artefacts),
     }
 
 
@@ -1199,13 +1225,7 @@ def main(argv: list[str]) -> int:
         parser.error(f"--since is not an ISO 8601 time: {args.since}")
     gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
     try:
-        external = contract.load_files(args.feedback_file)
-        native = native_urls_supplied(external)
-        if native:
-            raise ValueError(
-                "GitHub/GitLab artifacts are read by the built-in readers and"
-                " cannot be supplied in --feedback-file: " + ", ".join(native)
-            )
+        external = load_feedback(args.feedback_file)
         items, mentioned_skipped, start, unresolved = _items_from_args(
             args, gitlab_hosts[0]
         )

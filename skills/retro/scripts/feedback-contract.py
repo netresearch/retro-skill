@@ -151,16 +151,22 @@ def _finding(raw: Any, url: str) -> dict[str, Any]:
         "report": False,
         "url": finding_url(raw.get("url")),
     }
+    result.update(_optional_finding_fields(raw))
+    return result
+
+
+def _optional_finding_fields(raw: dict[str, Any]) -> dict[str, Any]:
+    fields: dict[str, Any] = {}
     for name in ("resolved", "report"):
         if name in raw:
             if not isinstance(raw[name], bool):
                 raise FeedbackValidationError(f"finding.{name} must be boolean")
-            result[name] = raw[name]
+            fields[name] = raw[name]
     for name in ("path", "commit_after", "last_self_reply"):
         if name in raw:
-            result[name] = _optional_text(raw, name, "finding")
+            fields[name] = _optional_text(raw, name, "finding")
     if raw.get("last_activity") is not None:
-        result["last_activity"] = _timestamp(
+        fields["last_activity"] = _timestamp(
             raw["last_activity"], "finding.last_activity"
         )
     if "line" in raw:
@@ -169,8 +175,8 @@ def _finding(raw: Any, url: str) -> dict[str, Any]:
             raise FeedbackValidationError(
                 "finding.line must be a positive integer or null"
             )
-        result["line"] = line
-    return result
+        fields["line"] = line
+    return fields
 
 
 def _record(raw: Any) -> dict[str, Any]:
@@ -188,29 +194,12 @@ def _record(raw: Any) -> dict[str, Any]:
         raise FeedbackValidationError(
             "artifact.self_comments must be a non-negative integer"
         )
-    truncated = raw.get("truncated", [])
-    if not isinstance(truncated, list):
-        raise FeedbackValidationError("artifact.truncated must be a list of strings")
-    truncated = [_text(x, "artifact.truncated entry") for x in truncated]
-    references = raw.get("references", [])
-    if not isinstance(references, list):
-        raise FeedbackValidationError("artifact.references must be a list")
-    bindings = []
-    for ref in references:
-        if not isinstance(ref, dict):
-            raise FeedbackValidationError("each reference must be an object")
-        _only_keys(ref, REFERENCE_KEYS, "reference")
-        bindings.append(
-            {
-                "ref": _text(ref.get("ref"), "reference.ref"),
-                "context": _text(ref.get("context"), "reference.context"),
-            }
-        )
+    truncated = _truncated(raw.get("truncated", []))
     result = {
         "url": url,
         "status": status,
         "self_comments": count,
-        "references": bindings,
+        "references": _bindings(raw.get("references", [])),
         "truncated": truncated,
         "linked": [],
         "tickets": [],
@@ -218,7 +207,19 @@ def _record(raw: Any) -> dict[str, Any]:
     }
     for name in ("title", "state"):
         result[name] = _optional_text(raw, name, "artifact")
-    if status != "fetched":
+    return _with_evidence(raw, result)
+
+
+def _truncated(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        raise FeedbackValidationError("artifact.truncated must be a list of strings")
+    return [_text(x, "artifact.truncated entry") for x in value]
+
+
+def _with_evidence(raw: dict[str, Any], result: dict[str, Any]) -> dict[str, Any]:
+    """An unread artifact carries an error; a fetched one a findings list."""
+    url, truncated = result["url"], result["truncated"]
+    if result["status"] != "fetched":
         result["error"] = _text(raw.get("error"), "artifact.error")
         if ("findings" in raw and raw["findings"] != []) or truncated:
             raise FeedbackValidationError(
@@ -239,6 +240,23 @@ def _record(raw: Any) -> dict[str, Any]:
         else:
             result["findings"].append(item)
     return result
+
+
+def _bindings(references: Any) -> list[dict[str, str]]:
+    if not isinstance(references, list):
+        raise FeedbackValidationError("artifact.references must be a list")
+    bindings = []
+    for ref in references:
+        if not isinstance(ref, dict):
+            raise FeedbackValidationError("each reference must be an object")
+        _only_keys(ref, REFERENCE_KEYS, "reference")
+        bindings.append(
+            {
+                "ref": _text(ref.get("ref"), "reference.ref"),
+                "context": _text(ref.get("context"), "reference.context"),
+            }
+        )
+    return bindings
 
 
 def parse_document(data: Any) -> dict[str, dict]:

@@ -169,15 +169,17 @@ class FeedbackContractTest(unittest.TestCase):
 
     def test_conflicting_context_bindings_fail_validation(self):
         ref = {"ref": "ABC-42", "context": CONTEXT}
+        records = (
+            external_record(references=[ref]),
+            external_record("https://other.example/work/42", references=[ref]),
+        )
         with self.assertRaisesRegex(ValueError, "conflicting"):
-            evidence(
-                external_record(references=[ref]),
-                external_record("https://other.example/work/42", references=[ref]),
-            )
+            evidence(*records)
 
     def test_duplicate_canonical_identity_is_rejected(self):
+        records = (external_record(URL), external_record(URL + "#comment"))
         with self.assertRaisesRegex(ValueError, "duplicate"):
-            evidence(external_record(URL), external_record(URL + "#comment"))
+            evidence(*records)
 
     def test_read_failures_are_not_empty_success_or_absence(self):
         raw = {
@@ -202,16 +204,18 @@ class FeedbackContractTest(unittest.TestCase):
             ("tickets", ["SECRET-1"]),
             ("command", "touch /tmp/not-allowed"),
         ):
+            record = external_record(**{key: value})
             with (
                 self.subTest(key=key),
                 self.assertRaisesRegex(ValueError, f"unknown keys: {key}"),
             ):
-                evidence(external_record(**{key: value}))
+                evidence(record)
 
     def test_unknown_keys_are_rejected_at_every_level(self):
         # A misspelled `truncated` must not report an incomplete read as complete.
+        record = external_record(truncate=["comments"])
         with self.assertRaisesRegex(ValueError, "artifact has unknown keys: truncate"):
-            evidence(external_record(truncate=["comments"]))
+            evidence(record)
         record = external_record()
         record["findings"][0]["resolve"] = True
         with self.assertRaisesRegex(ValueError, "finding has unknown keys: resolve"):
@@ -347,8 +351,9 @@ class FeedbackContractTest(unittest.TestCase):
             "https://tracker.example\\@evil/a",
             "https://tracker.example\\evil/a",
         ):
+            record = external_record(value)
             with self.subTest(url=value), self.assertRaises(ValueError):
-                evidence(external_record(value))
+                evidence(record)
 
     def test_versions_are_strict(self):
         for version in (True, 1.0, "1", None, 2):
@@ -371,8 +376,9 @@ class FeedbackContractTest(unittest.TestCase):
             {"title": 1},
             {"error": "unexpected"},
         ):
+            record = external_record(**patch)
             with self.subTest(patch=patch), self.assertRaises(ValueError):
-                evidence(external_record(**patch))
+                evidence(record)
 
     def test_malformed_findings_fail_with_validation_errors(self):
         for patch in (
@@ -394,8 +400,9 @@ class FeedbackContractTest(unittest.TestCase):
 
     def test_unread_artifact_must_not_claim_findings(self):
         for status in ("unsupported", "read_failed"):
+            record = external_record(status=status, error="unavailable")
             with self.subTest(status=status), self.assertRaises(ValueError):
-                evidence(external_record(status=status, error="unavailable"))
+                evidence(record)
 
     def test_unread_artifact_requires_an_error(self):
         with self.assertRaisesRegex(ValueError, "error"):

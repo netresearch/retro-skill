@@ -1321,6 +1321,20 @@ def collect(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
 TEXT_UNRESOLVED_LIMIT = 20
 
 
+def _written_lines(scope: dict[str, Any], owned: list[dict[str, Any]]) -> list[str]:
+    if not owned and not scope["tickets"]:
+        return []
+    lines = ["", "PRs, MRs and issues this session created or wrote to:"]
+    lines += [f"  {a['origin']:<8} {a['url']}" for a in owned]
+    if scope["tickets"]:
+        lines.append("  Unresolved reference candidates (not tracker identities):")
+        lines += [
+            f"    {ref['ref']} (context: {ref['context']})"
+            for ref in scope.get("reference_candidates", [])
+        ]
+    return lines
+
+
 def render_text(scope: dict[str, Any]) -> str:
     repos = scope["repositories"]
     lines = [
@@ -1333,13 +1347,7 @@ def render_text(scope: dict[str, Any]) -> str:
         lines += ["", "Forge repositories addressed by slug (may have no local clone):"]
         lines += [f"  {s}" for s in scope["forge_slugs"]]
     owned = [a for a in scope["artefacts"] if a["origin"] != "mentioned"]
-    if owned or scope["tickets"]:
-        lines += ["", "PRs, MRs and issues this session created or wrote to:"]
-        lines += [f"  {a['origin']:<8} {a['url']}" for a in owned]
-        if scope["tickets"]:
-            lines.append("  Unresolved reference candidates (not tracker identities):")
-            for ref in scope.get("reference_candidates", []):
-                lines.append(f"    {ref['ref']} (context: {ref['context']})")
+    lines += _written_lines(scope, owned)
     mentioned = len(scope["artefacts"]) - len(owned)
     if mentioned:
         lines.append(
