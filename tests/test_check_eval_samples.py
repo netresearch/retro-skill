@@ -11,10 +11,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "skills" / "retro" / "scripts"
@@ -215,6 +217,15 @@ class CheckEvalSamplesTest(unittest.TestCase):
         self.assertIsNone(checker._base_text(repo, "--output=/tmp/x", "evals.json"))
         self.assertIsNone(checker._base_text(repo, "HEAD", "-evals.json"))
         self.assertEqual(calls, [])
+
+    def test_git_dir_in_the_environment_does_not_redirect_the_read(self):
+        """A git hook exports GIT_DIR; `-C <repo>` must still read <repo>."""
+        repo = self._repo([eval_record("base")])
+        other = self._repo(None)
+        with mock.patch.dict(os.environ, {"GIT_DIR": str(other / ".git")}):
+            text = checker._base_text(repo, "HEAD", "evals/evals.json")
+        self.assertIsNotNone(text)
+        self.assertIn('"base"', text)
 
     def test_git_is_called_with_end_of_options(self):
         """Second half of the same guard: whatever passes the allowlist is still

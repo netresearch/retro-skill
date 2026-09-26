@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import subprocess
 import sys
@@ -44,6 +45,15 @@ ASSERTION_PATTERN_KEYS = ("pattern", "value")
 # ``--end-of-options`` stops git reading whatever survives as a flag.
 SAFE_REVISION = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._/^~@{}-]*\Z")
 SAFE_PATH = re.compile(r"\A[0-9A-Za-z][0-9A-Za-z._/-]*\Z")
+GIT_LOCATION_VARS = frozenset(
+    {
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+    }
+)
 
 
 def _records(data: object) -> list[dict] | None:
@@ -95,11 +105,15 @@ def _base_text(repo: Path, base: str, path: str) -> str | None:
     """
     if not SAFE_REVISION.match(base) or not SAFE_PATH.match(path):
         return None
+    # GIT_DIR and its siblings choose the repository ahead of `-C`; set by a
+    # git hook or the caller's shell, they would read another repository.
+    env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_VARS}
     result = subprocess.run(
         ["git", "-C", str(repo), "show", "--end-of-options", f"{base}:{path}"],
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     )
     return result.stdout if result.returncode == 0 else None
 

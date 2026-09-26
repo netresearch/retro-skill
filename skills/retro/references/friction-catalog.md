@@ -25,9 +25,9 @@ Ingestion of error trackers, monitoring and chat is out of scope — see "Future
 
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
-| A — Mechanical | 18 | 18 (all of A1–A18) |
+| A — Mechanical | 20 | 20 (all of A1–A20) |
 | B — LLM inference | 20 | LLM-driven; B16–B20 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py` |
-| C — Cross-session | 5 | Partial (script `scan-cross-session.py`: C1, C2, C5) |
+| C — Cross-session | 6 | Partial (script `scan-cross-session.py`: C1, C2, C5) |
 | D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
 

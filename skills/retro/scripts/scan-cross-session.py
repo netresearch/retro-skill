@@ -24,6 +24,7 @@ from __future__ import annotations
 import argparse
 import functools
 import json
+import os
 import re
 import shlex
 import subprocess
@@ -425,29 +426,43 @@ def cmd_recurring_failures(args, files) -> int:
 # --- C5: follow-up sessions ------------------------------------------------------
 
 
+# Variables that choose the repository ahead of `-C`: set by a git hook or by
+# the caller's shell, they would make every probe answer for that repository.
+GIT_LOCATION_VARS = frozenset(
+    {
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+    }
+)
+
+
 @functools.cache
-def _repository_of_dir(directory: str) -> tuple[str, str] | None:
-    """(git common dir, top level) for a directory inside a work tree."""
+def _rev_parse(directory: str, *query: str) -> list[str] | None:
+    """The answer lines of `git rev-parse` in a directory, or None."""
+    env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_VARS}
     try:
         out = subprocess.run(
-            [
-                "git",
-                "-C",
-                directory,
-                "rev-parse",
-                "--path-format=absolute",
-                "--git-common-dir",
-                "--show-toplevel",
-            ],
+            ["git", "-C", directory, "rev-parse", *query],
             capture_output=True,
             text=True,
             timeout=10,
             check=False,  # a directory outside any repository is an ordinary answer
+            env=env,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    lines = out.stdout.split("\n")
-    if out.returncode != 0 or len(lines) < 2 or not lines[1]:
+    return out.stdout.split("\n") if out.returncode == 0 else None
+
+
+def _repository_of_dir(directory: str) -> tuple[str, str] | None:
+    """(git common dir, top level) for a directory inside a work tree."""
+    lines = _rev_parse(
+        directory, "--path-format=absolute", "--git-common-dir", "--show-toplevel"
+    )
+    if not lines or len(lines) < 2 or not lines[1]:
         return None
     return lines[0], lines[1]
 
@@ -460,12 +475,22 @@ def file_key(path: str) -> tuple[str | None, str]:
     repository's common git directory plus the path inside the work tree, and a
     removed worktree of a bare-repository layout (`<project>/.bare` beside
     `<project>/<worktree>/`) is recognised from the project directory that
-    remains. A file outside any repository keeps its absolute path.
+    remains. That `.bare` is asked first: a project directory inside another
+    work tree would otherwise answer with the outer one. A file outside any
+    repository keeps its absolute path.
     """
     target = Path(path)
     probe = target.parent
     while not probe.is_dir() and probe != probe.parent:
         probe = probe.parent
+    bare = probe / ".bare"
+    parts = target.relative_to(probe).parts
+    if (
+        len(parts) >= 2
+        and bare.is_dir()
+        and _rev_parse(str(bare), "--is-bare-repository") == ["true", ""]
+    ):
+        return str(bare.resolve()), "/".join(parts[1:])
     found = _repository_of_dir(str(probe))
     if found:
         common, top = found
@@ -473,11 +498,6 @@ def file_key(path: str) -> tuple[str | None, str]:
             return str(Path(common).resolve()), target.relative_to(top).as_posix()
         except ValueError:
             return None, path
-    bare = probe / ".bare"
-    if bare.is_dir() and probe != target.parent:
-        parts = target.relative_to(probe).parts
-        if len(parts) >= 2:
-            return str(bare.resolve()), "/".join(parts[1:])
     return None, path
 
 

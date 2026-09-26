@@ -274,25 +274,61 @@ def repo_root(path: Path) -> Path | None:
     Resolved with git rather than by looking for a `.git` entry: `~/p` uses
     bare repositories with worktrees, where a worktree holds a `.git` FILE
     pointing elsewhere and the naive check misses every one of them.
+
+    A path with no work tree still names a repository in that layout: the
+    bare repository itself (`<project>/.bare`), the project directory beside
+    it, and a worktree removed after its branch merged — whose files the
+    transcript still names while the directory is gone. Each resolves to the
+    bare repository, where `git worktree list` answers for all of them;
+    otherwise a session that ends with a clean merge sweeps nothing. The
+    `.bare` beside the path is asked first: a project directory that sits
+    inside another work tree would otherwise answer with that outer one.
     """
     probe = path if path.is_dir() else path.parent
     while not probe.is_dir() and probe != probe.parent:
         probe = probe.parent
     if not probe.is_dir():
         return None
+    bare = probe / ".bare"
+    if bare.is_dir() and _git_path(bare, "--is-bare-repository") == Path("true"):
+        return bare.resolve()
+    top = _git_path(probe, "--show-toplevel")
+    if top is not None:
+        return top
+    if _git_path(probe, "--is-bare-repository") == Path("true"):
+        return _git_path(probe, "--path-format=absolute", "--git-dir")
+    return None
+
+
+# Variables that choose the repository ahead of `-C`: set by a git hook or by
+# the caller's shell, they would make every probe answer for that repository.
+GIT_LOCATION_VARS = frozenset(
+    {
+        "GIT_DIR",
+        "GIT_WORK_TREE",
+        "GIT_COMMON_DIR",
+        "GIT_INDEX_FILE",
+        "GIT_OBJECT_DIRECTORY",
+    }
+)
+
+
+def _git_path(directory: Path, *query: str) -> Path | None:
+    """One `git rev-parse` answer for a directory, or None."""
+    env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION_VARS}
     try:
         out = subprocess.run(
-            ["git", "-C", str(probe), "rev-parse", "--show-toplevel"],
+            ["git", "-C", str(directory), "rev-parse", *query],
             capture_output=True,
             text=True,
             timeout=10,
             check=False,  # a non-repository path is an ordinary answer here
+            env=env,
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return (
-        Path(out.stdout.strip()) if out.returncode == 0 and out.stdout.strip() else None
-    )
+    answer = out.stdout.strip()
+    return Path(answer) if out.returncode == 0 and answer else None
 
 
 def iter_events(path: Path):

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,7 @@ import tempfile
 import unittest
 from datetime import timedelta
 from pathlib import Path
+from unittest import mock
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "skills" / "retro" / "scripts" / "scan-cross-session.py"
@@ -272,7 +274,8 @@ class RecurringFailuresTest(TempDirCase):
 
 
 def _git(*args: str) -> None:
-    subprocess.run(["git", *args], check=True, capture_output=True)
+    env = {k: v for k, v in os.environ.items() if k not in scs.GIT_LOCATION_VARS}
+    subprocess.run(["git", *args], check=True, capture_output=True, env=env)
 
 
 class FileKeyTest(TempDirCase):
@@ -299,6 +302,32 @@ class FileKeyTest(TempDirCase):
     def test_a_file_outside_any_repository_keeps_its_path(self) -> None:
         path = str(self.root / "loose" / "notes.md")
         self.assertEqual(scs.file_key(path), (None, path))
+
+    def _bare_project(self) -> Path:
+        project = self.root / "proj"
+        _git("init", "--bare", "-q", str(project / ".bare"))
+        return project
+
+    def test_a_plain_directory_named_bare_is_no_repository(self) -> None:
+        (self.root / "plain" / ".bare").mkdir(parents=True)
+        path = str(self.root / "plain" / "gone" / "a.md")
+        self.assertEqual(scs.file_key(path), (None, path))
+
+    def test_the_bare_repository_wins_over_an_enclosing_work_tree(self) -> None:
+        project = self._bare_project()
+        _git("init", "-q", str(self.root))
+        self.assertEqual(
+            scs.file_key(str(project / "gone" / "docs" / "a.md")),
+            (str((project / ".bare").resolve()), "docs/a.md"),
+        )
+
+    def test_git_dir_in_the_environment_does_not_redirect_the_probe(self) -> None:
+        project = self._bare_project()
+        other = self.root / "other"
+        _git("init", "-q", str(other))
+        with mock.patch.dict(os.environ, {"GIT_DIR": str(other / ".git")}):
+            key = scs.file_key(str(project / "gone" / "docs" / "a.md"))
+        self.assertEqual(key, (str((project / ".bare").resolve()), "docs/a.md"))
 
 
 class FollowUpSessionsTest(TempDirCase):
