@@ -274,15 +274,33 @@ def repo_root(path: Path) -> Path | None:
     Resolved with git rather than by looking for a `.git` entry: `~/p` uses
     bare repositories with worktrees, where a worktree holds a `.git` FILE
     pointing elsewhere and the naive check misses every one of them.
+
+    A path with no work tree still names a repository in that layout: the
+    bare repository itself (`<project>/.bare`), the project directory beside
+    it, and a worktree removed after its branch merged — whose files the
+    transcript still names while the directory is gone. Each resolves to the
+    bare repository, where `git worktree list` answers for all of them;
+    otherwise a session that ends with a clean merge sweeps nothing.
     """
     probe = path if path.is_dir() else path.parent
     while not probe.is_dir() and probe != probe.parent:
         probe = probe.parent
     if not probe.is_dir():
         return None
+    top = _git_path(probe, "--show-toplevel")
+    if top is not None:
+        return top
+    if _git_path(probe, "--is-bare-repository") == Path("true"):
+        return _git_path(probe, "--path-format=absolute", "--git-dir")
+    bare = probe / ".bare"
+    return bare.resolve() if bare.is_dir() else None
+
+
+def _git_path(directory: Path, *query: str) -> Path | None:
+    """One `git rev-parse` answer for a directory, or None."""
     try:
         out = subprocess.run(
-            ["git", "-C", str(probe), "rev-parse", "--show-toplevel"],
+            ["git", "-C", str(directory), "rev-parse", *query],
             capture_output=True,
             text=True,
             timeout=10,
@@ -290,9 +308,8 @@ def repo_root(path: Path) -> Path | None:
         )
     except (OSError, subprocess.SubprocessError):
         return None
-    return (
-        Path(out.stdout.strip()) if out.returncode == 0 and out.stdout.strip() else None
-    )
+    answer = out.stdout.strip()
+    return Path(answer) if out.returncode == 0 and answer else None
 
 
 def iter_events(path: Path):
