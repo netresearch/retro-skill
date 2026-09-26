@@ -155,7 +155,10 @@ class MaterializePrTest(unittest.TestCase):
     def test_finish_opens_the_pr_for_the_worktree_branch(self):
         """gh runs from the caller's cwd, so the branch must be named."""
         project = self._bare_project(origin_head=True)
-        worktree = Path(self._run("start", str(project), "feat/x").stdout.strip())
+        started = self._run("start", str(project), "feat/x")
+        self.assertEqual(started.returncode, 0, started.stderr)
+        worktree = Path(started.stdout.strip())
+        self.assertTrue(worktree.is_absolute(), worktree)
         (worktree / "a.txt").write_text("a\n", encoding="utf-8")
         body = self.tmp / "body.md"
         body.write_text("body\n", encoding="utf-8")
