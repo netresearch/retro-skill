@@ -481,45 +481,71 @@ def message_key(tool_use: tuple) -> tuple:
     return ("id", mid) if mid else ("event", tool_use[0])
 
 
+_PendingUse = tuple[int, str, dict, "str | None"]
+
+
+def _register_tool_use(
+    i: int, msg: dict, block: dict, pending: dict[str, _PendingUse]
+) -> None:
+    """Remember a tool_use block until its tool_result arrives."""
+    use_id = block.get("id")
+    if not use_id:
+        return  # no result can ever pair with it
+    inp = block.get("input")
+    pending[use_id] = (
+        i,
+        str(block.get("name") or ""),
+        inp if isinstance(inp, dict) else {},
+        msg.get("id") if isinstance(msg.get("id"), str) else None,
+    )
+
+
+def _result_text(result) -> str:
+    """Flatten a tool_result's content (a string or a list of blocks) to text."""
+    if isinstance(result, list):
+        result = " ".join(
+            b.get("text", "") if isinstance(b, dict) else str(b) for b in result
+        )
+    return str(result)
+
+
+def _pair_tool_result(block: dict, pending: dict[str, _PendingUse]) -> ToolUse | None:
+    """Turn a tool_result block into a ToolUse if its tool_use is pending."""
+    use_id = block.get("tool_use_id")
+    if use_id not in pending:
+        return None
+    i_use, name, inp, message_id = pending.pop(use_id)
+    result = _result_text(block.get("content", ""))
+    is_error = block.get("is_error", False)
+    return ToolUse((i_use, name, inp, result, bool(is_error)), message_id)
+
+
+def _pair_block(
+    i: int, msg: dict, block, pending: dict[str, _PendingUse]
+) -> ToolUse | None:
+    """Feed one content block into the pairing; return a ToolUse once complete."""
+    if not isinstance(block, dict):
+        return None
+    if block.get("type") == "tool_use":
+        _register_tool_use(i, msg, block, pending)
+    elif block.get("type") == "tool_result":
+        return _pair_tool_result(block, pending)
+    return None
+
+
 def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     """Return (event_index, tool_name, input, result_text, is_error) per paired call."""
     out = []
-    tool_uses_pending: dict[str, tuple[int, str, dict, str | None]] = {}
+    tool_uses_pending: dict[str, _PendingUse] = {}
     for i, ev in enumerate(events):
         msg = _message(ev)
         content = msg.get("content") or []
         if not isinstance(content, list):
             continue
         for block in content:
-            if not isinstance(block, dict):
-                continue
-            if block.get("type") == "tool_use":
-                use_id = block.get("id")
-                if not use_id:
-                    continue  # no result can ever pair with it
-                inp = block.get("input")
-                tool_uses_pending[use_id] = (
-                    i,
-                    str(block.get("name") or ""),
-                    inp if isinstance(inp, dict) else {},
-                    msg.get("id") if isinstance(msg.get("id"), str) else None,
-                )
-            elif block.get("type") == "tool_result":
-                use_id = block.get("tool_use_id")
-                if use_id in tool_uses_pending:
-                    i_use, name, inp, message_id = tool_uses_pending.pop(use_id)
-                    result = block.get("content", "")
-                    if isinstance(result, list):
-                        result = " ".join(
-                            b.get("text", "") if isinstance(b, dict) else str(b)
-                            for b in result
-                        )
-                    is_error = block.get("is_error", False)
-                    out.append(
-                        ToolUse(
-                            (i_use, name, inp, str(result), bool(is_error)), message_id
-                        )
-                    )
+            paired = _pair_block(i, msg, block, tool_uses_pending)
+            if paired is not None:
+                out.append(paired)
     return out
 
 
