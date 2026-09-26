@@ -121,6 +121,16 @@ class CheckEvalSamplesTest(unittest.TestCase):
         self._write(repo, [eval_record("existing"), eval_record("other")])
         self.assertEqual(self._check(repo), [])
 
+    def test_dot_slash_and_absolute_paths_find_the_base(self):
+        """`./evals/evals.json` and an absolute path name the same file as
+        `evals/evals.json`; without normalising, the base lookup misses and
+        the unchanged, unsampled eval is reported as new."""
+        repo = self._repo([eval_record("old")])
+        self._write(repo, [eval_record("old"), eval_record("added", samples=True)])
+        for spelling in ("./evals/evals.json", str(repo / "evals" / "evals.json")):
+            with self.subTest(spelling=spelling):
+                self.assertEqual(checker.check_file(repo, "HEAD", spelling), [])
+
     def test_new_file_of_untouched_evals_is_still_checked(self):
         repo = self._repo(None)
         self._write(repo, [eval_record("first")])

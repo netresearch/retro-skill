@@ -135,32 +135,58 @@ _FRONTMATTER_KEY = re.compile(r"^([A-Za-z0-9_-]+):(.*)$")
 def _frontmatter(text: str) -> dict[str, str]:
     """Top-level scalar fields of a SKILL.md frontmatter, without PyYAML.
 
-    Handles plain, single-quoted, double-quoted (with `\\"` escapes) and block
-    scalars (`|`, `>`, with `-`/`+` chomping). Nested mappings (e.g. `metadata:`)
-    are skipped. Enough for `name` and `description`, which the Agent Skills
-    spec defines as scalars.
+    Handles plain, single-quoted (with `''`), double-quoted (with backslash
+    escapes) and block scalars (`|`, `>`, with `-`/`+` chomping), on the key's
+    line or starting on the next indented line, and over several lines.
+    Nested mappings (e.g. `metadata:`) and sequences are skipped. Enough for
+    `name` and `description`, which the Agent Skills spec defines as scalars.
     """
     lines = text.splitlines()
     if not lines or lines[0].strip() != "---":
         return {}
     fields: dict[str, str] = {}
     i = 1
-    while i < len(lines):
-        if lines[i].strip() == "---":
-            break
+    while i < len(lines) and lines[i].strip() != "---":
         m = _FRONTMATTER_KEY.match(lines[i])
-        if not m:
+        if m:
+            fields[m.group(1)], i = _value(lines, i + 1, m.group(2).strip())
+        else:
             i += 1
-            continue
-        key, raw = m.group(1), m.group(2).strip()
-        if raw[:1] in ("|", ">"):
-            fields[key], i = _block_scalar(lines, i + 1, raw[0] == ">")
-            continue
-        fields[key] = (
-            _quoted_scalar(raw, raw[0]) if raw[:1] in ("'", '"') else _plain_scalar(raw)
-        )
-        i += 1
     return fields
+
+
+def _value(lines: list[str], i: int, raw: str) -> tuple[str, int]:
+    """The value of a key whose line held ``raw``, and the index after it."""
+    if not raw:
+        # The value may start on the next, indented line. An indented
+        # `key:` there opens a nested mapping (`metadata:`) and `- ` a
+        # sequence (`allowed-tools:`); both are skipped.
+        if (
+            i >= len(lines)
+            or not _is_continuation(lines[i])
+            or _NESTED_KEY.match(lines[i])
+            or lines[i].lstrip().startswith("- ")
+        ):
+            return "", i
+        raw, i = lines[i].strip(), i + 1
+    if raw[:1] in ("|", ">"):
+        return _block_scalar(lines, i, raw[0] == ">")
+    if raw[:1] in ("'", '"'):
+        return _quoted_scalar(lines, i, raw)
+    # A plain scalar continues on indented lines, folded with spaces.
+    parts = [_plain_scalar(raw)]
+    while i < len(lines) and _is_continuation(lines[i]):
+        parts.append(_plain_scalar(lines[i].strip()))
+        i += 1
+    return " ".join(p for p in parts if p), i
+
+
+_NESTED_KEY = re.compile(r"^\s+[A-Za-z0-9_-]+:(\s|$)")
+
+
+def _is_continuation(line: str) -> bool:
+    """An indented, non-empty line: part of the value of the key above."""
+    return line.startswith((" ", "\t")) and bool(line.strip()) and line.strip() != "---"
 
 
 def _block_scalar(lines: list[str], start: int, fold: bool) -> tuple[str, int]:
@@ -176,14 +202,53 @@ def _block_scalar(lines: list[str], start: int, fold: bool) -> tuple[str, int]:
     return joined.strip(), i
 
 
-def _quoted_scalar(raw: str, quote: str) -> str:
-    """The contents of a quoted scalar; inside `"`, `\\"` does not end it."""
-    end = raw.find(quote, 1)
-    if quote == '"':
-        while end != -1 and raw[end - 1] == "\\":
-            end = raw.find(quote, end + 1)
-    value = raw[1:end] if end != -1 else raw[1:]
-    return value.replace('\\"', '"') if quote == '"' else value
+_DOUBLE_QUOTED_ESCAPES = {
+    "n": "\n",
+    "t": "\t",
+    "\\": "\\",
+    '"': '"',
+    "/": "/",
+    " ": " ",
+}
+
+
+def _quoted_scalar(lines: list[str], i: int, raw: str) -> tuple[str, int]:
+    """A quoted scalar starting with ``raw``, and the index after its last line.
+
+    The value may continue on the following indented lines; YAML folds each
+    line break into one space. Inside `'`, `''` is a literal quote. Inside `"`,
+    a backslash escapes the next character (`\\"`, `\\\\`, `\\n`, `\\t`).
+    """
+    quote, text, out = raw[0], raw[1:], []
+    while True:
+        part, closed = _quoted_line(text, quote)
+        out.append(part)
+        if closed:
+            return "".join(out), i
+        # No closing quote on this line: fold in the next indented line.
+        if i >= len(lines) or not _is_continuation(lines[i]):
+            return "".join(out).rstrip(), i
+        out.append(" ")
+        text = lines[i].strip()
+        i += 1
+
+
+def _quoted_line(text: str, quote: str) -> tuple[str, bool]:
+    """One line of a quoted scalar, decoded, and whether its closing quote came."""
+    out: list[str] = []
+    pos = 0
+    while pos < len(text):
+        ch, nxt = text[pos], text[pos + 1 : pos + 2]
+        if ch == quote and not (quote == "'" and nxt == "'"):
+            return "".join(out), True
+        if (quote == "'" and ch == "'") or (quote == '"' and ch == "\\" and nxt):
+            # `''` inside single quotes, a backslash escape inside double quotes.
+            out.append(_DOUBLE_QUOTED_ESCAPES.get(nxt, nxt) if quote == '"' else "'")
+            pos += 2
+            continue
+        out.append(ch)
+        pos += 1
+    return "".join(out), False
 
 
 def _plain_scalar(raw: str) -> str:

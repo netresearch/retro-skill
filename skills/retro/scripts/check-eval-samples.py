@@ -22,7 +22,8 @@ pattern backs - so such evals are skipped rather than demanded.
 Usage:
     check-eval-samples.py --repo <dir> [--base <rev>] <path>...
 
-Paths are repo-relative. Anything that is not an eval container (recognised by
+Paths are repo-relative (``./`` and absolute paths inside ``--repo`` are
+normalised to that form). Anything that is not an eval container (recognised by
 shape, as in ``validate-evals.py``) is skipped. Exit 0 if nothing is missing
 samples, 1 otherwise.
 """
@@ -118,6 +119,21 @@ def _base_text(repo: Path, base: str, path: str) -> str | None:
     return result.stdout if result.returncode == 0 else None
 
 
+def _repo_relative(repo: Path, path: str) -> str | None:
+    """``path`` as the POSIX path relative to ``repo``, or ``None`` outside it.
+
+    ``git show <rev>:<path>`` needs exactly this form; ``./x`` or an absolute
+    path would find no base, and every eval in the file would count as new.
+    """
+    candidate = Path(path)
+    if candidate.is_absolute():
+        try:
+            candidate = candidate.resolve().relative_to(repo.resolve())
+        except ValueError:
+            return None
+    return Path(os.path.normpath(candidate)).as_posix()
+
+
 def _base_index(repo: Path, base: str, path: str) -> dict[str, dict]:
     text = _base_text(repo, base, path)
     if text is None:
@@ -141,7 +157,8 @@ def check_file(repo: Path, base: str, path: str) -> list[str]:
     if records is None:
         return []
 
-    before = _base_index(repo, base, path)
+    relative = _repo_relative(repo, path)
+    before = {} if relative is None else _base_index(repo, base, relative)
     problems = []
     for index, record in enumerate(records):
         if not _pattern_assertions(record) or _has_samples(record):

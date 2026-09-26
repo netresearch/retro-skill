@@ -361,6 +361,45 @@ class FrontmatterTest(unittest.TestCase):
             self.assertEqual(fos._frontmatter(text)["description"], want, raw)
             self.assertEqual(fos._frontmatter(text)["name"], "t", raw)
 
+    def test_real_quoting_shapes(self):
+        """The two shapes that cut real routing descriptions short: a `''`
+        escape inside single quotes (netresearch-maintenance) and a
+        double-quoted value that starts on the next line and spans several
+        (math-olympiad)."""
+        cases = {
+            "description: 'on NRS-* tickets with ''IT Maintenance'' in the"
+            " summary, and on network questions'": (
+                "on NRS-* tickets with 'IT Maintenance' in the summary,"
+                " and on network questions"
+            ),
+            'description:\n  "Solve competition math problems (IMO, AIME) with'
+            "\n  adversarial verification. Activates when asked to"
+            "\n  'solve this IMO problem'.\"": (
+                "Solve competition math problems (IMO, AIME) with adversarial"
+                " verification. Activates when asked to 'solve this IMO problem'."
+            ),
+            "description: 'first line\n  second line'": "first line second line",
+            'description: "tab\\there, slash \\\\ end"': "tab\there, slash \\ end",
+            "description: plain first\n  plain second": "plain first plain second",
+        }
+        for raw, want in cases.items():
+            text = f"---\nname: t\n{raw}\nmetadata:\n  author: a\n---\n# T\n"
+            with self.subTest(raw=raw):
+                fields = fos._frontmatter(text)
+                self.assertEqual(fields["description"], want)
+                self.assertEqual(fields["name"], "t")
+                self.assertEqual(fields["metadata"], "")
+
+    def test_nested_values_after_an_empty_key_are_skipped(self):
+        text = (
+            "---\nname: t\nallowed-tools:\n  - Read\n  - Bash(ls *)\n"
+            "metadata:\n  author: a\ndescription: d\n---\n"
+        )
+        fields = fos._frontmatter(text)
+        self.assertEqual(fields["allowed-tools"], "")
+        self.assertEqual(fields["metadata"], "")
+        self.assertEqual(fields["description"], "d")
+
     def test_no_frontmatter(self):
         self.assertEqual(fos._frontmatter("# just a title\n"), {})
 

@@ -779,6 +779,12 @@ def ticket_item(key: str, origin: str, context: str = "explicit") -> dict[str, A
     }
 
 
+NATIVE_TAB_RE = re.compile(
+    r"(?P<artifact>https://[^/]+/.+/(?:pull|issues|merge_requests|work_items)/\d+)"
+    r"(?:/[\w.-]+)+/?"
+)
+
+
 def parse_ref(ref: str) -> dict[str, Any] | None:
     if not isinstance(ref, str) or not ref or any(c.isspace() for c in ref):
         return None
@@ -790,10 +796,18 @@ def parse_ref(ref: str) -> dict[str, Any] | None:
         return None
     # The complete URL must match, not a GitHub URL embedded in another URL.
     path_url = urlparse(url)._replace(query="", fragment="").geturl()
-    if scope.GITHUB_URL_RE.fullmatch(path_url) or scope.GITLAB_URL_RE.fullmatch(
-        path_url
-    ):
-        return dict(scope.artefacts_in_text(path_url)[0], origin="named", url=url)
+    # A tab of the same artifact (`/pull/1/files`, `/-/merge_requests/1/diffs`)
+    # names that artifact; without this it was classed external, never read,
+    # and let a feedback file stand in for the PR's own review threads.
+    tab = NATIVE_TAB_RE.fullmatch(path_url)
+    for candidate in ([tab.group("artifact")] if tab else []) + [path_url]:
+        if scope.GITHUB_URL_RE.fullmatch(candidate) or scope.GITLAB_URL_RE.fullmatch(
+            candidate
+        ):
+            native_url = candidate if candidate != path_url else url
+            return dict(
+                scope.artefacts_in_text(candidate)[0], origin="named", url=native_url
+            )
     return {"forge": "external", "kind": "ticket", "url": url, "origin": "named"}
 
 

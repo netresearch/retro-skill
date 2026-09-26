@@ -11,12 +11,16 @@
 
 set -euo pipefail
 
-# Hard dependency on jq: every value is JSON-escaped via `jq -Rs .`. Without jq
-# the output would be malformed JSON which downstream consumers cannot handle.
-if ! command -v jq >/dev/null 2>&1; then
-  echo "[]"
-  exit 0
-fi
+# Hard dependencies: jq JSON-escapes every value (`jq -Rs .`), python3 reads
+# the frontmatter. A missing tool exits 2 rather than printing `[]`, which would
+# read as "no skills installed".
+for tool in jq python3; do
+  if ! command -v "$tool" >/dev/null 2>&1; then
+    echo "find-installed-skills.sh: $tool is required" >&2
+    exit 2
+  fi
+done
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 
 PROJECT_DIR=""
 while [ "$#" -gt 0 ]; do
@@ -60,20 +64,6 @@ if [ ${#SEARCH_PATHS[@]} -eq 0 ]; then
   echo "[]"
   exit 0
 fi
-
-extract_description() {
-  local skill_md="$1"
-  # Read description field from YAML frontmatter
-  awk '
-    /^---$/ { state++; next }
-    state==1 && /^description:/ {
-      sub(/^description:[[:space:]]*"?/, "")
-      sub(/"?[[:space:]]*$/, "")
-      print
-      exit
-    }
-  ' "$skill_md"
-}
 
 find_plugin_root() {
   # Walk up from skill_root looking for .claude-plugin/, composer.json, or .git
@@ -124,6 +114,7 @@ extract_repo_url() {
   echo ""
 }
 
+emit_skills() {
 first=true
 printf '['
 
@@ -141,22 +132,41 @@ for base in "${SEARCH_PATHS[@]}"; do
       */plugins/cache/*) plugin_root=$(dirname "$base") ;;
     esac
 
-    description=$(extract_description "$skill_md")
     repo_url=$(extract_repo_url "$skill_dir" "$plugin_root")
 
     # Trim trailing newlines/whitespace
     name="${name%$'\n'}"
-    description="${description%$'\n'}"
     repo_url="${repo_url%$'\n'}"
 
     $first || printf ','
     first=false
-    printf '\n  {"name":%s,"path":%s,"description":%s,"repo_url":%s}' \
+    printf '\n  {"name":%s,"path":%s,"skill_md":%s,"repo_url":%s}' \
       "$(printf '%s' "$name" | jq -Rs .)" \
       "$(printf '%s' "$skill_dir" | jq -Rs .)" \
-      "$(printf '%s' "$description" | jq -Rs .)" \
+      "$(printf '%s' "$skill_md" | jq -Rs .)" \
       "$(printf '%s' "$repo_url" | jq -Rs .)"
   done
 done
 
 printf '\n]\n'
+}
+
+# One python3 pass fills every description with find-org-skills.py's
+# frontmatter parser, so both discovery scripts read quoting, block scalars
+# and multi-line values the same way.
+# shellcheck disable=SC2016  # $-free Python source, single quotes intended
+FILL_DESCRIPTIONS='
+import importlib.util, json, sys
+spec = importlib.util.spec_from_file_location("find_org_skills", sys.argv[1])
+fos = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(fos)
+skills = json.load(sys.stdin)
+for skill in skills:
+    with open(skill.pop("skill_md"), encoding="utf-8", errors="replace") as fh:
+        fields = fos._frontmatter(fh.read())
+    skill["description"] = fields.get("description", "")
+rows = [json.dumps({k: s[k] for k in ("name", "path", "description", "repo_url")}) for s in skills]
+print("[" + ",".join("\n  " + r for r in rows) + "\n]")
+'
+
+emit_skills | python3 -c "$FILL_DESCRIPTIONS" "$SCRIPT_DIR/find-org-skills.py"

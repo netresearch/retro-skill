@@ -252,6 +252,9 @@ def _flagged_findings(cwd: Path) -> list[dict[str, Any]]:
     return findings
 
 
+_FENCE = re.compile(r" {0,3}(`{3,}|~{3,})")
+
+
 def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
     """Opt-in C2 findings: one per `## ` section of the global rules file.
 
@@ -276,8 +279,21 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
     title = ""
     offset = 0
     spans: list[tuple[str, int, int]] = []
+    fence = ""  # the open ``` / ~~~ run; a `# ` line inside is a comment
     for line in lines:
-        if line.startswith("## "):
+        marker = _FENCE.match(line)
+        if fence:
+            # Closed by a bare run of the same character, at least as long.
+            if (
+                marker
+                and marker.group(1)[0] == fence[0]
+                and len(marker.group(1)) >= len(fence)
+                and not line[marker.end() :].strip()
+            ):
+                fence = ""
+        elif marker:
+            fence = marker.group(1)
+        elif line.startswith("## "):
             if section_start is not None:
                 spans.append((title, section_start, offset))
             section_start = offset

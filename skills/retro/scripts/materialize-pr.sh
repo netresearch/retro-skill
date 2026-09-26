@@ -10,13 +10,17 @@
 # Usage:
 #   materialize-pr.sh start  <repo-dir> <branch>
 #       repo-dir: the project dir holding .bare (bare-worktree layout) or a
-#       plain checkout. Fetches origin, creates ../<branch-dirname> worktree
-#       off origin/<default-branch>, prints the worktree path.
+#       plain checkout. Fetches origin, creates a worktree named after the
+#       branch (slashes become dashes) off origin/<default-branch> - inside
+#       repo-dir for the bare layout, beside it for a plain checkout - and
+#       prints the worktree path. The default branch falls back to main when
+#       origin/HEAD is not set.
 #   materialize-pr.sh finish <worktree-dir> <title> <body-file> <file>...
 #       Refuses first when a named evals.json adds or tightens an eval that
 #       carries no `samples` (check-eval-samples.py). Then stages ONLY the
 #       named files (never -A), commits signed (-S --signoff, message =
-#       title), pushes -u, opens the PR with --body-file, prints the PR URL.
+#       title), pushes -u, opens the PR for that branch (--head) with
+#       --body-file, prints the PR URL.
 #
 # Exit: 0 ok; 2 usage/error. Never force-pushes, never merges.
 set -euo pipefail
@@ -29,9 +33,14 @@ start)
     repo="${1:?repo-dir}"; branch="${2:?branch}"
     if [[ -d "$repo/.bare" ]]; then gitdir="$repo/.bare"; else gitdir="$repo"; fi
     git -C "$gitdir" fetch origin --quiet
-    default=$(git -C "$gitdir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null | sed 's|^origin/||')
+    # `|| true`: without origin/HEAD symbolic-ref exits non-zero, and under
+    # `set -e` that would abort here before the main fallback below.
+    default=$(git -C "$gitdir" symbolic-ref --short refs/remotes/origin/HEAD 2>/dev/null || true)
+    default=${default#origin/}
     [[ -n "$default" ]] || default=main
-    wt="$repo/../$(basename "${branch//\//-}")"
+    name=$(basename "${branch//\//-}")
+    # Bare layout: worktrees live inside the project dir, next to .bare.
+    if [[ -d "$repo/.bare" ]]; then wt="$repo/$name"; else wt="$repo/../$name"; fi
     wt=$(python3 -c "import os,sys; print(os.path.abspath(sys.argv[1]))" "$wt")
     git -C "$gitdir" worktree add -b "$branch" "$wt" "origin/$default" >/dev/null
     printf '%s\n' "$wt"
@@ -49,7 +58,9 @@ finish)
     git -C "$wt" add -- "$@"
     git -C "$wt" commit -S --signoff -m "$title"
     git -C "$wt" push -u origin "$branch"
-    gh pr create --title "$title" --body-file "$body" \
+    # --head: gh otherwise takes the branch of the caller's cwd, which is not
+    # this worktree.
+    gh pr create --title "$title" --body-file "$body" --head "$branch" \
         --repo "$(git -C "$wt" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')"
     ;;
 *)
