@@ -234,12 +234,14 @@ $skillDir = 'C:\path\to\retro\skills\retro'
 $transcript = 'C:\Users\you\.codex\sessions\YYYY\MM\DD\rollout-....jsonl'
 $token = 'an exact phrase the user typed'
 $normalized = Join-Path $env:TEMP 'retro-codex-session.jsonl'
-py -3 -X utf8 "$skillDir\scripts\codex-transcript.py" --transcript-file $transcript --match $token --output $normalized
+py -3 -X utf8 "$skillDir\scripts\codex-transcript.py" --transcript-file $transcript --match $token |
+  Set-Content -LiteralPath $normalized -Encoding utf8NoBOM
 py -3 -X utf8 "$skillDir\scripts\detect-mechanical.py" --transcript-file $normalized --output-format json
 uv run "$skillDir\scripts\collect-review-findings.py" --transcript-file $normalized --output-format json
 ```
 
-On Windows, `python` or `python3` can resolve to a different interpreter;
+The command above uses PowerShell 7's `utf8NoBOM` encoding. On Windows,
+`python` or `python3` can resolve to a different interpreter;
 `py -3 -X utf8` selects Python 3 and keeps Chinese and other non-ASCII output
 from failing under a legacy console encoding. On other platforms, use
 `python3` for the same commands.
