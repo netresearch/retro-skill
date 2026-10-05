@@ -155,22 +155,6 @@ class CodexTranscriptTest(unittest.TestCase):
             self.assertEqual(report["tool_uses"], 1)
             self.assertNotIn("exec", json.dumps(report["findings"]))
 
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(SCRIPT),
-                    "--transcript-file",
-                    str(rollout),
-                    "--match",
-                    "Check the repository",
-                    "--output",
-                    str(normalized),
-                ],
-                capture_output=True,
-                check=True,
-            )
-            self.assertEqual(normalized.read_bytes(), result.stdout)
-
 
 if __name__ == "__main__":
     unittest.main()

@@ -237,7 +237,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--transcript-file", required=True, type=Path)
     parser.add_argument("--match", help="literal phrase in a human user message")
-    parser.add_argument("--output", type=Path, help="write UTF-8 JSONL to this path")
     args = parser.parse_args()
     try:
         with args.transcript_file.open(encoding="utf-8") as transcript:
@@ -245,13 +244,10 @@ def main() -> None:
         lines = render(rows, args.match)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         parser.exit(2, f"codex-transcript: {error}\n")
-    if args.output:
-        args.output.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    else:
-        if hasattr(sys.stdout, "reconfigure"):
-            sys.stdout.reconfigure(encoding="utf-8")
-        for line in lines:
-            print(line)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
+    for line in lines:
+        print(line)
 
 
 if __name__ == "__main__":
