@@ -1,0 +1,11 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
+title = "retro-skill Betterleaks configuration"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Fixtures of the secret-masking tests: made-up credentials that the tests expect to be redacted"
+paths = ['''tests/test_mask_secrets\.py''']
