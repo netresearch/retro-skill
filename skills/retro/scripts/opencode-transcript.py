@@ -200,6 +200,8 @@ def schema_of(conn: sqlite3.Connection, session_id: str) -> str | None:
     """The first schema whose message table holds `session_id`, or None."""
     for name in _schemas(conn):
         query = f"SELECT 1 FROM {SCHEMAS[name][1]} WHERE session_id=? LIMIT 1"
+        # The table name comes from the constant SCHEMAS above; `session_id` is a bound parameter.
+        # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query
         if conn.execute(query, (session_id,)).fetchone() is not None:
             return name
     return None
