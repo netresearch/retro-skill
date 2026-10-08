@@ -4,7 +4,7 @@
 name: retro
 description: "Use when a Claude Code session ends or is declared finished, a friction needs fixing, a reusable learning needs capturing, local memory needs promoting upward, or for cross-session audits — detect friction AND learnings, route each to the right destination, and gate 'done'. Triggers: /retro, /retro done, 'retrospective', 'capture this learning', 'fix this skill', 'promote memory', 'audit', 'alles erledigt'."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
-compatibility: "Requires python3, uv, jq, and gh and/or glab (PR creation)."
+compatibility: "Requires python3 (3.9 or newer), uv, jq, and gh and/or glab (PR creation)."
 metadata:
   author: Netresearch DTT GmbH
   version: "2.0.0"
