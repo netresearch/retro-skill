@@ -44,7 +44,6 @@ from __future__ import annotations
 import argparse
 import functools
 import importlib.util
-import itertools
 import json
 import re
 import shlex
@@ -2066,7 +2065,9 @@ def signal_permission_reapproval(
     for prefix, turns in grouped.items():
         if len(turns) < A18_MIN_OCCURRENCES:
             continue
-        gaps = [b - a for a, b in itertools.pairwise(turns)]
+        # zip(turns, turns[1:]) rather than itertools.pairwise: pairwise is 3.10+, and
+        # the python3 on a stock macOS (Xcode's 3.9) crashed the whole pre-pass here.
+        gaps = [b - a for a, b in zip(turns, turns[1:])]
         if not gaps:
             continue
         gaps_sorted = sorted(gaps)
