@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: CC-BY-SA-4.0
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
 name: retro
-description: "Use when a Claude Code session ends or is declared finished, a friction needs fixing, a reusable learning needs capturing, local memory needs promoting upward, or for cross-session audits — detect friction AND learnings, route each to the right destination, and gate 'done'. Triggers: /retro, /retro done, 'retrospective', 'capture this learning', 'fix this skill', 'promote memory', 'audit', 'alles erledigt'."
+description: "Use when a Claude Code or Codex session ends or is declared finished, a friction needs fixing, a reusable learning needs capturing, local memory needs promoting upward, or for cross-session audits — detect friction AND learnings, route each to the right destination, and gate 'done'. Triggers: /retro, /retro done, 'retrospective', 'capture this learning', 'fix this skill', 'promote memory', 'audit', 'alles erledigt'."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires python3, uv, jq, and gh and/or glab (PR creation)."
 metadata:
@@ -13,6 +13,10 @@ allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*) Bash(bash ${CLAUDE_SK
 ---
 
 # Retro — LLM-driven Session Retrospection
+
+On Codex, resolve script paths from this loaded skill directory and use the
+native discovery reader (`find-org-skills.py --host codex`), not Claude cache
+paths. Host selection and coverage limits: `references/skill-discovery.md`.
 
 One LLM pass over a session or the memory backlog detects **friction and
 reusable learnings**, classifies each into one of seven destinations, and

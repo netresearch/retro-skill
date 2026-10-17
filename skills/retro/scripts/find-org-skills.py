@@ -11,6 +11,10 @@ known_marketplaces.json) and each one's locally-cloned catalogue
 entries are actually installed (~/.claude/plugins/installed_plugins.json, with
 the plugin cache as fallback).
 
+On Codex, reads `codex plugin list --json` plus standalone `.codex/skills`
+and sibling `.agents/skills`. Uses the CLI's recorded enabled plugin version;
+missing CLI coverage is reported as standalone-only, not a complete catalogue.
+
 Two descriptions exist for a skill, written for two readers. The catalogue
 `description` is a listing summary for a human browsing plugins. The
 `description` in the skill's own SKILL.md frontmatter is the routing text an
@@ -28,14 +32,17 @@ Code, so no network or `gh` auth is required. Generic by design: it reads
 whatever marketplaces are configured, never a hardcoded org.
 
 Usage:
-    python3 find-org-skills.py [--claude-home PATH] [--output-format json|text]
+    python3 find-org-skills.py [--host auto|claude|codex] \
+        [--claude-home PATH | --codex-home PATH] [--output-format json|text]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -395,13 +402,148 @@ def collect(claude_home: Path) -> list[dict[str, Any]]:
     return out
 
 
+def collect_codex(codex_home: Path, plugins: dict[str, Any]) -> list[dict[str, Any]]:
+    """Native CLI catalogue plus standalone skills; never guess cache versions."""
+    out: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+
+    def add(path: Path, plugin: dict[str, Any] | None = None) -> None:
+        resolved = path.resolve()
+        if resolved in seen:
+            return
+        try:
+            fm = _frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            return
+        seen.add(resolved)
+        skill = fm.get("name") or path.parent.name
+        plugin = plugin or {}
+        name = plugin.get("name", "")
+        out.append(
+            {
+                "name": f"{name}:{skill}" if name and name != skill else skill,
+                "plugin": name,
+                "skill": skill,
+                "description": fm.get("description", ""),
+                "description_source": "skill",
+                "catalogue_description": plugin.get("description", ""),
+                "repo_url": _repo_url(plugin.get("source")),
+                "marketplace": plugin.get("marketplaceName", "codex"),
+                "category": plugin.get("category", ""),
+                "installed": plugin.get("installed", True),
+                "path": str(path),
+                "coverage": "native-cli-and-local-skills",
+            }
+        )
+
+    for root in (codex_home / "skills", codex_home.parent / ".agents" / "skills"):
+        if root.is_dir():
+            for path in sorted(root.rglob("SKILL.md")):
+                add(path)
+    for group in ("installed", "available"):
+        for entry in plugins.get(group, []):
+            if not isinstance(entry, dict) or (
+                group == "installed" and not entry.get("enabled", True)
+            ):
+                continue
+            entry = {**entry, "installed": group == "installed"}
+            source = entry.get("source")
+            if not isinstance(source, dict):
+                source = {}
+            base = None
+            if source.get("source") == "local" and isinstance(source.get("path"), str):
+                base = Path(source["path"])
+            elif group == "installed":
+                parts = [
+                    entry.get(k, "") for k in ("marketplaceName", "name", "version")
+                ]
+                if all(
+                    isinstance(p, str)
+                    and p not in ("", ".", "..")
+                    and "/" not in p
+                    and "\\" not in p
+                    for p in parts
+                ):
+                    base = codex_home / "plugins" / "cache" / Path(*parts)
+            files = _skill_files(base) if base else []
+            for path in files:
+                add(path, entry)
+            if not files:
+                out.append(
+                    {
+                        "name": entry.get("name", ""),
+                        "plugin": entry.get("name", ""),
+                        "skill": "",
+                        "description": entry.get("description", ""),
+                        "description_source": "catalogue",
+                        "catalogue_description": entry.get("description", ""),
+                        "repo_url": _repo_url(source),
+                        "marketplace": entry.get("marketplaceName", "codex"),
+                        "category": entry.get("category", ""),
+                        "installed": entry["installed"],
+                        "coverage": "native-cli-and-local-skills",
+                    }
+                )
+    return sorted(out, key=lambda s: (not s["installed"], s["marketplace"], s["name"]))
+
+
+def codex_catalogue(codex_home: Path) -> list[dict[str, Any]]:
+    try:
+        result = subprocess.run(
+            ["codex", "plugin", "list", "--json"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+            env={**os.environ, "CODEX_HOME": str(codex_home)},
+        )
+        plugins = json.loads(result.stdout)
+        if not isinstance(plugins, dict):
+            raise TypeError("catalogue must be an object")
+        if any(
+            not isinstance(plugins.get(key, []), list)
+            for key in ("installed", "available")
+        ):
+            raise TypeError("catalogue groups must be arrays")
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError) as exc:
+        print(
+            f"Codex plugin catalogue unavailable ({type(exc).__name__}); standalone skills only.",
+            file=sys.stderr,
+        )
+        skills = collect_codex(codex_home, {})
+        for skill in skills:
+            skill["coverage"] = "standalone-only"
+        return skills
+    return collect_codex(codex_home, plugins)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--claude-home", type=Path, default=Path.home() / ".claude")
+    parser.add_argument("--host", choices=("auto", "claude", "codex"), default="auto")
+    parser.add_argument("--claude-home", type=Path)
+    parser.add_argument("--codex-home", type=Path)
     parser.add_argument("--output-format", choices=["json", "text"], default="json")
     args = parser.parse_args()
 
-    skills = collect(args.claude_home)
+    host = args.host
+    if host == "auto":
+        host = (
+            "claude"
+            if args.claude_home
+            else "codex"
+            if args.codex_home
+            or os.environ.get("CODEX_THREAD_ID")
+            or os.environ.get("CODEX_HOME")
+            else "claude"
+        )
+    skills = (
+        codex_catalogue(
+            args.codex_home
+            or Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex")))
+        )
+        if host == "codex"
+        else collect(args.claude_home or Path.home() / ".claude")
+    )
 
     if args.output_format == "text":
         if not skills:
