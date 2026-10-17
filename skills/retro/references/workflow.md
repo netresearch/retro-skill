@@ -224,6 +224,37 @@ exists to prevent. The two guards are separate on purpose: an empty candidate
 list means the path or host is wrong, an empty `$TF` means the token is; the
 remedies differ and one message for both sends you fixing the wrong one.
 
+### Codex rollout on Windows
+
+Codex CLI stores rollouts under `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`.
+Select the file by a phrase the human typed in this session, then convert it
+before either transcript pre-pass. The adapter checks that `--match` occurs in
+a human user message, not merely in a tool result or a quoted instruction:
+
+```powershell
+$skillDir = 'C:\path\to\retro\skills\retro'
+$transcript = 'C:\Users\you\.codex\sessions\YYYY\MM\DD\rollout-....jsonl'
+$token = 'an exact phrase the user typed'
+$normalized = Join-Path $env:TEMP 'retro-codex-session.jsonl'
+py -3 -X utf8 "$skillDir\scripts\codex-transcript.py" --transcript-file $transcript --match $token |
+  Set-Content -LiteralPath $normalized -Encoding utf8NoBOM
+py -3 -X utf8 "$skillDir\scripts\detect-mechanical.py" --transcript-file $normalized --output-format json
+uv run "$skillDir\scripts\collect-review-findings.py" --transcript-file $normalized --output-format json
+```
+
+The command above uses PowerShell 7's `utf8NoBOM` encoding. On Windows,
+`python` or `python3` can resolve to a different interpreter;
+`py -3 -X utf8` selects Python 3 and keeps Chinese and other non-ASCII output
+from failing under a legacy console encoding. On other platforms, use
+`python3` for the same commands.
+
+The converter unfolds literal `tools.exec_command` and `tools.apply_patch`
+calls inside `functions.exec`, so the wrapper is not misreported as 100 repeated
+`exec` calls. It cannot safely evaluate JavaScript-computed arguments or
+attribute batched tool results. Treat missing tool-error/review signals as
+incomplete coverage, read the original rollout for context, and pass created
+PRs/MRs with `--pr-list` when the review collector cannot recover them.
+
 On a repeat `/retro` within one session, filter findings to turns after the
 previous retro — earlier signals were already proposed and must not be
 re-presented.

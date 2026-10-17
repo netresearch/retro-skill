@@ -48,7 +48,9 @@ approval.
    `${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py`). It requires `--transcript-file`, and the
    transcript is located **by content** — a token from this session — never by
    mtime: several sessions share one project slug, so the newest JSONL is
-   regularly somebody else's. Invocation in `references/workflow.md`.
+   regularly somebody else's. Codex rollout JSONL must first be converted with
+   `scripts/codex-transcript.py`; on Windows use `py -3 -X utf8` for the Python
+   scripts. Invocation and adapter limits are in `references/workflow.md`.
    Then `uv run ${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py` on the
    same transcript (`uv run`, because its header declares the tree-sitter
    parser; plain `python3` stops with a message): review threads, bot reviews,
