@@ -98,7 +98,7 @@ import os
 import re
 import shlex
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 #: A call on the runtime's `tools` object, not on `mytools`, `$tools` or `x.tools`.
@@ -313,13 +313,24 @@ def _nested_tools(
 
 
 def _shell_command(argv: Any) -> str | None:
-    """The command a shell argv ran: the script of `bash -lc`, else the argv."""
+    """The command a shell argv ran: the script of `bash -lc`, else the argv.
+
+    Options may precede the script flag, as in the PowerShell argv Codex
+    documents, `["pwsh", "-NoLogo", "-NoProfile", "-Command", "<script>"]`.
+    The shell may be named by a Windows path.
+    """
     if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv):
         return None
-    name = os.path.basename(argv[0]) if argv else ""
-    shell = len(argv) == 3 and name.removesuffix(".exe") in SHELLS
-    if shell and argv[1] in SHELL_FLAGS:
-        return argv[2]
+    if len(argv) < 3:
+        return shlex.join(argv)
+    name = PureWindowsPath(argv[0]).name.lower().removesuffix(".exe")
+    options = argv[1:-2]
+    if (
+        name in SHELLS
+        and argv[-2] in SHELL_FLAGS
+        and all(o.startswith("-") for o in options)
+    ):
+        return argv[-1]
     return shlex.join(argv)
 
 

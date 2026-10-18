@@ -636,6 +636,14 @@ class ExecutionItemTest(unittest.TestCase):
         for argv in (
             ["/usr/bin/fish", "-c", "ls -la"],
             ["pwsh.exe", "-Command", "ls -la"],
+            # The argv Codex documents for PowerShell.
+            ["pwsh", "-NoLogo", "-NoProfile", "-Command", "ls -la"],
+            [
+                r"C:\Program Files\PowerShell\7\pwsh.exe",
+                "-NoProfile",
+                "-Command",
+                "ls -la",
+            ],
         ):
             with self.subTest(argv=argv):
                 item = {**self.ran("i1", "ls -la"), "command": argv}
