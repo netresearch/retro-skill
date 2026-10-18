@@ -55,7 +55,9 @@ approval.
    same transcript (`uv run`, because its header declares the tree-sitter
    parser; plain `python3` stops with a message): review threads, bot reviews,
    and comments on the session's PRs/MRs, their linked issues, plus normalized tracker feedback supplied via
-   `--feedback-file` (input for B18–B20, D4, D6). PRs a script opened (a
+   `--feedback-file` (input for B18–B20, D4, D6). The subagents' transcripts
+   (`<session id>/subagents/agent-*.jsonl`) are read with it; `transcripts`
+   in the output lists every file read. PRs a script opened (a
    fleet driver's `opened.jsonl`) are not in the transcript: pass that file
    with `--pr-list`. Resolve relevant opaque
    hints through the owning integration, never by key shape. See

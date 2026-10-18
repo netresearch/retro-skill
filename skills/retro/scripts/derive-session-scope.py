@@ -282,9 +282,24 @@ MCP_WRITE_RE = re.compile(
 )
 # Key-shaped arguments are only reference candidates, never tracker identities.
 # Exclude common standards to reduce noise, not to infer a provider by exclusion.
+# The set includes jira-integration's NON_JIRA_KEY_PREFIXES (3.34.0): SPDX
+# licence ids with a version (`GPL-3` from `GPL-3.0-or-later`), MD5 and the
+# documentation placeholders PROJ-/EXAMPLE-. BSD stays: it is a real project key.
 TICKET_RE = re.compile(r"\b(?P<key>[A-Z][A-Z0-9]{1,9}-\d+)\b")
 NOT_A_TICKET_PREFIX = frozenset(
     {
+        "MD5",
+        "PROJ",
+        "EXAMPLE",
+        "GPL",
+        "AGPL",
+        "LGPL",
+        "MPL",
+        "EPL",
+        "EUPL",
+        "CDDL",
+        "BSL",
+        "BUSL",
         "CVE",
         "CWE",
         "GHSA",

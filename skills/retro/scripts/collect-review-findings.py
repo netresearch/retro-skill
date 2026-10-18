@@ -67,6 +67,12 @@ A lookup that fails (rate limit, unknown id) leaves the write in
 `unresolved_forge_commands`, with the reason in
 `review_thread_lookup_failures` and on its `UNRESOLVED` line.
 
+A subagent keeps its own transcript, `<session id>/subagents/agent-*.jsonl`
+beside `<session id>.jsonl` (a Workflow's agents in `subagents/workflows/wf_*/`).
+When `--transcript-file` is named by its session UUID, every one below that
+directory is read with it, and its writes count like the main loop's;
+`transcripts` in the output lists the files read, the main transcript first.
+
 Failure stays distinguishable from silence: an artefact that could not be read
 is listed with `fetched: false` and the error, never as an artefact with no
 findings. Comments from before `--since` (default: the transcript's first
@@ -1342,6 +1348,12 @@ def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
     if result["since"]:
         line += f"; since {result['since']}"
     lines = [line]
+    transcripts = result.get("transcripts") or []
+    if transcripts:
+        line = f"transcripts read: 1 main + {len(transcripts) - 1} subagent"
+        if len(transcripts) > 1:
+            line += " (--output-format json lists them)"
+        lines.append(line)
     if result["findings_before_since"]:
         lines.append(
             f"{result['findings_before_since']} comments predate --since and are not listed."
@@ -1382,7 +1394,7 @@ TEXT_UNRESOLVED_LIMIT = 20
 def _unresolved_lines(
     commands: list[str], reasons: dict[str, str] | None = None
 ) -> list[str]:
-    """Forge writes whose target the transcript does not name: unknown, never
+    """Forge writes whose target no transcript read names: unknown, never
     "nothing written". Each is a command to read before the retro is complete.
     A review-thread write whose lookup failed says why."""
     reasons = reasons or {}
@@ -1487,13 +1499,75 @@ def with_thread_prs(
     return merged + [p for p in prs if p["url"] not in known]
 
 
+SESSION_ID_RE = re.compile(
+    r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", re.IGNORECASE
+)
+
+
+def subagent_transcripts(transcript: Path) -> list[Path]:
+    """The session's subagent transcripts: Claude Code keeps each at
+    `<session id>/subagents/agent-<agent id>.jsonl` beside `<session id>.jsonl`
+    (agents an agent started included, in the same directory), and a Workflow's
+    agents one level deeper, at `subagents/workflows/wf_*/agent-*.jsonl`. The
+    `.meta.json` files and a workflow's `journal.jsonl` are no transcripts.
+    Resolved first: a symlink to the session file names the real directory.
+
+    Only a session file named by its UUID has subagents: a converted transcript
+    at a fixed path (`/tmp/retro-codex-session.jsonl`) must not pick up a
+    `subagents/` directory somebody else created beside it."""
+    session = transcript.resolve()
+    if not SESSION_ID_RE.fullmatch(session.stem):
+        return []
+    directory = session.with_suffix("") / "subagents"
+    if not directory.is_dir():
+        return []
+    # A symlink out of the directory (another session's transcript) is not
+    # this session's; it would file that session's writes under this one.
+    return sorted(
+        p
+        for p in directory.rglob("agent-*.jsonl")
+        if p.is_file() and p.resolve().is_relative_to(directory)
+    )
+
+
+def scan_transcripts(paths: list[Path], gitlab_host: str) -> dict[str, Any]:
+    """`scope.collect_artefacts` over several transcripts of one session.
+
+    An artefact named in more than one keeps its strongest origin, so a PR a
+    subagent created and the main loop only mentioned counts as created."""
+    by_url: dict[str, dict[str, Any]] = {}
+    merged: dict[str, Any] = {
+        "tickets": set(),
+        "reference_candidates": [],
+        "unresolved_forge_commands": [],
+        "review_thread_writes": [],
+    }
+    for path in paths:
+        data = scope.collect_artefacts(path, gitlab_host)
+        for item in data["artefacts"]:
+            have = by_url.get(item["url"])
+            rank = scope.ORIGIN_RANK
+            if not have or rank[item["origin"]] > rank[have["origin"]]:
+                by_url[item["url"]] = item
+        merged["tickets"] |= set(data["tickets"])
+        merged["reference_candidates"] += data["reference_candidates"]
+        merged["unresolved_forge_commands"] += data["unresolved_forge_commands"]
+        merged["review_thread_writes"] += data["review_thread_writes"]
+    merged["tickets"] = sorted(merged["tickets"])
+    merged["artefacts"] = sorted(
+        by_url.values(), key=lambda a: (-scope.ORIGIN_RANK[a["origin"]], a["url"])
+    )
+    return merged
+
+
 def _items_from_args(
     args, gitlab_host: str, listed: list[dict[str, Any]], run: Runner = default_runner
 ):
     """The artefacts to read, how many mentioned ones were skipped, the
-    transcript's start, the forge writes whose target it does not name, and
+    transcript's start, the forge writes whose target no transcript names,
     what the review-thread lookup found (`review_threads`) and could not
-    (`review_thread_lookup_failures`).
+    (`review_thread_lookup_failures`), and the transcripts read: the given
+    one and its subagents' (`subagent_transcripts`).
     A listed PR the transcript already names keeps the transcript's origin.
     Raises ValueError on a bad transcript path or ref, before any network call."""
     items: list[dict[str, Any]] = []
@@ -1502,6 +1576,7 @@ def _items_from_args(
         "review_threads": {},
         "review_thread_lookup_failures": [],
     }
+    transcripts: list[Path] = []
     listed_urls = {i["url"] for i in listed}
     refs = [parse_ref(ref) for ref in args.ref]
     for ref, item in zip(args.ref, refs):
@@ -1512,7 +1587,11 @@ def _items_from_args(
     if args.transcript_file:
         if not args.transcript_file.is_file():
             raise ValueError(f"no such transcript: {args.transcript_file}")
-        data = scope.collect_artefacts(args.transcript_file, gitlab_host)
+        transcripts = [
+            args.transcript_file,
+            *subagent_transcripts(args.transcript_file),
+        ]
+        data = scan_transcripts(transcripts, gitlab_host)
         prs, unresolved, failures, urls = resolve_review_thread_writes(
             data["review_thread_writes"], data["unresolved_forge_commands"], run
         )
@@ -1525,10 +1604,11 @@ def _items_from_args(
                 for a in data["artefacts"]
                 if a["origin"] == "mentioned" and a["url"] not in listed_urls
             )
+        # The main loop starts the session; a subagent starts after it.
         start = transcript_start(args.transcript_file)
     # After the transcript's own: collect() reads a URL once, first come.
     items += listed + refs
-    return items, mentioned_skipped, start, unresolved, threads
+    return items, mentioned_skipped, start, unresolved, threads, transcripts
 
 
 def main(argv: list[str]) -> int:
@@ -1581,9 +1661,14 @@ def main(argv: list[str]) -> int:
     try:
         external = load_feedback(args.feedback_file)
         listed = load_pr_list(args.pr_list, gitlab_hosts)
-        items, mentioned_skipped, start, unresolved, threads = _items_from_args(
-            args, gitlab_hosts[0], listed
-        )
+        (
+            items,
+            mentioned_skipped,
+            start,
+            unresolved,
+            threads,
+            transcripts,
+        ) = _items_from_args(args, gitlab_hosts[0], listed)
     except ValueError as exc:
         # The message quotes the rejected input: a --pr-list line or a
         # --feedback-file URL, which can carry a token in its query string.
@@ -1602,6 +1687,10 @@ def main(argv: list[str]) -> int:
     # Review threads named only by node id: the PR each one resolved to, and
     # why a lookup failed. A failed write stays in unresolved_forge_commands.
     result.update(_masked_text(threads))
+    # The population the artefact list was derived from, so a reader can tell
+    # "no PRs" from "the transcripts that held them were not read".
+    # Masked like every other string in the output (set after collect()'s pass).
+    result["transcripts"] = [_masking.mask(str(p)) for p in transcripts]
     result["complete"] = result["complete"] and not unresolved
     if args.output_format == "json":
         print(json.dumps(result, indent=2, default=str))

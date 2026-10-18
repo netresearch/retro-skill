@@ -2731,6 +2731,27 @@ class ReviewThreadWriteTest(unittest.TestCase):
         self.assertNotIn(self.THREAD, lookup[4])
         self.assertIn(f"i0={self.THREAD}", lookup)
 
+    def test_a_subagents_review_thread_write_is_resolved(self):
+        # The write sits in a subagent's transcript, not the main one.
+        root = Path(TMP.name) / f"project{next(_COUNTER)}"
+        main = root / "70c16b9c-df1d-4db4-918e-10a8a9713b60.jsonl"
+        (main.with_suffix("") / "subagents").mkdir(parents=True)
+        _transcript([]).rename(main)
+        _transcript([({"command": self.RESOLVE}, "true")]).rename(
+            main.with_suffix("") / "subagents" / "agent-e.jsonl"
+        )
+
+        def answer(command):
+            data = {"data": {"t0": self._node(self.PR, 41)}}
+            return subprocess.CompletedProcess(command, 0, json.dumps(data), "")
+
+        _, out, _ = self._main(main, answer, "--output-format", "json")
+        result = json.loads(out)
+        self.assertEqual(result["review_threads"], {self.THREAD: self.PR})
+        self.assertEqual(result["unresolved_forge_commands"], [])
+        (pr,) = [a for a in result["artefacts"] if a["url"] == self.PR]
+        self.assertEqual(pr["origin"], "acted")
+
     def test_a_pr_the_transcript_only_mentioned_becomes_acted(self):
         transcript = _transcript(
             [({"command": self.RESOLVE}, "true")], texts=[f"see {self.PR}"]
@@ -2886,6 +2907,231 @@ class ReviewThreadWriteTest(unittest.TestCase):
         self.assertEqual(
             data["unresolved_forge_commands"], [dss.squeeze(self.ALIASED, 200)]
         )
+
+
+class LicenceIdNotATicketTest(unittest.TestCase):
+    """An SPDX licence id with a version is not a ticket key (2026-10-18)."""
+
+    def test_the_recorded_grep_for_a_licence_is_no_reference(self):
+        # Copied from the session that reported `GPL-3` as UNRESOLVED: a
+        # literal grep argument, corroborated by the licence in its output.
+        cmd = "git -C .bare grep -n -i -E 'GPL-3' origin/main -- docs | head; echo ---"
+        result = "origin/main:docs/LICENSE.md:3:License: GPL-3.0-or-later\n---"
+        data = dss.collect_artefacts(_transcript([({"command": cmd}, result)]))
+        self.assertEqual((data["reference_candidates"], data["tickets"]), ([], []))
+
+    def test_a_licence_in_a_title_or_branch_is_no_ticket(self):
+        self.assertEqual(crf.tickets_named("GPL-3: relicense", "chore/GPL-3-x"), [])
+        # A title that only carries the licence in running text never matched.
+        self.assertEqual(crf.tickets_named("chore: GPL-3.0-or-later", ""), [])
+
+    def test_every_excluded_prefix_and_no_real_key(self):
+        text = "AGPL-3 LGPL-2 MPL-2 EPL-2 EUPL-1 CDDL-1 BSL-1 BUSL-1 MD5-1 PROJ-456"
+        # BSD stays a key: it is a real project key, as in jira-integration.
+        found = dss.tickets_in(f"{text} EXAMPLE-1 NRS-1 BSD-3")
+        self.assertEqual(found, {"NRS-1", "BSD-3"})
+
+
+class SubagentTranscriptTest(unittest.TestCase):
+    """Subagents keep their own transcript at
+    `<project dir>/<session id>/subagents/agent-<id>.jsonl`; their forge writes
+    are the session's (2026-10-18: 4 artefacts found, 266 with them)."""
+
+    PR = "https://github.com/netresearch/typo3-ddev-skill/pull/86"
+
+    def _session(self, subagent: bool = True) -> tuple[Path, Path | None]:
+        root = Path(TMP.name) / f"project{next(_COUNTER)}"
+        root.mkdir()
+        sid = "e72080f1-e094-41a8-bcee-7378e1f24a72"
+        main = root / f"{sid}.jsonl"
+        lines = [
+            {"timestamp": "2026-09-30T09:00:00.000Z", "message": {"content": "start"}},
+            # The main loop only names the PR in its report: mentioned.
+            {"message": {"content": [{"type": "text", "text": f"opened {self.PR}"}]}},
+        ]
+        main.write_text("\n".join(json.dumps(x) for x in lines), encoding="utf-8")
+        if not subagent:
+            return main, None
+        subagents = root / sid / "subagents"
+        subagents.mkdir(parents=True)
+        # The recorded pair from agent-a03088ed73896d6f3.jsonl of that session.
+        use = {
+            "type": "tool_use",
+            "id": "toolu_01LTTsdY6Qp1bJkypS7Pvc8d",
+            "name": "Bash",
+            "input": {
+                "command": 'gh pr create -R netresearch/typo3-ddev-skill --draft --base main --head chore/openssf-best-practices --title "chore: implement OpenSSF best-practice measures" --body-file /tmp/pr.md',
+                "description": "Create draft pull request",
+            },
+            "caller": {"type": "direct"},
+        }
+        answer = {
+            "tool_use_id": "toolu_01LTTsdY6Qp1bJkypS7Pvc8d",
+            "type": "tool_result",
+            "content": self.PR,
+            "is_error": False,
+        }
+        common = {"isSidechain": True, "agentId": "a03088ed73896d6f3", "sessionId": sid}
+        sub = subagents / "agent-a03088ed73896d6f3.jsonl"
+        sub.write_text(
+            "\n".join(
+                json.dumps(dict(common, **x))
+                for x in (
+                    {
+                        "type": "assistant",
+                        "timestamp": "2026-09-30T09:21:48.616Z",
+                        "message": {"content": [use]},
+                    },
+                    {
+                        "type": "user",
+                        "timestamp": "2026-09-30T09:21:52.556Z",
+                        "message": {"content": [answer]},
+                    },
+                )
+            ),
+            encoding="utf-8",
+        )
+        # The harness writes metadata beside each transcript; it is no transcript.
+        (subagents / "agent-a03088ed73896d6f3.meta.json").write_text(
+            '{"agentType": "general-purpose"}', encoding="utf-8"
+        )
+        return main, sub
+
+    def _main(self, transcript: Path, fmt: str = "json") -> str:
+        def fake(command, **_):
+            return subprocess.CompletedProcess(command, 1, "", "HTTP 404: Not Found")
+
+        out = io.StringIO()
+        with (
+            mock.patch.object(crf.subprocess, "run", side_effect=fake),
+            contextlib.redirect_stdout(out),
+        ):
+            crf.main(
+                ["x", "--transcript-file", str(transcript), "--output-format", fmt]
+            )
+        return out.getvalue()
+
+    def test_a_pr_a_subagent_created_is_read_and_its_transcript_named(self):
+        main, sub = self._session()
+        result = json.loads(self._main(main))
+        origins = {a["url"]: a["origin"] for a in result["artefacts"]}
+        self.assertEqual(origins, {self.PR: "created"})
+        self.assertEqual(result["transcripts"], [str(main), str(sub)])
+        # The main loop starts the session; the subagent's 09:21 does not.
+        self.assertEqual(result["since"], "2026-09-30T09:00:00+00:00")
+
+    def test_the_text_names_the_population_and_skips_nothing_created(self):
+        main, _ = self._session()
+        text = self._main(main, "text")
+        self.assertIn("transcripts read: 1 main + 1 subagent", text)
+        # Created by the subagent, so not "only mentioned".
+        self.assertNotIn("only mentioned", text)
+
+    def test_the_strongest_origin_wins_in_either_order(self):
+        # Reverse of the fixture: the main loop creates, a subagent only
+        # mentions. "Last wins" would turn the PR into "mentioned".
+        main = self._as_session(
+            _transcript(
+                [
+                    (
+                        {"command": "gh pr create -R o/r --fill"},
+                        "https://github.com/o/r/pull/9",
+                    )
+                ]
+            )
+        )
+        subagents = main.with_suffix("") / "subagents"
+        subagents.mkdir(parents=True)
+        (subagents / "agent-b.jsonl").write_text(
+            json.dumps({"message": {"content": "see https://github.com/o/r/pull/9"}}),
+            encoding="utf-8",
+        )
+        result = json.loads(self._main(main))
+        self.assertEqual(len(result["transcripts"]), 2)
+        origins = {a["url"]: a["origin"] for a in result["artefacts"]}
+        self.assertEqual(origins, {"https://github.com/o/r/pull/9": "created"})
+
+    def _as_session(self, transcript: Path) -> Path:
+        """`transcript` moved to a fresh directory under a session UUID."""
+        root = Path(TMP.name) / f"project{next(_COUNTER)}"
+        root.mkdir()
+        return transcript.rename(root / "70c16b9c-df1d-4db4-918e-10a8a9713b60.jsonl")
+
+    def test_a_subagents_unresolved_writes_and_references_are_kept(self):
+        main, _ = self._session()
+        agent = _transcript(
+            [
+                ({"command": "gh pr edit --add-label x"}, ""),
+                (
+                    {"command": 'python3 jira-comment.py add NRS-4763 "done"'},
+                    "✓ Comment added to NRS-4763",
+                ),
+            ]
+        )
+        agent = agent.rename(main.with_suffix("") / "subagents" / "agent-d.jsonl")
+        result = json.loads(self._main(main))
+        self.assertEqual(
+            result["unresolved_forge_commands"], ["gh pr edit --add-label x"]
+        )
+        self.assertFalse(result["complete"])
+        refs = [a for a in result["artefacts"] if a["status"] == "unresolved"]
+        self.assertEqual([a["url"] for a in refs], ["NRS-4763"])
+        self.assertTrue(refs[0]["context"].startswith(agent.resolve().as_uri()))
+
+    def test_a_converted_transcript_at_a_fixed_path_has_no_subagents(self):
+        # workflow.md writes a Codex conversion to /tmp/retro-codex-session.jsonl;
+        # a subagents/ directory beside it is nobody's session.
+        main, _ = self._session()
+        fixed = main.with_name("retro-codex-session.jsonl")
+        main.rename(fixed)
+        main.with_suffix("").rename(fixed.with_suffix(""))
+        result = json.loads(self._main(fixed))
+        self.assertEqual(result["transcripts"], [str(fixed)])
+
+    def test_workflow_agents_one_level_deeper_are_read(self):
+        # The Workflow tool keeps its agents at
+        # subagents/workflows/wf_<id>/agent-<id>.jsonl beside a journal.jsonl.
+        main, sub = self._session()
+        run = sub.parent / "workflows" / "wf_1"
+        run.mkdir(parents=True)
+        (run / "journal.jsonl").write_text(sub.read_text(encoding="utf-8"))
+        nested = run / "agent-c.jsonl"
+        nested.write_text(sub.read_text(encoding="utf-8"), encoding="utf-8")
+        result = json.loads(self._main(main))
+        self.assertEqual(result["transcripts"], [str(main), str(sub), str(nested)])
+
+    def test_a_symlinked_transcript_finds_the_real_subagents(self):
+        main, sub = self._session()
+        link = Path(TMP.name) / f"link{next(_COUNTER)}.jsonl"
+        link.symlink_to(main)
+        result = json.loads(self._main(link))
+        self.assertEqual(result["transcripts"], [str(link), str(sub.resolve())])
+
+    def test_an_agent_link_out_of_the_session_is_not_read(self):
+        # CodeRabbit on #185: a symlink to another session's transcript would
+        # file that session's writes under this one.
+        main, sub = self._session()
+        other = _transcript([({"command": "gh pr edit 3 -R o/r --add-label x"}, "")])
+        (sub.parent / "agent-z.jsonl").symlink_to(other)
+        result = json.loads(self._main(main))
+        self.assertEqual(result["transcripts"], [str(main), str(sub)])
+
+    def test_an_uppercase_session_id_has_subagents(self):
+        main, sub = self._session()
+        upper = main.with_name(main.name.upper().replace(".JSONL", ".jsonl"))
+        main.rename(upper)
+        main.with_suffix("").rename(upper.with_suffix(""))
+        result = json.loads(self._main(upper))
+        moved = upper.with_suffix("") / "subagents" / sub.name
+        self.assertEqual(result["transcripts"], [str(upper), str(moved)])
+
+    def test_without_a_subagents_directory_only_the_main_transcript(self):
+        main, _ = self._session(subagent=False)
+        result = json.loads(self._main(main))
+        self.assertEqual(result["transcripts"], [str(main)])
+        self.assertEqual(result["artefacts"], [])
+        text = self._main(main, "text")
+        self.assertIn("transcripts read: 1 main + 0 subagent\n", text)
 
 
 if __name__ == "__main__":
