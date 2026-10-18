@@ -1499,67 +1499,6 @@ def with_thread_prs(
     return merged + [p for p in prs if p["url"] not in known]
 
 
-SESSION_ID_RE = re.compile(
-    r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", re.IGNORECASE
-)
-
-
-def subagent_transcripts(transcript: Path) -> list[Path]:
-    """The session's subagent transcripts: Claude Code keeps each at
-    `<session id>/subagents/agent-<agent id>.jsonl` beside `<session id>.jsonl`
-    (agents an agent started included, in the same directory), and a Workflow's
-    agents one level deeper, at `subagents/workflows/wf_*/agent-*.jsonl`. The
-    `.meta.json` files and a workflow's `journal.jsonl` are no transcripts.
-    Resolved first: a symlink to the session file names the real directory.
-
-    Only a session file named by its UUID has subagents: a converted transcript
-    at a fixed path (`/tmp/retro-codex-session.jsonl`) must not pick up a
-    `subagents/` directory somebody else created beside it."""
-    session = transcript.resolve()
-    if not SESSION_ID_RE.fullmatch(session.stem):
-        return []
-    directory = session.with_suffix("") / "subagents"
-    if not directory.is_dir():
-        return []
-    # A symlink out of the directory (another session's transcript) is not
-    # this session's; it would file that session's writes under this one.
-    return sorted(
-        p
-        for p in directory.rglob("agent-*.jsonl")
-        if p.is_file() and p.resolve().is_relative_to(directory)
-    )
-
-
-def scan_transcripts(paths: list[Path], gitlab_host: str) -> dict[str, Any]:
-    """`scope.collect_artefacts` over several transcripts of one session.
-
-    An artefact named in more than one keeps its strongest origin, so a PR a
-    subagent created and the main loop only mentioned counts as created."""
-    by_url: dict[str, dict[str, Any]] = {}
-    merged: dict[str, Any] = {
-        "tickets": set(),
-        "reference_candidates": [],
-        "unresolved_forge_commands": [],
-        "review_thread_writes": [],
-    }
-    for path in paths:
-        data = scope.collect_artefacts(path, gitlab_host)
-        for item in data["artefacts"]:
-            have = by_url.get(item["url"])
-            rank = scope.ORIGIN_RANK
-            if not have or rank[item["origin"]] > rank[have["origin"]]:
-                by_url[item["url"]] = item
-        merged["tickets"] |= set(data["tickets"])
-        merged["reference_candidates"] += data["reference_candidates"]
-        merged["unresolved_forge_commands"] += data["unresolved_forge_commands"]
-        merged["review_thread_writes"] += data["review_thread_writes"]
-    merged["tickets"] = sorted(merged["tickets"])
-    merged["artefacts"] = sorted(
-        by_url.values(), key=lambda a: (-scope.ORIGIN_RANK[a["origin"]], a["url"])
-    )
-    return merged
-
-
 def _items_from_args(
     args, gitlab_host: str, listed: list[dict[str, Any]], run: Runner = default_runner
 ):
@@ -1567,7 +1506,7 @@ def _items_from_args(
     transcript's start, the forge writes whose target no transcript names,
     what the review-thread lookup found (`review_threads`) and could not
     (`review_thread_lookup_failures`), and the transcripts read: the given
-    one and its subagents' (`subagent_transcripts`).
+    one and its subagents' (`scope.session_transcripts`).
     A listed PR the transcript already names keeps the transcript's origin.
     Raises ValueError on a bad transcript path or ref, before any network call."""
     items: list[dict[str, Any]] = []
@@ -1587,11 +1526,8 @@ def _items_from_args(
     if args.transcript_file:
         if not args.transcript_file.is_file():
             raise ValueError(f"no such transcript: {args.transcript_file}")
-        transcripts = [
-            args.transcript_file,
-            *subagent_transcripts(args.transcript_file),
-        ]
-        data = scan_transcripts(transcripts, gitlab_host)
+        transcripts = scope.session_transcripts(args.transcript_file)
+        data = scope.scan_transcripts(transcripts, gitlab_host)
         prs, unresolved, failures, urls = resolve_review_thread_writes(
             data["review_thread_writes"], data["unresolved_forge_commands"], run
         )

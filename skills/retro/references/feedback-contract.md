@@ -145,7 +145,11 @@ owning project, but are not universal rules of this skill.
 
 The report distinguishes `UNRESOLVED REF`, `UNSUPPORTED`, `NOT READ`, and
 `TRUNCATED`. JSON reports `complete: false` for any of those, or for unresolved
-forge writes. Never translate incomplete coverage into "no feedback" or a green
+forge writes (`unresolved_forge_commands`): calls of the session or its
+subagents that wrote to a PR, MR or issue whose own output does not name the
+target. `gh pr create … && gh pr ready <branch> …` is not one of them, since the
+create printed its URL; a create whose output was discarded or that reported
+a failure is. Never translate incomplete coverage into "no feedback" or a green
 Done gate. A human may explicitly reject an irrelevant candidate with a reason;
 Done mode records that as a *rejected* row in gate 2, and the collector reports
 the candidate again on the next run.

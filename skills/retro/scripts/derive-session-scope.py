@@ -27,6 +27,12 @@ So this reads the transcript and emits the scope line. Every path a `git -C`,
 a `cd`, a file write or a `--repo`/`-R` argument named, resolved to its
 repository root, plus the days the session spans and the artefacts it created.
 
+A subagent keeps its own transcript, `<session id>/subagents/agent-*.jsonl`
+beside `<session id>.jsonl` (a Workflow's agents in `subagents/workflows/wf_*/`).
+When `--transcript-file` is named by its session UUID, every one below that
+directory is read with it; `transcripts` in the output lists the files read,
+the main transcript first. collect-review-findings.py reads the same set.
+
 Usage:
     derive-session-scope.py --transcript-file <session.jsonl> [--output-format text|json]
         [--gitlab-host <host>]
@@ -133,6 +139,13 @@ FORGE_WRITE_RE = re.compile(
     r"(?P<verb>create|edit|update|comment|note|merge|ready|review|close|reopen|approve"
     r"|rebase|delete)\b"
 )
+# gh writes whose own report is a status line (`✓ Pull request o/r#5 is
+# marked as "ready for review"`, `✓ Merged pull request #5 (…)`), never a URL
+# alone on a line, which is what `gh pr create` prints. Measured over the 130
+# successful single-write calls of these verbs in session e72080f1
+# (2026-10-18): none printed a URL alone on a line. `review` is left out:
+# `--comment` and `--request-changes` report with `-`/`+`, not a status line.
+STATUS_REPORT_VERBS = frozenset({"ready", "merge"})
 API_WRITE_RE = re.compile(
     r"\b(?P<cli>gh|glab)\s+api\b[^\n;|&]*?"
     r"(?:(?:-X|--method)[\s=]*(?:POST|PATCH|PUT|DELETE)\b"
@@ -866,6 +879,37 @@ def refused(result: str, is_error: bool) -> bool:
     )
 
 
+def _write_number(command: str, write: re.Match) -> re.Match | None:
+    """The number a `gh|glab pr|mr|issue <verb> N` names right after its verb.
+
+    The number must be the whole argument: `123-fix` is a branch, not PR 123."""
+    return re.match(r"\s+(\d+)(?=$|[\s;&|)])", command[write.end() :])
+
+
+def _reports_on_status_line(command: str, write: re.Match) -> bool:
+    """A gh `ready`/`merge` that names no number (`gh pr ready <branch>`):
+    it reports on a status line, never a URL alone on a line, so it takes
+    only status lines (every one of its repository: with two such writes
+    and two creates on one repository, the second create stays unresolved)."""
+    return (
+        write.groupdict().get("cli") == "gh"
+        and write.groupdict().get("verb") in STATUS_REPORT_VERBS
+        and not _write_number(command, write)
+    )
+
+
+def _write_order(command: str, write: re.Match) -> int:
+    """Every write before the creates, so a create never takes the URL of a
+    PR an edit, a comment or a merge in the same call reported. The one
+    exception is a write that `_reports_on_status_line`: it cannot take a
+    URL line, so it follows the creates in command order and a create in
+    `gh pr create … && gh pr ready <branch>` keeps the URL it printed."""
+    verb = write.groupdict().get("verb")
+    if verb == "create" or _reports_on_status_line(command, write):
+        return 1
+    return 0
+
+
 def _segment(command: str, write: re.Match) -> str:
     """The write's own simple command: up to the next newline, `;`, `|` or `&`
     outside quoted text and outside a later `$(…)`, as the parser reads it."""
@@ -873,20 +917,30 @@ def _segment(command: str, write: re.Match) -> str:
 
 
 def _named_lines(
-    result: str, cli: str, host: str, noun: str = ""
+    result: str, cli: str, host: str, noun: str = "", form: str = ""
 ) -> list[tuple[dict[str, Any] | None, str, int]]:
     """What the output's report lines name, in order.
 
     Each entry is (artefact, "", 0) for a URL, `owner/repo#N` or a JSON
-    `html_url`, or (None, sep, N) for a bare `#N` / `!N` on a status line."""
+    `html_url`, or (None, sep, N) for a bare `#N` / `!N` on a status line.
+    `form` narrows them to what one kind of write prints: "url" keeps URLs
+    (alone on a line, a JSON `html_url`, or on a status line such as glab's
+    `- Creating issue in g/p https://…`) and drops `o/r#N` / `#N`; "status"
+    keeps status lines only; "" keeps everything."""
     found: list[tuple[dict[str, Any] | None, str, int]] = []
+    previous = ""
     for line in result.splitlines():
+        # `gh pr create` that failed: `a pull request for branch "x" into
+        # branch "main" already exists:` and the existing PR's URL below it.
+        existing = previous.rstrip().endswith("already exists:")
+        previous = line
         text = line.strip().strip("`'\"").rstrip(".,")
         html = HTML_URL_LINE_RE.match(line) or _json_url(line)
         if html:
             text = html["url"]
         if text.startswith("https://") and " " not in text:
-            found += [(a, "", 0) for a in artefacts_in_text(text)]
+            if form != "status" and not (form == "url" and existing):
+                found += [(a, "", 0) for a in artefacts_in_text(text)]
             continue
         if not STATUS_LINE_RE.match(line):
             continue
@@ -894,7 +948,7 @@ def _named_lines(
             continue  # `! Pull request o/r#5 is already queued`: nothing written
         urls = artefacts_in_text(line)
         found += [(a, "", 0) for a in urls]
-        if urls:
+        if urls or form == "url":
             continue
         slugs = list(SLUG_REF_RE.finditer(line))
         found += [
@@ -1168,11 +1222,20 @@ class _Call:
         return taken
 
     def subcommand_targets(self, write: re.Match) -> list[dict[str, Any]] | None:
-        """What `gh|glab pr|mr|issue <verb>` wrote to; None when unknown."""
+        """What `gh|glab pr|mr|issue <verb>` wrote to; None when unknown.
+
+        A create takes only a URL line, the form it prints. A gh write that
+        reports on a status line (`STATUS_REPORT_VERBS`) and names no number
+        takes only status lines, so a create in the same call keeps its URL."""
         cli, noun, verb = write["cli"], write["noun"], write["verb"]
         segment = _segment(self.command, write)
         slug = FORGE_RE.search(segment)
-        number = re.match(r"\s+(\d+)\b", self.command[write.end() :])
+        number = _write_number(self.command, write)
+        form = ""
+        if verb == "create":
+            form = "url"
+        elif _reports_on_status_line(self.command, write):
+            form = "status"
         repo = (
             _repo(slug["slug"], self.host(cli), bool(slug["scheme"]))
             if slug
@@ -1184,7 +1247,7 @@ class _Call:
         wanted = _kind(cli, noun, "")
         found = []
         same_number = False  # the output names this write's number at all
-        for ref, sep, bare in _named_lines(self.result, cli, host, noun):
+        for ref, sep, bare in _named_lines(self.result, cli, host, noun, form):
             if ref is None:
                 if not slug:
                     continue  # `#N` needs the repository from this write's `-R`
@@ -1451,11 +1514,7 @@ def _forge_write_artefacts(
         return [], False, []
     command = _joined(command)
     call = _Call(command, result, gitlab_host, failed)
-    # Numbered writes first, so a create never takes the URL of a PR an edit
-    # or a merge in the same call reported.
-    writes = sorted(
-        _writes(command), key=lambda w: w.groupdict().get("verb") == "create"
-    )
+    writes = sorted(_writes(command), key=lambda w: _write_order(command, w))
     wrapper = _wrapper_targets(command, result)
     found: list[dict[str, Any]] = list(wrapper or [])
     threads: list[str] = []
@@ -1709,14 +1768,93 @@ def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]
     }
 
 
+SESSION_ID_RE = re.compile(
+    r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", re.IGNORECASE
+)
+
+
+def subagent_transcripts(transcript: Path) -> list[Path]:
+    """The session's subagent transcripts: Claude Code keeps each at
+    `<session id>/subagents/agent-<agent id>.jsonl` beside `<session id>.jsonl`
+    (agents an agent started included, in the same directory), and a Workflow's
+    agents one level deeper, at `subagents/workflows/wf_*/agent-*.jsonl`. The
+    `.meta.json` files and a workflow's `journal.jsonl` are no transcripts.
+    Resolved first: a symlink to the session file names the real directory.
+
+    Only a session file named by its UUID has subagents: a converted transcript
+    at a fixed path (`/tmp/retro-codex-session.jsonl`) must not pick up a
+    `subagents/` directory somebody else created beside it."""
+    session = transcript.resolve()
+    if not SESSION_ID_RE.fullmatch(session.stem):
+        return []
+    directory = session.with_suffix("") / "subagents"
+    if not directory.is_dir():
+        return []
+    # A symlink out of the directory (another session's transcript) is not
+    # this session's; it would file that session's writes under this one.
+    return sorted(
+        p
+        for p in directory.rglob("agent-*.jsonl")
+        if p.is_file() and p.resolve().is_relative_to(directory)
+    )
+
+
+def session_transcripts(transcript: Path) -> list[Path]:
+    """The transcript and its subagents', the main one first."""
+    return [transcript, *subagent_transcripts(transcript)]
+
+
+def scan_transcripts(paths: list[Path], gitlab_host: str) -> dict[str, Any]:
+    """`collect_artefacts` over several transcripts of one session.
+
+    An artefact named in more than one keeps its strongest origin, so a PR a
+    subagent created and the main loop only mentioned counts as created."""
+    by_url: dict[str, dict[str, Any]] = {}
+    merged: dict[str, Any] = {
+        "tickets": set(),
+        "reference_candidates": [],
+        "unresolved_forge_commands": [],
+        "review_thread_writes": [],
+    }
+    for path in paths:
+        data = collect_artefacts(path, gitlab_host)
+        for item in data["artefacts"]:
+            have = by_url.get(item["url"])
+            if not have or ORIGIN_RANK[item["origin"]] > ORIGIN_RANK[have["origin"]]:
+                by_url[item["url"]] = item
+        merged["tickets"] |= set(data["tickets"])
+        merged["reference_candidates"] += data["reference_candidates"]
+        merged["unresolved_forge_commands"] += data["unresolved_forge_commands"]
+        merged["review_thread_writes"] += data["review_thread_writes"]
+    merged["tickets"] = sorted(merged["tickets"])
+    merged["artefacts"] = sorted(
+        by_url.values(), key=lambda a: (-ORIGIN_RANK[a["origin"]], a["url"])
+    )
+    return merged
+
+
 def collect(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
-    commands, file_paths, days = _read_transcript(transcript)
+    """The scope of the session `transcript` belongs to: its own events and
+    every subagent's (`session_transcripts`)."""
+    transcripts = session_transcripts(transcript)
+    commands: list[tuple[str, str | None]] = []
+    file_paths: set[str] = set()
+    days: set[str] = set()
+    for path in transcripts:
+        more, paths, dates = _read_transcript(path)
+        commands += more
+        file_paths |= paths
+        days |= dates
     candidates, forges, tags = _scan_commands(commands)
     roots, unresolved = _resolve_roots(candidates | file_paths)
-    forge_artefacts = collect_artefacts(transcript, gitlab_host)
+    forge_artefacts = scan_transcripts(transcripts, gitlab_host)
 
     return {
         "transcript": str(transcript),
+        # The population the lists below were derived from, the main
+        # transcript first, so "no repository" and "the transcript that named
+        # it was not read" stay apart. Masked like the collector's.
+        "transcripts": [mask(str(p)) for p in transcripts],
         "repositories": sorted(roots),
         "days": sorted(days),
         "forge_slugs": sorted(forges),
@@ -1793,9 +1931,14 @@ def render_text(scope: dict[str, Any]) -> str:
                 f"  … showing {len(shown)} of {len(unresolved)};"
                 " --output-format json has the rest"
             )
+    transcripts = scope["transcripts"]
+    line = f"transcripts read: 1 main + {len(transcripts) - 1} subagent"
+    if len(transcripts) > 1:
+        line += " (--output-format json lists them)"
     lines += [
         "",
-        f"({scope['commands_scanned']} Bash commands scanned. Complete where the transcript is:",
+        line,
+        f"({scope['commands_scanned']} Bash commands scanned. Complete where the transcripts are:",
         "a repository reached only through a tool that took no path cannot appear here.)",
     ]
     return "\n".join(lines)

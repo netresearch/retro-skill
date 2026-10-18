@@ -456,5 +456,80 @@ class SlashBranchWorktreeTest(unittest.TestCase):
         self.assertEqual(dss.repo_root(worktree / "a.md"), bare.resolve())
 
 
+class SubagentScopeTest(unittest.TestCase):
+    """`/retro done` takes gate 4's repository list from this script. It read
+    only the main transcript, so a repository and a PR only a subagent touched
+    were outside the sweep (2026-10-18: 14 repositories and 4 PRs from the
+    main transcript of a session whose 956 subagents wrote to 270)."""
+
+    SID = "e72080f1-e094-41a8-bcee-7378e1f24a72"
+
+    def setUp(self) -> None:
+        self.root = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, self.root, True)
+        self.repo = self.root / "only-a-subagent-was-here"
+        _git("init", "-q", str(self.repo))
+        self.main = _write(
+            self.root / f"{self.SID}.jsonl",
+            [{"timestamp": "2026-10-18T09:00:00Z", "message": {"content": "start"}}],
+        )
+        agents = self.root / self.SID / "subagents"
+        agents.mkdir(parents=True)
+        events = _bash_events(
+            [f"git -C {self.repo} status", "gh pr create -R o/r --fill"]
+        )
+        for event in events:
+            event["timestamp"] = "2026-10-19T09:00:00Z"
+        events[3]["message"]["content"][0]["content"] = "https://github.com/o/r/pull/9"
+        self.agent = _write(agents / "agent-a1.jsonl", events)
+
+    def test_a_repository_only_a_subagent_entered_is_in_scope(self) -> None:
+        scope = dss.collect(self.main)
+        self.assertEqual(scope["repositories"], [str(self.repo.resolve())])
+        self.assertEqual(scope["days"], ["2026-10-18", "2026-10-19"])
+        self.assertEqual(scope["commands_scanned"], 2)
+
+    def test_a_repository_only_a_subagent_wrote_a_file_in_is_in_scope(self) -> None:
+        # Review round 2 on #187: a Write's file_path, not a command, names it.
+        written = self.root / "only-written-by-a-subagent"
+        _git("init", "-q", str(written))
+        use = {
+            "type": "tool_use",
+            "id": "w1",
+            "name": "Write",
+            "input": {"file_path": str(written / "notes.md"), "content": "x"},
+        }
+        _write(
+            self.agent.with_name("agent-a2.jsonl"),
+            [{"type": "assistant", "message": {"content": [use]}}],
+        )
+        scope = dss.collect(self.main)
+        self.assertEqual(
+            scope["repositories"],
+            sorted([str(self.repo.resolve()), str(written.resolve())]),
+        )
+
+    def test_a_pr_only_a_subagent_created_is_in_scope(self) -> None:
+        scope = dss.collect(self.main)
+        self.assertEqual(
+            [(a["url"], a["origin"]) for a in scope["artefacts"]],
+            [("https://github.com/o/r/pull/9", "created")],
+        )
+
+    def test_the_output_names_the_transcripts_it_read(self) -> None:
+        scope = dss.collect(self.main)
+        self.assertEqual(scope["transcript"], str(self.main))
+        self.assertEqual(scope["transcripts"], [str(self.main), str(self.agent)])
+        self.assertIn("transcripts read: 1 main + 1 subagent", dss.render_text(scope))
+
+    def test_a_transcript_not_named_by_a_session_id_reads_only_itself(self) -> None:
+        fixed = self.main.rename(self.root / "retro-codex-session.jsonl")
+        (self.root / self.SID).rename(self.root / "retro-codex-session")
+        scope = dss.collect(fixed)
+        self.assertEqual(scope["transcripts"], [str(fixed)])
+        self.assertEqual(scope["repositories"], [])
+        self.assertEqual(scope["artefacts"], [])
+
+
 if __name__ == "__main__":
     unittest.main()
