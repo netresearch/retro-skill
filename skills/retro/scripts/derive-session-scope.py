@@ -165,7 +165,7 @@ LITERAL_QUERY_RE = re.compile(r"\bquery=(?:'|\"(?!\$))")
 QUERY_ELSEWHERE_RE = re.compile(r"query=(?:@|\"?\$\(|\"?`)|(?:^|\s)--input[\s=]")
 # `query="$Q"`: a document in a variable, read where the call assigns it.
 QUERY_VARIABLE_RE = re.compile(
-    r"(?:(?<![\w-])|(?<=-[fF]))query=\"?\$\{?(?P<name>[A-Za-z_]\w*)"
+    r"(?:(?<![\w-])|(?<=-[fF]))query=\"?\$\{?(?P<name>[A-Za-z_]\w*|[0-9]+|[@*#?!$-])"
 )
 # The endpoint of a REST write names its target on its own: repository and
 # number are in the path, not in any text the call carries.
@@ -1279,7 +1279,9 @@ def _query_from_run_time(command: str, call: str) -> bool:
 
 
 def _held_elsewhere(command: str, name: str) -> bool:
-    """Whether the call gives the variable `name` anything but plain text."""
+    """Whether the call gives the variable `name` anything but plain text.
+    A positional or special parameter (`$1`, `"$@"`) is never assigned
+    plainly, so it always counts as given elsewhere."""
     shell = _shell(command)
     assigned = False
     for node in shell._walk():

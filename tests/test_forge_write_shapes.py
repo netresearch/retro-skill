@@ -574,6 +574,12 @@ class PendingLookupTest(unittest.TestCase):
             'printf -v Q %s "$(cat m)"; gh api graphql -f query="$Q" -f id=PRRT_kwDOa',
             'B=$(cat m); Q="$B"; gh api graphql -f query="$Q" -f id=PRRT_kwDOa',
             'gh api graphql -f query="$Q" -f id=PRRT_kwDOa',
+            # Review round 11: a positional or special parameter.
+            (
+                'set -- "$(cat m.graphql)"; gh api graphql -f query="$1"'
+                " -f threadId=PRRT_kwDOabc"
+            ),
+            'r(){ gh api graphql -f query="$@"; }; r "$(cat m.graphql)"',
         ):
             with self.subTest(command=command[:40]):
                 scan = _case("thread_id_assignment", command=command, result="{}")
