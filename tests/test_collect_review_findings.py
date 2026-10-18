@@ -1169,7 +1169,12 @@ class FourthRoundTest(unittest.TestCase):
             ),
         ]
         urls, data = self.urls([({"command": c}, r) for c, r in cmds])
-        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 3))
+        # The background run reports nothing, failure included; its own words
+        # name its PR (#188). The two failures stay unresolved.
+        self.assertEqual(
+            (urls, data["unresolved_forge_commands"]),
+            ({"https://github.com/o/r/pull/5": "acted"}, [c for c, _ in cmds[:2]]),
+        )
 
     def test_a_create_counts_only_its_own_kind(self):
         cmd = "gh pr create -R o/r --fill"
@@ -1475,7 +1480,14 @@ class SeventhRoundTest(unittest.TestCase):
         shut = "pr-merge: not merging o/r#150 — request-review: no review on the current head"
         urls, data = self.urls([({"command": "pr-merge.sh -R o/r 150"}, shut)])
         self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+        # Its report went elsewhere: the literal `-R` and number name the
+        # only PR it writes to (#188); a target in a variable does not.
         urls, data = self.urls([({"command": "pr-merge.sh -R o/r 150"}, "")])
+        self.assertEqual(
+            (urls, data["unresolved_forge_commands"]),
+            ({"https://github.com/o/r/pull/150": "acted"}, []),
+        )
+        urls, data = self.urls([({"command": 'pr-merge.sh -R o/r "$N"'}, "")])
         self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
 
     def test_a_status_line_of_the_same_pr_is_not_unclaimed(self):
@@ -1929,12 +1941,15 @@ class EleventhRoundTest(unittest.TestCase):
 
     def test_a_write_in_a_substitution_inside_quotes_runs(self):
         # Copied shape: a Monitor loop polling `pr-merge.sh` inside `echo "#865: $(…)"`.
-        # The echo prefix keeps its report off the start of the line: unresolved.
+        # The substitution runs; its report counts behind the echo prefix (#188).
         cmd = 'echo "#5: $(pr-merge.sh -R o/r 5 --self-reviewed 2>&1 | tail -1)"'
         urls, data = self.urls(
             [({"command": cmd}, "#5: pr-merge: o/r#5 queued (--merge)")]
         )
-        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
+        self.assertEqual(
+            (urls, data["unresolved_forge_commands"]),
+            ({"https://github.com/o/r/pull/5": "acted"}, []),
+        )
         cmd = 'echo "#5: $(gh pr merge 5 -R o/r --merge 2>&1 | tail -1)"'
         urls, _ = self.urls([({"command": cmd}, "")])
         self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
@@ -1953,8 +1968,17 @@ class EleventhRoundTest(unittest.TestCase):
             "Monitor started (task b3, timeout 1800000ms).",
         ):
             with self.subTest(printed=printed[:30]):
+                # A numbered write names its target in its words, wherever its
+                # output went (#188); one by branch names it only in its output.
                 urls, data = self.urls(
                     [({"command": "gh pr merge 5 -R o/r --merge"}, printed)]
+                )
+                self.assertEqual(
+                    (urls, data["unresolved_forge_commands"]),
+                    ({"https://github.com/o/r/pull/5": "acted"}, []),
+                )
+                urls, data = self.urls(
+                    [({"command": "gh pr merge x -R o/r --merge"}, printed)]
                 )
                 self.assertEqual(
                     (urls, len(data["unresolved_forge_commands"])), ({}, 1)
@@ -2820,9 +2844,7 @@ class ReviewThreadWriteTest(unittest.TestCase):
                 )
             return {"data": {"t0": self._node(self.PR, 41)}}
 
-        items, left, failures, urls = crf.resolve_review_thread_writes(
-            writes, [self.ALIASED], run
-        )
+        items, left, failures, urls = crf.resolve_review_thread_writes(writes, [], run)
         self.assertEqual(len(calls), 3)  # the batch, then each id alone
         self.assertEqual([(i["url"], i["origin"]) for i in items], [(self.PR, "acted")])
         self.assertEqual(urls, {known: self.PR})
@@ -2840,7 +2862,7 @@ class ReviewThreadWriteTest(unittest.TestCase):
             }
         ]
         _, left, failures, _ = crf.resolve_review_thread_writes(
-            writes, [self.RESOLVE], lambda c: {"data": {"t0": {}}}
+            writes, [], lambda c: {"data": {"t0": {}}}
         )
         self.assertEqual(left, [self.RESOLVE])
         self.assertEqual(
@@ -2895,7 +2917,12 @@ class ReviewThreadWriteTest(unittest.TestCase):
         # The comment names no PR: the call stays unresolved after the lookup.
         self.assertFalse(writes[mixed]["only_review_threads"])
         self.assertEqual(len(writes), 3)  # a review on a PR node id is no thread
-        self.assertEqual(len(data["unresolved_forge_commands"]), 5)
+        # A thread write is pending, not unresolved: only the calls with
+        # another unknown write are listed (#188).
+        self.assertEqual(
+            data["unresolved_forge_commands"],
+            [dss.squeeze(mixed, 200), dss.squeeze(review, 200)],
+        )
 
     def test_a_failed_thread_mutation_names_no_thread(self):
         # Copied from the same session: the call was rate limited and wrote nothing.

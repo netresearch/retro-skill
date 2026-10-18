@@ -61,11 +61,17 @@ list — one URL, or one JSON object with `url`, per line — goes in with
 
 A GraphQL write on a review thread (`resolveReviewThread`,
 `addPullRequestReviewThreadReply`) names the thread by node id (`PRRT_…`)
-only. One GraphQL query asks GitHub which pull request each thread belongs to;
+only, an edit of a review comment its `PRRC_…` id, and a REST edit of one
+comment (`gh api -X PATCH repos/o/r/issues/comments/N`) the comment's path.
+derive-session-scope.py lists these as pending (`review_thread_writes`), not
+as unresolved. One GraphQL query asks GitHub which pull request each node
+belongs to, and one `gh api` read per comment path names its PR or issue;
 that PR is read with origin `acted`, and `review_threads` maps each id to it.
-A lookup that fails (rate limit, unknown id) leaves the write in
+A lookup that fails (rate limit, unknown id) moves the write to
 `unresolved_forge_commands`, with the reason in
-`review_thread_lookup_failures` and on its `UNRESOLVED` line.
+`review_thread_lookup_failures` and on its `UNRESOLVED` line. `complete` is
+true only when every write the transcripts hold resolved, from its own output
+or by such a lookup.
 
 A subagent keeps its own transcript, `<session id>/subagents/agent-*.jsonl`
 beside `<session id>.jsonl` (a Workflow's agents in `subagents/workflows/wf_*/`).
@@ -1195,6 +1201,8 @@ def collect(
 GH_THREAD_FRAGMENT = (
     "... on PullRequestReviewThread"
     " { pullRequest { number url repository { nameWithOwner } } }"
+    " ... on PullRequestReviewComment"
+    " { pullRequest { number url repository { nameWithOwner } } }"
 )
 RATE_LIMIT_RE = re.compile(r"rate limit", re.IGNORECASE)
 
@@ -1246,39 +1254,61 @@ def lookup_review_threads(ids: list[str], run: Runner) -> dict[str, str | dict]:
     return answers
 
 
+def lookup_comment_endpoints(paths: list[str], run: Runner) -> dict[str, str | dict]:
+    """The pull request or issue (an artefact) each REST comment path is on,
+    from the comment's own `html_url`, or the reason it is not known."""
+    answers: dict[str, str | dict] = {}
+    for path in paths:
+        try:
+            raw = _require_dict(run(["gh", "api", path]), "gh api")
+        except Exception as exc:  # noqa: BLE001 - a lookup failure is a reason, not a crash
+            answers[path] = f"{type(exc).__name__}: {exc}"
+            continue
+        url = raw.get("html_url")
+        refs = scope.artefacts_in_text(url) if isinstance(url, str) else []
+        answers[path] = (
+            refs[0] if refs else "no pull request or issue URL in the answer"
+        )
+    return answers
+
+
 def resolve_review_thread_writes(
     writes: list[dict[str, Any]], unresolved: list[str], run: Runner
 ) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]], dict[str, str]]:
-    """Turn GraphQL review-thread writes into the pull requests they wrote to.
+    """Turn the writes the transcript names only by a forge id into the PRs
+    and issues they wrote to: GraphQL writes on a review thread or review
+    comment (node ids) and REST edits of one comment (its API path).
 
     Returns the PRs as artefacts with origin `acted`, the unresolved commands
-    that remain, one entry per write whose lookup failed (with the reason),
-    and every id that resolved with its PR URL. A write stays unresolved
-    unless every thread it named resolved and nothing else in the call was
-    unresolved; its PR is read either way."""
+    (`unresolved` plus each pending write whose lookup failed), one entry per
+    write whose lookup failed (with the reason), and every id that resolved
+    with its PR URL. A write is resolved when every thread it named resolved
+    and nothing else in the call was unresolved; its PR is read either way."""
     ids = list(dict.fromkeys(i for w in writes for i in w["thread_ids"]))
-    answers = lookup_review_threads(ids, run)
+    paths = list(
+        dict.fromkeys(p for w in writes for p in w.get("comment_endpoints", []))
+    )
+    answers = lookup_review_threads(ids, run) | lookup_comment_endpoints(paths, run)
     resolved = {i: a for i, a in answers.items() if isinstance(a, dict)}
     items = list(
         {a["url"]: dict(a, origin="acted") for a in resolved.values()}.values()
     )
     remaining, failures = list(unresolved), []
     for write in writes:
-        reasons = {
-            i: answers[i]
-            for i in write["thread_ids"]
-            if not isinstance(answers[i], dict)
-        }
+        keys = write["thread_ids"] + write.get("comment_endpoints", [])
+        reasons = {i: answers[i] for i in keys if not isinstance(answers[i], dict)}
         if reasons:
             failures.append(
                 {
                     "command": write["command"],
                     "thread_ids": write["thread_ids"],
+                    "comment_endpoints": write.get("comment_endpoints", []),
                     "reason": "; ".join(f"{i}: {r}" for i, r in reasons.items()),
                 }
             )
-        elif write.get("only_review_threads") and write["command"] in remaining:
-            remaining.remove(write["command"])
+            # A call with another unknown write is in `unresolved` already.
+            if write.get("only_review_threads"):
+                remaining.append(write["command"])
     return items, remaining, failures, {i: a["url"] for i, a in resolved.items()}
 
 

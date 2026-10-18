@@ -159,6 +159,14 @@ SLUG_REF_RE = re.compile(
 # gh and glab send a request with fields as POST unless told otherwise; an
 # explicit GET, and a GraphQL call that is not a mutation, only read.
 EXPLICIT_GET_RE = re.compile(r"(?:-X|--method)[\s=]*GET\b")
+# `-f query='query{…}'`: the GraphQL document itself, not a variable holding it.
+LITERAL_QUERY_RE = re.compile(r"\bquery=(?:'|\"(?!\$))")
+# A GraphQL document from a file or a command: it may be a mutation.
+QUERY_ELSEWHERE_RE = re.compile(r"query=(?:@|\"?\$\(|\"?`)|(?:^|\s)--input[\s=]")
+# `query="$Q"`: a document in a variable, read where the call assigns it.
+QUERY_VARIABLE_RE = re.compile(
+    r"(?:(?<![\w-])|(?<=-[fF]))query=\"?\$\{?(?P<name>[A-Za-z_]\w*)"
+)
 # The endpoint of a REST write names its target on its own: repository and
 # number are in the path, not in any text the call carries.
 GH_API_PATH_RE = re.compile(
@@ -193,13 +201,20 @@ ECHO_BRANCHES_RE = re.compile(
 )
 # A message's own redirection (`echo failed >&2`) is not part of its text.
 ECHO_REDIRECT_RE = re.compile(r"\s*\d*>&?\s*\S+$")
-FAILED_OUTPUT_RE = re.compile(
+REPORTED_FAILURE_RE = re.compile(
     r"HTTP [45]\d\d|: [45]\d\d \{message|\"status\":\"[45]\d\d\"|\}gh: "
     r"|(?:^|: )GraphQL: "
-    r"|^\s*(?:[xX✗]\s|gh: |failed to |Cannot perform)"
-    r"|Command running in background|moved to the background|^Monitor started \(",
+    r"|^\s*(?:[xX✗]\s|gh: |failed to |Cannot perform)",
     re.MULTILINE,
 )
+BACKGROUND_RE = re.compile(
+    r"Command running in background|moved to the background|^Monitor started \(",
+    re.MULTILINE,
+)
+FAILED_OUTPUT_RE = re.compile(
+    f"{REPORTED_FAILURE_RE.pattern}|{BACKGROUND_RE.pattern}", re.MULTILINE
+)
+
 
 # An MCP tool that fails often returns its error as ordinary text with
 # is_error unset: "Error: 404 not found", "Issue does not exist".
@@ -241,9 +256,51 @@ PR_MERGE_REPORT_RE = re.compile(
     r"(?P<project>[\w.-]+/[\w.-]+)#(?P<number>\d+)(?: merged| queued|$)",
     re.MULTILINE,
 )
+# The wrapper's own report that it wrote nothing to one PR.
+PR_MERGE_SHUT_RE = re.compile(
+    r"^pr-merge: (?:not merging (?P<target>[\w.-]+/[\w.-]+#\d+)\b"
+    r"|(?P<failed>[\w.-]+/[\w.-]+#\d+) failed)",
+    re.MULTILINE,
+)
 PR_MERGE_NO_WRITE_RE = re.compile(
     r"^pr-merge: (?:not merging|dry-run|.*#\d+ failed)", re.MULTILINE
 )
+# Programs that read a file they are given and never run it: `grep … pr-merge.sh`
+# names the wrapper without running it. Any other mention may be a run.
+FILE_READERS = frozenset(
+    [
+        "grep",
+        "egrep",
+        "fgrep",
+        "rg",
+        "ugrep",
+        "ag",
+        "head",
+        "tail",
+        "cat",
+        "bat",
+        "less",
+        "more",
+        "sed",
+        "awk",
+        "gawk",
+        "wc",
+        "ls",
+        "stat",
+        "file",
+        "diff",
+        "cmp",
+        "sha256sum",
+        "sha1sum",
+        "md5sum",
+        "shellcheck",
+        "git",
+    ]
+)
+# `pr-merge.sh` flags with which it writes nothing.
+NO_WRITE_FLAGS = frozenset({"--dry-run", "--help", "-h", "--version"})
+# The duration `timeout` takes before the command it runs: `timeout 600 x`.
+DURATION_RE = re.compile(r"\d+(?:\.\d+)?[smhd]?")
 # A heredoc the same call runs: fed to an interpreter (`python3 - <<'PY'`), or
 # written to a file (`cat > x.sh <<'EOF'`) that the call then executes.
 # A shell runs every line; another interpreter runs a command only through a
@@ -277,10 +334,31 @@ INLINE_PROGRAM_RE = re.compile(
 # (`resolveReviewThread(input:{threadId:"PRRT_…"})`); the pull request it
 # belongs to is in no text the call carries. The ids are kept so the collector
 # can ask the forge — never matched to a PR by what else the session touched.
+# A review comment edited by its node id (`PRRC_…`) is the same
+# case: the forge names its pull request.
 REVIEW_THREAD_MUTATION_RE = re.compile(
-    r"\b(?:resolveReviewThread|unresolveReviewThread|addPullRequestReviewThreadReply)\b"
+    r"\b(?:resolveReviewThread|unresolveReviewThread|addPullRequestReviewThreadReply"
+    r"|updatePullRequestReviewComment)\b"
 )
-REVIEW_THREAD_ID_RE = re.compile(r"(?<![\w-])PRRT_[A-Za-z0-9_-]+")
+REVIEW_THREAD_ID_RE = re.compile(r"(?<![\w-])PRR[TC]_[A-Za-z0-9_-]+")
+# A thread id where a thread mutation takes it, given literally.
+THREAD_ID_LITERAL_RE = re.compile(
+    r"\b(?:pullRequestReviewThreadId|threadId)\s*:\s*\\?\"(PRRT_[A-Za-z0-9_-]+)"
+)
+# `-f id=PRRT_…`: a GraphQL variable given a literal id.
+GQL_FIELD_ID_RE = re.compile(
+    r"(?:^|\s)(?:-f|-F|--field|--raw-field)[\s=]['\"]?(\w+)=['\"]?(PRR[TC]_[A-Za-z0-9_-]+)"
+)
+# The id an `updatePullRequestReviewComment` edits, given literally.
+COMMENT_ID_ARGUMENT_RE = re.compile(
+    r"\bpullRequestReviewCommentId\s*:\s*\\?\"(PRRC_[A-Za-z0-9_-]+)"
+)
+# A REST edit of one comment names the comment, not the PR or issue it is
+# on (`repos/o/r/issues/comments/5917853122`); GitHub names that PR or issue
+# when the collector asks it for the comment. A deleted one it cannot name.
+COMMENT_ENDPOINT_RE = re.compile(
+    r"\brepos/[\w.-]+/[\w.-]+/(?:issues|pulls)/comments/\d+(?![\w/])"
+)
 # `for t in PRRT_a PRRT_b; do gh api graphql … $t …`: the list a loop variable
 # takes its values from.
 FOR_LIST_RE = re.compile(r"\bfor\s+(?P<var>\w+)\s+in\s+(?P<list>[^;\n]*)")
@@ -1174,10 +1252,65 @@ def _writes(command: str) -> list[re.Match]:
         own = shell.own_text(m.start())[m.start() : shell.segment_end(m.start())]
         if EXPLICIT_GET_RE.search(own):
             continue
-        if "graphql" in call and "mutation" not in command and "query=@" not in call:
+        # A query written into the call is read where it stands; one held in a
+        # variable (`-f query="$Q"`) may be a mutation anywhere in the command.
+        query = call if LITERAL_QUERY_RE.search(call) else command
+        if (
+            "graphql" in call
+            and "mutation" not in query
+            and not QUERY_ELSEWHERE_RE.search(call)
+            and not _query_from_run_time(command, call)
+        ):
             continue  # a GraphQL query (a query read from a file may be a mutation)
         found.append(m)
     return found
+
+
+def _query_from_run_time(command: str, call: str) -> bool:
+    """Whether a GraphQL document held in a variable (`query="$Q"`) may be
+    something the call's text does not show: unless every value the call
+    gives that variable is plain text (`Q='mutation{…}'`), it comes from a
+    command, a file, another variable or an earlier call, and may be a
+    mutation."""
+    return any(
+        _held_elsewhere(command, held["name"])
+        for held in QUERY_VARIABLE_RE.finditer(call)
+    )
+
+
+def _held_elsewhere(command: str, name: str) -> bool:
+    """Whether the call gives the variable `name` anything but plain text."""
+    shell = _shell(command)
+    assigned = False
+    for node in shell._walk():
+        if node.type == "variable_assignment":
+            named = node.child_by_field_name("name")
+            if named is None or _word(shell, named) != name:
+                continue
+            text = _word(shell, node)
+            value = node.child_by_field_name("value")
+            given = _word(shell, value) if value is not None else ""
+            appended = "+=" in text[: len(text) - len(given)]
+            if appended or "$" in given or "`" in given:
+                return True
+            assigned = True
+        elif node.type == "for_statement":
+            variable = node.child_by_field_name("variable")
+            if variable is not None and _word(shell, variable) == name:
+                return True
+        elif node.type in ("command", "declaration_command"):
+            words = [_word(shell, c) for c in node.children if c.type != "command_name"]
+            head = node.child_by_field_name("name")
+            sets = (
+                head is not None and _word(shell, head) in VALUE_SETTERS
+            ) or node.type == "declaration_command"
+            if sets and any(w == name or w.startswith(name + "=") for w in words):
+                return True
+    return not assigned
+
+
+# Commands that set a variable they are given by name.
+VALUE_SETTERS = frozenset({"read", "mapfile", "readarray", "printf", "getopts"})
 
 
 def _blank_texts(command: str) -> str:
@@ -1202,11 +1335,14 @@ class _Call:
         self.command = command
         self.result = result
         self.gitlab_host = gitlab_host
-        self.failed = (
+        # The output says a write failed.
+        self.reported_failure = (
             failed
-            or bool(FAILED_OUTPUT_RE.search(result))
+            or bool(REPORTED_FAILURE_RE.search(result))
             or _took_the_failure_branch(command, result)
         )
+        # Or it is not in the result at all: the call ran in the background.
+        self.failed = self.reported_failure or bool(BACKGROUND_RE.search(result))
         # URLs a create in this call already took: each create takes the next.
         self.claimed: set[str] = set()
 
@@ -1271,15 +1407,17 @@ class _Call:
         ):
             return []
         # Silent success in the one unambiguous shape: `<verb> N -R repo`, in
-        # a call without any heredoc (an unclosed one hides its extent).
+        # a call the parser reads whole (an unclosed heredoc, which hides its
+        # extent, is an ERROR node). A run in the background names its target
+        # the same way; only its output is elsewhere.
         # Never when the output names this number under another repository:
         # then the `-R` was not understood, and a guess would name a wrong one.
         if (
             number
             and slug
             and not same_number
-            and not self.failed
-            and "<<" not in self.command
+            and not self.reported_failure
+            and not _shell(self.command).misparsed
             and not _is_text(self.command, write)
         ):
             return [
@@ -1410,17 +1548,165 @@ def _joined(command: str) -> str:
     return command.replace("\\\n", "  ")
 
 
+def _run_words(words: list[str]) -> list[str]:
+    """A simple command's words from the program it runs: `timeout 600`,
+    `env A=1`, `bash -x` and the other wrappers peeled off."""
+    index = 0
+    while index < len(words):
+        head = os.path.basename(words[index])
+        if head not in COMMAND_WRAPPERS and head not in SHELLS:
+            return words[index:]
+        index += 1
+        while index < len(words) and (
+            words[index].startswith("-")
+            or (head == "timeout" and DURATION_RE.fullmatch(words[index]))
+            or (head == "env" and "=" in words[index])
+        ):
+            index += 1
+    return []
+
+
+def _wrapper_mentions(command: str) -> list[tuple[list[str] | None, bool]]:
+    """Each `pr-merge.sh` outside a text that may run, with whether its
+    output goes to a file: the words of the simple command it runs
+    (`pr-merge.sh -R o/r 5 …`), or None when the words around it do not say
+    (a `for` list, `xargs`). A mention a file reader is given (`grep -n x
+    pr-merge.sh`, `head pr-merge.sh`) is no run, unless the reader's output
+    may reach a program (`_read_output_may_run`)."""
+    shell = _shell(command)
+    mentions: list[tuple[list[str] | None, bool]] = []
+    for m in PR_MERGE_WRAPPER_RE.finditer(shell.blanked):
+        node = _enclosing(shell._node_at(m.start()), "command")
+        group = None
+        if node is not None:
+            offset = shell._byte[m.start()]
+            group = next(
+                (
+                    g
+                    for g in _simple_commands(shell, node)
+                    if g[0].start_byte <= offset < g[-1].end_byte
+                ),
+                None,
+            )
+        if group is None:
+            mentions.append((None, False))
+            continue
+        words = _run_words([_word(shell, w) for w in group])
+        head = os.path.basename(words[0]) if words else ""
+        if head == "pr-merge.sh":
+            mentions.append((words, _to_a_file(shell, node)))
+        elif head not in FILE_READERS or _read_output_may_run(shell, node):
+            mentions.append((None, False))
+    return mentions
+
+
+# Where a reader's output only reaches the terminal (or more readers).
+READER_CONTEXT = frozenset(
+    {
+        "program",
+        "list",
+        "do_group",
+        "for_statement",
+        "while_statement",
+        "if_statement",
+        "elif_clause",
+        "else_clause",
+        "negated_command",
+    }
+)
+
+
+def _to_a_file(shell: _Shell, node, stdout_only: bool = False) -> bool:
+    """Whether a command prints nothing the transcript shows: its standard
+    output and its standard error both end in a file (`> m.txt 2>&1`,
+    `&> m.txt`; not `2>&1 > m.txt`, applied left to right). `pr-merge.sh`
+    reports a refusal on standard error. With `stdout_only`, whether its
+    standard output alone ends in a file."""
+    parent = node.parent
+    if parent is None or parent.type != "redirected_statement":
+        return False
+    out = err = "terminal"
+    for r in parent.children_by_field_name("redirect"):
+        if r.type != "file_redirect":
+            continue
+        text = _word(shell, r).replace(" ", "")
+        if text.startswith("&>"):
+            out = err = "file"
+        elif text == "2>&1":
+            err = out
+        elif re.match(r"1?>&2", text):
+            out = err
+        elif text.startswith("2>"):
+            err = "file"
+        elif re.match(r"1?>", text):
+            out = "file"
+    return out == "file" and (err == "file" or stdout_only)
+
+
+def _read_output_may_run(shell: _Shell, node) -> bool:
+    """Whether what a reader prints may reach a program: a pipeline into a
+    command that is not a reader (`cat pr-merge.sh | bash -s`), a file
+    (`cat pr-merge.sh > m.sh`), or a substitution, group or subshell whose
+    output goes on (`bash <(cat pr-merge.sh)`, `eval "$(cat …)"`,
+    `{ cat pr-merge.sh; } | bash`). `grep … | head` reaches none."""
+    child, parent = node, node.parent
+    while parent is not None and parent.type != "program":
+        if parent.type == "pipeline":
+            for part in parent.children:
+                if part.start_byte <= child.start_byte or part.type in ("|", "|&"):
+                    continue
+                name = (
+                    part.child_by_field_name("name") if part.type == "command" else None
+                )
+                if (
+                    name is None
+                    or os.path.basename(_word(shell, name)) not in FILE_READERS
+                ):
+                    return True
+        elif parent.type == "redirected_statement":
+            if _to_a_file(shell, child, stdout_only=True):
+                return True
+        elif parent.type not in READER_CONTEXT:
+            return True
+        child, parent = parent, parent.parent
+    return False
+
+
+def _wrapper_target(words: list[str]) -> tuple[str, int] | None:
+    """(repository, number) a `pr-merge.sh` run names in literal words."""
+    repo = last = None
+    rest = iter(words[1:])
+    for word in rest:
+        if word in ("-R", "--repo"):
+            repo = next(rest, None)
+        elif word.startswith("--repo="):
+            repo = word.split("=", 1)[1]
+        elif not word.startswith("-"):
+            last = word  # the script keeps its last positional argument
+    if repo and last and last.isdigit() and re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
+        return repo, int(last)
+    return None
+
+
 def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     """What `pr-merge.sh` merged or commented on, from its own report lines;
-    [] when it says it wrote nothing, None when it says neither."""
-    blank = _blank_texts(command)
-    runs = [
-        m
-        for m in PR_MERGE_WRAPPER_RE.finditer(blank)
-        if "--dry-run" not in blank[m.start() : _shell(command).segment_end(m.start())]
+    [] when it says it wrote nothing or never runs, None when it says
+    neither. Its report can be in a file the transcript does not show
+    (`pr-merge.sh -R o/r 5 > merge.txt`); then its literal `-R` and number
+    name the target, since every write it makes (the merge, the queue
+    entry, the self-review attestation) goes to that PR."""
+    mentions = [
+        (w, to_file)
+        for w, to_file in _wrapper_mentions(command)
+        if w is None or not NO_WRITE_FLAGS & set(w)
     ]
-    if not runs:
+    if not mentions:
         return []
+    targets = [_wrapper_target(w) if w else None for w, _ in mentions]
+    if all(targets):
+        return _literal_wrapper_targets(
+            [(t, to_file) for t, (_, to_file) in zip(targets, mentions)], result
+        )
     found = [
         dict(
             artefact(GITHUB_HOST, m["project"], "pull", int(m["number"])),
@@ -1431,6 +1717,36 @@ def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     if found or PR_MERGE_NO_WRITE_RE.search(result):
         return found
     return None
+
+
+def _literal_wrapper_targets(
+    runs: list[tuple[tuple[str, int], bool]], result: str
+) -> list[dict[str, Any]]:
+    """The PRs runs with literal targets wrote to: each target, unless every
+    run on it shows its output and a report at a line start says it wrote
+    nothing there (`pr-merge: not merging o/r#5 …`, `pr-merge: o/r#5
+    failed …`), once per run, and none says it wrote (the attestation it
+    posts before it declines to merge). Any other report line is somebody
+    else's text."""
+    wrote = {
+        (m["project"].lower(), int(m["number"]))
+        for m in PR_MERGE_REPORT_RE.finditer(result)
+    }
+    shut: dict[tuple[str, int], int] = {}
+    for m in PR_MERGE_SHUT_RE.finditer(result):
+        project, _, number = (m["target"] or m["failed"]).rpartition("#")
+        key = (project.lower(), int(number))
+        shut[key] = shut.get(key, 0) + 1
+    counts: dict[tuple[str, int], list[bool]] = {}
+    for (repo, number), to_file in runs:
+        counts.setdefault((repo, number), []).append(to_file)
+    return [
+        dict(artefact(GITHUB_HOST, repo, "pull", number), origin="acted")
+        for (repo, number), files in counts.items()
+        if any(files)
+        or (repo.lower(), number) in wrote
+        or shut.get((repo.lower(), number), 0) < len(files)
+    ]
 
 
 def _runs_a_program(command: str) -> bool:
@@ -1480,20 +1796,273 @@ def _unclaimed(result: str, found: list[dict[str, Any]], text_writes: bool) -> b
     return any(_key(r) not in claimed for r in named)
 
 
-def _review_thread_ids(command: str, write: re.Match, call: _Call) -> list[str]:
-    """The review-thread node ids a successful GraphQL thread mutation names:
-    literally in its own command, or as the values of a `for` variable it
-    uses. [] for any other write and for a call that failed."""
+def _comment_endpoint(command: str, write: re.Match, call: _Call) -> str | None:
+    """The REST path of the one GitHub comment a successful API write edits,
+    when that path is all it names. A deletion leaves nothing to ask for."""
+    segment = _segment(command, write)
+    if call.failed or write.groupdict().get("cli") != "gh":
+        return None
+    if re.search(r"(?:-X|--method)[\s=]*DELETE\b", segment):
+        return None
+    found = COMMENT_ENDPOINT_RE.search(segment)
+    return found.group(0) if found else None
+
+
+def _review_thread_ids(
+    command: str, write: re.Match, call: _Call
+) -> tuple[list[str], bool]:
+    """The review-thread and review-comment node ids a successful GraphQL
+    mutation names, literally or through a variable (`_traced_thread_ids`),
+    and whether those are all it names: False when a variable id does not
+    trace to literal ones. ([], True) for any other write and for a call
+    that failed."""
     segment = _segment(command, write)
     if call.failed or "graphql" not in segment:
-        return []
+        return [], True
     if not REVIEW_THREAD_MUTATION_RE.search(segment):
-        return []
-    found = REVIEW_THREAD_ID_RE.findall(segment)
+        return [], True
+    # An id counts only where a mutation takes it, never in a body or note.
+    found = THREAD_ID_LITERAL_RE.findall(segment) + COMMENT_ID_ARGUMENT_RE.findall(
+        segment
+    )
+    found += [
+        v
+        for k, v in GQL_FIELD_ID_RE.findall(segment)
+        if re.search(
+            rf"(?:pullRequestReviewThreadId|threadId|pullRequestReviewCommentId)"
+            rf"\s*:\s*\${k}\b",
+            segment,
+        )
+    ]
     for loop in FOR_LIST_RE.finditer(command[: write.start()]):
         if re.search(rf"\$\{{?{loop['var']}\b", segment):
             found += REVIEW_THREAD_ID_RE.findall(loop["list"])
-    return list(dict.fromkeys(found))
+    # Every argument must be a literal id or a variable that traces to
+    # literal ids; any other form (`threadId:"'"$T"'"`) leaves it unknown.
+    literal = len(THREAD_ID_LITERAL_RE.findall(segment)) + len(
+        COMMENT_ID_ARGUMENT_RE.findall(segment)
+    )
+    by_variable = len(THREAD_ID_ARGUMENT_RE.findall(segment))
+    known = literal + by_variable >= len(ID_ARGUMENT_RE.findall(segment))
+    # A document from a file or a command may name other threads.
+    known = (
+        known
+        and not QUERY_ELSEWHERE_RE.search(segment)
+        and not _query_from_run_time(command, segment)
+    )
+    if by_variable:
+        # A thread named by a variable, beside literal ones or not: every
+        # such variable must trace to literal ids, or the write is unknown.
+        traced = _traced_thread_ids(command, write)
+        if traced is None:
+            return list(dict.fromkeys(found)), False
+        found += traced
+    return list(dict.fromkeys(found)), known
+
+
+# The GraphQL argument a thread mutation names its thread by:
+# `pullRequestReviewThreadId:$id` (a GraphQL variable, given with `-f id=…`;
+# `\$id` inside a double-quoted query) or `threadId:\"$t\"` (a shell
+# variable inside a double-quoted query).
+THREAD_ID_ARGUMENT_RE = re.compile(
+    r"\b(?:pullRequestReviewThreadId|threadId|pullRequestReviewCommentId)\s*:\s*(?:\\?\")?"
+    r"\\?(?P<ref>\$(?:\{[^}\"]*\}|\w+))"
+)
+# Every place a mutation takes a thread or comment id, whatever follows.
+ID_ARGUMENT_RE = re.compile(
+    r"(?<!\$)\b(?:pullRequestReviewThreadId|threadId|pullRequestReviewCommentId)\s*:"
+)
+# `$id`, `${id}`, `$1`, `${pair%%|*}`: a variable and the operator applied to it.
+SHELL_REF_RE = re.compile(
+    r"\$(?:\{(?P<braced>[A-Za-z_]\w*|\d)(?P<op>[^}]*)\}|(?P<name>[A-Za-z_]\w*|\d))"
+)
+FIELD_FLAGS = frozenset({"-f", "-F", "--field", "--raw-field"})
+# Builtins and wrappers that run a command they are given as data.
+DISPATCHERS = frozenset(
+    {".", "source", "eval", "trap", "xargs", "command", "builtin", "exec", "compgen"}
+    | {"declare", "typeset", "alias", "time", "nohup", "timeout", "env", "sudo"}
+)
+# What changes which value a positional parameter holds inside a function.
+POSITIONAL_SHIFT_RE = re.compile(r"\b(?:shift|getopts)\b|\bset\s+\S|\$#|\$@|\$\*")
+
+
+def _enclosing(node, kind: str):
+    while node is not None and node.type != kind:
+        node = node.parent
+    return node
+
+
+def _write_words(shell: _Shell, index: int) -> tuple[Any, list[str]] | None:
+    """The `command` node around `index` and the words, as written, of the
+    simple command in it that holds `index`."""
+    node = _enclosing(shell._node_at(index), "command")
+    if node is None:
+        return None
+    offset = shell._byte[index]
+    for group in _simple_commands(shell, node):
+        if group[0].start_byte <= offset < group[-1].end_byte:
+            return node, [
+                shell.source[shell._char[w.start_byte] : shell._char[w.end_byte]]
+                for w in group
+            ]
+    return None
+
+
+def _in_shell_expansion(shell: _Shell, index: int) -> bool:
+    """Whether the `$` at `index` is expanded by the shell, not text for gh."""
+    node = shell._node_at(index)
+    while node is not None and node.type not in ("string", "raw_string", "program"):
+        if node.type in ("simple_expansion", "expansion"):
+            return True
+        node = node.parent
+    return False
+
+
+def _bindings(shell: _Shell, write_node, name: str) -> list[str] | None:
+    """Every value the variable `name` takes in this call, as written, or
+    None when one of them is not in the call's text: a positional parameter
+    of the function the write is in (`reply(){ … "$1" …; }; reply PRRT_x …`),
+    an assignment (`t=PRRT_x`) or a `for` list (`for t in PRRT_x …`)."""
+    values: list[str] = []
+    if name.isdigit():
+        function = _enclosing(write_node, "function_definition")
+        called = function.child_by_field_name("name") if function else None
+        if called is None:
+            return None
+        body = function.child_by_field_name("body")
+        if body is not None and POSITIONAL_SHIFT_RE.search(_word(shell, body)):
+            return None  # `shift`, `set -- …`, `getopts`: `$1` moves
+        if _called_indirectly(shell, _word(shell, called)):
+            return None  # `f=r; $f PRRT_b`: a call the names do not show
+        for node in shell._walk():
+            head = node.child_by_field_name("name") if node.type == "command" else None
+            if head is None or _word(shell, head) != _word(shell, called):
+                continue
+            arguments = node.children_by_field_name("argument")
+            if int(name) > len(arguments):
+                return None
+            values.append(_word(shell, arguments[int(name) - 1]))
+        return values or None
+    for node in shell._walk():
+        if node.type == "variable_assignment" and (
+            node.parent is None or node.parent.type != "command"
+        ):
+            named, value = (
+                node.child_by_field_name("name"),
+                node.child_by_field_name("value"),
+            )
+            if named is not None and _word(shell, named) == name:
+                values.append(_word(shell, value) if value is not None else "")
+        elif node.type == "for_statement":
+            variable = node.child_by_field_name("variable")
+            if variable is not None and _word(shell, variable) == name:
+                values += [
+                    _word(shell, v) for v in node.children_by_field_name("value")
+                ]
+        elif node.type == "command":
+            head = node.child_by_field_name("name")
+            if head is not None and _word(shell, head) in ("read", "mapfile"):
+                return None  # a value read at run time
+    return values or None
+
+
+def _called_indirectly(shell: _Shell, function: str) -> bool:
+    """Whether the call may run `function` other than by its plain name:
+    an occurrence of the name, outside its definition, that is not the name
+    of a command (`\\r …`, `retry r …`, `f=${F:-r}; $f …`, `trap 'r …' EXIT`,
+    a body that mentions it), a command named by an expansion (`$f`,
+    `$(printf …)`, `"${FUNCNAME[0]}"`) or a builtin that runs what it is
+    given (`.`, `eval`, `xargs`, …) leaves its calls unknown."""
+    calls = sum(
+        1
+        for n in shell._walk()
+        if n.type == "command"
+        and n.child_by_field_name("name") is not None
+        and shell.source[
+            shell._char[n.child_by_field_name("name").start_byte] : shell._char[
+                n.child_by_field_name("name").end_byte
+            ]
+        ]
+        == function
+    )
+    named = re.findall(rf"(?<!\w){re.escape(function)}(?!\w)", shell.source)
+    if len(named) > calls + 1:  # one is the definition
+        return True
+    # A command whose name is not a plain word, or a builtin that runs code
+    # it is given, may call the function without spelling its name.
+    for n in shell._walk():
+        name = n.child_by_field_name("name") if n.type == "command" else None
+        if name is None:
+            continue
+        word = _word(shell, name)
+        if not re.fullmatch(r"[\w./-]+", word) or word in DISPATCHERS:
+            return True
+    return False
+
+
+def _bound_ids(
+    shell: _Shell, write_node, value: str, depth: int = 0
+) -> list[str] | None:
+    """The thread ids `value` stands for: itself when it is one, or the
+    values of the variable it expands. `${pair%%|*}` keeps the front of each
+    value, so `for pair in "PRRT_x|reply text"` gives PRRT_x."""
+    if REVIEW_THREAD_ID_RE.fullmatch(value):
+        return [value]
+    ref = SHELL_REF_RE.fullmatch(value)
+    if ref is None or depth > 2:
+        return None
+    name, op = ref["braced"] or ref["name"], ref["op"] or ""
+    if op and not op.startswith("%"):
+        return None
+    values = _bindings(shell, write_node, name)
+    if values is None:
+        return None
+    ids: list[str] = []
+    for bound in values:
+        front = (REVIEW_THREAD_ID_RE.match if op else REVIEW_THREAD_ID_RE.fullmatch)(
+            bound
+        )
+        nested = (
+            None if front or op else _bound_ids(shell, write_node, bound, depth + 1)
+        )
+        if front:
+            ids.append(front.group(0))
+        elif nested:
+            ids += nested
+        else:
+            return None
+    return ids
+
+
+def _traced_thread_ids(command: str, write: re.Match) -> list[str] | None:
+    """The ids of a thread mutation that names its thread by a variable,
+    when every value that variable takes is a literal id in this call; None
+    otherwise (an id read from a query, a file or the network)."""
+    shell = _shell(command)
+    located = _write_words(shell, write.start())
+    if located is None:
+        return None
+    node, words = located
+    fields = {}
+    for flag, value in itertools.pairwise(words):
+        if flag in FIELD_FLAGS and "=" in value:
+            key, _, given = value.partition("=")
+            fields[key] = unquote(given)
+    segment = _segment(command, write)
+    ids: list[str] = []
+    refs = list(THREAD_ID_ARGUMENT_RE.finditer(segment))
+    for m in refs:
+        ref = m["ref"]
+        if _in_shell_expansion(shell, write.start() + m.start("ref")):
+            value = ref
+        else:
+            parsed = SHELL_REF_RE.fullmatch(ref)
+            value = fields.get(parsed["braced"] or parsed["name"]) if parsed else None
+        found = _bound_ids(shell, node, value) if value else None
+        if not found:
+            return None
+        ids += found
+    return ids or None
 
 
 def _forge_write_artefacts(
@@ -1506,10 +2075,11 @@ def _forge_write_artefacts(
     link standing in running text. A refused call ran nothing. A write whose
     target stays unknown is reported as unresolved, not guessed.
 
-    The third value lists the review-thread node ids of GraphQL thread
-    mutations whose target is otherwise unknown. Such a write does not make
-    the call unresolved by itself; the caller reports the call as unresolved
-    until the forge has named each thread's pull request."""
+    The third value lists what the forge has to be asked for the writes
+    whose target is otherwise unknown: the node ids of GraphQL review-thread
+    and review-comment mutations, and the REST path of a comment edited
+    by id. Such a write does not make the call unresolved by itself;
+    it is pending until the forge has named each one's PR or issue."""
     if refused(result, failed):
         return [], False, []
     command = _joined(command)
@@ -1537,8 +2107,16 @@ def _forge_write_artefacts(
         else:
             targets = call.api_targets(write)
         about_prs = about_prs or targets != []
-        if targets is None and (ids := _review_thread_ids(command, write, call)):
+        ids, known = (
+            _review_thread_ids(command, write, call) if targets is None else ([], True)
+        )
+        if ids:
+            # A variable id that does not trace leaves the write unknown;
+            # the literal ids beside it are still asked for (their PRs read).
             threads += ids
+            unresolved = unresolved or not known
+        elif targets is None and (path := _comment_endpoint(command, write, call)):
+            threads.append(path)
         elif targets is None:
             unresolved = True
         else:
@@ -1690,15 +2268,22 @@ class _ArtefactScan:
                 command, result, self.gitlab_host, bool(block.get("is_error"))
             )
             self.keep(found)
-            if lost or threads:
+            if lost:
                 self.unresolved.append(squeeze(command, 200))
             if threads:
-                # The full command is read here; the squeezed one above may
-                # end before the ids do.
+                # A thread write is pending, not unresolved: the forge names
+                # each thread's PR (collect-review-findings.py asks it). The
+                # ids come from the full command; the squeezed one may end
+                # before they do.
                 self.review_thread_writes.append(
                     {
-                        "command": self.unresolved[-1],
-                        "thread_ids": threads,
+                        "command": squeeze(command, 200),
+                        "thread_ids": [
+                            t for t in threads if not t.startswith("repos/")
+                        ],
+                        "comment_endpoints": [
+                            t for t in threads if t.startswith("repos/")
+                        ],
                         "only_review_threads": not lost,
                     }
                 )
@@ -1759,11 +2344,15 @@ def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]
         # Compatibility projection only; never sufficient to select a tracker.
         "tickets": sorted(scan.tickets),
         "reference_candidates": scan.reference_candidates,
+        # Writes whose target neither the transcript nor a forge lookup
+        # can name: a call that also holds a pending thread write is listed
+        # here when something else in it stays unknown.
         "unresolved_forge_commands": scan.unresolved,
-        # Calls among them that wrote to a review thread named by node id:
-        # `thread_ids`, and whether those threads are all the call left
-        # unresolved (`only_review_threads`). collect-review-findings.py asks
-        # the forge which pull request each thread belongs to.
+        # Calls that wrote to a review thread named by node id: pending, not
+        # unresolved. `thread_ids`, and whether those threads are all the call
+        # left unknown (`only_review_threads`). collect-review-findings.py
+        # asks the forge which pull request each thread belongs to, and lists
+        # a call whose lookup fails as unresolved.
         "review_thread_writes": scan.review_thread_writes,
     }
 
@@ -1911,6 +2500,12 @@ def render_text(scope: dict[str, Any]) -> str:
         lines.append(
             f"  {len(scope['unresolved_forge_commands'])} forge writes named no"
             " resolvable target — --output-format json lists them"
+        )
+    pending = [w for w in scope["review_thread_writes"] if w["only_review_threads"]]
+    if pending:
+        lines.append(
+            f"  {len(pending)} review-thread writes name their PR only on the"
+            " forge — collect-review-findings.py looks them up"
         )
     unresolved = scope["unresolved_paths"]
     if unresolved:

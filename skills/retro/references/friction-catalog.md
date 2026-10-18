@@ -144,7 +144,9 @@ from the command text alone: a report line is a URL alone on its line, a JSON
 `html_url`/`web_url`, a CLI status line (`✓ …`, `- Creating issue in …`)
 naming a URL, `owner/repo#N` or `#N`, or `pr-merge.sh`'s own `merged`,
 `queued` and attestation lines. A link inside a PR body, a JSON answer or an
-error message is running text and does not count. Each write takes only its
+error message is running text and does not count, also a URL a REST create's
+`--jq` filter prints inside a longer line (`--jq '"\(.number) \(.html_url)"'`):
+the filter may print the body or another field's URL beside it. Each write takes only its
 own number and its own `-R`; a bare `#N` needs that `-R`; several creates in
 one call take one URL each, a create in a `for`/`while` loop takes every URL
 of its kind, and a create never takes a URL a numbered write in the same call
@@ -176,14 +178,60 @@ call the harness refused (`is_error` without `Exit code N`) ran nothing. A
 call with a write whose command the parser cannot read whole — a truncated
 command, text that is not shell, or two lines the grammar joins into one
 command — is unresolved. A
-successful write that prints nothing counts only as `<verb> <number> -R <repo>`
-outside any heredoc or quoted text. Output that reports a failure is not a
+write that prints nothing counts only as `<verb> <number> -R <repo>`
+outside any heredoc or quoted text, in a call the parser reads whole: a
+closed heredoc before it (`python3 - <<'PY' … PY`, then `gh pr edit 89 -R o/r`)
+changes nothing, an unclosed one is an ERROR node and leaves it unresolved.
+A background run (a Bash call sent or moved to the background, a Monitor)
+holds no output at all, so only such a numbered write counts there, by its
+own words. Output that reports a failure is not a
 success: an `HTTP 4xx/5xx`, glab's `422 {message: …}`, a JSON error body
 with `"status":"405"` or `}gh: …` behind it, `GraphQL:` at a
 line start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`,
-`failed to` or `Cannot perform`, or a background run (a Bash call sent or
-moved to the background, a Monitor), whose output is not in the result at
-all; and a write whose own `&& echo A || echo B` printed B and not A. MCP writes count by their input. A `-R` with a scheme and a
+`failed to` or `Cannot perform`; and a write whose own `&& echo A || echo B`
+printed B and not A. A failed `gh pr create` stays unresolved, since GitHub
+can create the PR in spite of the error (`GraphQL: Something went wrong …`;
+gh reports `pull request update failed: … rate limit` after it created one),
+and an error that says nothing was sent can as well come from another
+program in the call.
+`pr-merge.sh -R o/r N` counts by its literal `-R` and number (its last
+positional argument, as the script reads it; a URL or branch there names no
+target), because every write it makes (the merge,
+the queue entry, the attestation) goes to that PR: also when its report went
+to a file (`> merge.txt 2>&1`; it reports a refusal on standard error, so
+`> /dev/null` alone still shows one), and not when its own report, at a line
+start and once per run on that PR whose output the call shows, says it wrote
+nothing (`pr-merge: not merging o/r#N`, `pr-merge: o/r#N failed`) and none
+says it posted an attestation there. Any other report line is somebody
+else's text then. A target in a variable (`-R o/$1 $2`) is
+read from report lines at a line start only, and without one stays
+unresolved. `pr-merge.sh` given as a file to a reader (`grep`, `head`, `cat`,
+`sed`, `git show`, …) whose output goes to no other program, file or
+substitution, or run with
+`--help` or `--version`, writes nothing; a mention whose words do not say
+(`xargs`, a `for` list, `cat pr-merge.sh | bash -s`, `bash <(cat …)`) may be
+a run.
+A GraphQL write on a review thread or a review comment names it by node id
+(`PRRT_…`, `PRRC_…`) where the mutation takes it (`threadId:`,
+`pullRequestReviewThreadId:`, `pullRequestReviewCommentId:`; an id in a body
+or another field is text): literally, or through a variable whose every value
+in the call is one (`t=PRRT_…`, `for pair in "PRRT_…|reply"` with
+`${pair%%|*}`, a function given it as `$1` that neither shifts nor resets its
+parameters and is called only by its plain name, in a call where no command
+is named by an expansion and no builtin such as `.`, `eval` or `xargs` runs
+what it is given). Any other form, such as a value
+from `read` or a command, leaves the call unresolved, while its literal ids
+are still asked for; a REST edit of one comment names its path
+(`gh api -X PATCH repos/o/r/issues/comments/N`). A deleted comment leaves
+nothing to ask for and stays unresolved. Such a write
+is pending, not unresolved: the collector asks the forge for its PR or issue
+(`review_thread_writes` in the scope output) and lists the call as
+unresolved only when that lookup fails. A GraphQL query written into the
+call (`-f query='query{…}'`) is no write, even beside a mutation; a document
+from a file or a command (`query=@q.graphql`, `query="$(cat q.graphql)"`,
+`--input body.json`, or `query="$Q"` unless the call assigns `Q` and every
+value it gives it is plain text) may be a mutation: it counts as a write, and a call whose
+thread ids it may hold is never complete. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
 dotted first segment is a GitLab group. Writes through other tools — `curl`

@@ -146,11 +146,19 @@ owning project, but are not universal rules of this skill.
 The report distinguishes `UNRESOLVED REF`, `UNSUPPORTED`, `NOT READ`, and
 `TRUNCATED`. JSON reports `complete: false` for any of those, or for unresolved
 forge writes (`unresolved_forge_commands`): calls of the session or its
-subagents that wrote to a PR, MR or issue whose own output does not name the
-target. `gh pr create … && gh pr ready <branch> …` is not one of them, since the
+subagents that wrote to a PR, MR or issue whose target neither the call nor a
+forge lookup names. `complete: true` means every such write resolved: from its
+output, from its own words (`gh pr edit 5 -R o/r`, `pr-merge.sh -R o/r 5`),
+or by the lookup the collector makes for a write that names its target only
+by a forge id (a review thread or comment node id, a comment's REST path).
+`gh pr create … && gh pr ready <branch> …` is not unresolved, since the
 create printed its URL; a create whose output was discarded or that reported
-a failure is. Never translate incomplete coverage into "no feedback" or a green
-Done gate. A human may explicitly reject an irrelevant candidate with a reason;
+a failure is. `derive-session-scope.py` lists the
+forge-id writes apart, as `review_thread_writes`: pending, not unresolved,
+until the collector's lookup names their PR or fails, and a failed lookup puts
+the call in `unresolved_forge_commands` with its reason in
+`review_thread_lookup_failures`. Never translate incomplete coverage into "no
+feedback" or a green Done gate. A human may explicitly reject an irrelevant candidate with a reason;
 Done mode records that as a *rejected* row in gate 2, and the collector reports
 the candidate again on the next run.
 

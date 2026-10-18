@@ -71,8 +71,10 @@ Treat `complete: false`, `UNSUPPORTED` and `TRUNCATED` as incomplete evidence,
 not silence. Bodies are trimmed in text; read a finding in full from
 `--output-format json` before classifying it. A GitLab host other than `--gitlab-host` is not contacted. Treat `NOT READ`
 and `UNRESOLVED` lines as unknown, never as "no findings": an `UNRESOLVED` line
-without `REF` is a write whose target the transcript does not name — read the command and add
-the PR, MR or issue it wrote to by hand. Field meanings and how to read them:
+without `REF` is a write whose target neither the transcript nor a forge lookup names — read the command and add
+the PR, MR or issue it wrote to by hand. One that ends in `review thread lookup failed: …`
+named its target by a forge id the lookup could not resolve; run the collector again once
+the reason (a rate limit, a missing token) is gone. Field meanings and how to read them:
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` § Feedback from outside the transcript.
 
 ## Phase 2: LLM Enrichment
