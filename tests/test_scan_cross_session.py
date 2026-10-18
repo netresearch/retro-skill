@@ -13,8 +13,9 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -117,6 +118,41 @@ class TempDirCase(unittest.TestCase):
     def setUp(self) -> None:
         self.root = Path(tempfile.mkdtemp())
         self.addCleanup(shutil.rmtree, self.root, True)
+
+
+class SessionFilesTest(TempDirCase):
+    @unittest.skipUnless(hasattr(time, "tzset"), "requires POSIX timezone selection")
+    def test_elapsed_day_cutoff_is_inclusive_across_local_clock_changes(self) -> None:
+        paths = {
+            name: Transcript().write(self.root, "-p", name)
+            for name in ("before", "at", "after")
+        }
+        for month, day in ((3, 29), (10, 25)):
+            instant = datetime(2026, month, day, 12, tzinfo=timezone.utc)
+            cutoff = instant - timedelta(days=1)
+            for name, seconds in (("before", -1), ("at", 0), ("after", 1)):
+                stamp = cutoff.timestamp() + seconds
+                os.utime(paths[name], (stamp, stamp))
+            for zone in ("UTC0", "CET-1CEST,M3.5.0/2,M10.5.0/3"):
+                with self.subTest(month=month, zone=zone):
+                    try:
+                        with mock.patch.dict(os.environ, {"TZ": zone}):
+                            time.tzset()
+                            with mock.patch.object(
+                                scs, "datetime", wraps=datetime
+                            ) as clock:
+                                clock.now.side_effect = lambda tz=None, now=instant: (
+                                    now.astimezone(tz)
+                                    if tz is not None
+                                    else now.astimezone().replace(tzinfo=None)
+                                )
+                                found = scs.session_files(self.root, None, 1)
+                            self.assertEqual(
+                                set(found),
+                                {(paths["at"], "-p"), (paths["after"], "-p")},
+                            )
+                    finally:
+                        time.tzset()
 
 
 class LoadEventsTest(TempDirCase):

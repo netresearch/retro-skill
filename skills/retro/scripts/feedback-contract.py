@@ -127,7 +127,10 @@ def _timestamp(value: Any, label: str) -> str:
     text = _text(value, label)
     # Python 3.10 needs a colon in a basic UTC offset such as +0000.
     normalized = re.sub(
-        r"([+-][0-9]{2})([0-9]{2})$", r"\1:\2", text.replace("Z", "+00:00")
+        r"([+-]\d{2})(\d{2})$",
+        r"\1:\2",
+        text.replace("Z", "+00:00"),
+        flags=re.ASCII,
     )
     try:
         stamp = datetime.fromisoformat(normalized)
