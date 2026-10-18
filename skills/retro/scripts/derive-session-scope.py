@@ -880,8 +880,10 @@ def refused(result: str, is_error: bool) -> bool:
 
 
 def _write_number(command: str, write: re.Match) -> re.Match | None:
-    """The number a `gh|glab pr|mr|issue <verb> N` names right after its verb."""
-    return re.match(r"\s+(\d+)\b", command[write.end() :])
+    """The number a `gh|glab pr|mr|issue <verb> N` names right after its verb.
+
+    The number must be the whole argument: `123-fix` is a branch, not PR 123."""
+    return re.match(r"\s+(\d+)(?=$|[\s;&|)])", command[write.end() :])
 
 
 def _reports_on_status_line(command: str, write: re.Match) -> bool:

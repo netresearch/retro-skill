@@ -3224,6 +3224,18 @@ class CreateAndReadyTest(unittest.TestCase):
         self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
         self.assertEqual(scan["unresolved"], [command])
 
+    def test_a_ready_on_a_branch_that_starts_with_digits_reports_on_its_status_line(
+        self,
+    ):
+        # CodeRabbit on #187: `123-fix` is a branch, not PR 123; the ready
+        # takes the PR its status line names.
+        command = "gh pr ready 123-fix -R o/r"
+        scan = self._scan(
+            command, '✓ Pull request o/r#5 is marked as "ready for review"\n'
+        )
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
+        self.assertEqual(scan["unresolved"], [])
+
     def test_a_failed_create_before_a_ready_stays_unresolved(self):
         # Recorded failure text (agent-a07a270ed5037be22.jsonl): GitHub can
         # create the PR in spite of the error, so it is not "nothing written".
