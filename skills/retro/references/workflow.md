@@ -300,6 +300,8 @@ re-presented.
 1. Mechanical pre-pass (Schicht A)
 1b. Native reviews plus supplied tracker feedback (collect-review-findings.py);
     delegate contextual reference resolution per feedback-contract.md.
+    Subagent transcripts (<session id>/subagents/agent-*.jsonl) are read
+    with the main one.
     PRs/MRs a script opened (a fleet driver's opened.jsonl) are not in the
     transcript: add them with --pr-list <file> (origin "listed")
 2. LLM enrichment (Schicht B)

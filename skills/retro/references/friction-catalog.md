@@ -124,6 +124,19 @@ uv run "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" \
 its header; it reads each command's structure — quoted text, heredocs,
 `$(…)`, loops — from the parse tree.
 
+The session is more than `--transcript-file`: every subagent keeps its own
+transcript at `<session id>/subagents/agent-<agent id>.jsonl` beside
+`<session id>.jsonl` (a Workflow's agents one level deeper, in
+`subagents/workflows/wf_*/`), and the collector reads each of them with the
+main one; a symlinked `--transcript-file` is resolved first. Only a session
+file named by its UUID has subagents: a converted transcript at a fixed path
+(`/tmp/retro-codex-session.jsonl`) is read alone.
+Their writes count like the main loop's, and an artefact a subagent created
+but the main loop only mentioned counts as created. `transcripts` in the
+output (and `transcripts read: 1 main + N subagent` in the text) names the
+files read; on 2026-10-18 the main transcript alone yielded 4 of the 266
+artefacts the session's 931 subagents and its main loop wrote to.
+
 It reads every PR, MR and issue the session created or wrote to through `gh`,
 `glab` (subcommands and `api`), the GitHub MCP tools, or git-workflow's
 `pr-merge.sh`. A write counts when its **output reports** the target, never

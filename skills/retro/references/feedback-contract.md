@@ -21,6 +21,7 @@ authorization to use it for every key-shaped reference.
 ## Collection and delegation
 
 1. Run `collect-review-findings.py` against the session transcript. It reads
+   that transcript and its subagents' (`<session id>/subagents/agent-*.jsonl`),
    native artifacts and their native issue links. Branch/title tokens and
    key arguments of successful tool calls are **unresolved reference candidates**, not
    tickets known to exist. Each candidate retains its source `context`.
