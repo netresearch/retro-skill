@@ -13,7 +13,8 @@ WHY THIS EXISTS. Codex CLI keeps a session as one rollout file,
 format, so a rollout passed to them directly yields no turns and no tool calls.
 
 MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
-311 tool calls) and 0.163.0 (`codex exec`, 4 wrapper calls). Each record is
+311 tool calls) and 0.163.0 (`codex exec`, 7 wrapper calls in 4 sessions,
+2 of them with executed items). Each record is
 `{"timestamp", "type", "payload"}`; only `response_item`, `event_msg`,
 `turn_context` and `session_meta` rows are read.
 
@@ -34,7 +35,29 @@ MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
     rollouts measured here contains one.
   · The `functions.exec` runtime, the default of `codex exec` in 0.163.0,
     wraps tools in one `custom_tool_call` named `exec` whose `input` is
-    JavaScript. Literal `tools.exec_command({cmd: "..."})` and
+    JavaScript. Its output says only how the SCRIPT ended, so a command that
+    exits 2 inside a completed script looks successful there. For each command
+    and patch the script runs, 0.163.0 also writes an `event_msg/item_completed`
+    row between the wrapper and its output: a `CommandExecution` item (argv,
+    `exit_code`, `status`, `aggregated_output`) or a `FileChange` item
+    (`changes` keyed by absolute path, `status`, `stdout`, `stderr`). Such
+    items carry no `call_id`: an item goes to the open wrapper whose source
+    has that literal command (or a patch), else to the newest open one. When
+    a wrapper has items,
+    its commands and patches are rendered from them, each with the item's id
+    and its own result, so a non-zero exit code or `status: failed` is
+    `is_error`, and a computed command appears with the command that ran. The
+    script's other `tools.<name>(...)` calls come from its source, ahead of
+    the items. A script that failed or was terminated (it threw after its
+    commands succeeded) becomes one more failing call, `exec`, with the
+    wrapper's `call_id` and output. An item that has not ended stays id-less.
+    A command still running when the session ended, or when the script
+    finished, leaves no item, so the source's literal calls that no item
+    matched are kept id-less, unless the script failed or was terminated.
+    A wrapper that no output row can close ends at the next response row, and
+    an item while no wrapper is open is ignored, so nothing counts twice.
+    The rest of this point is the fallback for a wrapper without items.
+    Literal `tools.exec_command({cmd: "..."})` and
     `tools.apply_patch("...")` calls are rendered, the wrapper itself is not;
     a call whose argument is computed is left out and counted on stderr, and
     any other `tools.<name>(...)` call is passed through by name. The
@@ -75,7 +98,7 @@ import os
 import re
 import shlex
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 #: A call on the runtime's `tools` object, not on `mytools`, `$tools` or `x.tools`.
@@ -97,8 +120,11 @@ INJECTED_PREFIXES = (
     "<skill>",
     "# AGENTS.md instructions",
 )
-#: Shells whose `-c`/`-lc` script is the command a `shell` call ran.
-SHELLS = {"bash", "sh", "zsh", "dash"}
+#: Shells whose script argument is the command a call ran, and the flags
+#: that introduce it. 0.163.0 writes `/bin/bash -lc`; the others keep a
+#: command matching its literal on hosts with another shell.
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell"}
+SHELL_FLAGS = {"-c", "-lc", "-ic", "-lic", "-Command"}
 
 
 def _load_sibling(filename: str):
@@ -287,12 +313,24 @@ def _nested_tools(
 
 
 def _shell_command(argv: Any) -> str | None:
-    """The command a `shell` call ran: the script of `bash -lc`, else the argv."""
+    """The command a shell argv ran: the script of `bash -lc`, else the argv.
+
+    Options may precede the script flag, as in the PowerShell argv Codex
+    documents, `["pwsh", "-NoLogo", "-NoProfile", "-Command", "<script>"]`.
+    The shell may be named by a Windows path.
+    """
     if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv):
         return None
-    shell = len(argv) == 3 and os.path.basename(argv[0]) in SHELLS
-    if shell and argv[1] in ("-c", "-lc"):
-        return argv[2]
+    if len(argv) < 3:
+        return shlex.join(argv)
+    name = PureWindowsPath(argv[0]).name.lower().removesuffix(".exe")
+    options = argv[1:-2]
+    if (
+        name in SHELLS
+        and argv[-2] in SHELL_FLAGS
+        and all(o.startswith("-") for o in options)
+    ):
+        return argv[-1]
     return shlex.join(argv)
 
 
@@ -469,6 +507,211 @@ def _wrapper_events(
     return events, computed, owner
 
 
+def _execution_events(
+    item: dict[str, Any], timestamp: Any, message_id: Any, directory: str | None
+) -> list[dict[str, Any]]:
+    """A `CommandExecution` or `FileChange` item as its `tool_use` and result.
+
+    The call takes the item's id and gets a result only once the item says
+    how it ended; otherwise it is rendered id-less, which the detector counts
+    without a result.
+    """
+    if item.get("type") == "CommandExecution":
+        argv = item.get("command")
+        command = argv if isinstance(argv, str) else _shell_command(argv)
+        use: dict[str, Any] = {
+            "type": "tool_use",
+            "name": "Bash",
+            "input": {"command": command or ""},
+        }
+        output = item.get("aggregated_output")
+        code = item.get("exit_code")
+        ended = isinstance(code, int) or item.get("status") in ("completed", "failed")
+        failed = (isinstance(code, int) and code != 0) or item.get("status") == "failed"
+    else:
+        changes = item.get("changes")
+        paths = (
+            [p for p in changes if isinstance(p, str)]
+            if isinstance(changes, dict)
+            else []
+        )
+        use = {
+            "type": "tool_use",
+            "name": "Patch",
+            "input": {
+                "file_paths": [_opencode._resolve(p, directory, False) for p in paths]
+            },
+        }
+        streams = [item.get("stdout"), item.get("stderr")]
+        output = "".join(s for s in streams if isinstance(s, str))
+        ended = item.get("status") in ("completed", "failed")
+        failed = item.get("status") == "failed"
+    item_id = item.get("id")
+    events = [_event("assistant", use, timestamp, message_id)]
+    if isinstance(item_id, str) and item_id and ended:
+        use["id"] = item_id
+        text = output if isinstance(output, str) else ""
+        block = _opencode._tool_result(item_id, text, failed)
+        events.append(_event("user", block, timestamp, None))
+    return events
+
+
+def _new_wrapper(
+    payload: dict[str, Any], timestamp: Any, directory: str | None
+) -> dict[str, Any]:
+    """An open `functions.exec` wrapper: its parsed calls and the items it ran."""
+    events, computed, owner = _wrapper_events(payload, timestamp, directory)
+    source = payload.get("input")
+    return {
+        "events": events,
+        "computed": computed,
+        "owner": owner,
+        "message_id": payload.get("id"),
+        "source": source if isinstance(source, str) else "",
+        "items": [],
+        "slot": [],
+    }
+
+
+def _item_wrapper(
+    executed: dict[str, Any], open_wrappers: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """The open wrapper an executed item belongs to: the newest whose source
+    has this literal command (or, for a patch, a patch), else the newest. The
+    item itself names no wrapper."""
+    if executed.get("type") == "CommandExecution":
+        argv = executed.get("command")
+        wanted = ("Bash", argv if isinstance(argv, str) else _shell_command(argv))
+    else:
+        wanted = ("Patch", None)
+    for wrapper in reversed(open_wrappers):
+        for event in wrapper["events"]:
+            use = event["message"]["content"][0]
+            if use["name"] == wanted[0] and (
+                wanted[1] is None or use["input"].get("command") == wanted[1]
+            ):
+                return wrapper
+    return open_wrappers[-1]
+
+
+def _same_file(executed: set[Any], parsed: list[Any]) -> bool:
+    """Whether a patch item and a source patch name a common file. A source
+    path left relative (no turn directory known) matches an item path that
+    ends with it."""
+    for path in parsed:
+        if not isinstance(path, str):
+            continue
+        for done in executed:
+            if not isinstance(done, str):
+                continue
+            if done == path or (
+                not os.path.isabs(path) and done.endswith("/" + path.removeprefix("./"))
+            ):
+                return True
+    return False
+
+
+def _unmatched(
+    parsed: list[dict[str, Any]], executed: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The source's `Bash` and `Patch` calls no executed item accounts for.
+
+    A command matches an item with the same command text; a patch matches an
+    item that names one of its files (both are resolved against the turn's
+    directory). Each item accounts for one call at most, so an item of a
+    computed call, which matches no literal one, consumes nothing.
+    """
+
+    uses = [e["message"]["content"][0] for e in executed]
+    commands = [
+        u["input"].get("command")
+        for u in uses
+        if u["type"] == "tool_use" and u["name"] == "Bash"
+    ]
+    patches = [
+        set(u["input"].get("file_paths") or [])
+        for u in uses
+        if u["type"] == "tool_use" and u["name"] == "Patch"
+    ]
+    return [
+        event
+        for event in parsed
+        if not _consume(event["message"]["content"][0], commands, patches)
+        and event["message"]["content"][0]["name"] in ("Bash", "Patch")
+    ]
+
+
+def _consume(use: dict[str, Any], commands: list[Any], patches: list[set[Any]]) -> bool:
+    """Whether an executed item accounts for this source call; the item is
+    removed from its list, so it accounts for no other call."""
+    if use["name"] == "Bash" and use["input"].get("command") in commands:
+        commands.remove(use["input"].get("command"))
+        return True
+    if use["name"] == "Patch":
+        files = use["input"].get("file_paths") or []
+        match = next((p for p in patches if _same_file(p, files)), None)
+        if match is not None:
+            patches.remove(match)
+            return True
+    return False
+
+
+def _close_wrapper(
+    wrapper: dict[str, Any], output: dict[str, Any] | None
+) -> tuple[int, int]:
+    """Fill a wrapper's slot; return how many calls it rendered and how many
+    computed calls it left out.
+
+    A wrapper whose items were recorded (0.163.0 writes one per command and
+    patch) is rendered from them: each call has its real command, exit code
+    and output. The calls the script made on other tools come from its source,
+    ahead of the items. A script that failed or was terminated after its
+    commands succeeded keeps that error as a failing `exec` call, with the
+    wrapper's `call_id` and output. The source's commands and patches that no
+    item matched are kept, id-less, unless the script failed or was
+    terminated: an unfinished command (the session ended, or it was left
+    running past the script) leaves no item. After a failed or terminated
+    script the calls after the failing point mostly never ran, and the
+    failure itself is the `exec` call. A literal call in a branch a completed
+    script did not take is also kept; the source alone cannot tell, and the
+    rendering before items counted it too. Without items, the parsed source
+    and the single-call output pairing apply.
+    """
+    slot = wrapper["slot"]
+    if wrapper["items"]:
+        others = [
+            e
+            for e in wrapper["events"]
+            if e["message"]["content"][0]["name"] not in ("Bash", "Patch")
+        ]
+        slot.extend(others)
+        slot.extend(wrapper["items"])
+        text, failed = (
+            _wrapper_result(output.get("output")) if output is not None else ("", False)
+        )
+        if not failed:
+            slot.extend(_unmatched(wrapper["events"], wrapper["items"]))
+        elif output is not None:
+            call_id = output["call_id"]
+            use = {"type": "tool_use", "id": call_id, "name": "exec", "input": {}}
+            block = _opencode._tool_result(call_id, text, True)
+            slot.append(
+                _event("assistant", use, output["timestamp"], wrapper["message_id"])
+            )
+            slot.append(_event("user", block, output["timestamp"], None))
+        uses = [e for e in slot if e["message"]["content"][0]["type"] == "tool_use"]
+        return len(uses), 0
+    slot.extend(wrapper["events"])
+    owner = wrapper["owner"]
+    if output is not None and owner is not None:
+        call_id = output["call_id"]
+        owner["id"] = call_id
+        result = _wrapper_result(output.get("output"))
+        block = _opencode._tool_result(call_id, *result)
+        slot.append(_event("user", block, output["timestamp"], None))
+    return len(wrapper["events"]), wrapper["computed"]
+
+
 def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
     # A line that is valid JSON but no object is no Codex record.
     rows = [row for row in rows if isinstance(row, dict)]
@@ -479,10 +722,20 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
     rendered = 0
     computed = 0
     directory: str | None = None
-    #: call_id of each wrapper -> the `tool_use` its output belongs to, or None.
-    wrappers: dict[str, dict[str, Any] | None] = {}
+    #: call_id of each open wrapper -> its state; the output row closes it.
+    wrappers: dict[str, dict[str, Any]] = {}
+    #: Every open wrapper, newest last; `_item_wrapper` picks an item's wrapper.
+    open_wrappers: list[dict[str, Any]] = []
     #: ids of direct calls, which a later wrapper must not take over.
     direct_ids: set[str] = set()
+
+    def close(wrapper: dict[str, Any], output: dict[str, Any] | None) -> None:
+        nonlocal rendered, computed, open_wrappers
+        open_wrappers = [w for w in open_wrappers if w is not wrapper]
+        done, skipped = _close_wrapper(wrapper, output)
+        rendered += done
+        computed += skipped
+
     for row in rows:
         kind = row.get("type")
         payload = row.get("payload")
@@ -495,8 +748,28 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
             cwd = payload.get("cwd")
             directory = cwd if isinstance(cwd, str) and cwd else directory
             continue
+        if kind == "event_msg" and payload.get("type") == "item_completed":
+            executed = payload.get("item")
+            if (
+                open_wrappers
+                and isinstance(executed, dict)
+                and executed.get("type") in ("CommandExecution", "FileChange")
+            ):
+                wrapper = _item_wrapper(executed, open_wrappers)
+                wrapper["items"].extend(
+                    _execution_events(
+                        executed, timestamp, wrapper["message_id"], directory
+                    )
+                )
+            continue
         if kind != "response_item":
             continue
+        # A wrapper no output row can close (its call_id is unusable or was
+        # taken by a direct call) ends at the next response row, so items that
+        # follow it are not attached to it.
+        registered = {id(w) for w in wrappers.values()}
+        for wrapper in [w for w in open_wrappers if id(w) not in registered]:
+            close(wrapper, None)
         item = payload.get("type")
         if item == "message":
             event = _message_event(payload, timestamp, human_texts)
@@ -506,13 +779,14 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
                     human_seen.extend(b["text"] for b in event["message"]["content"])
         elif item == "custom_tool_call" and payload.get("name") == "exec":
             calls_seen.append("exec")
-            nested, skipped, owner = _wrapper_events(payload, timestamp, directory)
-            events.extend(nested)
-            rendered += len(nested)
-            computed += skipped
+            wrapper = _new_wrapper(payload, timestamp, directory)
+            # The slot keeps the wrapper's calls at this position in the
+            # session; it is filled when the wrapper closes.
+            events.append(wrapper["slot"])
+            open_wrappers.append(wrapper)
             call_id = payload.get("call_id")
             if isinstance(call_id, str) and call_id and call_id not in direct_ids:
-                wrappers[call_id] = owner
+                wrappers[call_id] = wrapper
         elif item in ("function_call", "custom_tool_call"):
             calls_seen.append(str(payload.get("name")))
             name, tool_input = _call(payload, directory)
@@ -539,13 +813,8 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
             and isinstance(payload.get("call_id"), str)
             and payload["call_id"] in wrappers
         ):
-            call_id = payload["call_id"]
-            owner = wrappers.pop(call_id)
-            if owner is not None:
-                owner["id"] = call_id
-                result = _wrapper_result(payload.get("output"))
-                block = _opencode._tool_result(call_id, *result)
-                events.append(_event("user", block, timestamp, None))
+            wrapper = wrappers.pop(payload["call_id"])
+            close(wrapper, {**payload, "timestamp": timestamp})
         elif item in ("function_call_output", "custom_tool_call_output"):
             result = _result(payload.get("output"))
             # A result pairs by a string id; any other value would only make
@@ -553,6 +822,16 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
             if result is not None and isinstance(payload.get("call_id"), str):
                 block = _opencode._tool_result(payload.get("call_id"), *result)
                 events.append(_event("user", block, timestamp, None))
+    # A wrapper without an output row (an interrupted session) still shows
+    # the calls it made.
+    # `close` rebinds `open_wrappers`, so this walks the list as it was.
+    for wrapper in open_wrappers:
+        close(wrapper, None)
+    events = [
+        event
+        for entry in events
+        for event in (entry if isinstance(entry, list) else [entry])
+    ]
     if not events:
         raise ValueError("no Codex response items found")
     if calls_seen and not rendered:

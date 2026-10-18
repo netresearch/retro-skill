@@ -386,6 +386,352 @@ class RealWrapperTest(unittest.TestCase):
         self.assertEqual(blocks(lines, "tool_result"), [])
 
 
+def executed_rows(rows: list[dict]) -> list[dict]:
+    """The `item_completed` rows of commands and patches, in order."""
+    return [
+        r
+        for r in rows
+        if r["payload"].get("type") == "item_completed"
+        and r["payload"]["item"]["type"] in ("CommandExecution", "FileChange")
+    ]
+
+
+class ExecutionItemTest(unittest.TestCase):
+    """0.163.0 records every nested command and patch as an executed item."""
+
+    def test_a_failing_command_in_a_completed_script_is_an_error(self) -> None:
+        lines = adapter.render(fixture("rollout-0.163.0-command-exit.jsonl"))
+        uses = blocks(lines, "tool_use")
+        results = {r["tool_use_id"]: r for r in blocks(lines, "tool_result")}
+        self.assertEqual(
+            [u["input"]["command"] for u in uses],
+            ["ls /nonexistent-r184", "echo ok-r184"],
+        )
+        self.assertEqual([results[u["id"]]["is_error"] for u in uses], [True, False])
+        self.assertTrue(results[uses[0]["id"]]["content"].startswith("ls: cannot"))
+        self.assertIn("A1", [f["signal"] for f in detect(lines)["findings"]])
+
+    def test_each_call_of_a_script_gets_its_own_result(self) -> None:
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            lines = adapter.render(fixture("rollout-0.163.0-multi-call.jsonl"))
+        uses = blocks(lines, "tool_use")
+        results = {r["tool_use_id"]: r for r in blocks(lines, "tool_result")}
+        self.assertEqual(
+            [(u["name"], u["input"]) for u in uses],
+            [
+                ("Bash", {"command": "ls /nonexistent-r184b"}),
+                ("Bash", {"command": "echo two-r184"}),
+                ("Patch", {"file_paths": ["/repo/p184.txt"]}),
+            ],
+        )
+        self.assertEqual(
+            [results[u["id"]]["is_error"] for u in uses], [True, False, False]
+        )
+        # The computed `'ls /' + d` is no longer left out.
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertEqual(detect(lines)["tool_uses"], 3)
+
+    def test_other_tools_of_the_script_are_kept(self) -> None:
+        rows = fixture("rollout-0.163.0-multi-call.jsonl")
+        call = rows[6]["payload"]
+        rows[6] = {
+            **rows[6],
+            "payload": {**call, "input": call["input"] + "await tools.view_image({});"},
+        }
+        names = [u["name"] for u in blocks(adapter.render(rows), "tool_use")]
+        self.assertEqual(names, ["view_image", "Bash", "Bash", "Patch"])
+
+    def test_items_outside_a_wrapper_are_not_counted_twice(self) -> None:
+        rows = fixture("rollout-0.101.0.jsonl")
+        rows.insert(9, executed_rows(fixture("rollout-0.163.0-command-exit.jsonl"))[0])
+        self.assertEqual(len(blocks(adapter.render(rows), "tool_use")), 2)
+
+    def test_an_item_that_has_not_ended_stays_id_less(self) -> None:
+        rows = fixture("rollout-0.163.0-command-exit.jsonl")
+        executed = executed_rows(rows)[0]["payload"]["item"]
+        for key in ("exit_code", "status"):
+            executed.pop(key)
+        lines = adapter.render(rows)
+        self.assertNotIn("id", blocks(lines, "tool_use")[0])
+        self.assertEqual(detect(lines)["tool_uses"], 2)
+
+    def test_a_script_that_throws_after_its_command_stays_an_error(self) -> None:
+        lines = adapter.render(fixture("rollout-0.163.0-script-error-items.jsonl"))
+        uses = blocks(lines, "tool_use")
+        results = {r["tool_use_id"]: r for r in blocks(lines, "tool_result")}
+        self.assertEqual([u["name"] for u in uses], ["Bash", "exec"])
+        self.assertEqual([results[u["id"]]["is_error"] for u in uses], [False, True])
+        self.assertIn("probe-throw2-r184", results[uses[1]["id"]]["content"])
+        self.assertIn("A1", [f["signal"] for f in detect(lines)["findings"]])
+
+    def test_a_failed_status_without_exit_code_is_an_error(self) -> None:
+        rows = fixture("rollout-0.163.0-multi-call.jsonl")
+        command, _, patch = (r["payload"]["item"] for r in executed_rows(rows))
+        command.pop("exit_code")
+        patch["status"] = "failed"
+        lines = adapter.render(rows)
+        errors = [r["is_error"] for r in blocks(lines, "tool_result")]
+        self.assertEqual(errors, [True, False, True])
+
+    def test_equal_wrappers_close_independently(self) -> None:
+        def wrapper(call_id: str) -> dict:
+            return row(
+                {
+                    "type": "custom_tool_call",
+                    "name": "exec",
+                    "call_id": call_id,
+                    "input": 'await tools.exec_command({cmd:"ls"});',
+                }
+            )
+
+        def done(call_id: str) -> dict:
+            return row(
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": call_id,
+                    "output": "Script completed\nOutput:\n",
+                }
+            )
+
+        # Equal content, closed in reverse order: removal must be by identity.
+        rows = [wrapper("a"), wrapper("b"), done("b"), done("a")]
+        lines = adapter.render(rows)
+        self.assertEqual(detect(lines)["tool_uses"], 2)
+
+    def test_an_item_goes_to_the_wrapper_that_names_its_command(self) -> None:
+        rows = fixture("rollout-0.163.0-command-exit.jsonl")
+        first, second = (
+            i for i, r in enumerate(rows) if r["payload"].get("name") == "exec"
+        )
+        item = rows.pop(first + 1)
+        later = rows.pop(first + 1)  # the first wrapper's output row
+        # Both wrappers are open when the first one's item arrives.
+        rows.insert(second - 1, item)
+        rows.insert(second, later)
+        lines = adapter.render(rows)
+        commands = [u["input"]["command"] for u in blocks(lines, "tool_use")]
+        self.assertEqual(sorted(commands), ["echo ok-r184", "ls /nonexistent-r184"])
+
+    def test_an_item_after_an_unclosable_wrapper_is_ignored(self) -> None:
+        rows = fixture("rollout-0.163.0-command-exit.jsonl")
+        exec_rows = [r for r in rows if r["payload"].get("name") == "exec"]
+        exec_rows[0]["payload"].pop("call_id")
+        stray = json.loads(json.dumps(executed_rows(rows)[0]))
+        stray["payload"]["item"]["id"] = "exec-stray"
+        rows.append(stray)
+        commands = [
+            u["input"]["command"] for u in blocks(adapter.render(rows), "tool_use")
+        ]
+        self.assertEqual(commands, ["ls /nonexistent-r184", "echo ok-r184"])
+
+    def test_a_command_still_running_at_the_end_is_kept(self) -> None:
+        rows = fixture("rollout-0.163.0-multi-call.jsonl")
+        wrapper = next(r for r in rows if r["payload"].get("name") == "exec")
+        wrapper["payload"]["input"] += 'await tools.exec_command({cmd: "sleep 600"});'
+        rows = [
+            r for r in rows if r["payload"].get("type") != "custom_tool_call_output"
+        ]
+        uses = blocks(adapter.render(rows), "tool_use")
+        self.assertEqual(
+            [u["input"].get("command") for u in uses if u["name"] == "Bash"],
+            ["ls /nonexistent-r184b", "echo two-r184", "sleep 600"],
+        )
+        self.assertNotIn("id", uses[-1])
+
+    def test_a_command_the_script_never_reached_is_left_out(self) -> None:
+        rows = fixture("rollout-0.163.0-script-error-items.jsonl")
+        wrapper = next(r for r in rows if r["payload"].get("name") == "exec")
+        wrapper["payload"]["input"] += 'await tools.exec_command({cmd: "never"});'
+        commands = [
+            u["input"].get("command")
+            for u in blocks(adapter.render(rows), "tool_use")
+            if u["name"] == "Bash"
+        ]
+        self.assertEqual(commands, ["echo before-r184"])
+
+    def wrapper_rows(self, source: str, items: list[dict], header: str | None) -> list:
+        rows = [
+            row({"type": "turn_context", "cwd": "/repo"}, kind="turn_context"),
+            row(
+                {
+                    "type": "custom_tool_call",
+                    "name": "exec",
+                    "call_id": "w",
+                    "input": source,
+                }
+            ),
+        ]
+        rows += [
+            row({"type": "item_completed", "item": item}, kind="event_msg")
+            for item in items
+        ]
+        if header is not None:
+            rows.append(
+                row(
+                    {
+                        "type": "custom_tool_call_output",
+                        "call_id": "w",
+                        "output": f"{header}\nOutput:\n",
+                    }
+                )
+            )
+        return rows
+
+    @staticmethod
+    def ran(item_id: str, command: str, code: int = 0) -> dict:
+        return {
+            "type": "CommandExecution",
+            "id": item_id,
+            "command": ["/bin/bash", "-lc", command],
+            "status": "failed" if code else "completed",
+            "exit_code": code,
+            "aggregated_output": "",
+        }
+
+    def test_a_command_left_running_past_a_completed_script_is_kept(self) -> None:
+        rows = self.wrapper_rows(
+            'await tools.exec_command({cmd:"ls"});'
+            'await tools.exec_command({cmd:"npm run dev", yield_time_ms:1000});',
+            [self.ran("i1", "ls")],
+            "Script completed",
+        )
+        commands = [
+            u["input"]["command"] for u in blocks(adapter.render(rows), "tool_use")
+        ]
+        self.assertEqual(commands, ["ls", "npm run dev"])
+
+    def test_each_item_accounts_for_one_call(self) -> None:
+        rows = self.wrapper_rows(
+            'await tools.exec_command({cmd:"echo a"});'
+            'await tools.exec_command({cmd:"echo a"});',
+            [self.ran("i1", "echo a")],
+            None,
+        )
+        self.assertEqual(len(blocks(adapter.render(rows), "tool_use")), 2)
+
+    def test_a_computed_patch_does_not_take_a_literal_ones_place(self) -> None:
+        patch = "*** Begin Patch\\n*** Add File: {}\\n+x\\n*** End Patch"
+        rows = self.wrapper_rows(
+            f"await tools.apply_patch(`{patch.format('a.txt')}`);"
+            f'await tools.apply_patch("{patch.format("b.txt")}");',
+            [
+                {
+                    "type": "FileChange",
+                    "id": "p1",
+                    "changes": {"/repo/a.txt": {"type": "add"}},
+                    "status": "completed",
+                    "stdout": "",
+                    "stderr": "",
+                }
+            ],
+            None,
+        )
+        paths = [
+            u["input"]["file_paths"] for u in blocks(adapter.render(rows), "tool_use")
+        ]
+        self.assertEqual(paths, [["/repo/a.txt"], ["/repo/b.txt"]])
+
+    def test_another_shell_still_matches_its_literal(self) -> None:
+        for argv in (
+            ["/usr/bin/fish", "-c", "ls -la"],
+            ["pwsh.exe", "-Command", "ls -la"],
+            # The argv Codex documents for PowerShell.
+            ["pwsh", "-NoLogo", "-NoProfile", "-Command", "ls -la"],
+            [
+                r"C:\Program Files\PowerShell\7\pwsh.exe",
+                "-NoProfile",
+                "-Command",
+                "ls -la",
+            ],
+        ):
+            with self.subTest(argv=argv):
+                item = {**self.ran("i1", "ls -la"), "command": argv}
+                rows = self.wrapper_rows(
+                    'await tools.exec_command({cmd:"ls -la"});',
+                    [item],
+                    "Script completed",
+                )
+                uses = blocks(adapter.render(rows), "tool_use")
+                self.assertEqual(
+                    [(u["input"]["command"], "id" in u) for u in uses],
+                    [("ls -la", True)],
+                )
+
+    def test_a_relative_patch_path_matches_its_absolute_item(self) -> None:
+        rows = self.wrapper_rows(
+            'await tools.apply_patch("*** Begin Patch\\n*** Add File: .github/x.yml'
+            '\\n+x\\n*** End Patch");',
+            [
+                {
+                    "type": "FileChange",
+                    "id": "p1",
+                    "changes": {"/repo/.github/x.yml": {"type": "add"}},
+                    "status": "completed",
+                    "stdout": "",
+                    "stderr": "",
+                }
+            ],
+            "Script completed",
+        )
+        del rows[0]  # no turn directory: the source path stays relative
+        self.assertEqual(len(blocks(adapter.render(rows), "tool_use")), 1)
+
+    def test_routing_compares_commands_not_source_text(self) -> None:
+        # "ls" occurs in every source ("tools."), but only the first
+        # wrapper runs it.
+        rows = self.wrapper_rows('await tools.exec_command({cmd:"ls"});', [], None)
+        second = self.wrapper_rows(
+            'await tools.exec_command({cmd:"echo b"});', [], None
+        )
+        second[1]["payload"]["call_id"] = "w2"
+        rows += second[1:]
+        rows.append(
+            row(
+                {"type": "item_completed", "item": self.ran("i1", "ls")},
+                kind="event_msg",
+            )
+        )
+        rows.append(
+            row(
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "w",
+                    "output": "Script completed\nOutput:\n",
+                }
+            )
+        )
+        rows.append(
+            row(
+                {"type": "item_completed", "item": self.ran("i2", "echo b")},
+                kind="event_msg",
+            )
+        )
+        rows.append(
+            row(
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "w2",
+                    "output": "Script completed\nOutput:\n",
+                }
+            )
+        )
+        commands = sorted(
+            u["input"]["command"] for u in blocks(adapter.render(rows), "tool_use")
+        )
+        self.assertEqual(commands, ["echo b", "ls"])
+
+    def test_an_interrupted_wrapper_keeps_its_executed_calls(self) -> None:
+        rows = [
+            r
+            for r in fixture("rollout-0.163.0-multi-call.jsonl")
+            if r["payload"].get("type") != "custom_tool_call_output"
+        ]
+        lines = adapter.render(rows)
+        self.assertEqual(len(blocks(lines, "tool_result")), 3)
+        self.assertEqual(detect(lines)["tool_uses"], 3)
+
+
 class WrapperEdgeTest(unittest.TestCase):
     """Wrapper rows a real rollout can carry in other combinations."""
 
