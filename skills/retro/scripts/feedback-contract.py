@@ -132,6 +132,16 @@ def _timestamp(value: Any, label: str) -> str:
         text.replace("Z", "+00:00"),
         flags=re.ASCII,
     )
+    # CPython carries overflowing offset components into larger units.
+    offset = re.search(
+        r"[+-](\d{2}):?(\d{2})(?::?(\d{2}))?(?:[.,]\d+)?$",
+        normalized,
+        flags=re.ASCII,
+    )
+    if offset is not None and (
+        int(offset[1]) > 23 or int(offset[2]) > 59 or int(offset[3] or 0) > 59
+    ):
+        raise FeedbackValidationError(f"{label} must be an ISO 8601 timestamp")
     try:
         stamp = datetime.fromisoformat(normalized)
     except ValueError as exc:

@@ -486,7 +486,24 @@ class FeedbackContractTest(unittest.TestCase):
 
     def test_timestamp_offsets_are_validated_without_rewriting_supplied_values(self):
         for field in ("created_at", "last_activity"):
-            for offset in ("Z", "+00:00", "+0130", "-0330"):
+            for offset in (
+                "Z",
+                "+00:00",
+                "+0130",
+                "-0330",
+                "+0059",
+                "-0059",
+                "+2359",
+                "-2359",
+                "+00:59",
+                "-00:59",
+                "+23:59",
+                "-23:59",
+                "+00:00:59",
+                "-00:00:59",
+                "+23:59:59.999999",
+                "-23:59:59.999999",
+            ):
                 timestamp = "2026-09-25T10:00:00.123" + offset
                 record = external_record()
                 record["findings"][0][field] = timestamp
@@ -511,6 +528,30 @@ class FeedbackContractTest(unittest.TestCase):
                 record["findings"][0][field] = timestamp
                 with (
                     self.subTest(field=field, timestamp=timestamp),
+                    self.assertRaises(ValueError),
+                ):
+                    evidence(record)
+
+    def test_timestamp_offset_components_cannot_overflow_into_other_components(self):
+        for offset in (
+            "+0060",
+            "-0060",
+            "+0160",
+            "+00:60",
+            "-00:60",
+            "+00:00:60",
+            "-00:00:60",
+            "+00:60:01",
+            "-00:60:01.500000",
+            "+00:00:60.500000",
+            "+006001",
+            "+000060",
+        ):
+            for field in ("created_at", "last_activity"):
+                record = external_record()
+                record["findings"][0][field] = "2026-09-25T10:00:00" + offset
+                with (
+                    self.subTest(field=field, offset=offset),
                     self.assertRaises(ValueError),
                 ):
                     evidence(record)
