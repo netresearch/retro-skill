@@ -550,6 +550,132 @@ class ExecutionItemTest(unittest.TestCase):
         ]
         self.assertEqual(commands, ["echo before-r184"])
 
+    def wrapper_rows(self, source: str, items: list[dict], header: str | None) -> list:
+        rows = [
+            row({"type": "turn_context", "cwd": "/repo"}, kind="turn_context"),
+            row(
+                {
+                    "type": "custom_tool_call",
+                    "name": "exec",
+                    "call_id": "w",
+                    "input": source,
+                }
+            ),
+        ]
+        rows += [
+            row({"type": "item_completed", "item": item}, kind="event_msg")
+            for item in items
+        ]
+        if header is not None:
+            rows.append(
+                row(
+                    {
+                        "type": "custom_tool_call_output",
+                        "call_id": "w",
+                        "output": f"{header}\nOutput:\n",
+                    }
+                )
+            )
+        return rows
+
+    @staticmethod
+    def ran(item_id: str, command: str, code: int = 0) -> dict:
+        return {
+            "type": "CommandExecution",
+            "id": item_id,
+            "command": ["/bin/bash", "-lc", command],
+            "status": "failed" if code else "completed",
+            "exit_code": code,
+            "aggregated_output": "",
+        }
+
+    def test_a_command_left_running_past_a_completed_script_is_kept(self) -> None:
+        rows = self.wrapper_rows(
+            'await tools.exec_command({cmd:"ls"});'
+            'await tools.exec_command({cmd:"npm run dev", yield_time_ms:1000});',
+            [self.ran("i1", "ls")],
+            "Script completed",
+        )
+        commands = [
+            u["input"]["command"] for u in blocks(adapter.render(rows), "tool_use")
+        ]
+        self.assertEqual(commands, ["ls", "npm run dev"])
+
+    def test_each_item_accounts_for_one_call(self) -> None:
+        rows = self.wrapper_rows(
+            'await tools.exec_command({cmd:"echo a"});'
+            'await tools.exec_command({cmd:"echo a"});',
+            [self.ran("i1", "echo a")],
+            None,
+        )
+        self.assertEqual(len(blocks(adapter.render(rows), "tool_use")), 2)
+
+    def test_a_computed_patch_does_not_take_a_literal_ones_place(self) -> None:
+        patch = "*** Begin Patch\\n*** Add File: {}\\n+x\\n*** End Patch"
+        rows = self.wrapper_rows(
+            f"await tools.apply_patch(`{patch.format('a.txt')}`);"
+            f'await tools.apply_patch("{patch.format("b.txt")}");',
+            [
+                {
+                    "type": "FileChange",
+                    "id": "p1",
+                    "changes": {"/repo/a.txt": {"type": "add"}},
+                    "status": "completed",
+                    "stdout": "",
+                    "stderr": "",
+                }
+            ],
+            None,
+        )
+        paths = [
+            u["input"]["file_paths"] for u in blocks(adapter.render(rows), "tool_use")
+        ]
+        self.assertEqual(paths, [["/repo/a.txt"], ["/repo/b.txt"]])
+
+    def test_routing_compares_commands_not_source_text(self) -> None:
+        # "ls" occurs in every source ("tools."), but only the first
+        # wrapper runs it.
+        rows = self.wrapper_rows('await tools.exec_command({cmd:"ls"});', [], None)
+        second = self.wrapper_rows(
+            'await tools.exec_command({cmd:"echo b"});', [], None
+        )
+        second[1]["payload"]["call_id"] = "w2"
+        rows += second[1:]
+        rows.append(
+            row(
+                {"type": "item_completed", "item": self.ran("i1", "ls")},
+                kind="event_msg",
+            )
+        )
+        rows.append(
+            row(
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "w",
+                    "output": "Script completed\nOutput:\n",
+                }
+            )
+        )
+        rows.append(
+            row(
+                {"type": "item_completed", "item": self.ran("i2", "echo b")},
+                kind="event_msg",
+            )
+        )
+        rows.append(
+            row(
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": "w2",
+                    "output": "Script completed\nOutput:\n",
+                }
+            )
+        )
+        commands = sorted(
+            u["input"]["command"] for u in blocks(adapter.render(rows), "tool_use")
+        )
+        self.assertEqual(commands, ["echo b", "ls"])
+
     def test_an_interrupted_wrapper_keeps_its_executed_calls(self) -> None:
         rows = [
             r

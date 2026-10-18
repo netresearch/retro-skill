@@ -42,7 +42,8 @@ MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
     `exit_code`, `status`, `aggregated_output`) or a `FileChange` item
     (`changes` keyed by absolute path, `status`, `stdout`, `stderr`). Such
     items carry no `call_id`: an item goes to the open wrapper whose source
-    names its command, else to the newest open one. When a wrapper has items,
+    has that literal command (or a patch), else to the newest open one. When
+    a wrapper has items,
     its commands and patches are rendered from them, each with the item's id
     and its own result, so a non-zero exit code or `status: failed` is
     `is_error`, and a computed command appears with the command that ran. The
@@ -50,8 +51,9 @@ MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
     the items. A script that failed or was terminated (it threw after its
     commands succeeded) becomes one more failing call, `exec`, with the
     wrapper's `call_id` and output. An item that has not ended stays id-less.
-    A command still running when the session ended leaves no item, so a
-    wrapper without an output row also keeps the source's unmatched calls.
+    A command still running when the session ended, or when the script
+    finished, leaves no item, so the source's literal calls that no item
+    matched are kept id-less, unless the script failed or was terminated.
     A wrapper that no output row can close ends at the next response row, and
     an item while no wrapper is open is ignored, so nothing counts twice.
     The rest of this point is the fallback for a wrapper without items.
@@ -560,12 +562,19 @@ def _item_wrapper(
     executed: dict[str, Any], open_wrappers: list[dict[str, Any]]
 ) -> dict[str, Any]:
     """The open wrapper an executed item belongs to: the newest whose source
-    names the command, else the newest. The item itself names no wrapper."""
-    argv = executed.get("command")
-    command = argv if isinstance(argv, str) else _shell_command(argv)
-    if command:
-        for wrapper in reversed(open_wrappers):
-            if command in wrapper["source"]:
+    has this literal command (or, for a patch, a patch), else the newest. The
+    item itself names no wrapper."""
+    if executed.get("type") == "CommandExecution":
+        argv = executed.get("command")
+        wanted = ("Bash", argv if isinstance(argv, str) else _shell_command(argv))
+    else:
+        wanted = ("Patch", None)
+    for wrapper in reversed(open_wrappers):
+        for event in wrapper["events"]:
+            use = event["message"]["content"][0]
+            if use["name"] == wanted[0] and (
+                wanted[1] is None or use["input"].get("command") == wanted[1]
+            ):
                 return wrapper
     return open_wrappers[-1]
 
@@ -575,16 +584,17 @@ def _unmatched(
 ) -> list[dict[str, Any]]:
     """The source's `Bash` and `Patch` calls no executed item accounts for.
 
-    A command matches an item with the same command text; a patch matches any
-    patch item, since the source names relative paths and the item absolute
-    ones. Each item accounts for one call.
+    A command matches an item with the same command text; a patch matches an
+    item that names one of its files (both are resolved against the turn's
+    directory). Each item accounts for one call at most, so an item of a
+    computed call, which matches no literal one, consumes nothing.
     """
 
     def use_of(event: dict[str, Any]) -> dict[str, Any]:
         return event["message"]["content"][0]
 
-    commands: list[str] = []
-    patches = 0
+    commands: list[Any] = []
+    patches: list[set[Any]] = []
     for event in executed:
         use = use_of(event)
         if use["type"] != "tool_use":
@@ -592,16 +602,23 @@ def _unmatched(
         if use["name"] == "Bash":
             commands.append(use["input"].get("command"))
         elif use["name"] == "Patch":
-            patches += 1
+            patches.append(set(use["input"].get("file_paths") or []))
     left = []
     for event in parsed:
         use = use_of(event)
-        if use["name"] == "Bash" and use["input"].get("command") in commands:
-            commands.remove(use["input"].get("command"))
-        elif use["name"] == "Patch" and patches:
-            patches -= 1
-        elif use["name"] in ("Bash", "Patch"):
-            left.append(event)
+        if use["name"] == "Bash":
+            if use["input"].get("command") in commands:
+                commands.remove(use["input"].get("command"))
+                continue
+        elif use["name"] == "Patch":
+            files = set(use["input"].get("file_paths") or [])
+            match = next((p for p in patches if p & files), None)
+            if match is not None:
+                patches.remove(match)
+                continue
+        else:
+            continue
+        left.append(event)
     return left
 
 
@@ -616,11 +633,12 @@ def _close_wrapper(
     and output. The calls the script made on other tools come from its source,
     ahead of the items. A script that failed or was terminated after its
     commands succeeded keeps that error as a failing `exec` call, with the
-    wrapper's `call_id` and output. A wrapper without an output row (the
-    session ended) also keeps the source's commands and patches that no item
-    matched: one may have been running, and an unfinished one leaves no item.
-    With an output row, such a call never ran and is left out. Without items,
-    the parsed source and the single-call output pairing apply.
+    wrapper's `call_id` and output. The source's commands and patches that no
+    item matched are kept, id-less, unless the script failed or was
+    terminated: an unfinished command (the session ended, or it was left
+    running past the script) leaves no item, whereas a script that stopped
+    early never reached the calls after it. Without items, the parsed source
+    and the single-call output pairing apply.
     """
     slot = wrapper["slot"]
     if wrapper["items"]:
@@ -631,18 +649,19 @@ def _close_wrapper(
         ]
         slot.extend(others)
         slot.extend(wrapper["items"])
-        if output is None:
+        text, failed = (
+            _wrapper_result(output.get("output")) if output is not None else ("", False)
+        )
+        if not failed:
             slot.extend(_unmatched(wrapper["events"], wrapper["items"]))
-        if output is not None:
-            text, failed = _wrapper_result(output.get("output"))
-            if failed:
-                call_id = output["call_id"]
-                use = {"type": "tool_use", "id": call_id, "name": "exec", "input": {}}
-                block = _opencode._tool_result(call_id, text, True)
-                slot.append(
-                    _event("assistant", use, output["timestamp"], wrapper["message_id"])
-                )
-                slot.append(_event("user", block, output["timestamp"], None))
+        elif output is not None:
+            call_id = output["call_id"]
+            use = {"type": "tool_use", "id": call_id, "name": "exec", "input": {}}
+            block = _opencode._tool_result(call_id, text, True)
+            slot.append(
+                _event("assistant", use, output["timestamp"], wrapper["message_id"])
+            )
+            slot.append(_event("user", block, output["timestamp"], None))
         uses = [e for e in slot if e["message"]["content"][0]["type"] == "tool_use"]
         return len(uses), 0
     slot.extend(wrapper["events"])
