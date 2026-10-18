@@ -425,6 +425,17 @@ class WrapperEdgeTest(unittest.TestCase):
         (use,) = blocks(adapter.render(rows), "tool_use")
         self.assertNotIn("id", use)
 
+    def test_an_unhashable_call_id_does_not_crash(self) -> None:
+        for bad in ({"k": 1}, ["x"]):
+            with self.subTest(call_id=bad):
+                rows = [
+                    self.wrapper('await tools.exec_command({cmd:"ls"});'),
+                    self.output("Script completed", "x\n", call_id=None),
+                ]
+                rows[1]["payload"]["call_id"] = bad
+                (use,) = blocks(adapter.render(rows), "tool_use")
+                self.assertNotIn("id", use)
+
     def test_a_computed_call_keeps_the_output_from_the_literal_one(self) -> None:
         rows = [
             self.wrapper(

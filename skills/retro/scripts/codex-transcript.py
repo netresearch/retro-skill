@@ -508,7 +508,11 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
             }
             events.append(_event("assistant", use, timestamp, payload.get("id")))
             rendered += 1
-        elif item == "custom_tool_call_output" and payload.get("call_id") in wrappers:
+        elif (
+            item == "custom_tool_call_output"
+            and isinstance(payload.get("call_id"), str)
+            and payload["call_id"] in wrappers
+        ):
             call_id = payload["call_id"]
             owner = wrappers.pop(call_id)
             if owner is not None:
