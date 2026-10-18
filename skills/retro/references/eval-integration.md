@@ -78,6 +78,8 @@ requires that one field and names `samples.failing` in its message as the thing
 to add alongside it. Both directions are what make the sample worth having, so
 write both; only the first is refused for.
 
+When tightening assertions, retain the original valid sample as a regression control; do not rewrite it just to fit the new pattern. Add isolated failing variants that change one required claim while preserving the rest of the valid answer, so an unrelated missing keyword cannot hide a weak assertion. Check valid coordinated wording too: a shared negation such as "does not register a project, save answers or award a badge" covers all three outcomes. Run these controls with the target grader's actual matching semantics (see "What grades an eval, and what does not" below); if its sample schema stores only one passing answer, exercise the other valid controls separately and record their results. This extends the existing sample requirement, without requiring a new runner or changing another skill's eval schema.
+
 Two cases the requirement does not cover:
 
 - An eval whose assertions carry no pattern — `validate-evals.sh` *fails*
