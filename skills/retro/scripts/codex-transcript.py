@@ -36,7 +36,8 @@ MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
     wraps tools in one `custom_tool_call` named `exec` whose `input` is
     JavaScript. Literal `tools.exec_command({cmd: "..."})` and
     `tools.apply_patch("...")` calls are rendered, the wrapper itself is not;
-    a call whose argument is computed is left out and counted on stderr. The
+    a call whose argument is computed is left out and counted on stderr, and
+    any other `tools.<name>(...)` call is passed through by name. The
     wrapper's `custom_tool_call_output` is a list of text items, the first a
     `Script completed|failed|terminated` header ending in `Output:`. When the
     wrapper holds exactly one literal call and no computed one, and its output
@@ -276,6 +277,11 @@ def _nested_tools(
                 computed += 1
             else:
                 calls.append(("Patch", _patch_input(patch, directory)))
+        else:
+            # Any other tool is passed through by name, as a function_call is,
+            # so it is counted and a lone exec_command beside it is not
+            # mistaken for the wrapper's only call.
+            calls.append((name, {}))
     return calls, computed
 
 
@@ -357,6 +363,11 @@ def _result(output: Any) -> tuple[str, bool] | None:
     return (body if marker else output), int(code.group(1)) != 0
 
 
+def _items(content: Any) -> list[Any]:
+    """A `content` field as a list; any other value holds no items."""
+    return content if isinstance(content, list) else []
+
+
 def _human_record_texts(rows: list[dict[str, Any]]) -> set[str] | None:
     """Texts Codex recorded as typed by the human; None when it recorded none."""
     texts: set[str] = set()
@@ -375,7 +386,7 @@ def _human_record_texts(rows: list[dict[str, Any]]) -> set[str] | None:
                 found = True
                 parts = [
                     c.get("text", "")
-                    for c in item.get("content") or []
+                    for c in _items(item.get("content"))
                     if isinstance(c, dict) and isinstance(c.get("text"), str)
                 ]
                 texts.add("\n".join(parts).strip())
@@ -400,7 +411,7 @@ def _message_event(
         return None
     blocks = [
         {"type": "text", "text": item["text"]}
-        for item in payload.get("content", [])
+        for item in _items(payload.get("content"))
         if isinstance(item, dict)
         and item.get("type") in {"input_text", "output_text"}
         and isinstance(item.get("text"), str)
@@ -458,6 +469,8 @@ def _wrapper_events(
 
 
 def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
+    # A line that is valid JSON but no object is no Codex record.
+    rows = [row for row in rows if isinstance(row, dict)]
     events: list[dict[str, Any]] = []
     human_texts = _human_record_texts(rows)
     human_seen: list[str] = []
@@ -499,6 +512,9 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
                 wrappers[call_id] = owner
         elif item in ("function_call", "custom_tool_call"):
             calls_seen.append(str(payload.get("name")))
+            # A direct call owns its call_id, even if a wrapper used it before.
+            if isinstance(payload.get("call_id"), str):
+                wrappers.pop(payload["call_id"], None)
             name, tool_input = _call(payload, directory)
             use = {
                 "type": "tool_use",
@@ -522,7 +538,9 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
                 events.append(_event("user", block, timestamp, None))
         elif item in ("function_call_output", "custom_tool_call_output"):
             result = _result(payload.get("output"))
-            if result is not None:
+            # A result pairs by a string id; any other value would only make
+            # the detector fail on its pending-call lookup.
+            if result is not None and isinstance(payload.get("call_id"), str):
                 block = _opencode._tool_result(payload.get("call_id"), *result)
                 events.append(_event("user", block, timestamp, None))
     if not events:

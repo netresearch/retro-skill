@@ -436,6 +436,67 @@ class WrapperEdgeTest(unittest.TestCase):
                 (use,) = blocks(adapter.render(rows), "tool_use")
                 self.assertNotIn("id", use)
 
+    def test_an_unhashable_wrapper_call_id_does_not_crash(self) -> None:
+        rows = [
+            self.wrapper('await tools.exec_command({cmd:"ls"});'),
+            self.output("Script completed", "x\n"),
+        ]
+        rows[0]["payload"]["call_id"] = {"k": 1}
+        (use,) = blocks(adapter.render(rows), "tool_use")
+        self.assertNotIn("id", use)
+
+    def test_another_nested_tool_is_counted_and_takes_no_output(self) -> None:
+        rows = [
+            self.wrapper(
+                'await tools.exec_command({cmd:"ls"});'
+                'await tools.view_image({path:"x.png"});'
+            ),
+            self.output("Script failed", "view_image: not found"),
+        ]
+        lines = adapter.render(rows)
+        uses = blocks(lines, "tool_use")
+        self.assertEqual([u["name"] for u in uses], ["Bash", "view_image"])
+        self.assertTrue(all("id" not in u for u in uses))
+        self.assertEqual(blocks(lines, "tool_result"), [])
+
+    def test_a_direct_call_keeps_its_call_id_from_a_wrapper(self) -> None:
+        rows = [
+            self.wrapper('await tools.exec_command({cmd:"ls"});', call_id="c1"),
+            row(
+                {
+                    "type": "custom_tool_call",
+                    "name": "apply_patch",
+                    "call_id": "c1",
+                    "input": "*** Begin Patch\n*** Add File: a.py\n+x\n*** End Patch",
+                }
+            ),
+            self.output("Script completed", "", call_id="c1"),
+        ]
+        lines = adapter.render(rows)
+        self.assertEqual(detect(lines)["tool_uses"], 2)
+
+    def test_malformed_rows_and_items_are_skipped(self) -> None:
+        rows = [
+            [1],
+            "text",
+            row({"type": "message", "role": "user", "content": 5}),
+            message("user", "Fix it"),
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "arguments": json.dumps({"cmd": "ls"}),
+                    "call_id": "call-f",
+                }
+            ),
+            row({"type": "function_call_output", "call_id": "call-f", "output": [1]}),
+            row({"type": "function_call_output", "call_id": ["x"], "output": "y"}),
+        ]
+        lines = adapter.render(rows, "Fix it")
+        (result,) = blocks(lines, "tool_result")
+        self.assertEqual((result["tool_use_id"], result["content"]), ("call-f", "[1]"))
+        self.assertEqual(detect(lines)["tool_uses"], 1)
+
     def test_a_computed_call_keeps_the_output_from_the_literal_one(self) -> None:
         rows = [
             self.wrapper(
