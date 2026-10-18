@@ -3134,5 +3134,107 @@ class SubagentTranscriptTest(unittest.TestCase):
         self.assertIn("transcripts read: 1 main + 0 subagent\n", text)
 
 
+class CreateAndReadyTest(unittest.TestCase):
+    """`gh pr create … && gh pr ready <branch> …` in one call. The ready names
+    a branch, not a number, and used to run first and take the URL the create
+    printed: the PR was `acted` and the create unresolved (15 of the 224
+    unresolved writes in session e72080f1, 2026-10-18). The create's report is
+    the URL alone on a line; the ready's is its `✓ … o/r#N` status line."""
+
+    def _scan(self, command: str, result: str) -> dict:
+        data = dss.collect_artefacts(_transcript([({"command": command}, result)]))
+        return {
+            "origins": {a["url"]: a["origin"] for a in data["artefacts"]},
+            "unresolved": data["unresolved_forge_commands"],
+        }
+
+    def test_the_recorded_create_and_ready_by_repo_then_branch(self):
+        # Verbatim from agent-a29572d7b94808120.jsonl of that session.
+        command = 'gh pr create --draft -R netresearch/security-audit-skill --base main --head fix/scanner-hardening --title "fix(scanners): keep the audited project\'s code and config out of the tools" --body-file /tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/secfix-G12/sa-pr.md && gh pr ready --repo netresearch/security-audit-skill fix/scanner-hardening'
+        result = (
+            "https://github.com/netresearch/security-audit-skill/pull/144\n"
+            '✓ Pull request netresearch/security-audit-skill#144 is marked as "ready for review"\n'
+        )
+        self.assertEqual(
+            self._scan(command, result),
+            {
+                "origins": {
+                    "https://github.com/netresearch/security-audit-skill/pull/144": "created"
+                },
+                "unresolved": [],
+            },
+        )
+
+    def test_the_recorded_create_and_ready_by_branch_then_repo(self):
+        # Verbatim from agent-a46a96d8a8caa262b.jsonl of that session.
+        command = 'gh pr create --draft -R netresearch/docker-development-skill --base main --head fix/narrow-allowed-tools --title "fix: pre-approve only read-only tools in both skills" --body-file /tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/secfix-G11/ddev/pr.md && gh pr ready fix/narrow-allowed-tools -R netresearch/docker-development-skill'
+        result = (
+            "https://github.com/netresearch/docker-development-skill/pull/107\n"
+            '✓ Pull request netresearch/docker-development-skill#107 is marked as "ready for review"\n'
+        )
+        scan = self._scan(command, result)
+        self.assertEqual(
+            scan["origins"],
+            {
+                "https://github.com/netresearch/docker-development-skill/pull/107": "created"
+            },
+        )
+        self.assertEqual(scan["unresolved"], [])
+
+    def test_the_recorded_create_and_ready_followed_by_a_rev_parse(self):
+        # Verbatim from agent-a29572d7b94808120.jsonl: a SHA after the reports.
+        command = 'gh pr create --draft -R netresearch/typo3-core-contributions-skill --base main --head fix/credential-handling --title "fix: keep the Forge key and the admin password off command lines" --body-file /tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/secfix-G12/cc-pr.md && gh pr ready --repo netresearch/typo3-core-contributions-skill fix/credential-handling; git -C /home/cybot/projects/typo3-core-contributions-skill/secfix rev-parse HEAD'
+        result = (
+            "https://github.com/netresearch/typo3-core-contributions-skill/pull/84\n"
+            '✓ Pull request netresearch/typo3-core-contributions-skill#84 is marked as "ready for review"\n'
+            "b58201c4634d870568912e222402c1356f160c0f\n"
+        )
+        scan = self._scan(command, result)
+        self.assertEqual(
+            scan["origins"],
+            {
+                "https://github.com/netresearch/typo3-core-contributions-skill/pull/84": "created"
+            },
+        )
+        self.assertEqual(scan["unresolved"], [])
+
+    def test_a_ready_before_the_create_keeps_its_own_pr(self):
+        # The ready reports #5, the create prints #6: each takes its own.
+        scan = self._scan(
+            "gh pr ready old -R o/r && gh pr create -R o/r --fill",
+            '✓ Pull request o/r#5 is marked as "ready for review"\n'
+            "https://github.com/o/r/pull/6\n",
+        )
+        self.assertEqual(
+            scan["origins"],
+            {
+                "https://github.com/o/r/pull/5": "acted",
+                "https://github.com/o/r/pull/6": "created",
+            },
+        )
+        self.assertEqual(scan["unresolved"], [])
+
+    def test_a_create_that_printed_nothing_does_not_take_the_readys_pr(self):
+        # Its output went to /dev/null; the only report is the ready's, about
+        # another branch. The create stays unresolved, #5 is not "created".
+        command = "gh pr create -R o/r --fill >/dev/null 2>&1; gh pr ready other -R o/r"
+        scan = self._scan(
+            command, '✓ Pull request o/r#5 is marked as "ready for review"\n'
+        )
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
+        self.assertEqual(scan["unresolved"], [command])
+
+    def test_a_failed_create_before_a_ready_stays_unresolved(self):
+        # Recorded failure text (agent-a07a270ed5037be22.jsonl): GitHub can
+        # create the PR in spite of the error, so it is not "nothing written".
+        command = "gh pr create -R o/r --draft --base main --head x --title t --body-file /tmp/pr.md && gh pr ready x -R o/r"
+        scan = self._scan(
+            command,
+            "pull request create failed: GraphQL: Something went wrong while executing your query on 2026-09-29T23:23:56Z.\n",
+        )
+        self.assertEqual(scan["origins"], {})
+        self.assertEqual(scan["unresolved"], [command])
+
+
 if __name__ == "__main__":
     unittest.main()

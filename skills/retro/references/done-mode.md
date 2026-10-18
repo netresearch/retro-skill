@@ -61,11 +61,19 @@ uv run "${CLAUDE_SKILL_DIR}/scripts/derive-session-scope.py" \
 `uv run` installs the shell parser the script declares in its header
 (tree-sitter-bash); plain `python3` stops with a message saying so.
 
+It reads the session, not one file: the transcript and, when its file name is
+the session UUID, every subagent's transcript below `<session id>/subagents/`
+(a Workflow's agents in `subagents/workflows/wf_*/`). A repository or a PR
+only a subagent touched is in the list; `transcripts read: 1 main + N
+subagent` (`transcripts` in the JSON) names the population. A converted
+transcript at a fixed path is read alone. On a session with ~950 subagents
+it runs for about a minute.
+
 It prints the repositories, the days, the tags, the forge slugs addressed by
-`-R`, and the paths it could not resolve — read that last group, because a path
-built from a shell variable is where a missing entry hides. Add anything you
-know it cannot see (a repository reached only through a tool that took no
-path), then sweep that.
+`-R`, the PRs/MRs/issues the session created or wrote to, and the paths it
+could not resolve — read that last group, because a path built from a shell
+variable is where a missing entry hides. Add anything you know it cannot see
+(a repository reached only through a tool that took no path), then sweep that.
 
 **Recalling the list does not work, and the failure is silent.** In the session
 that prompted the script the agent named three repositories, swept them, and

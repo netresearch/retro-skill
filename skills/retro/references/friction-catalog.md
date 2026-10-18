@@ -127,8 +127,8 @@ its header; it reads each command's structure — quoted text, heredocs,
 The session is more than `--transcript-file`: every subagent keeps its own
 transcript at `<session id>/subagents/agent-<agent id>.jsonl` beside
 `<session id>.jsonl` (a Workflow's agents one level deeper, in
-`subagents/workflows/wf_*/`), and the collector reads each of them with the
-main one; a symlinked `--transcript-file` is resolved first. Only a session
+`subagents/workflows/wf_*/`), and the collector and `derive-session-scope.py`
+read each of them with the main one; a symlinked `--transcript-file` is resolved first. Only a session
 file named by its UUID has subagents: a converted transcript at a fixed path
 (`/tmp/retro-codex-session.jsonl`) is read alone.
 Their writes count like the main loop's, and an artefact a subagent created
@@ -148,7 +148,11 @@ error message is running text and does not count. Each write takes only its
 own number and its own `-R`; a bare `#N` needs that `-R`; several creates in
 one call take one URL each, a create in a `for`/`while` loop takes every URL
 of its kind, and a create never takes a URL a numbered write in the same call
-reported. A REST write on a literal PR/MR/issue endpoint counts by the
+reported. A create takes only a URL it printed, never an `owner/repo#N` or
+`#N` status line. A `gh pr ready`, `merge` or `review` that names a branch
+instead of a number takes only its own status line, so in
+`gh pr create … && gh pr ready <branch> …` the create keeps the URL it
+printed (`created`) and the ready its `✓ … o/r#N` line. A REST write on a literal PR/MR/issue endpoint counts by the
 endpoint, and claims the URL it prints itself (a JSON `html_url` line, or the
 line `--jq .html_url` prints), matched by repository and number, so
 `issues/5` of a PR claims the `pull/5` URL; a create, a variable (also a
