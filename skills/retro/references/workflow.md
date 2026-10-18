@@ -278,16 +278,18 @@ Coverage differs by record shape; the adapter's docstring names the Codex
 versions each was measured on. `exec_command` and `shell` calls, and a direct
 `apply_patch`, carry their results and exit codes, so error signals work. The
 `functions.exec` runtime, the default of `codex exec` 0.163.0, wraps tools in
-one JavaScript call: the converter unfolds its literal `tools.exec_command` and
-`tools.apply_patch` calls, so the wrapper is not misreported as repeated `exec`
-calls. A wrapper with exactly one call, and no computed one, gets the
-wrapper's output as that call's result, and a failed script is an error; a command's own non-zero exit code shows only in
-the output text. Computed arguments are not evaluated (they are counted on
-stderr), and the output of a wrapper with several calls cannot be attributed.
-For such a session, treat missing tool-error and review
-signals as incomplete coverage, read the original rollout for context, and
-pass created PRs/MRs with `--pr-list` when the review collector cannot recover
-them. A rollout whose tool calls all fail to render is refused with exit 2.
+one JavaScript call, and the wrapper's own output only says whether the script
+failed. Codex 0.163.0 also records each command and patch the script ran as an
+executed item with its real command, exit code and output; the converter
+renders the wrapper's calls from those items, so a command that exits non-zero
+is an error even inside a completed script. A rollout without such items falls
+back to the script's source: literal `tools.exec_command` and
+`tools.apply_patch` calls are unfolded, computed arguments are counted on
+stderr, and only a wrapper with a single call gets the wrapper's output as its
+result. For such a session, treat missing tool-error and review signals as
+incomplete coverage, read the original rollout for context, and pass created
+PRs/MRs with `--pr-list` when the review collector cannot recover them. A
+rollout whose tool calls all fail to render is refused with exit 2.
 
 On a repeat `/retro` within one session, filter findings to turns after the
 previous retro — earlier signals were already proposed and must not be

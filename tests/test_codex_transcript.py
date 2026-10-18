@@ -386,6 +386,87 @@ class RealWrapperTest(unittest.TestCase):
         self.assertEqual(blocks(lines, "tool_result"), [])
 
 
+def executed_rows(rows: list[dict]) -> list[dict]:
+    """The `item_completed` rows of commands and patches, in order."""
+    return [
+        r
+        for r in rows
+        if r["payload"].get("type") == "item_completed"
+        and r["payload"]["item"]["type"] in ("CommandExecution", "FileChange")
+    ]
+
+
+class ExecutionItemTest(unittest.TestCase):
+    """0.163.0 records every nested command and patch as an executed item."""
+
+    def test_a_failing_command_in_a_completed_script_is_an_error(self) -> None:
+        lines = adapter.render(fixture("rollout-0.163.0-command-exit.jsonl"))
+        uses = blocks(lines, "tool_use")
+        results = {r["tool_use_id"]: r for r in blocks(lines, "tool_result")}
+        self.assertEqual(
+            [u["input"]["command"] for u in uses],
+            ["ls /nonexistent-r184", "echo ok-r184"],
+        )
+        self.assertEqual([results[u["id"]]["is_error"] for u in uses], [True, False])
+        self.assertTrue(results[uses[0]["id"]]["content"].startswith("ls: cannot"))
+        self.assertIn("A1", [f["signal"] for f in detect(lines)["findings"]])
+
+    def test_each_call_of_a_script_gets_its_own_result(self) -> None:
+        stderr = io.StringIO()
+        with contextlib.redirect_stderr(stderr):
+            lines = adapter.render(fixture("rollout-0.163.0-multi-call.jsonl"))
+        uses = blocks(lines, "tool_use")
+        results = {r["tool_use_id"]: r for r in blocks(lines, "tool_result")}
+        self.assertEqual(
+            [(u["name"], u["input"]) for u in uses],
+            [
+                ("Bash", {"command": "ls /nonexistent-r184b"}),
+                ("Bash", {"command": "echo two-r184"}),
+                ("Patch", {"file_paths": ["/repo/p184.txt"]}),
+            ],
+        )
+        self.assertEqual(
+            [results[u["id"]]["is_error"] for u in uses], [True, False, False]
+        )
+        # The computed `'ls /' + d` is no longer left out.
+        self.assertEqual(stderr.getvalue(), "")
+        self.assertEqual(detect(lines)["tool_uses"], 3)
+
+    def test_other_tools_of_the_script_are_kept(self) -> None:
+        rows = fixture("rollout-0.163.0-multi-call.jsonl")
+        call = rows[6]["payload"]
+        rows[6] = {
+            **rows[6],
+            "payload": {**call, "input": call["input"] + "await tools.view_image({});"},
+        }
+        names = [u["name"] for u in blocks(adapter.render(rows), "tool_use")]
+        self.assertEqual(names, ["view_image", "Bash", "Bash", "Patch"])
+
+    def test_items_outside_a_wrapper_are_not_counted_twice(self) -> None:
+        rows = fixture("rollout-0.101.0.jsonl")
+        rows.insert(9, executed_rows(fixture("rollout-0.163.0-command-exit.jsonl"))[0])
+        self.assertEqual(len(blocks(adapter.render(rows), "tool_use")), 2)
+
+    def test_an_item_that_has_not_ended_stays_id_less(self) -> None:
+        rows = fixture("rollout-0.163.0-command-exit.jsonl")
+        executed = executed_rows(rows)[0]["payload"]["item"]
+        for key in ("exit_code", "status"):
+            executed.pop(key)
+        lines = adapter.render(rows)
+        self.assertNotIn("id", blocks(lines, "tool_use")[0])
+        self.assertEqual(detect(lines)["tool_uses"], 2)
+
+    def test_an_interrupted_wrapper_keeps_its_executed_calls(self) -> None:
+        rows = [
+            r
+            for r in fixture("rollout-0.163.0-multi-call.jsonl")
+            if r["payload"].get("type") != "custom_tool_call_output"
+        ]
+        lines = adapter.render(rows)
+        self.assertEqual(len(blocks(lines, "tool_result")), 3)
+        self.assertEqual(detect(lines)["tool_uses"], 3)
+
+
 class WrapperEdgeTest(unittest.TestCase):
     """Wrapper rows a real rollout can carry in other combinations."""
 
