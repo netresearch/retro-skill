@@ -243,6 +243,7 @@ retro-skill/
 │       ├── feedback-contract.py      # validates supplied tracker feedback (--feedback-file)
 │       ├── mask-secrets.py           # credential masking for the text five scripts quote
 │       ├── opencode-transcript.py    # renders an opencode session as layer-A JSONL
+│       ├── codex-transcript.py       # renders a Codex rollout as layer-A JSONL
 │       ├── scan-memory-inventory.py  # Promote: memory backlog pre-pass
 │       ├── scan-cross-session.py     # layer-C JSONL scanner
 │       ├── find-org-skills.py        # runtime skill discovery (catalogue + installed)

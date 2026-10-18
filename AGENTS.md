@@ -15,6 +15,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/scripts/detect-mechanical.py` — Schicht-A pre-pass (mechanical friction detection)
 - `skills/retro/scripts/mask-secrets.py` — Credential masking that `detect-mechanical.py`, `scan-cross-session.py`, `derive-session-scope.py`, `collect-review-findings.py` and `scan-memory-inventory.py` apply to the text they quote (not a command)
 - `skills/retro/scripts/opencode-transcript.py` — Renders an opencode session (SQLite) as the JSONL Schicht A reads
+- `skills/retro/scripts/codex-transcript.py` — Renders a Codex CLI rollout as the JSONL Schicht A reads; real excerpts in `tests/fixtures/codex/`
 - `skills/retro/scripts/find-org-skills.py` — Skill discovery: every marketplace skill, installed or not
 - `skills/retro/scripts/find-installed-skills.sh` — Installed-only detail (paths, git remotes)
 - `skills/retro/scripts/scan-cross-session.py` — Cross-session JSONL scanner (Schicht-C)
