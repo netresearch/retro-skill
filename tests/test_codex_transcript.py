@@ -497,6 +497,73 @@ class WrapperEdgeTest(unittest.TestCase):
         self.assertEqual((result["tool_use_id"], result["content"]), ("call-f", "[1]"))
         self.assertEqual(detect(lines)["tool_uses"], 1)
 
+    def test_a_non_string_call_id_leaves_the_call_counted(self) -> None:
+        for bad in (5, [1], {"a": 1}):
+            with self.subTest(call_id=bad):
+                rows = [
+                    row(
+                        {
+                            "type": "function_call",
+                            "name": "exec_command",
+                            "call_id": bad,
+                            "arguments": json.dumps({"cmd": "ls"}),
+                        }
+                    ),
+                    row(
+                        {
+                            "type": "function_call_output",
+                            "call_id": bad,
+                            "output": "Process exited with code 0\nOutput:\nx",
+                        }
+                    ),
+                ]
+                lines = adapter.render(rows)
+                (use,) = blocks(lines, "tool_use")
+                self.assertNotIn("id", use)
+                self.assertEqual(detect(lines)["tool_uses"], 1)
+
+    def test_only_the_runtime_tools_object_is_read(self) -> None:
+        rows = [
+            self.wrapper(
+                "mytools.foo(1); $tools.bar(2); ctx.tools.write_stdin({});"
+                'await tools.exec_command({cmd:"ls"});'
+            ),
+            self.output("Script completed", "x\n"),
+        ]
+        lines = adapter.render(rows)
+        (use,) = blocks(lines, "tool_use")
+        self.assertEqual((use["name"], use["id"]), ("Bash", "call-w"))
+
+    def test_a_wrapper_does_not_take_a_direct_calls_id(self) -> None:
+        rows = [
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "call_id": "w1",
+                    "arguments": json.dumps({"cmd": "pwd"}),
+                }
+            ),
+            self.wrapper('await tools.exec_command({cmd:"ls"});', call_id="w1"),
+            self.output("Script failed", "", call_id="w1"),
+        ]
+        lines = adapter.render(rows)
+        self.assertEqual(detect(lines)["tool_uses"], 2)
+
+    def test_item_completed_content_that_is_no_list_is_skipped(self) -> None:
+        rows = [
+            message("user", "Fix it"),
+            row(
+                {
+                    "type": "item_completed",
+                    "item": {"type": "UserMessage", "content": 5},
+                },
+                kind="event_msg",
+            ),
+        ]
+        (event,) = [json.loads(line) for line in adapter.render(rows)]
+        self.assertTrue(event["isMeta"])
+
     def test_a_computed_call_keeps_the_output_from_the_literal_one(self) -> None:
         rows = [
             self.wrapper(
@@ -580,6 +647,36 @@ class CommandLineTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn(b"no human user message", result.stderr)
+
+    def run_cli(self, text: str) -> subprocess.CompletedProcess:
+        with tempfile.TemporaryDirectory() as directory:
+            rollout = Path(directory) / "rollout.jsonl"
+            rollout.write_text(text, encoding="utf-8")
+            return subprocess.run(
+                [sys.executable, str(SCRIPT), "--transcript-file", str(rollout)],
+                capture_output=True,
+                check=False,
+            )
+
+    def test_a_lone_surrogate_is_written_escaped(self) -> None:
+        line = json.dumps(
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "call_id": "c",
+                    "arguments": '{"cmd": "echo \\ud800"}',
+                }
+            )
+        )
+        result = self.run_cli(line + "\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(b"\\ud800", result.stdout)
+
+    def test_too_deep_nesting_is_refused(self) -> None:
+        result = self.run_cli("[" * 200000 + "\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"nested too deeply", result.stderr)
 
 
 if __name__ == "__main__":

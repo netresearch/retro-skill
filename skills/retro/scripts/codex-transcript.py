@@ -78,7 +78,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-TOOL_CALL = re.compile(r"tools\.([A-Za-z_][A-Za-z_0-9]*)\s*\(")
+#: A call on the runtime's `tools` object, not on `mytools`, `$tools` or `x.tools`.
+TOOL_CALL = re.compile(r"(?<![\w$.])tools\.([A-Za-z_][A-Za-z_0-9]*)\s*\(")
 EXIT_CODE = re.compile(r"^Process exited with code (-?\d+)\s*$", re.MULTILINE)
 RUNNING = re.compile(r"^Process running with session ID", re.MULTILINE)
 #: The first line of a `functions.exec` wrapper's output, per script outcome.
@@ -480,6 +481,8 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
     directory: str | None = None
     #: call_id of each wrapper -> the `tool_use` its output belongs to, or None.
     wrappers: dict[str, dict[str, Any] | None] = {}
+    #: ids of direct calls, which a later wrapper must not take over.
+    direct_ids: set[str] = set()
     for row in rows:
         kind = row.get("type")
         payload = row.get("payload")
@@ -508,20 +511,27 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
             rendered += len(nested)
             computed += skipped
             call_id = payload.get("call_id")
-            if isinstance(call_id, str) and call_id:
+            if isinstance(call_id, str) and call_id and call_id not in direct_ids:
                 wrappers[call_id] = owner
         elif item in ("function_call", "custom_tool_call"):
             calls_seen.append(str(payload.get("name")))
-            # A direct call owns its call_id, even if a wrapper used it before.
-            if isinstance(payload.get("call_id"), str):
-                wrappers.pop(payload["call_id"], None)
             name, tool_input = _call(payload, directory)
-            use = {
+            use: dict[str, Any] = {
                 "type": "tool_use",
-                "id": payload.get("call_id") or payload.get("id"),
                 "name": name,
                 "input": tool_input,
             }
+            # Only a string id pairs with its result; any other value would
+            # leave the call pending, or make the detector's lookup fail.
+            tool_id = next(
+                (v for v in (payload.get("call_id"), payload.get("id")) if v), None
+            )
+            if isinstance(tool_id, str):
+                use["id"] = tool_id
+                # A direct call owns its call_id, whichever of it and a wrapper
+                # came first.
+                direct_ids.add(tool_id)
+                wrappers.pop(tool_id, None)
             events.append(_event("assistant", use, timestamp, payload.get("id")))
             rendered += 1
         elif (
@@ -574,8 +584,11 @@ def main() -> None:
         lines = render(rows, args.match)
     except (OSError, ValueError) as error:
         parser.exit(2, f"codex-transcript: {error}\n")
+    except RecursionError:
+        parser.exit(2, "codex-transcript: a line is nested too deeply to parse\n")
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+        # A lone surrogate in a JSON string cannot be encoded as UTF-8.
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     for line in lines:
         print(line)
 
