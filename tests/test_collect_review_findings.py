@@ -2731,6 +2731,25 @@ class ReviewThreadWriteTest(unittest.TestCase):
         self.assertNotIn(self.THREAD, lookup[4])
         self.assertIn(f"i0={self.THREAD}", lookup)
 
+    def test_a_pr_the_transcript_only_mentioned_becomes_acted(self):
+        transcript = _transcript(
+            [({"command": self.RESOLVE}, "true")], texts=[f"see {self.PR}"]
+        )
+
+        def answer(command):
+            data = {"data": {"t0": self._node(self.PR, 41)}}
+            return subprocess.CompletedProcess(command, 0, json.dumps(data), "")
+
+        for argv in ((), ("--include-mentioned",)):
+            with self.subTest(argv=argv):
+                _, out, _ = self._main(transcript, answer, *argv)
+                self.assertNotIn("only mentioned", out)
+                _, out, _ = self._main(
+                    transcript, answer, *argv, "--output-format", "json"
+                )
+                (pr,) = [a for a in json.loads(out)["artefacts"] if a["url"] == self.PR]
+                self.assertEqual(pr["origin"], "acted")
+
     def test_a_failed_lookup_keeps_the_write_unresolved_and_says_why(self):
         transcript = _transcript(
             [({"command": self.ALIASED}, '{"a":{"thread":{"isResolved":true}}}')]
