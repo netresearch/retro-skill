@@ -11,6 +11,11 @@ known_marketplaces.json) and each one's locally-cloned catalogue
 entries are actually installed (~/.claude/plugins/installed_plugins.json, with
 the plugin cache as fallback).
 
+On Codex, reads `codex plugin list --json` plus standalone skills in
+`<codex-home>/skills` and `~/.agents/skills`. Uses the CLI's recorded enabled
+plugin version; a CLI that cannot be read is reported as standalone-only, and a
+CLI answer with a warning on stderr as partial-cli, not a complete catalogue.
+
 Two descriptions exist for a skill, written for two readers. The catalogue
 `description` is a listing summary for a human browsing plugins. The
 `description` in the skill's own SKILL.md frontmatter is the routing text an
@@ -28,14 +33,17 @@ Code, so no network or `gh` auth is required. Generic by design: it reads
 whatever marketplaces are configured, never a hardcoded org.
 
 Usage:
-    python3 find-org-skills.py [--claude-home PATH] [--output-format json|text]
+    python3 find-org-skills.py [--host auto|claude|codex] \
+        [--claude-home PATH | --codex-home PATH] [--output-format json|text]
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -265,14 +273,22 @@ def _plain_scalar(raw: str) -> str:
     return (raw[: m.start()] if m else raw).strip()
 
 
-def _skill_files(install_path: Path) -> list[Path]:
+def _skill_files(
+    install_path: Path, manifest_dirs: tuple[str, ...] = (".claude-plugin",)
+) -> list[Path]:
     """Every SKILL.md a plugin ships, honouring its manifest's `skills` field.
 
     `.claude-plugin/plugin.json` may point at skill directories explicitly
     (`["./skills/x"]`) or at one directory holding several (`"./.claude/skills/"`);
     without a manifest entry the spec default `skills/*/SKILL.md` applies.
+    Codex plugins keep the same manifest in `.codex-plugin/plugin.json`; the
+    first manifest directory in `manifest_dirs` that holds one is read.
     """
-    manifest = _load_json(install_path / ".claude-plugin" / "plugin.json")
+    manifest = None
+    for manifest_dir in manifest_dirs:
+        manifest = _load_json(install_path / manifest_dir / "plugin.json")
+        if isinstance(manifest, dict):
+            break
     declared = manifest.get("skills") if isinstance(manifest, dict) else None
     if isinstance(declared, str):
         declared = [declared]
@@ -321,12 +337,13 @@ def _repo_url(source: Any) -> str:
     if not isinstance(source, dict):
         return ""
     repo = source.get("repo")
-    if repo:
+    if isinstance(repo, str) and repo:
         first = repo.split("/", 1)[0]
         if "://" in repo or repo.startswith("git@") or ":" in first:
             return repo  # already a full URL / SSH spec
         return f"https://github.com/{repo}"
-    return source.get("url") or ""
+    url = source.get("url")
+    return url if isinstance(url, str) else ""
 
 
 def collect(claude_home: Path) -> list[dict[str, Any]]:
@@ -395,13 +412,183 @@ def collect(claude_home: Path) -> list[dict[str, Any]]:
     return out
 
 
+def collect_codex(
+    codex_home: Path,
+    plugins: dict[str, Any],
+    user_home: Path,
+    coverage: str = "native-cli-and-local-skills",
+) -> list[dict[str, Any]]:
+    """Native CLI catalogue plus standalone skills; never guess cache versions."""
+    out: list[dict[str, Any]] = []
+    seen: set[Path] = set()
+
+    def text(value: Any) -> str:
+        # CLI output is third-party data: a JSON null or a number in a text
+        # field must not reach the sort below, where it would raise TypeError.
+        return value if isinstance(value, str) else ""
+
+    def add(
+        path: Path, plugin: dict[str, Any] | None = None, bare: bool = True
+    ) -> None:
+        resolved = path.resolve()
+        if resolved in seen:
+            return
+        try:
+            fm = _frontmatter(path.read_text(encoding="utf-8", errors="replace"))
+        except OSError:
+            return
+        seen.add(resolved)
+        skill = text(fm.get("name")) or path.parent.name
+        plugin = plugin or {}
+        name = text(plugin.get("name"))
+        out.append(
+            {
+                # As in `collect`: a multi-skill plugin qualifies every skill,
+                # including the one named like the plugin.
+                "name": f"{name}:{skill}"
+                if name and not (bare and name == skill)
+                else skill,
+                "plugin": name,
+                "skill": skill,
+                "description": text(fm.get("description")),
+                "description_source": "skill",
+                "catalogue_description": text(plugin.get("description")),
+                "repo_url": _repo_url(plugin.get("source")),
+                "marketplace": text(plugin.get("marketplaceName")) or "codex",
+                "category": text(plugin.get("category")),
+                "installed": plugin.get("installed", True),
+                "path": str(path),
+                "coverage": coverage,
+            }
+        )
+
+    # Plugins first: a plugin skill that also sits in a standalone root keeps
+    # its plugin label, and the standalone pass skips it by resolved path.
+    for group in ("installed", "available"):
+        for entry in plugins.get(group, []):
+            if not isinstance(entry, dict) or (
+                group == "installed" and not entry.get("enabled", True)
+            ):
+                continue
+            entry = {**entry, "installed": group == "installed"}
+            source = entry.get("source")
+            if not isinstance(source, dict):
+                source = {}
+            base = None
+            if source.get("source") == "local" and isinstance(source.get("path"), str):
+                base = Path(source["path"])
+            elif group == "installed":
+                parts = [entry.get(k) for k in ("marketplaceName", "name", "version")]
+                if all(
+                    isinstance(p, str)
+                    and p not in ("", ".", "..")
+                    and "/" not in p
+                    and "\\" not in p
+                    for p in parts
+                ):
+                    base = codex_home / "plugins" / "cache" / Path(*parts)
+            files = (
+                _skill_files(base, (".codex-plugin", ".claude-plugin")) if base else []
+            )
+            for path in files:
+                add(path, entry, bare=len(files) == 1)
+            if not files:
+                out.append(
+                    {
+                        "name": text(entry.get("name")),
+                        "plugin": text(entry.get("name")),
+                        "skill": "",
+                        "description": text(entry.get("description")),
+                        "description_source": "catalogue",
+                        "catalogue_description": text(entry.get("description")),
+                        "repo_url": _repo_url(source),
+                        "marketplace": text(entry.get("marketplaceName")) or "codex",
+                        "category": text(entry.get("category")),
+                        "installed": entry["installed"],
+                        "coverage": coverage,
+                    }
+                )
+    # One level deep, as the Claude reader reads `skills/*/SKILL.md`: a skill
+    # may ship a SKILL.md template in its own assets, which is not a skill.
+    # Codex keeps its bundled skills in `<codex-home>/skills/.system/`.
+    for root, patterns in (
+        (codex_home / "skills", ("*/SKILL.md", ".system/*/SKILL.md")),
+        (user_home / ".agents" / "skills", ("*/SKILL.md",)),
+    ):
+        for pattern in patterns:
+            for path in sorted(root.glob(pattern)):
+                add(path)
+    return sorted(out, key=lambda s: (not s["installed"], s["marketplace"], s["name"]))
+
+
+def codex_catalogue(codex_home: Path, user_home: Path) -> list[dict[str, Any]]:
+    try:
+        result = subprocess.run(
+            ["codex", "plugin", "list", "--json"],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=30,
+            env={**os.environ, "CODEX_HOME": str(codex_home)},
+        )
+        plugins = json.loads(result.stdout)
+        if not isinstance(plugins, dict):
+            raise TypeError("catalogue must be an object")
+        if any(
+            not isinstance(plugins.get(key, []), list)
+            for key in ("installed", "available")
+        ):
+            raise TypeError("catalogue groups must be arrays")
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError) as exc:
+        detail = getattr(exc, "stderr", None) or ""
+        # TimeoutExpired carries bytes even with text=True.
+        if isinstance(detail, bytes):
+            detail = detail.decode("utf-8", errors="replace")
+        detail = detail.strip()
+        print(
+            f"Codex plugin catalogue unavailable ({type(exc).__name__}); standalone skills only."
+            + (f" CLI said: {detail}" if detail else ""),
+            file=sys.stderr,
+        )
+        return collect_codex(codex_home, {}, user_home, "standalone-only")
+    # The CLI exits 0 with an empty remote list when a marketplace cannot be
+    # read (a 401, for example) and says so only on stderr; that answer is
+    # partial, so it is forwarded and labelled as such.
+    warning = (result.stderr or "").strip()
+    if warning:
+        print(f"Codex plugin catalogue incomplete: {warning}", file=sys.stderr)
+        return collect_codex(codex_home, plugins, user_home, "partial-cli")
+    return collect_codex(codex_home, plugins, user_home)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--claude-home", type=Path, default=Path.home() / ".claude")
+    parser.add_argument("--host", choices=("auto", "claude", "codex"), default="auto")
+    parser.add_argument("--claude-home", type=Path)
+    parser.add_argument("--codex-home", type=Path)
     parser.add_argument("--output-format", choices=["json", "text"], default="json")
     args = parser.parse_args()
 
-    skills = collect(args.claude_home)
+    host = args.host
+    if host == "auto":
+        # CODEX_THREAD_ID is set per Codex session. CODEX_HOME is a persistent
+        # user variable and may be exported on a host running Claude Code.
+        host = (
+            "claude"
+            if args.claude_home
+            else "codex"
+            if args.codex_home or os.environ.get("CODEX_THREAD_ID")
+            else "claude"
+        )
+    skills = (
+        codex_catalogue(
+            args.codex_home
+            or Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))),
+            Path.home(),
+        )
+        if host == "codex"
+        else collect(args.claude_home or Path.home() / ".claude")
+    )
 
     if args.output_format == "text":
         if not skills:

@@ -3,6 +3,35 @@
 
 # Skill Discovery
 
+## Codex hosts
+
+Run `python3 <skill-dir>/scripts/find-org-skills.py --host codex`. The directory
+comes from the loaded `SKILL.md`; Codex does not provide `CLAUDE_SKILL_DIR`.
+`CODEX_THREAD_ID`, which Codex sets per session, selects this host automatically.
+`CODEX_HOME` alone does not, because it is a persistent user variable that can be
+exported on a host running Claude Code. An explicit `--claude-home` keeps the
+original Claude reader. `--codex-home` overrides the Codex filesystem root without
+changing environment variables.
+
+The reader combines `codex plugin list --json` with standalone skills in
+`<codex-home>/skills/*/SKILL.md`, `<codex-home>/skills/.system/*/SKILL.md` and
+`~/.agents/skills/*/SKILL.md`. It reads one level deep, so a `SKILL.md` template
+inside a skill's assets is not reported as a skill. A plugin's skill directories
+come from `.codex-plugin/plugin.json`, with `.claude-plugin/plugin.json` as the
+fallback. It reads only the plugin
+version named by the native inventory, not whichever cached version sorts last.
+Disabled plugins are excluded. Locally available catalogue entries are kept as
+not installed. Native entries include `path` where readable, so this inventory
+also supplies the installed-only paths on Codex; the Claude-only shell scanner
+below is not needed there.
+
+`coverage: standalone-only` and a stderr warning mean the native CLI could not
+be read. `coverage: partial-cli` means the CLI answered but wrote a warning to
+stderr, for example a remote marketplace that answered 401; the reader forwards
+that warning. `native-cli-and-local-skills` means the local native catalogue was read,
+not that every remote organization marketplace was enumerated. An empty
+`available` list is not evidence that no additional organization skill exists.
+
 Runtime discovery of **all** skills available to the user — installed *and*
 not-installed. Run it **before** classifying a learning (a mandatory input to
 classification), not only after a destination is already chosen. Discovering
