@@ -611,36 +611,38 @@ def _unmatched(
     computed call, which matches no literal one, consumes nothing.
     """
 
-    def use_of(event: dict[str, Any]) -> dict[str, Any]:
-        return event["message"]["content"][0]
+    uses = [e["message"]["content"][0] for e in executed]
+    commands = [
+        u["input"].get("command")
+        for u in uses
+        if u["type"] == "tool_use" and u["name"] == "Bash"
+    ]
+    patches = [
+        set(u["input"].get("file_paths") or [])
+        for u in uses
+        if u["type"] == "tool_use" and u["name"] == "Patch"
+    ]
+    return [
+        event
+        for event in parsed
+        if not _consume(event["message"]["content"][0], commands, patches)
+        and event["message"]["content"][0]["name"] in ("Bash", "Patch")
+    ]
 
-    commands: list[Any] = []
-    patches: list[set[Any]] = []
-    for event in executed:
-        use = use_of(event)
-        if use["type"] != "tool_use":
-            continue
-        if use["name"] == "Bash":
-            commands.append(use["input"].get("command"))
-        elif use["name"] == "Patch":
-            patches.append(set(use["input"].get("file_paths") or []))
-    left = []
-    for event in parsed:
-        use = use_of(event)
-        if use["name"] == "Bash":
-            if use["input"].get("command") in commands:
-                commands.remove(use["input"].get("command"))
-                continue
-        elif use["name"] == "Patch":
-            files = use["input"].get("file_paths") or []
-            match = next((p for p in patches if _same_file(p, files)), None)
-            if match is not None:
-                patches.remove(match)
-                continue
-        else:
-            continue
-        left.append(event)
-    return left
+
+def _consume(use: dict[str, Any], commands: list[Any], patches: list[set[Any]]) -> bool:
+    """Whether an executed item accounts for this source call; the item is
+    removed from its list, so it accounts for no other call."""
+    if use["name"] == "Bash" and use["input"].get("command") in commands:
+        commands.remove(use["input"].get("command"))
+        return True
+    if use["name"] == "Patch":
+        files = use["input"].get("file_paths") or []
+        match = next((p for p in patches if _same_file(p, files)), None)
+        if match is not None:
+            patches.remove(match)
+            return True
+    return False
 
 
 def _close_wrapper(
