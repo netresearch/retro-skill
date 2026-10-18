@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
+# Match the Python 3.10+ runtime documented in README.md.
+target-version = "py310"

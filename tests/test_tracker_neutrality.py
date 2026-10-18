@@ -484,6 +484,34 @@ class FeedbackContractTest(unittest.TestCase):
             with self.subTest(patch=patch), self.assertRaises(ValueError):
                 evidence(record)
 
+    def test_timestamp_offsets_are_validated_without_rewriting_supplied_values(self):
+        for field in ("created_at", "last_activity"):
+            for offset in ("Z", "+00:00", "+0130", "-0330"):
+                timestamp = "2026-09-25T10:00:00.123" + offset
+                record = external_record()
+                record["findings"][0][field] = timestamp
+                with self.subTest(field=field, offset=offset):
+                    parsed = evidence(record)
+                    finding = parsed["artefacts"][URL]["findings"][0]
+                    self.assertEqual(finding[field], timestamp)
+
+    def test_invalid_timestamp_offsets_still_fail_validation(self):
+        for timestamp in (
+            "2026-09-25T10:00:00+2400",
+            "2026-09-25T10:00:00+00000",
+            "2026-09-25T10:00:00+0X00",
+            "not-a-timestamp+0000",
+            "2026-09-25T10:00:00",
+        ):
+            for field in ("created_at", "last_activity"):
+                record = external_record()
+                record["findings"][0][field] = timestamp
+                with (
+                    self.subTest(field=field, timestamp=timestamp),
+                    self.assertRaises(ValueError),
+                ):
+                    evidence(record)
+
     def test_unread_artifact_must_not_claim_findings(self):
         for status in ("unsupported", "read_failed"):
             record = external_record(status=status, error="unavailable")

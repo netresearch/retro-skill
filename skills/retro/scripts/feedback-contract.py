@@ -10,6 +10,7 @@ The versioned contract is documented in references/feedback-contract.md.
 from __future__ import annotations
 
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -124,8 +125,12 @@ def _optional_text(raw: dict[str, Any], name: str, label: str) -> str | None:
 
 def _timestamp(value: Any, label: str) -> str:
     text = _text(value, label)
+    # Python 3.10 needs a colon in a basic UTC offset such as +0000.
+    normalized = re.sub(
+        r"([+-][0-9]{2})([0-9]{2})$", r"\1:\2", text.replace("Z", "+00:00")
+    )
     try:
-        stamp = datetime.fromisoformat(text.replace("Z", "+00:00"))
+        stamp = datetime.fromisoformat(normalized)
     except ValueError as exc:
         raise FeedbackValidationError(f"{label} must be an ISO 8601 timestamp") from exc
     if stamp.tzinfo is None:
