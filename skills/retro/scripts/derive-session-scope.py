@@ -1300,19 +1300,33 @@ def _held_elsewhere(command: str, name: str) -> bool:
             variable = node.child_by_field_name("variable")
             if variable is not None and _word(shell, variable) == name:
                 return True
-        elif node.type in ("command", "declaration_command"):
-            words = [_word(shell, c) for c in node.children if c.type != "command_name"]
-            head = node.child_by_field_name("name")
-            sets = (
-                head is not None and _word(shell, head) in VALUE_SETTERS
-            ) or node.type == "declaration_command"
-            if sets and any(w == name or w.startswith(name + "=") for w in words):
-                return True
+        elif _sets_variable(shell, node, name):
+            return True
     return not assigned
 
 
+def _sets_variable(shell: _Shell, node, name: str) -> bool:
+    """Whether a command gives the variable `name` a value at run time:
+    `read name`, `mapfile name`, `getopts … name`, `printf -v name …`, or a
+    declaration (`declare`, `local`, `export name=…`). `printf` without
+    `-v` only prints."""
+    if node.type not in ("command", "declaration_command"):
+        return False
+    words = [_word(shell, c) for c in node.children if c.type != "command_name"]
+    head = node.child_by_field_name("name")
+    command = _word(shell, head) if head is not None else ""
+    if command == "printf":
+        return any(
+            w == "-v" and n == name or w == f"-v{name}"
+            for w, n in itertools.pairwise(words + [""])
+        )
+    if command in VALUE_SETTERS or node.type == "declaration_command":
+        return any(w == name or w.startswith(name + "=") for w in words)
+    return False
+
+
 # Commands that set a variable they are given by name.
-VALUE_SETTERS = frozenset({"read", "mapfile", "readarray", "printf", "getopts"})
+VALUE_SETTERS = frozenset({"read", "mapfile", "readarray", "getopts"})
 
 
 def _blank_texts(command: str) -> str:
@@ -1961,10 +1975,8 @@ def _bindings(shell: _Shell, write_node, name: str) -> list[str] | None:
                 values += [
                     _word(shell, v) for v in node.children_by_field_name("value")
                 ]
-        elif node.type == "command":
-            head = node.child_by_field_name("name")
-            if head is not None and _word(shell, head) in ("read", "mapfile"):
-                return None  # a value read at run time
+        elif _sets_variable(shell, node, name):
+            return None  # a value set at run time
     return values or None
 
 

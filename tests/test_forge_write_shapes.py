@@ -602,6 +602,17 @@ class PendingLookupTest(unittest.TestCase):
                 (write,) = scan["pending"]
                 self.assertEqual(write["thread_ids"], ["PRRT_kwDOt"])
 
+    def test_a_printf_that_only_prints_keeps_the_id(self):
+        command = (
+            "t=PRRT_kwDOa; printf '%s\\n' \"$t\"; gh api graphql -f query='mutation($t:ID!)"
+            '{resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}\' -f t="$t"'
+        )
+        scan = _case("thread_id_assignment", command=command, result="PRRT_kwDOa\ntrue")
+        (write,) = scan["pending"]
+        self.assertEqual(
+            (write["thread_ids"], write["only_review_threads"]), (["PRRT_kwDOa"], True)
+        )
+
     def test_an_id_read_in_a_loop_or_rewritten_stays_unresolved(self):
         mutation = (
             "gh api graphql -f query='mutation($t:ID!){resolveReviewThread("
@@ -612,6 +623,10 @@ class PendingLookupTest(unittest.TestCase):
             + mutation.replace("{ref}", "$t")
             + "; done < ids",
             "t=PRRT_kwDOa; " + mutation.replace("{ref}", "${t/PRRT_kwDOa/PRRT_kwDOb}"),
+            # CodeRabbit on #190: a later setter replaces the literal value.
+            't=PRRT_kwDOa; printf -v t %s "$(cat id)"; '
+            + mutation.replace("{ref}", "$t"),
+            't=PRRT_kwDOa; declare t="$(cat id)"; ' + mutation.replace("{ref}", "$t"),
         ):
             with self.subTest(command=command[:40]):
                 scan = _case("thread_id_assignment", command=command, result="true")
