@@ -456,6 +456,75 @@ class ExecutionItemTest(unittest.TestCase):
         self.assertNotIn("id", blocks(lines, "tool_use")[0])
         self.assertEqual(detect(lines)["tool_uses"], 2)
 
+    def test_a_script_that_throws_after_its_command_stays_an_error(self) -> None:
+        lines = adapter.render(fixture("rollout-0.163.0-script-error-items.jsonl"))
+        uses = blocks(lines, "tool_use")
+        results = {r["tool_use_id"]: r for r in blocks(lines, "tool_result")}
+        self.assertEqual([u["name"] for u in uses], ["Bash", "exec"])
+        self.assertEqual([results[u["id"]]["is_error"] for u in uses], [False, True])
+        self.assertIn("probe-throw2-r184", results[uses[1]["id"]]["content"])
+        self.assertIn("A1", [f["signal"] for f in detect(lines)["findings"]])
+
+    def test_a_failed_status_without_exit_code_is_an_error(self) -> None:
+        rows = fixture("rollout-0.163.0-multi-call.jsonl")
+        command, _, patch = (r["payload"]["item"] for r in executed_rows(rows))
+        command.pop("exit_code")
+        patch["status"] = "failed"
+        lines = adapter.render(rows)
+        errors = [r["is_error"] for r in blocks(lines, "tool_result")]
+        self.assertEqual(errors, [True, False, True])
+
+    def test_equal_wrappers_close_independently(self) -> None:
+        def wrapper(call_id: str) -> dict:
+            return row(
+                {
+                    "type": "custom_tool_call",
+                    "name": "exec",
+                    "call_id": call_id,
+                    "input": 'await tools.exec_command({cmd:"ls"});',
+                }
+            )
+
+        def done(call_id: str) -> dict:
+            return row(
+                {
+                    "type": "custom_tool_call_output",
+                    "call_id": call_id,
+                    "output": "Script completed\nOutput:\n",
+                }
+            )
+
+        # Equal content, closed in reverse order: removal must be by identity.
+        rows = [wrapper("a"), wrapper("b"), done("b"), done("a")]
+        lines = adapter.render(rows)
+        self.assertEqual(detect(lines)["tool_uses"], 2)
+
+    def test_an_item_goes_to_the_wrapper_that_names_its_command(self) -> None:
+        rows = fixture("rollout-0.163.0-command-exit.jsonl")
+        first, second = (
+            i for i, r in enumerate(rows) if r["payload"].get("name") == "exec"
+        )
+        item = rows.pop(first + 1)
+        later = rows.pop(first + 1)  # the first wrapper's output row
+        # Both wrappers are open when the first one's item arrives.
+        rows.insert(second - 1, item)
+        rows.insert(second, later)
+        lines = adapter.render(rows)
+        commands = [u["input"]["command"] for u in blocks(lines, "tool_use")]
+        self.assertEqual(sorted(commands), ["echo ok-r184", "ls /nonexistent-r184"])
+
+    def test_an_item_after_an_unclosable_wrapper_is_ignored(self) -> None:
+        rows = fixture("rollout-0.163.0-command-exit.jsonl")
+        exec_rows = [r for r in rows if r["payload"].get("name") == "exec"]
+        exec_rows[0]["payload"].pop("call_id")
+        stray = json.loads(json.dumps(executed_rows(rows)[0]))
+        stray["payload"]["item"]["id"] = "exec-stray"
+        rows.append(stray)
+        commands = [
+            u["input"]["command"] for u in blocks(adapter.render(rows), "tool_use")
+        ]
+        self.assertEqual(commands, ["ls /nonexistent-r184", "echo ok-r184"])
+
     def test_an_interrupted_wrapper_keeps_its_executed_calls(self) -> None:
         rows = [
             r

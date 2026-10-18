@@ -282,7 +282,8 @@ one JavaScript call, and the wrapper's own output only says whether the script
 failed. Codex 0.163.0 also records each command and patch the script ran as an
 executed item with its real command, exit code and output; the converter
 renders the wrapper's calls from those items, so a command that exits non-zero
-is an error even inside a completed script. A rollout without such items falls
+is an error even inside a completed script, and a script that throws after its
+commands succeeded adds a failing `exec` call. A rollout without such items falls
 back to the script's source: literal `tools.exec_command` and
 `tools.apply_patch` calls are unfolded, computed arguments are counted on
 stderr, and only a wrapper with a single call gets the wrapper's output as its
