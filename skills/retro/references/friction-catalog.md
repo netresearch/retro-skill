@@ -149,8 +149,8 @@ own number and its own `-R`; a bare `#N` needs that `-R`; several creates in
 one call take one URL each, a create in a `for`/`while` loop takes every URL
 of its kind, and a create never takes a URL a numbered write in the same call
 reported. A create takes only a URL it printed, never an `owner/repo#N` or
-`#N` status line. A `gh pr ready`, `merge` or `review` that names a branch
-instead of a number takes only its own status line, so in
+`#N` status line. A `gh pr ready` or `merge` that names a branch instead of
+a number takes only its own status line and runs after the creates, so in
 `gh pr create … && gh pr ready <branch> …` the create keeps the URL it
 printed (`created`) and the ready its `✓ … o/r#N` line. A REST write on a literal PR/MR/issue endpoint counts by the
 endpoint, and claims the URL it prints itself (a JSON `html_url` line, or the

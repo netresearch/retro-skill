@@ -3235,6 +3235,27 @@ class CreateAndReadyTest(unittest.TestCase):
         self.assertEqual(scan["origins"], {})
         self.assertEqual(scan["unresolved"], [command])
 
+    def test_a_create_that_printed_nothing_does_not_take_an_edits_url(self):
+        # Review round 1 on #187: only a status-line write may follow the
+        # create; an edit by branch prints a URL line and must claim it first.
+        command = (
+            "gh pr create -R o/r --fill >/dev/null 2>&1;"
+            " gh pr edit other -R o/r --add-label x"
+        )
+        scan = self._scan(command, "https://github.com/o/r/pull/5\n")
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
+        self.assertEqual(scan["unresolved"], [command])
+
+    def test_a_failed_create_does_not_take_a_comments_url(self):
+        command = "gh pr create -R o/r --fill; gh pr comment other -R o/r --body hi"
+        scan = self._scan(
+            command,
+            "pull request create failed: GraphQL: Something went wrong while executing your query on 2026-09-29T23:23:56Z.\n"
+            "https://github.com/o/r/pull/7#issuecomment-123\n",
+        )
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/7": "acted"})
+        self.assertEqual(scan["unresolved"], [command])
+
     def test_a_failed_create_stays_unresolved_beside_a_resolved_ready(self):
         # `;` runs the ready anyway; it resolves, the failed create does not.
         command = "gh pr create -R o/r --fill; gh pr ready 7 -R o/r"

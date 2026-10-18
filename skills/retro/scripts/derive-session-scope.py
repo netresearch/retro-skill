@@ -141,10 +141,11 @@ FORGE_WRITE_RE = re.compile(
 )
 # gh writes whose own report is a status line (`✓ Pull request o/r#5 is
 # marked as "ready for review"`, `✓ Merged pull request #5 (…)`), never a URL
-# alone on a line, which is what `gh pr create` prints. Measured over the 134
+# alone on a line, which is what `gh pr create` prints. Measured over the 130
 # successful single-write calls of these verbs in session e72080f1
-# (2026-10-18): none printed a URL alone on a line.
-STATUS_REPORT_VERBS = frozenset({"ready", "merge", "review"})
+# (2026-10-18): none printed a URL alone on a line. `review` is left out:
+# `--comment` and `--request-changes` report with `-`/`+`, not a status line.
+STATUS_REPORT_VERBS = frozenset({"ready", "merge"})
 API_WRITE_RE = re.compile(
     r"\b(?P<cli>gh|glab)\s+api\b[^\n;|&]*?"
     r"(?:(?:-X|--method)[\s=]*(?:POST|PATCH|PUT|DELETE)\b"
@@ -883,13 +884,24 @@ def _write_number(command: str, write: re.Match) -> re.Match | None:
     return re.match(r"\s+(\d+)\b", command[write.end() :])
 
 
+def _reports_on_status_line(command: str, write: re.Match) -> bool:
+    """A gh `ready`/`merge` that names no number (`gh pr ready <branch>`):
+    its only report is its own status line, never a URL alone on a line."""
+    return (
+        write.groupdict().get("cli") == "gh"
+        and write.groupdict().get("verb") in STATUS_REPORT_VERBS
+        and not _write_number(command, write)
+    )
+
+
 def _write_order(command: str, write: re.Match) -> int:
-    """Numbered writes and API calls first, so a create never takes the URL
-    of a PR an edit or a merge in the same call reported. Creates and the
-    writes that name no number (`gh pr ready <branch>`) follow in command
-    order: each takes its own report form (`Call.subcommand_targets`)."""
+    """Every write before the creates, so a create never takes the URL of a
+    PR an edit, a comment or a merge in the same call reported. The one
+    exception is a write that `_reports_on_status_line`: it cannot take a
+    URL line, so it follows the creates in command order and a create in
+    `gh pr create … && gh pr ready <branch>` keeps the URL it printed."""
     verb = write.groupdict().get("verb")
-    if verb and (verb == "create" or not _write_number(command, write)):
+    if verb == "create" or _reports_on_status_line(command, write):
         return 1
     return 0
 
@@ -1213,7 +1225,7 @@ class _Call:
         form = ""
         if verb == "create":
             form = "url"
-        elif cli == "gh" and verb in STATUS_REPORT_VERBS and not number:
+        elif _reports_on_status_line(self.command, write):
             form = "status"
         repo = (
             _repo(slug["slug"], self.host(cli), bool(slug["scheme"]))
