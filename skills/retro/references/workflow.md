@@ -233,12 +233,30 @@ exists to prevent. The two guards are separate on purpose: an empty candidate
 list means the path or host is wrong, an empty `$TF` means the token is; the
 remedies differ and one message for both sends you fixing the wrong one.
 
-### Codex rollout on Windows
+### Codex rollout
 
 Codex CLI stores rollouts under `~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl`.
 Select the file by a phrase the human typed in this session, then convert it
 before either transcript pre-pass. The adapter checks that `--match` occurs in
-a human user message, not merely in a tool result or a quoted instruction:
+a human user message, not merely in a tool result or in text Codex injected
+(`<environment_context>`, `AGENTS.md` instructions), and refuses a subagent
+rollout, whose user messages repeat the main session's:
+
+```bash
+TOKEN='an exact phrase the user typed'
+TF=""
+for f in $(find ~/.codex/sessions -name 'rollout-*.jsonl' -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2); do
+  if python3 "${CLAUDE_SKILL_DIR}/scripts/codex-transcript.py" --transcript-file "$f" --match "$TOKEN" > /tmp/retro-codex-session.jsonl 2>/dev/null; then
+    TF=/tmp/retro-codex-session.jsonl
+    break
+  fi
+done
+[ -n "$TF" ] || echo "no Codex rollout carries the token as a human message"
+python3 "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" --transcript-file "$TF" --output-format json
+uv run "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" --transcript-file "$TF" --output-format json
+```
+
+On Windows, with PowerShell 7:
 
 ```powershell
 $skillDir = 'C:\path\to\retro\skills\retro'
@@ -254,15 +272,19 @@ uv run "$skillDir\scripts\collect-review-findings.py" --transcript-file $normali
 The command above uses PowerShell 7's `utf8NoBOM` encoding. On Windows,
 `python` or `python3` can resolve to a different interpreter;
 `py -3 -X utf8` selects Python 3 and keeps Chinese and other non-ASCII output
-from failing under a legacy console encoding. On other platforms, use
-`python3` for the same commands.
+from failing under a legacy console encoding.
 
-The converter unfolds literal `tools.exec_command` and `tools.apply_patch`
-calls inside `functions.exec`, so the wrapper is not misreported as 100 repeated
-`exec` calls. It cannot safely evaluate JavaScript-computed arguments or
-attribute batched tool results. Treat missing tool-error/review signals as
-incomplete coverage, read the original rollout for context, and pass created
-PRs/MRs with `--pr-list` when the review collector cannot recover them.
+Coverage differs by record shape; the adapter's docstring names the Codex
+versions each was measured on. `exec_command` and `shell` calls, and a direct
+`apply_patch`, carry their results and exit codes, so error signals work. The
+`functions.exec` runtime wraps several tools in one JavaScript call: the
+converter unfolds its literal `tools.exec_command` and `tools.apply_patch`
+calls, so the wrapper is not misreported as repeated `exec` calls, but it
+cannot evaluate computed arguments (it counts them on stderr) or attribute the
+wrapper's results. For such a session, treat missing tool-error and review
+signals as incomplete coverage, read the original rollout for context, and
+pass created PRs/MRs with `--pr-list` when the review collector cannot recover
+them. A rollout whose tool calls all fail to render is refused with exit 2.
 
 On a repeat `/retro` within one session, filter findings to turns after the
 previous retro — earlier signals were already proposed and must not be
