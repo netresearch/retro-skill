@@ -2748,6 +2748,7 @@ class ReviewThreadWriteTest(unittest.TestCase):
         _, out, _ = self._main(main, answer, "--output-format", "json")
         result = json.loads(out)
         self.assertEqual(result["review_threads"], {self.THREAD: self.PR})
+        self.assertEqual(result["unresolved_forge_commands"], [])
         (pr,) = [a for a in result["artefacts"] if a["url"] == self.PR]
         self.assertEqual(pr["origin"], "acted")
 
