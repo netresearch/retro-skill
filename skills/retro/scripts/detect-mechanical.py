@@ -2328,6 +2328,10 @@ def main() -> int:
         help="Comma-separated signal IDs to run (default: all)",
     )
     args = parser.parse_args()
+    if hasattr(sys.stdout, "reconfigure"):
+        # A finding can quote a lone surrogate from the transcript, which
+        # cannot be encoded as UTF-8; the report must still be written.
+        sys.stdout.reconfigure(errors="backslashreplace")
 
     if not args.transcript_file.exists():
         print(f"Transcript not found: {args.transcript_file}", file=sys.stderr)

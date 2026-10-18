@@ -673,6 +673,29 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn(b"\\ud800", result.stdout)
 
+    def test_the_detector_reports_a_lone_surrogate_it_quotes(self) -> None:
+        rows = [
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "call_id": "c",
+                    "arguments": json.dumps({"cmd": "cat x"}),
+                }
+            ),
+            row(
+                {
+                    "type": "function_call_output",
+                    "call_id": "c",
+                    "output": "Process exited with code 1\nOutput:\nerror: \ud800 bad",
+                }
+            ),
+        ]
+        result = self.run_cli("\n".join(json.dumps(r) for r in rows) + "\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = detect(result.stdout.decode("utf-8").splitlines())
+        self.assertIn("A1", [f["signal"] for f in report["findings"]])
+
     def test_too_deep_nesting_is_refused(self) -> None:
         result = self.run_cli("[" * 200000 + "\n")
         self.assertEqual(result.returncode, 2)
