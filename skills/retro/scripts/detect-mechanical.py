@@ -333,6 +333,41 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
     return events
 
 
+def transcript_coverage(events: list[dict[str, Any]]) -> dict[str, Any]:
+    """Recognize the input envelope before an empty extraction looks clean.
+
+    Claude metadata and partial tool calls are valid alongside message events.
+    Native Codex response items need a transcript adapter, even if a mixed file
+    also contains a supported message. This is not a claim that every individual
+    content block or pending result can be analyzed.
+    """
+    recognized = sum(
+        ev.get("type") in ("user", "assistant")
+        and isinstance(_message(ev).get("content"), (str, list))
+        for ev in events
+    )
+    native_codex = any(
+        ev.get("type") == "response_item" and isinstance(ev.get("payload"), dict)
+        for ev in events
+    )
+    if native_codex:
+        return {
+            "status": "unsupported",
+            "recognized_events": recognized,
+            "reason": "Native Codex response_item records require a transcript adapter; analysis was not run.",
+        }
+    if events and not recognized:
+        return {
+            "status": "unsupported",
+            "recognized_events": 0,
+            "reason": "No supported user/assistant message envelopes were recognized; analysis was not run.",
+        }
+    return {
+        "status": "supported" if events else "empty",
+        "recognized_events": recognized,
+    }
+
+
 def _message(ev: dict) -> dict:
     """The event's `message` object, or {} when it is missing, null or not an object."""
     msg = ev.get("message")
@@ -2299,6 +2334,24 @@ def main() -> int:
         return 2
 
     events = load_jsonl(args.transcript_file)
+    coverage = transcript_coverage(events)
+    if coverage["status"] == "unsupported":
+        summary = {
+            "transcript": str(args.transcript_file),
+            "events_total": len(events),
+            "user_messages": 0,
+            "tool_uses": 0,
+            "coverage": coverage,
+            "findings_total": None,
+            "findings": [],
+        }
+        print(f"Unsupported transcript: {coverage['reason']}", file=sys.stderr)
+        if args.output_format == "json":
+            print(json.dumps(summary, indent=2, ensure_ascii=False))
+        else:
+            print(f"Transcript: {args.transcript_file}")
+            print(f"Analysis not run: {coverage['reason']}")
+        return 2
     user_texts = extract_user_texts(events)
     assistant_texts = extract_assistant_texts(events)
     tool_uses = extract_tool_uses(events)
@@ -2367,6 +2420,7 @@ def main() -> int:
         "events_total": len(events),
         "user_messages": len(user_texts),
         "tool_uses": len(tool_uses),
+        "coverage": coverage,
         "findings_total": len(findings),
         "findings": findings,
     }
@@ -2377,6 +2431,7 @@ def main() -> int:
         print(
             f"Events: {summary['events_total']}  User msgs: {summary['user_messages']}  Tool uses: {summary['tool_uses']}"
         )
+        print(f"Input format: {coverage['status']}")
         print(f"Findings: {summary['findings_total']}")
         for f in findings:
             print(f"  - [{f['signal']}] {f['name']}: {f}")

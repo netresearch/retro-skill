@@ -473,6 +473,101 @@ class TestMalformedTranscriptLines(unittest.TestCase):
         self.assertTrue(all(isinstance(e, dict) for e in events))
 
 
+class TestUnsupportedTranscriptCoverage(unittest.TestCase):
+    """An unread rollout is not evidence that a session was friction-free."""
+
+    HI = '{"type":"user","message":{"content":"hi"}}'
+
+    CODEX_ROWS: ClassVar[list[dict]] = [
+        {"type": "session_meta", "payload": {"id": "redacted-session"}},
+        {
+            "type": "response_item",
+            "payload": {
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": "ALLES erledigt?"}],
+            },
+        },
+        {
+            "type": "response_item",
+            "payload": {
+                "type": "custom_tool_call",
+                "name": "exec",
+                "input": 'text(await tools.exec_command({cmd:"git status"}));',
+            },
+        },
+    ]
+
+    def test_native_codex_rollout_fails_explicitly_instead_of_reporting_clean(self):
+        proc = _run_cli([json.dumps(row) for row in self.CODEX_ROWS])
+        self.assertEqual(proc.returncode, 2)
+        report = json.loads(proc.stdout)
+        self.assertEqual(report["coverage"]["status"], "unsupported")
+        self.assertIsNone(report["findings_total"])
+        self.assertIn("Codex", proc.stderr)
+        self.assertIn("adapter", proc.stderr)
+
+    def test_one_supported_message_does_not_hide_native_codex_records(self):
+        proc = _run_cli([self.HI, *(json.dumps(row) for row in self.CODEX_ROWS)])
+        self.assertEqual(proc.returncode, 2)
+        self.assertEqual(json.loads(proc.stdout)["coverage"]["status"], "unsupported")
+
+    def test_unknown_nonempty_object_format_fails_without_scanning(self):
+        proc = _run_cli(['{"role":"user","text":"not the supported format"}'])
+        self.assertEqual(proc.returncode, 2)
+        report = json.loads(proc.stdout)
+        self.assertEqual(report["coverage"]["recognized_events"], 0)
+        self.assertIsNone(report["findings_total"])
+
+    def test_non_string_event_types_fail_cleanly(self):
+        for kind in ([], {}, None, 17):
+            with self.subTest(kind=kind):
+                row = {"type": kind, "message": {"content": []}}
+                proc = _run_cli([json.dumps(row)])
+                self.assertEqual(proc.returncode, 2)
+                self.assertEqual(
+                    json.loads(proc.stdout)["coverage"]["status"], "unsupported"
+                )
+                self.assertNotIn("Traceback", proc.stderr)
+
+    def test_supported_claude_with_metadata_is_still_scanned(self):
+        proc = _run_cli(['{"type":"system","subtype":"turn_duration"}', self.HI])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads(proc.stdout)["coverage"]["status"], "supported")
+
+    def test_supported_tool_only_cursor_shape_is_still_scanned(self):
+        events = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Shell",
+                            "input": {"command": "git status"},
+                        }
+                    ]
+                },
+            }
+        ]
+        proc = _run_cli([json.dumps(row) for row in events])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads(proc.stdout)["tool_uses"], 1)
+
+    def test_supported_pending_tool_is_not_misclassified_as_unknown(self):
+        events = call("m1", "t1", "Bash", {"command": "git status"})[:1]
+        proc = _run_cli([json.dumps(row) for row in events])
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(json.loads(proc.stdout)["coverage"]["status"], "supported")
+
+    def test_empty_and_unparseable_inputs_keep_the_loader_contract(self):
+        for lines in ([], [""], ["not json", "[1,2]", "null"]):
+            with self.subTest(lines=lines):
+                proc = _run_cli(lines)
+                self.assertEqual(proc.returncode, 0, proc.stderr)
+                self.assertEqual(json.loads(proc.stdout)["coverage"]["status"], "empty")
+
+
 # --- A-F13: --help names every signal the default run executes --------------------
 
 
