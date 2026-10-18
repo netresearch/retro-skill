@@ -926,13 +926,18 @@ def _named_lines(
     `- Creating issue in g/p https://…`) and drops `o/r#N` / `#N`; "status"
     keeps status lines only; "" keeps everything."""
     found: list[tuple[dict[str, Any] | None, str, int]] = []
+    previous = ""
     for line in result.splitlines():
+        # `gh pr create` that failed: `a pull request for branch "x" into
+        # branch "main" already exists:` and the existing PR's URL below it.
+        existing = previous.rstrip().endswith("already exists:")
+        previous = line
         text = line.strip().strip("`'\"").rstrip(".,")
         html = HTML_URL_LINE_RE.match(line) or _json_url(line)
         if html:
             text = html["url"]
         if text.startswith("https://") and " " not in text:
-            if form != "status":
+            if form != "status" and not (form == "url" and existing):
                 found += [(a, "", 0) for a in artefacts_in_text(text)]
             continue
         if not STATUS_LINE_RE.match(line):
@@ -1924,7 +1929,7 @@ def render_text(scope: dict[str, Any]) -> str:
                 f"  … showing {len(shown)} of {len(unresolved)};"
                 " --output-format json has the rest"
             )
-    transcripts = scope.get("transcripts") or [scope["transcript"]]
+    transcripts = scope["transcripts"]
     line = f"transcripts read: 1 main + {len(transcripts) - 1} subagent"
     if len(transcripts) > 1:
         line += " (--output-format json lists them)"

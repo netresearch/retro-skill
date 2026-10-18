@@ -149,7 +149,7 @@ own number and its own `-R`; a bare `#N` needs that `-R`; several creates in
 one call take one URL each, a create in a `for`/`while` loop takes every URL
 of its kind, and a create never takes a URL a numbered write in the same call
 reported. A create takes only a URL it printed, never an `owner/repo#N` or
-`#N` status line. A `gh pr ready` or `merge` that names a branch instead of
+`#N` status line, and never the URL below gh's `… already exists:`. A `gh pr ready` or `merge` that names a branch instead of
 a number takes only status lines (those of its `-R` repository), and it and
 the creates run after all other writes, in command order, so in
 `gh pr create … && gh pr ready <branch> …` the create keeps the URL it

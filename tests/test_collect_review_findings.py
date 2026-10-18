@@ -3235,6 +3235,47 @@ class CreateAndReadyTest(unittest.TestCase):
         self.assertEqual(scan["origins"], {})
         self.assertEqual(scan["unresolved"], [command])
 
+    def test_a_create_and_an_auto_merge_by_branch(self):
+        # Review round 3 on #187: `merge` without a number reports on a status
+        # line too (gh's `--auto` wording).
+        scan = self._scan(
+            "gh pr create -R o/r --fill && gh pr merge x -R o/r --auto --merge",
+            "https://github.com/o/r/pull/6\n"
+            "✓ Pull request o/r#6 will be automatically merged via merge when all requirements are met\n",
+        )
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/6": "created"})
+        self.assertEqual(scan["unresolved"], [])
+
+    def test_a_create_does_not_take_the_url_of_an_existing_pr(self):
+        # gh's refusal names the PR that already exists; this call made none.
+        command = "gh pr create -R o/r --fill; gh pr ready x -R o/r"
+        scan = self._scan(
+            command,
+            "Exit code 1\n"
+            'a pull request for branch "x" into branch "main" already exists:\n'
+            "https://github.com/o/r/pull/5\n"
+            '✓ Pull request o/r#5 is marked as "ready for review"\n',
+        )
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
+        self.assertEqual(scan["unresolved"], [command])
+
+    def test_a_numbered_ready_claims_before_the_create(self):
+        # Only an unnumbered ready waits for the creates; a numbered one runs
+        # first and takes any line naming its PR.
+        command = "gh pr create -R o/r --fill >/dev/null 2>&1; gh pr ready 5 -R o/r"
+        scan = self._scan(command, "https://github.com/o/r/pull/5\n")
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
+        self.assertEqual(scan["unresolved"], [command])
+
+    def test_a_glab_merge_by_branch_keeps_the_old_order(self):
+        # glab's report forms are not measured; its writes keep running first.
+        command = "glab mr create -R g/p --fill --yes && glab mr merge x -R g/p --yes"
+        scan = self._scan(command, "https://gitlab.com/g/p/-/merge_requests/9\n")
+        self.assertEqual(
+            scan["origins"], {"https://gitlab.com/g/p/-/merge_requests/9": "acted"}
+        )
+        self.assertEqual(scan["unresolved"], [command])
+
     def test_a_create_that_printed_nothing_does_not_take_an_edits_url(self):
         # Review round 1 on #187: only a status-line write may follow the
         # create; an edit by branch prints a URL line and must claim it first.
