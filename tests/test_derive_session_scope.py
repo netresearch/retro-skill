@@ -489,6 +489,26 @@ class SubagentScopeTest(unittest.TestCase):
         self.assertEqual(scope["days"], ["2026-10-18", "2026-10-19"])
         self.assertEqual(scope["commands_scanned"], 2)
 
+    def test_a_repository_only_a_subagent_wrote_a_file_in_is_in_scope(self) -> None:
+        # Review round 2 on #187: a Write's file_path, not a command, names it.
+        written = self.root / "only-written-by-a-subagent"
+        _git("init", "-q", str(written))
+        use = {
+            "type": "tool_use",
+            "id": "w1",
+            "name": "Write",
+            "input": {"file_path": str(written / "notes.md"), "content": "x"},
+        }
+        _write(
+            self.agent.with_name("agent-a2.jsonl"),
+            [{"type": "assistant", "message": {"content": [use]}}],
+        )
+        scope = dss.collect(self.main)
+        self.assertEqual(
+            scope["repositories"],
+            sorted([str(self.repo.resolve()), str(written.resolve())]),
+        )
+
     def test_a_pr_only_a_subagent_created_is_in_scope(self) -> None:
         scope = dss.collect(self.main)
         self.assertEqual(

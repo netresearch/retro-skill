@@ -886,7 +886,9 @@ def _write_number(command: str, write: re.Match) -> re.Match | None:
 
 def _reports_on_status_line(command: str, write: re.Match) -> bool:
     """A gh `ready`/`merge` that names no number (`gh pr ready <branch>`):
-    its only report is its own status line, never a URL alone on a line."""
+    it reports on a status line, never a URL alone on a line, so it takes
+    only status lines (every one of its repository: with two such writes
+    and two creates on one repository, the second create stays unresolved)."""
     return (
         write.groupdict().get("cli") == "gh"
         and write.groupdict().get("verb") in STATUS_REPORT_VERBS
