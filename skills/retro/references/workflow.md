@@ -183,6 +183,15 @@ python3 "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" \
   --transcript-file "$TF" --output-format json
 ```
 
+The detector reports `coverage.status` as `supported`, `empty`, or `unsupported`.
+`unsupported` exits 2, writes the reason to standard error, and sets
+`findings_total` to `null`: no analysis ran, so this is not a clean assessment.
+Native Codex `response_item` envelopes need a transcript adapter before the
+pre-pass. `supported` recognizes the message envelope; it does not promise that
+all content blocks or pending tool results were measured. The loader still
+ignores malformed and non-object JSON lines; `empty` means no object records
+were loaded, not that the original file contained no bytes.
+
 Four things in that snippet are load-bearing:
 
 **Search by content, not by mtime.** Several sessions share one project slug, so
