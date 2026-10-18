@@ -2653,5 +2653,240 @@ class CollectorMaskingTest(unittest.TestCase):
         self.assertIsNone(crf._mask_opt(None))
 
 
+class ReviewThreadWriteTest(unittest.TestCase):
+    """A GraphQL write that names a review thread only by its node id."""
+
+    # Copied from the session that prompted this (jujutsu-workflow-skill#41).
+    RESOLVE = (
+        "gh api graphql -f query='mutation{resolveReviewThread(input:"
+        '{threadId:"PRRT_kwDOTCREl86s5FYp"}){thread{isResolved}}}\''
+        " --jq .data.resolveReviewThread.thread.isResolved"
+    )
+    THREAD = "PRRT_kwDOTCREl86s5FYp"
+    PR = "https://github.com/netresearch/jujutsu-workflow-skill/pull/41"
+    ALIASED = (
+        "gh api graphql -f query='mutation{a:resolveReviewThread(input:"
+        '{threadId:"PRRT_kwDOTCREl86tpde_"}){thread{isResolved}} '
+        'b:resolveReviewThread(input:{threadId:"PRRT_kwDOTCREl86tpdfC"})'
+        "{thread{isResolved}}}' --jq '.data'"
+    )
+    RATE_LIMITED = (
+        "Exit code 1\n"
+        '{"errors":[{"type":"RATE_LIMIT","code":"graphql_rate_limit",'
+        '"message":"API rate limit already exceeded for user ID 326348."}]}'
+        "gh: API rate limit already exceeded for user ID 326348."
+    )
+
+    @staticmethod
+    def _node(url: str, number: int) -> dict:
+        project = url.split("github.com/", 1)[1].rsplit("/pull/", 1)[0]
+        return {
+            "pullRequest": {
+                "number": number,
+                "url": url,
+                "repository": {"nameWithOwner": project},
+            }
+        }
+
+    def _main(self, transcript: Path, node_answer, *argv: str):
+        """(exit code, stdout, every command run). `node_answer(command)` is
+        the CompletedProcess for a thread lookup."""
+        calls = []
+
+        def fake(command, **_):
+            calls.append(command)
+            if command[:3] == ["gh", "api", "graphql"] and "node(id:" in command[4]:
+                return node_answer(command)
+            if command[:3] == ["gh", "api", "graphql"] and "number=41" in command:
+                raw = _fixture("github-pr-retro-skill-122.json")
+                raw["data"]["repository"]["pullRequest"]["url"] = self.PR
+                return subprocess.CompletedProcess(command, 0, json.dumps(raw), "")
+            return subprocess.CompletedProcess(command, 1, "", "HTTP 404: Not Found")
+
+        out = io.StringIO()
+        with (
+            mock.patch.object(crf.subprocess, "run", side_effect=fake),
+            contextlib.redirect_stdout(out),
+        ):
+            code = crf.main(["x", "--transcript-file", str(transcript), *argv])
+        return code, out.getvalue(), calls
+
+    def test_a_resolve_mutation_resolves_to_its_pull_request(self):
+        transcript = _transcript([({"command": self.RESOLVE}, "true")])
+
+        def answer(command):
+            data = {"data": {"t0": self._node(self.PR, 41)}}
+            return subprocess.CompletedProcess(command, 0, json.dumps(data), "")
+
+        code, out, calls = self._main(transcript, answer, "--output-format", "json")
+        result = json.loads(out)
+        self.assertEqual(code, 0)
+        self.assertEqual(result["unresolved_forge_commands"], [])
+        self.assertEqual(result["review_threads"], {self.THREAD: self.PR})
+        self.assertEqual(result["review_thread_lookup_failures"], [])
+        (pr,) = [a for a in result["artefacts"] if a["url"] == self.PR]
+        self.assertEqual((pr["origin"], pr["fetched"]), ("acted", True))
+        (lookup,) = [c for c in calls if "node(id:" in c[4]]
+        # The id travels as a variable, never inside the query text.
+        self.assertNotIn(self.THREAD, lookup[4])
+        self.assertIn(f"i0={self.THREAD}", lookup)
+
+    def test_a_pr_the_transcript_only_mentioned_becomes_acted(self):
+        transcript = _transcript(
+            [({"command": self.RESOLVE}, "true")], texts=[f"see {self.PR}"]
+        )
+
+        def answer(command):
+            data = {"data": {"t0": self._node(self.PR, 41)}}
+            return subprocess.CompletedProcess(command, 0, json.dumps(data), "")
+
+        for argv in ((), ("--include-mentioned",)):
+            with self.subTest(argv=argv):
+                _, out, _ = self._main(transcript, answer, *argv)
+                self.assertNotIn("only mentioned", out)
+                _, out, _ = self._main(
+                    transcript, answer, *argv, "--output-format", "json"
+                )
+                (pr,) = [a for a in json.loads(out)["artefacts"] if a["url"] == self.PR]
+                self.assertEqual(pr["origin"], "acted")
+
+    def test_a_failed_lookup_keeps_the_write_unresolved_and_says_why(self):
+        transcript = _transcript(
+            [({"command": self.ALIASED}, '{"a":{"thread":{"isResolved":true}}}')]
+        )
+
+        def answer(command):
+            return subprocess.CompletedProcess(
+                command, 1, "", "gh: API rate limit already exceeded for user ID 1."
+            )
+
+        code, out, calls = self._main(transcript, answer)
+        self.assertEqual(code, 0)
+        (line,) = [x for x in out.splitlines() if x.startswith("UNRESOLVED ")]
+        self.assertIn("gh api graphql -f query='mutation{a:resolveReviewThread", line)
+        self.assertIn("review thread lookup failed: PRRT_kwDOTCREl86tpde_:", line)
+        self.assertIn("API rate limit already exceeded", line)
+        # Both ids went in one query, and a rate limit is not asked again.
+        self.assertEqual(len([c for c in calls if "node(id:" in c[4]]), 1)
+        _, out, _ = self._main(transcript, answer, "--output-format", "json")
+        result = json.loads(out)
+        self.assertEqual(
+            result["unresolved_forge_commands"], [dss.squeeze(self.ALIASED, 200)]
+        )
+        (failure,) = result["review_thread_lookup_failures"]
+        self.assertEqual(
+            failure["thread_ids"], ["PRRT_kwDOTCREl86tpde_", "PRRT_kwDOTCREl86tpdfC"]
+        )
+        self.assertFalse(result["complete"])
+
+    def test_an_unknown_id_fails_alone(self):
+        known, unknown = "PRRT_kwDOTCREl86tpde_", "PRRT_kwDOTCREl86tpdfC"
+        writes = [
+            {
+                "command": self.ALIASED,
+                "thread_ids": [known, unknown],
+                "only_review_threads": True,
+            }
+        ]
+        calls = []
+
+        def run(command):
+            calls.append(command)
+            ids = [a.split("=", 1)[1] for a in command[5:] if a.startswith("i")]
+            if unknown in ids:
+                raise RuntimeError(
+                    f"Could not resolve to a node with the global id of '{unknown}'"
+                )
+            return {"data": {"t0": self._node(self.PR, 41)}}
+
+        items, left, failures, urls = crf.resolve_review_thread_writes(
+            writes, [self.ALIASED], run
+        )
+        self.assertEqual(len(calls), 3)  # the batch, then each id alone
+        self.assertEqual([(i["url"], i["origin"]) for i in items], [(self.PR, "acted")])
+        self.assertEqual(urls, {known: self.PR})
+        self.assertEqual(left, [self.ALIASED])
+        (failure,) = failures
+        self.assertTrue(failure["reason"].startswith(f"{unknown}: RuntimeError"))
+        self.assertNotIn(known, failure["reason"])
+
+    def test_a_node_that_is_no_review_thread(self):
+        writes = [
+            {
+                "command": self.RESOLVE,
+                "thread_ids": [self.THREAD],
+                "only_review_threads": True,
+            }
+        ]
+        _, left, failures, _ = crf.resolve_review_thread_writes(
+            writes, [self.RESOLVE], lambda c: {"data": {"t0": {}}}
+        )
+        self.assertEqual(left, [self.RESOLVE])
+        self.assertEqual(
+            failures[0]["reason"], f"{self.THREAD}: not a pull request review thread"
+        )
+
+    def test_without_thread_writes_nothing_is_looked_up(self):
+        transcript = _transcript([({"command": "gh pr merge --merge"}, "")])
+        _, out, calls = self._main(transcript, None)
+        self.assertEqual(calls, [])
+        self.assertIn("UNRESOLVED gh pr merge --merge", out)
+
+    def test_scope_names_the_thread_ids_of_a_successful_call(self):
+        loop = (
+            "for t in PRRT_kwDOTCREl86tpde_ PRRT_kwDOTCREl86tpdfC; do gh api graphql"
+            ' -f query="mutation{addPullRequestReviewThreadReply(input:'
+            '{pullRequestReviewThreadId:\\"$t\\",body:\\"Fixed in a68e5e4\\"})'
+            '{comment{url}}}"; done'
+        )
+        # The id after the 200 characters unresolved_forge_commands keeps.
+        late = (
+            "gh api graphql -f query='mutation($id: ID!){addPullRequestReviewThreadReply("
+            'input:{pullRequestReviewThreadId:$id,body:"' + "x" * 200 + '"})'
+            "{comment{url}}}' -f id=PRRT_kwDOTCREl86late"
+        )
+        mixed = "gh pr comment --body done; " + self.RESOLVE
+        review = (
+            "gh api graphql -f query='mutation{addPullRequestReview(input:"
+            '{pullRequestId:"PR_kwDOTCREl86abc"}){pullRequestReview{id}}}\''
+        )
+        data = dss.collect_artefacts(
+            _transcript(
+                [
+                    ({"command": self.RESOLVE}, "true"),
+                    ({"command": loop}, "{}\n{}"),
+                    ({"command": mixed}, "true"),
+                    ({"command": review}, "{}"),
+                    ({"command": late}, "{}"),
+                ]
+            )
+        )
+        writes = {w["command"]: w for w in data["review_thread_writes"]}
+        self.assertEqual(
+            writes.pop(dss.squeeze(late, 200))["thread_ids"], ["PRRT_kwDOTCREl86late"]
+        )
+        self.assertEqual(writes[self.RESOLVE]["thread_ids"], [self.THREAD])
+        self.assertTrue(writes[self.RESOLVE]["only_review_threads"])
+        (looped,) = [w for c, w in writes.items() if c.startswith("for t in")]
+        self.assertEqual(
+            looped["thread_ids"], ["PRRT_kwDOTCREl86tpde_", "PRRT_kwDOTCREl86tpdfC"]
+        )
+        # The comment names no PR: the call stays unresolved after the lookup.
+        self.assertFalse(writes[mixed]["only_review_threads"])
+        self.assertEqual(len(writes), 3)  # a review on a PR node id is no thread
+        self.assertEqual(len(data["unresolved_forge_commands"]), 5)
+
+    def test_a_failed_thread_mutation_names_no_thread(self):
+        # Copied from the same session: the call was rate limited and wrote nothing.
+        transcript = _transcript(
+            [({"command": self.ALIASED, "__error": True}, self.RATE_LIMITED)]
+        )
+        data = dss.collect_artefacts(transcript)
+        self.assertEqual(data["review_thread_writes"], [])
+        self.assertEqual(
+            data["unresolved_forge_commands"], [dss.squeeze(self.ALIASED, 200)]
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

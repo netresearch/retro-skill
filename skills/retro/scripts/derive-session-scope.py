@@ -260,6 +260,17 @@ INLINE_PROGRAM_RE = re.compile(
     r"|python3?\s+(?:-\w+\s+)*-c"
     r"|(?:node|ruby|perl)\s+(?:-\w+\s+)*-[a-z]*e[a-z]*)\s"
 )
+# A GraphQL write on a review thread names the thread by its node id only
+# (`resolveReviewThread(input:{threadId:"PRRT_…"})`); the pull request it
+# belongs to is in no text the call carries. The ids are kept so the collector
+# can ask the forge — never matched to a PR by what else the session touched.
+REVIEW_THREAD_MUTATION_RE = re.compile(
+    r"\b(?:resolveReviewThread|unresolveReviewThread|addPullRequestReviewThreadReply)\b"
+)
+REVIEW_THREAD_ID_RE = re.compile(r"(?<![\w-])PRRT_[A-Za-z0-9_-]+")
+# `for t in PRRT_a PRRT_b; do gh api graphql … $t …`: the list a loop variable
+# takes its values from.
+FOR_LIST_RE = re.compile(r"\bfor\s+(?P<var>\w+)\s+in\s+(?P<list>[^;\n]*)")
 # A call in list form, as a script spells it: `subprocess.run(["gh", "pr", …])`.
 LIST_CALL_RE = re.compile(r"""\[\s*["'](?:gh|glab)["'][^\]]*\]""")
 # MCP tools that write to a PR or issue; their input names owner/repo/number.
@@ -1391,17 +1402,38 @@ def _unclaimed(result: str, found: list[dict[str, Any]], text_writes: bool) -> b
     return any(_key(r) not in claimed for r in named)
 
 
+def _review_thread_ids(command: str, write: re.Match, call: _Call) -> list[str]:
+    """The review-thread node ids a successful GraphQL thread mutation names:
+    literally in its own command, or as the values of a `for` variable it
+    uses. [] for any other write and for a call that failed."""
+    segment = _segment(command, write)
+    if call.failed or "graphql" not in segment:
+        return []
+    if not REVIEW_THREAD_MUTATION_RE.search(segment):
+        return []
+    found = REVIEW_THREAD_ID_RE.findall(segment)
+    for loop in FOR_LIST_RE.finditer(command[: write.start()]):
+        if re.search(rf"\$\{{?{loop['var']}\b", segment):
+            found += REVIEW_THREAD_ID_RE.findall(loop["list"])
+    return list(dict.fromkeys(found))
+
+
 def _forge_write_artefacts(
     command: str, result: str, gitlab_host: str, failed: bool = False
-) -> tuple[list[dict[str, Any]], bool]:
+) -> tuple[list[dict[str, Any]], bool, list[str]]:
     """What a command's forge writes wrote to, as their output names it.
 
     Each write is matched with the report lines its output carries: its own
     number and `-R`, a URL alone on a line or a CLI status line — never a
     link standing in running text. A refused call ran nothing. A write whose
-    target stays unknown is reported as unresolved, not guessed."""
+    target stays unknown is reported as unresolved, not guessed.
+
+    The third value lists the review-thread node ids of GraphQL thread
+    mutations whose target is otherwise unknown. Such a write does not make
+    the call unresolved by itself; the caller reports the call as unresolved
+    until the forge has named each thread's pull request."""
     if refused(result, failed):
-        return [], False
+        return [], False, []
     command = _joined(command)
     call = _Call(command, result, gitlab_host, failed)
     # Numbered writes first, so a create never takes the URL of a PR an edit
@@ -1411,6 +1443,7 @@ def _forge_write_artefacts(
     )
     wrapper = _wrapper_targets(command, result)
     found: list[dict[str, Any]] = list(wrapper or [])
+    threads: list[str] = []
     unresolved = wrapper is None
     about_prs = bool(wrapper) or wrapper is None  # a write concerning a PR, MR or issue
     # A call in list form (`["gh", "pr", …]`) only occurs inside a script.
@@ -1430,7 +1463,9 @@ def _forge_write_artefacts(
         else:
             targets = call.api_targets(write)
         about_prs = about_prs or targets != []
-        if targets is None:
+        if targets is None and (ids := _review_thread_ids(command, write, call)):
+            threads += ids
+        elif targets is None:
             unresolved = True
         else:
             found += targets
@@ -1447,7 +1482,7 @@ def _forge_write_artefacts(
         unresolved = True
     if about_prs and not unresolved:
         unresolved = _unclaimed(result, found, text_writes)
-    return found, unresolved
+    return found, unresolved, list(dict.fromkeys(threads))
 
 
 def command_reference_candidates(
@@ -1555,6 +1590,7 @@ class _ArtefactScan:
         self.by_url: dict[str, dict[str, Any]] = {}
         self.tickets: set[str] = set()
         self.unresolved: list[str] = []
+        self.review_thread_writes: list[dict[str, Any]] = []
 
     def keep(self, found: list[dict[str, Any]]) -> None:
         for item in found:
@@ -1576,12 +1612,22 @@ class _ArtefactScan:
         result = _result_text(block)
         command = payload.get("command")
         if isinstance(command, str):
-            found, lost = _forge_write_artefacts(
+            found, lost, threads = _forge_write_artefacts(
                 command, result, self.gitlab_host, bool(block.get("is_error"))
             )
             self.keep(found)
-            if lost:
+            if lost or threads:
                 self.unresolved.append(squeeze(command, 200))
+            if threads:
+                # The full command is read here; the squeezed one above may
+                # end before the ids do.
+                self.review_thread_writes.append(
+                    {
+                        "command": self.unresolved[-1],
+                        "thread_ids": threads,
+                        "only_review_threads": not lost,
+                    }
+                )
         elif MCP_WRITE_RE.search(name):
             self.keep(
                 _mcp_write_artefacts(payload, result, bool(block.get("is_error")))
@@ -1640,6 +1686,11 @@ def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]
         "tickets": sorted(scan.tickets),
         "reference_candidates": scan.reference_candidates,
         "unresolved_forge_commands": scan.unresolved,
+        # Calls among them that wrote to a review thread named by node id:
+        # `thread_ids`, and whether those threads are all the call left
+        # unresolved (`only_review_threads`). collect-review-findings.py asks
+        # the forge which pull request each thread belongs to.
+        "review_thread_writes": scan.review_thread_writes,
     }
 
 

@@ -59,6 +59,14 @@ A PR/MR a script opened inside one call never shows in the transcript. Its
 list — one URL, or one JSON object with `url`, per line — goes in with
 `--pr-list`; those PRs are read like the session's own, with origin `listed`.
 
+A GraphQL write on a review thread (`resolveReviewThread`,
+`addPullRequestReviewThreadReply`) names the thread by node id (`PRRT_…`)
+only. One GraphQL query asks GitHub which pull request each thread belongs to;
+that PR is read with origin `acted`, and `review_threads` maps each id to it.
+A lookup that fails (rate limit, unknown id) leaves the write in
+`unresolved_forge_commands`, with the reason in
+`review_thread_lookup_failures` and on its `UNRESOLVED` line.
+
 Failure stays distinguishable from silence: an artefact that could not be read
 is listed with `fetched: false` and the error, never as an artefact with no
 findings. Comments from before `--since` (default: the transcript's first
@@ -1175,6 +1183,99 @@ def collect(
     }
 
 
+# A review thread's node id names its pull request only on the forge. One
+# query asks for every id at once; `-f` passes each as a variable, never as
+# text inside the query.
+GH_THREAD_FRAGMENT = (
+    "... on PullRequestReviewThread"
+    " { pullRequest { number url repository { nameWithOwner } } }"
+)
+RATE_LIMIT_RE = re.compile(r"rate limit", re.IGNORECASE)
+
+
+def _thread_query(ids: list[str]) -> list[str]:
+    variables = ", ".join(f"$i{n}: ID!" for n in range(len(ids)))
+    fields = " ".join(
+        f"t{n}: node(id: $i{n}) {{ {GH_THREAD_FRAGMENT} }}" for n in range(len(ids))
+    )
+    command = ["gh", "api", "graphql", "-f", f"query=query({variables}) {{ {fields} }}"]
+    for n, node_id in enumerate(ids):
+        command += ["-f", f"i{n}={node_id}"]
+    return command
+
+
+def _thread_answers(ids: list[str], run: Runner) -> dict[str, str | dict]:
+    """Each id's pull request URL from one query, or why it is not known."""
+    raw = _require_dict(run(_thread_query(ids)), GH_GRAPHQL)
+    data = raw.get("data") if isinstance(raw.get("data"), dict) else {}
+    found: dict[str, str | dict] = {}
+    for n, node_id in enumerate(ids):
+        node = data.get(f"t{n}")
+        pr = node.get("pullRequest") if isinstance(node, dict) else None
+        url = pr.get("url") if isinstance(pr, dict) else None
+        refs = scope.artefacts_in_text(url) if isinstance(url, str) else []
+        found[node_id] = (
+            refs[0]
+            if refs
+            else _graphql_error(raw) or "not a pull request review thread"
+        )
+    return found
+
+
+def lookup_review_threads(ids: list[str], run: Runner) -> dict[str, str | dict]:
+    """The pull request (an artefact) of each review-thread node id, or the
+    reason it is not known (a string). A failed batch is asked again id by id,
+    so one id the forge does not know fails alone — unless the forge said
+    rate limit, where every further call fails the same way."""
+    if not ids:
+        return {}
+    try:
+        return _thread_answers(ids, run)
+    except Exception as exc:  # noqa: BLE001 - a lookup failure is a reason, not a crash
+        if len(ids) == 1 or RATE_LIMIT_RE.search(str(exc)):
+            return {i: f"{type(exc).__name__}: {exc}" for i in ids}
+    answers: dict[str, str | dict] = {}
+    for node_id in ids:
+        answers.update(lookup_review_threads([node_id], run))
+    return answers
+
+
+def resolve_review_thread_writes(
+    writes: list[dict[str, Any]], unresolved: list[str], run: Runner
+) -> tuple[list[dict[str, Any]], list[str], list[dict[str, Any]], dict[str, str]]:
+    """Turn GraphQL review-thread writes into the pull requests they wrote to.
+
+    Returns the PRs as artefacts with origin `acted`, the unresolved commands
+    that remain, one entry per write whose lookup failed (with the reason),
+    and every id that resolved with its PR URL. A write stays unresolved
+    unless every thread it named resolved and nothing else in the call was
+    unresolved; its PR is read either way."""
+    ids = list(dict.fromkeys(i for w in writes for i in w["thread_ids"]))
+    answers = lookup_review_threads(ids, run)
+    resolved = {i: a for i, a in answers.items() if isinstance(a, dict)}
+    items = list(
+        {a["url"]: dict(a, origin="acted") for a in resolved.values()}.values()
+    )
+    remaining, failures = list(unresolved), []
+    for write in writes:
+        reasons = {
+            i: answers[i]
+            for i in write["thread_ids"]
+            if not isinstance(answers[i], dict)
+        }
+        if reasons:
+            failures.append(
+                {
+                    "command": write["command"],
+                    "thread_ids": write["thread_ids"],
+                    "reason": "; ".join(f"{i}: {r}" for i, r in reasons.items()),
+                }
+            )
+        elif write.get("only_review_threads") and write["command"] in remaining:
+            remaining.remove(write["command"])
+    return items, remaining, failures, {i: a["url"] for i, a in resolved.items()}
+
+
 def items_from_scope(
     data: dict[str, Any], include_mentioned: bool
 ) -> list[dict[str, Any]]:
@@ -1265,18 +1366,34 @@ def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
         lines.append(
             "Evidence is incomplete; unresolved does not mean absent or no feedback."
         )
-    return lines + _unresolved_lines(result.get("unresolved_forge_commands") or [])
+    return lines + _unresolved_lines(
+        result.get("unresolved_forge_commands") or [],
+        {
+            f["command"]: f["reason"]
+            for f in result.get("review_thread_lookup_failures") or []
+        },
+    )
 
 
 # How many unresolved writes the text rendering shows; the JSON has all.
 TEXT_UNRESOLVED_LIMIT = 20
 
 
-def _unresolved_lines(commands: list[str]) -> list[str]:
+def _unresolved_lines(
+    commands: list[str], reasons: dict[str, str] | None = None
+) -> list[str]:
     """Forge writes whose target the transcript does not name: unknown, never
-    "nothing written". Each is a command to read before the retro is complete."""
+    "nothing written". Each is a command to read before the retro is complete.
+    A review-thread write whose lookup failed says why."""
+    reasons = reasons or {}
     lines = [
-        "UNRESOLVED " + " ".join(c.split())[:160]
+        "UNRESOLVED "
+        + " ".join(c.split())[:160]
+        + (
+            f" — review thread lookup failed: {oneline(reasons[c])}"
+            if c in reasons
+            else ""
+        )
         for c in commands[:TEXT_UNRESOLVED_LIMIT]
     ]
     if len(commands) > TEXT_UNRESOLVED_LIMIT:
@@ -1353,18 +1470,54 @@ def gitlab_hosts_from(named: list[str], env: str | None) -> tuple[str, ...]:
     )
 
 
-def _items_from_args(args, gitlab_host: str, listed: list[dict[str, Any]]):
+def with_thread_prs(
+    artefacts: list[dict[str, Any]], prs: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The transcript's artefacts plus the PRs its review-thread writes wrote
+    to. A PR the transcript only mentioned becomes `acted`; one it already
+    attributes keeps its origin."""
+    acted = {p["url"] for p in prs}
+    merged = [
+        dict(a, origin="acted")
+        if a["url"] in acted and a["origin"] == "mentioned"
+        else a
+        for a in artefacts
+    ]
+    known = {a["url"] for a in merged}
+    return merged + [p for p in prs if p["url"] not in known]
+
+
+def _items_from_args(
+    args, gitlab_host: str, listed: list[dict[str, Any]], run: Runner = default_runner
+):
     """The artefacts to read, how many mentioned ones were skipped, the
-    transcript's start, and the forge writes whose target it does not name.
+    transcript's start, the forge writes whose target it does not name, and
+    what the review-thread lookup found (`review_threads`) and could not
+    (`review_thread_lookup_failures`).
     A listed PR the transcript already names keeps the transcript's origin.
-    Raises ValueError on a bad transcript path or ref."""
+    Raises ValueError on a bad transcript path or ref, before any network call."""
     items: list[dict[str, Any]] = []
     mentioned_skipped, start, unresolved = 0, None, []
+    threads: dict[str, Any] = {
+        "review_threads": {},
+        "review_thread_lookup_failures": [],
+    }
     listed_urls = {i["url"] for i in listed}
+    refs = [parse_ref(ref) for ref in args.ref]
+    for ref, item in zip(args.ref, refs):
+        if item is None:
+            raise ValueError(
+                f"not an artifact URL or unresolved short reference: {ref}"
+            )
     if args.transcript_file:
         if not args.transcript_file.is_file():
             raise ValueError(f"no such transcript: {args.transcript_file}")
         data = scope.collect_artefacts(args.transcript_file, gitlab_host)
+        prs, unresolved, failures, urls = resolve_review_thread_writes(
+            data["review_thread_writes"], data["unresolved_forge_commands"], run
+        )
+        threads = {"review_threads": urls, "review_thread_lookup_failures": failures}
+        data = dict(data, artefacts=with_thread_prs(data["artefacts"], prs))
         items = items_from_scope(data, args.include_mentioned)
         if not args.include_mentioned:
             mentioned_skipped = sum(
@@ -1373,17 +1526,9 @@ def _items_from_args(args, gitlab_host: str, listed: list[dict[str, Any]]):
                 if a["origin"] == "mentioned" and a["url"] not in listed_urls
             )
         start = transcript_start(args.transcript_file)
-        unresolved = data["unresolved_forge_commands"]
     # After the transcript's own: collect() reads a URL once, first come.
-    items += listed
-    for ref in args.ref:
-        item = parse_ref(ref)
-        if item is None:
-            raise ValueError(
-                f"not an artifact URL or unresolved short reference: {ref}"
-            )
-        items.append(item)
-    return items, mentioned_skipped, start, unresolved
+    items += listed + refs
+    return items, mentioned_skipped, start, unresolved, threads
 
 
 def main(argv: list[str]) -> int:
@@ -1436,7 +1581,7 @@ def main(argv: list[str]) -> int:
     try:
         external = load_feedback(args.feedback_file)
         listed = load_pr_list(args.pr_list, gitlab_hosts)
-        items, mentioned_skipped, start, unresolved = _items_from_args(
+        items, mentioned_skipped, start, unresolved, threads = _items_from_args(
             args, gitlab_hosts[0], listed
         )
     except ValueError as exc:
@@ -1454,6 +1599,9 @@ def main(argv: list[str]) -> int:
         gitlab_hosts=gitlab_hosts,
     )
     result["unresolved_forge_commands"] = unresolved
+    # Review threads named only by node id: the PR each one resolved to, and
+    # why a lookup failed. A failed write stays in unresolved_forge_commands.
+    result.update(_masked_text(threads))
     result["complete"] = result["complete"] and not unresolved
     if args.output_format == "json":
         print(json.dumps(result, indent=2, default=str))
