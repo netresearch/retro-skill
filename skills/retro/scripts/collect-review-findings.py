@@ -1499,7 +1499,9 @@ def with_thread_prs(
     return merged + [p for p in prs if p["url"] not in known]
 
 
-SESSION_ID_RE = re.compile(r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}")
+SESSION_ID_RE = re.compile(
+    r"[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}", re.IGNORECASE
+)
 
 
 def subagent_transcripts(transcript: Path) -> list[Path]:
@@ -1519,7 +1521,13 @@ def subagent_transcripts(transcript: Path) -> list[Path]:
     directory = session.with_suffix("") / "subagents"
     if not directory.is_dir():
         return []
-    return sorted(p for p in directory.rglob("agent-*.jsonl") if p.is_file())
+    # A symlink out of the directory (another session's transcript) is not
+    # this session's; it would file that session's writes under this one.
+    return sorted(
+        p
+        for p in directory.rglob("agent-*.jsonl")
+        if p.is_file() and p.resolve().is_relative_to(directory)
+    )
 
 
 def scan_transcripts(paths: list[Path], gitlab_host: str) -> dict[str, Any]:

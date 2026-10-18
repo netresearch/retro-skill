@@ -3107,6 +3107,24 @@ class SubagentTranscriptTest(unittest.TestCase):
         result = json.loads(self._main(link))
         self.assertEqual(result["transcripts"], [str(link), str(sub.resolve())])
 
+    def test_an_agent_link_out_of_the_session_is_not_read(self):
+        # CodeRabbit on #185: a symlink to another session's transcript would
+        # file that session's writes under this one.
+        main, sub = self._session()
+        other = _transcript([({"command": "gh pr edit 3 -R o/r --add-label x"}, "")])
+        (sub.parent / "agent-z.jsonl").symlink_to(other)
+        result = json.loads(self._main(main))
+        self.assertEqual(result["transcripts"], [str(main), str(sub)])
+
+    def test_an_uppercase_session_id_has_subagents(self):
+        main, sub = self._session()
+        upper = main.with_name(main.name.upper().replace(".JSONL", ".jsonl"))
+        main.rename(upper)
+        main.with_suffix("").rename(upper.with_suffix(""))
+        result = json.loads(self._main(upper))
+        moved = upper.with_suffix("") / "subagents" / sub.name
+        self.assertEqual(result["transcripts"], [str(upper), str(moved)])
+
     def test_without_a_subagents_directory_only_the_main_transcript(self):
         main, _ = self._session(subagent=False)
         result = json.loads(self._main(main))
