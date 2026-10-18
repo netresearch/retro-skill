@@ -9,6 +9,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -336,6 +337,284 @@ class ExecWrapperTest(unittest.TestCase):
         self.assertIn("3 tool call(s)", stderr.getvalue())
 
 
+class RealWrapperTest(unittest.TestCase):
+    """`codex exec` 0.163.0: every tool runs inside a `functions.exec` wrapper."""
+
+    def test_single_call_wrappers_pair_with_their_output(self) -> None:
+        lines = adapter.render(fixture("rollout-0.163.0-exec.jsonl"), "probe-r168")
+        uses = blocks(lines, "tool_use")
+        results = {r["tool_use_id"]: r for r in blocks(lines, "tool_result")}
+        self.assertEqual(
+            [(u["name"], u.get("input")) for u in uses],
+            [
+                ("Bash", {"command": "echo probe-r168"}),
+                ("Bash", {"command": "ls /nonexistent-r168"}),
+                ("Patch", {"file_paths": ["/repo/hello.txt"]}),
+            ],
+        )
+        self.assertEqual(set(results), {u["id"] for u in uses})
+        self.assertEqual(results[uses[0]["id"]]["content"], "probe-r168\n")
+        self.assertEqual(
+            [results[u["id"]]["is_error"] for u in uses], [False, False, False]
+        )
+        report = detect(lines)
+        self.assertEqual(report["tool_uses"], 3)
+
+    def test_a_failed_script_is_an_error(self) -> None:
+        lines = adapter.render(fixture("rollout-0.163.0-script-error.jsonl"))
+        (use,) = blocks(lines, "tool_use")
+        (result,) = blocks(lines, "tool_result")
+        self.assertEqual(result["tool_use_id"], use["id"])
+        self.assertTrue(result["is_error"])
+        self.assertTrue(result["content"].startswith("before\nScript error:\n"))
+        self.assertIn("A1", [f["signal"] for f in detect(lines)["findings"]])
+
+    def test_a_wrapper_with_several_calls_renders_no_result(self) -> None:
+        rows = fixture("rollout-0.163.0-script-error.jsonl")
+        call = rows[5]["payload"]
+        rows[5] = {
+            **rows[5],
+            "payload": {
+                **call,
+                "input": 'await tools.exec_command({cmd:"a"});'
+                'await tools.exec_command({cmd:"b"});',
+            },
+        }
+        lines = adapter.render(rows)
+        self.assertEqual(len(blocks(lines, "tool_use")), 2)
+        self.assertTrue(all("id" not in u for u in blocks(lines, "tool_use")))
+        self.assertEqual(blocks(lines, "tool_result"), [])
+
+
+class WrapperEdgeTest(unittest.TestCase):
+    """Wrapper rows a real rollout can carry in other combinations."""
+
+    def wrapper(self, source: str, call_id: str | None = "call-w") -> dict:
+        payload = {"type": "custom_tool_call", "name": "exec", "input": source}
+        if call_id is not None:
+            payload["call_id"] = call_id
+        return row(payload)
+
+    def output(self, header: str, body: str, call_id: str | None = "call-w") -> dict:
+        payload = {
+            "type": "custom_tool_call_output",
+            "output": [
+                {
+                    "type": "input_text",
+                    "text": f"{header}\nWall time 0.1 seconds\nOutput:\n",
+                },
+                {"type": "input_text", "text": body},
+            ],
+        }
+        if call_id is not None:
+            payload["call_id"] = call_id
+        return row(payload)
+
+    def test_a_call_whose_output_is_missing_is_still_counted(self) -> None:
+        rows = fixture("rollout-0.163.0-exec.jsonl")
+        del rows[11]
+        lines = adapter.render(rows)
+        uses = blocks(lines, "tool_use")
+        self.assertNotIn("id", uses[2])
+        self.assertEqual(detect(lines)["tool_uses"], 3)
+
+    def test_rows_without_call_id_do_not_crash(self) -> None:
+        rows = [
+            self.wrapper('await tools.exec_command({cmd:"ls"});', call_id=None),
+            self.output("Script completed", "x\n", call_id=None),
+        ]
+        (use,) = blocks(adapter.render(rows), "tool_use")
+        self.assertNotIn("id", use)
+
+    def test_an_unhashable_call_id_does_not_crash(self) -> None:
+        for bad in ({"k": 1}, ["x"]):
+            with self.subTest(call_id=bad):
+                rows = [
+                    self.wrapper('await tools.exec_command({cmd:"ls"});'),
+                    self.output("Script completed", "x\n", call_id=None),
+                ]
+                rows[1]["payload"]["call_id"] = bad
+                (use,) = blocks(adapter.render(rows), "tool_use")
+                self.assertNotIn("id", use)
+
+    def test_an_unhashable_wrapper_call_id_does_not_crash(self) -> None:
+        rows = [
+            self.wrapper('await tools.exec_command({cmd:"ls"});'),
+            self.output("Script completed", "x\n"),
+        ]
+        rows[0]["payload"]["call_id"] = {"k": 1}
+        (use,) = blocks(adapter.render(rows), "tool_use")
+        self.assertNotIn("id", use)
+
+    def test_another_nested_tool_is_counted_and_takes_no_output(self) -> None:
+        rows = [
+            self.wrapper(
+                'await tools.exec_command({cmd:"ls"});'
+                'await tools.view_image({path:"x.png"});'
+            ),
+            self.output("Script failed", "view_image: not found"),
+        ]
+        lines = adapter.render(rows)
+        uses = blocks(lines, "tool_use")
+        self.assertEqual([u["name"] for u in uses], ["Bash", "view_image"])
+        self.assertTrue(all("id" not in u for u in uses))
+        self.assertEqual(blocks(lines, "tool_result"), [])
+
+    def test_a_direct_call_keeps_its_call_id_from_a_wrapper(self) -> None:
+        rows = [
+            self.wrapper('await tools.exec_command({cmd:"ls"});', call_id="c1"),
+            row(
+                {
+                    "type": "custom_tool_call",
+                    "name": "apply_patch",
+                    "call_id": "c1",
+                    "input": "*** Begin Patch\n*** Add File: a.py\n+x\n*** End Patch",
+                }
+            ),
+            self.output("Script completed", "", call_id="c1"),
+        ]
+        lines = adapter.render(rows)
+        self.assertEqual(detect(lines)["tool_uses"], 2)
+
+    def test_malformed_rows_and_items_are_skipped(self) -> None:
+        rows = [
+            [1],
+            "text",
+            row({"type": "message", "role": "user", "content": 5}),
+            message("user", "Fix it"),
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "arguments": json.dumps({"cmd": "ls"}),
+                    "call_id": "call-f",
+                }
+            ),
+            row({"type": "function_call_output", "call_id": "call-f", "output": [1]}),
+            row({"type": "function_call_output", "call_id": ["x"], "output": "y"}),
+        ]
+        lines = adapter.render(rows, "Fix it")
+        (result,) = blocks(lines, "tool_result")
+        self.assertEqual((result["tool_use_id"], result["content"]), ("call-f", "[1]"))
+        self.assertEqual(detect(lines)["tool_uses"], 1)
+
+    def test_a_non_string_call_id_leaves_the_call_counted(self) -> None:
+        for bad in (5, [1], {"a": 1}):
+            with self.subTest(call_id=bad):
+                rows = [
+                    row(
+                        {
+                            "type": "function_call",
+                            "name": "exec_command",
+                            "call_id": bad,
+                            "arguments": json.dumps({"cmd": "ls"}),
+                        }
+                    ),
+                    row(
+                        {
+                            "type": "function_call_output",
+                            "call_id": bad,
+                            "output": "Process exited with code 0\nOutput:\nx",
+                        }
+                    ),
+                ]
+                lines = adapter.render(rows)
+                (use,) = blocks(lines, "tool_use")
+                self.assertNotIn("id", use)
+                self.assertEqual(detect(lines)["tool_uses"], 1)
+
+    def test_only_the_runtime_tools_object_is_read(self) -> None:
+        rows = [
+            self.wrapper(
+                "mytools.foo(1); $tools.bar(2); ctx.tools.write_stdin({});"
+                'await tools.exec_command({cmd:"ls"});'
+            ),
+            self.output("Script completed", "x\n"),
+        ]
+        lines = adapter.render(rows)
+        (use,) = blocks(lines, "tool_use")
+        self.assertEqual((use["name"], use["id"]), ("Bash", "call-w"))
+
+    def test_a_wrapper_does_not_take_a_direct_calls_id(self) -> None:
+        rows = [
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "call_id": "w1",
+                    "arguments": json.dumps({"cmd": "pwd"}),
+                }
+            ),
+            self.wrapper('await tools.exec_command({cmd:"ls"});', call_id="w1"),
+            self.output("Script failed", "", call_id="w1"),
+        ]
+        lines = adapter.render(rows)
+        self.assertEqual(detect(lines)["tool_uses"], 2)
+
+    def test_item_completed_content_that_is_no_list_is_skipped(self) -> None:
+        rows = [
+            message("user", "Fix it"),
+            row(
+                {
+                    "type": "item_completed",
+                    "item": {"type": "UserMessage", "content": 5},
+                },
+                kind="event_msg",
+            ),
+        ]
+        (event,) = [json.loads(line) for line in adapter.render(rows)]
+        self.assertTrue(event["isMeta"])
+
+    def test_a_computed_call_keeps_the_output_from_the_literal_one(self) -> None:
+        rows = [
+            self.wrapper(
+                'await tools.exec_command({cmd:"ls"});'
+                "await tools.exec_command({cmd: built});"
+            ),
+            self.output("Script completed", "both outputs\n"),
+        ]
+        with contextlib.redirect_stderr(io.StringIO()):
+            lines = adapter.render(rows)
+        (use,) = blocks(lines, "tool_use")
+        self.assertNotIn("id", use)
+        self.assertEqual(blocks(lines, "tool_result"), [])
+
+    def test_a_terminated_script_is_an_error(self) -> None:
+        rows = [
+            self.wrapper('await tools.exec_command({cmd:"sleep 999"});'),
+            self.output("Script terminated", ""),
+        ]
+        (result,) = blocks(adapter.render(rows), "tool_result")
+        self.assertEqual(result["tool_use_id"], "call-w")
+        self.assertTrue(result["is_error"])
+
+    def test_a_list_output_of_a_function_call_is_read_as_text(self) -> None:
+        rows = [
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "arguments": json.dumps({"cmd": "false"}),
+                    "call_id": "call-f",
+                }
+            ),
+            row(
+                {
+                    "type": "function_call_output",
+                    "call_id": "call-f",
+                    "output": [
+                        {
+                            "type": "input_text",
+                            "text": "Process exited with code 1\nOutput:\nboom",
+                        }
+                    ],
+                }
+            ),
+        ]
+        (result,) = blocks(adapter.render(rows), "tool_result")
+        self.assertEqual((result["content"], result["is_error"]), ("boom", True))
+
+
 class CommandLineTest(unittest.TestCase):
     def test_cli_output_can_be_read_by_the_detector(self) -> None:
         result = subprocess.run(
@@ -369,6 +648,97 @@ class CommandLineTest(unittest.TestCase):
         )
         self.assertEqual(result.returncode, 2)
         self.assertIn(b"no human user message", result.stderr)
+
+    def run_cli(self, text: str) -> subprocess.CompletedProcess:
+        with tempfile.TemporaryDirectory() as directory:
+            rollout = Path(directory) / "rollout.jsonl"
+            rollout.write_text(text, encoding="utf-8")
+            return subprocess.run(
+                [sys.executable, str(SCRIPT), "--transcript-file", str(rollout)],
+                capture_output=True,
+                check=False,
+            )
+
+    def test_a_lone_surrogate_is_written_escaped(self) -> None:
+        line = json.dumps(
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "call_id": "c",
+                    "arguments": '{"cmd": "echo \\ud800"}',
+                }
+            )
+        )
+        result = self.run_cli(line + "\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(b"\\ud800", result.stdout)
+
+    def test_the_detector_reports_a_lone_surrogate_it_quotes(self) -> None:
+        rows = [
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "call_id": "c",
+                    "arguments": json.dumps({"cmd": "cat x"}),
+                }
+            ),
+            row(
+                {
+                    "type": "function_call_output",
+                    "call_id": "c",
+                    "output": "Process exited with code 1\nOutput:\nerror: \ud800 bad",
+                }
+            ),
+        ]
+        result = self.run_cli("\n".join(json.dumps(r) for r in rows) + "\n")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = detect(result.stdout.decode("utf-8").splitlines())
+        self.assertIn("A1", [f["signal"] for f in report["findings"]])
+        # Any stdout encoding: the surrogate's escape is ASCII. Text the
+        # encoding cannot hold still fails visibly; it is never turned into
+        # an escape JSON does not have, with exit 0.
+        cases = (
+            ("ascii", "\ud800", True),
+            ("latin-1", "Größe \ud800", True),
+            ("ascii", "Größe 😀", False),
+        )
+        for encoding, text, writable in cases:
+            with self.subTest(encoding=encoding, text=text):
+                rows[1]["payload"]["output"] = (
+                    f"Process exited with code 1\nOutput:\nerror: {text} bad"
+                )
+                converted = self.run_cli(
+                    "\n".join(json.dumps(r) for r in rows) + "\n"
+                ).stdout.decode("utf-8")
+                with tempfile.TemporaryDirectory() as directory:
+                    session = Path(directory) / "session.jsonl"
+                    session.write_text(converted, encoding="utf-8")
+                    out = subprocess.run(
+                        [
+                            sys.executable,
+                            str(DETECTOR),
+                            "--transcript-file",
+                            str(session),
+                            "--output-format",
+                            "json",
+                        ],
+                        capture_output=True,
+                        check=False,
+                        env={**os.environ, "PYTHONIOENCODING": encoding},
+                    )
+                if not writable:
+                    self.assertNotEqual(out.returncode, 0)
+                    continue
+                self.assertEqual(out.returncode, 0, out.stderr)
+                snippets = json.dumps(json.loads(out.stdout.decode(encoding)))
+                self.assertIn(json.dumps(text)[1:-1], snippets)
+
+    def test_too_deep_nesting_is_refused(self) -> None:
+        result = self.run_cli("[" * 200000 + "\n")
+        self.assertEqual(result.returncode, 2)
+        self.assertIn(b"nested too deeply", result.stderr)
 
 
 if __name__ == "__main__":

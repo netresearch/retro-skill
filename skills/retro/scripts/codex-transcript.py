@@ -13,7 +13,7 @@ WHY THIS EXISTS. Codex CLI keeps a session as one rollout file,
 format, so a rollout passed to them directly yields no turns and no tool calls.
 
 MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
-311 tool calls) and the message records of 0.163.0. Each record is
+311 tool calls) and 0.163.0 (`codex exec`, 4 wrapper calls). Each record is
 `{"timestamp", "type", "payload"}`; only `response_item`, `event_msg`,
 `turn_context` and `session_meta` rows are read.
 
@@ -32,13 +32,22 @@ MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
     against the turn's directory. This shape was reported from Codex
     0.38.0-0.142.5 rollouts in the review of retro-skill#168; none of the
     rollouts measured here contains one.
-  · The `functions.exec` runtime (reported for Codex Desktop 0.155) wraps
-    several tools in one `custom_tool_call` named `exec` whose `input` is
+  · The `functions.exec` runtime, the default of `codex exec` in 0.163.0,
+    wraps tools in one `custom_tool_call` named `exec` whose `input` is
     JavaScript. Literal `tools.exec_command({cmd: "..."})` and
-    `tools.apply_patch("...")` calls are rendered without ids, the wrapper
-    itself is not; a call whose argument is computed is left out and counted
-    on stderr. Results inside the wrapper cannot be attributed, so these calls
-    carry no error signal.
+    `tools.apply_patch("...")` calls are rendered, the wrapper itself is not;
+    a call whose argument is computed is left out and counted on stderr, and
+    any other `tools.<name>(...)` call is passed through by name. The
+    wrapper's `custom_tool_call_output` is a list of text items, the first a
+    `Script completed|failed|terminated` header ending in `Output:`. When the
+    wrapper holds exactly one literal call and no computed one, and its output
+    row follows, that call takes the wrapper's `call_id` and the output as its
+    result; a failed or terminated script is `is_error`. Without an output row
+    the call stays id-less, so the detector still counts it. A command's own
+    exit code is not in the output unless the script printed it, so a failing
+    command in a completed script is visible only through the error text. In
+    any other wrapper the output cannot be attributed: the calls stay id-less
+    and the output is not rendered.
 
 HUMAN TURNS. Codex also writes injected text as `role: "user"` messages: the
 `<environment_context>` block, `AGENTS.md` instructions, skill text. A user
@@ -69,9 +78,16 @@ import sys
 from pathlib import Path
 from typing import Any
 
-TOOL_CALL = re.compile(r"tools\.([A-Za-z_][A-Za-z_0-9]*)\s*\(")
+#: A call on the runtime's `tools` object, not on `mytools`, `$tools` or `x.tools`.
+TOOL_CALL = re.compile(r"(?<![\w$.])tools\.([A-Za-z_][A-Za-z_0-9]*)\s*\(")
 EXIT_CODE = re.compile(r"^Process exited with code (-?\d+)\s*$", re.MULTILINE)
 RUNNING = re.compile(r"^Process running with session ID", re.MULTILINE)
+#: The first line of a `functions.exec` wrapper's output, per script outcome.
+SCRIPT_STATUS = {
+    "Script completed": False,
+    "Script failed": True,
+    "Script terminated": True,
+}
 #: In a single-quoted JS string: an escape sequence, or a bare double quote.
 SINGLE_QUOTED = re.compile(r'\\(.)|"', re.DOTALL)
 #: Injected user text in a rollout that carries no human-message record.
@@ -262,6 +278,11 @@ def _nested_tools(
                 computed += 1
             else:
                 calls.append(("Patch", _patch_input(patch, directory)))
+        else:
+            # Any other tool is passed through by name, as a function_call is,
+            # so it is counted and a lone exec_command beside it is not
+            # mistaken for the wrapper's only call.
+            calls.append((name, {}))
     return calls, computed
 
 
@@ -303,10 +324,28 @@ def _call(payload: dict[str, Any], directory: str | None) -> tuple[str, dict[str
     return name, arguments
 
 
+def _flatten(output: Any) -> str:
+    """A call output as text: a list of text items is joined, anything else dumped."""
+    if isinstance(output, str):
+        return output
+    if isinstance(output, list) and all(
+        isinstance(item, dict) and isinstance(item.get("text"), str) for item in output
+    ):
+        return "".join(item["text"] for item in output)
+    return json.dumps(output, ensure_ascii=False)
+
+
+def _wrapper_result(output: Any) -> tuple[str, bool]:
+    """A `functions.exec` output as (text after the header, script failed)."""
+    text = _flatten(output)
+    status, _, rest = text.partition("\n")
+    _, marker, body = rest.partition("Output:\n")
+    return (body if marker else text), SCRIPT_STATUS.get(status, False)
+
+
 def _result(output: Any) -> tuple[str, bool] | None:
     """A call output as (text, is_error); None while the call is still running."""
-    if not isinstance(output, str):
-        output = json.dumps(output, ensure_ascii=False)
+    output = _flatten(output)
     try:
         data = json.loads(output)
     except ValueError:
@@ -323,6 +362,11 @@ def _result(output: Any) -> tuple[str, bool] | None:
         return output, False
     _, marker, body = output.partition("\nOutput:\n")
     return (body if marker else output), int(code.group(1)) != 0
+
+
+def _items(content: Any) -> list[Any]:
+    """A `content` field as a list; any other value holds no items."""
+    return content if isinstance(content, list) else []
 
 
 def _human_record_texts(rows: list[dict[str, Any]]) -> set[str] | None:
@@ -343,7 +387,7 @@ def _human_record_texts(rows: list[dict[str, Any]]) -> set[str] | None:
                 found = True
                 parts = [
                     c.get("text", "")
-                    for c in item.get("content") or []
+                    for c in _items(item.get("content"))
                     if isinstance(c, dict) and isinstance(c.get("text"), str)
                 ]
                 texts.add("\n".join(parts).strip())
@@ -368,7 +412,7 @@ def _message_event(
         return None
     blocks = [
         {"type": "text", "text": item["text"]}
-        for item in payload.get("content", [])
+        for item in _items(payload.get("content"))
         if isinstance(item, dict)
         and item.get("type") in {"input_text", "output_text"}
         and isinstance(item.get("text"), str)
@@ -403,27 +447,31 @@ def _refuse_subagent(payload: dict[str, Any]) -> None:
 
 def _wrapper_events(
     payload: dict[str, Any], timestamp: Any, directory: str | None
-) -> tuple[list[dict[str, Any]], int]:
-    """The literal calls of a `functions.exec` wrapper, and the computed count."""
+) -> tuple[list[dict[str, Any]], int, dict[str, Any] | None]:
+    """A `functions.exec` wrapper's literal calls, its computed count, and the
+    one `tool_use` its output belongs to, if any.
+
+    The calls are rendered id-less, which the detector counts where they
+    stand. The wrapper's single output belongs to a call only when the wrapper
+    made exactly one, all literal; that block gets the wrapper's `call_id`
+    once the output row arrives, so a call whose output is missing still counts.
+    """
     source = payload.get("input")
     if not isinstance(source, str):
-        return [], 1
+        return [], 1, None
     nested, computed = _nested_tools(source, directory)
-    # No id: results inside a wrapper cannot be attributed, and the detector
-    # counts an id-less call where it stands.
-    events = [
-        _event(
-            "assistant",
-            {"type": "tool_use", "name": name, "input": tool_input},
-            timestamp,
-            payload.get("id"),
-        )
+    uses = [
+        {"type": "tool_use", "name": name, "input": tool_input}
         for name, tool_input in nested
     ]
-    return events, computed
+    events = [_event("assistant", use, timestamp, payload.get("id")) for use in uses]
+    owner = uses[0] if len(uses) == 1 and not computed else None
+    return events, computed, owner
 
 
 def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
+    # A line that is valid JSON but no object is no Codex record.
+    rows = [row for row in rows if isinstance(row, dict)]
     events: list[dict[str, Any]] = []
     human_texts = _human_record_texts(rows)
     human_seen: list[str] = []
@@ -431,6 +479,10 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
     rendered = 0
     computed = 0
     directory: str | None = None
+    #: call_id of each wrapper -> the `tool_use` its output belongs to, or None.
+    wrappers: dict[str, dict[str, Any] | None] = {}
+    #: ids of direct calls, which a later wrapper must not take over.
+    direct_ids: set[str] = set()
     for row in rows:
         kind = row.get("type")
         payload = row.get("payload")
@@ -454,24 +506,51 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
                     human_seen.extend(b["text"] for b in event["message"]["content"])
         elif item == "custom_tool_call" and payload.get("name") == "exec":
             calls_seen.append("exec")
-            nested, skipped = _wrapper_events(payload, timestamp, directory)
+            nested, skipped, owner = _wrapper_events(payload, timestamp, directory)
             events.extend(nested)
             rendered += len(nested)
             computed += skipped
+            call_id = payload.get("call_id")
+            if isinstance(call_id, str) and call_id and call_id not in direct_ids:
+                wrappers[call_id] = owner
         elif item in ("function_call", "custom_tool_call"):
             calls_seen.append(str(payload.get("name")))
             name, tool_input = _call(payload, directory)
-            use = {
+            use: dict[str, Any] = {
                 "type": "tool_use",
-                "id": payload.get("call_id") or payload.get("id"),
                 "name": name,
                 "input": tool_input,
             }
+            # Only a string id pairs with its result; any other value would
+            # leave the call pending, or make the detector's lookup fail.
+            tool_id = next(
+                (v for v in (payload.get("call_id"), payload.get("id")) if v), None
+            )
+            if isinstance(tool_id, str):
+                use["id"] = tool_id
+                # A direct call owns its call_id, whichever of it and a wrapper
+                # came first.
+                direct_ids.add(tool_id)
+                wrappers.pop(tool_id, None)
             events.append(_event("assistant", use, timestamp, payload.get("id")))
             rendered += 1
+        elif (
+            item == "custom_tool_call_output"
+            and isinstance(payload.get("call_id"), str)
+            and payload["call_id"] in wrappers
+        ):
+            call_id = payload["call_id"]
+            owner = wrappers.pop(call_id)
+            if owner is not None:
+                owner["id"] = call_id
+                result = _wrapper_result(payload.get("output"))
+                block = _opencode._tool_result(call_id, *result)
+                events.append(_event("user", block, timestamp, None))
         elif item in ("function_call_output", "custom_tool_call_output"):
             result = _result(payload.get("output"))
-            if result is not None:
+            # A result pairs by a string id; any other value would only make
+            # the detector fail on its pending-call lookup.
+            if result is not None and isinstance(payload.get("call_id"), str):
                 block = _opencode._tool_result(payload.get("call_id"), *result)
                 events.append(_event("user", block, timestamp, None))
     if not events:
@@ -505,8 +584,11 @@ def main() -> None:
         lines = render(rows, args.match)
     except (OSError, ValueError) as error:
         parser.exit(2, f"codex-transcript: {error}\n")
+    except RecursionError:
+        parser.exit(2, "codex-transcript: a line is nested too deeply to parse\n")
     if hasattr(sys.stdout, "reconfigure"):
-        sys.stdout.reconfigure(encoding="utf-8")
+        # A lone surrogate in a JSON string cannot be encoded as UTF-8.
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
     for line in lines:
         print(line)
 
