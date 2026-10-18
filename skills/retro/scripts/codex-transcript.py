@@ -120,8 +120,11 @@ INJECTED_PREFIXES = (
     "<skill>",
     "# AGENTS.md instructions",
 )
-#: Shells whose `-c`/`-lc` script is the command a `shell` call ran.
-SHELLS = {"bash", "sh", "zsh", "dash"}
+#: Shells whose script argument is the command a call ran, and the flags
+#: that introduce it. 0.163.0 writes `/bin/bash -lc`; the others keep a
+#: command matching its literal on hosts with another shell.
+SHELLS = {"bash", "sh", "zsh", "dash", "ksh", "fish", "pwsh", "powershell"}
+SHELL_FLAGS = {"-c", "-lc", "-ic", "-lic", "-Command"}
 
 
 def _load_sibling(filename: str):
@@ -310,11 +313,12 @@ def _nested_tools(
 
 
 def _shell_command(argv: Any) -> str | None:
-    """The command a `shell` call ran: the script of `bash -lc`, else the argv."""
+    """The command a shell argv ran: the script of `bash -lc`, else the argv."""
     if not isinstance(argv, list) or not all(isinstance(a, str) for a in argv):
         return None
-    shell = len(argv) == 3 and os.path.basename(argv[0]) in SHELLS
-    if shell and argv[1] in ("-c", "-lc"):
+    name = os.path.basename(argv[0]) if argv else ""
+    shell = len(argv) == 3 and name.removesuffix(".exe") in SHELLS
+    if shell and argv[1] in SHELL_FLAGS:
         return argv[2]
     return shlex.join(argv)
 
@@ -579,6 +583,23 @@ def _item_wrapper(
     return open_wrappers[-1]
 
 
+def _same_file(executed: set[Any], parsed: list[Any]) -> bool:
+    """Whether a patch item and a source patch name a common file. A source
+    path left relative (no turn directory known) matches an item path that
+    ends with it."""
+    for path in parsed:
+        if not isinstance(path, str):
+            continue
+        for done in executed:
+            if not isinstance(done, str):
+                continue
+            if done == path or (
+                not os.path.isabs(path) and done.endswith("/" + path.removeprefix("./"))
+            ):
+                return True
+    return False
+
+
 def _unmatched(
     parsed: list[dict[str, Any]], executed: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -611,8 +632,8 @@ def _unmatched(
                 commands.remove(use["input"].get("command"))
                 continue
         elif use["name"] == "Patch":
-            files = set(use["input"].get("file_paths") or [])
-            match = next((p for p in patches if p & files), None)
+            files = use["input"].get("file_paths") or []
+            match = next((p for p in patches if _same_file(p, files)), None)
             if match is not None:
                 patches.remove(match)
                 continue
@@ -636,8 +657,11 @@ def _close_wrapper(
     wrapper's `call_id` and output. The source's commands and patches that no
     item matched are kept, id-less, unless the script failed or was
     terminated: an unfinished command (the session ended, or it was left
-    running past the script) leaves no item, whereas a script that stopped
-    early never reached the calls after it. Without items, the parsed source
+    running past the script) leaves no item. After a failed or terminated
+    script the calls after the failing point mostly never ran, and the
+    failure itself is the `exec` call. A literal call in a branch a completed
+    script did not take is also kept; the source alone cannot tell, and the
+    rendering before items counted it too. Without items, the parsed source
     and the single-call output pairing apply.
     """
     slot = wrapper["slot"]

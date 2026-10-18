@@ -632,6 +632,43 @@ class ExecutionItemTest(unittest.TestCase):
         ]
         self.assertEqual(paths, [["/repo/a.txt"], ["/repo/b.txt"]])
 
+    def test_another_shell_still_matches_its_literal(self) -> None:
+        for argv in (
+            ["/usr/bin/fish", "-c", "ls -la"],
+            ["pwsh.exe", "-Command", "ls -la"],
+        ):
+            with self.subTest(argv=argv):
+                item = {**self.ran("i1", "ls -la"), "command": argv}
+                rows = self.wrapper_rows(
+                    'await tools.exec_command({cmd:"ls -la"});',
+                    [item],
+                    "Script completed",
+                )
+                uses = blocks(adapter.render(rows), "tool_use")
+                self.assertEqual(
+                    [(u["input"]["command"], "id" in u) for u in uses],
+                    [("ls -la", True)],
+                )
+
+    def test_a_relative_patch_path_matches_its_absolute_item(self) -> None:
+        rows = self.wrapper_rows(
+            'await tools.apply_patch("*** Begin Patch\\n*** Add File: .github/x.yml'
+            '\\n+x\\n*** End Patch");',
+            [
+                {
+                    "type": "FileChange",
+                    "id": "p1",
+                    "changes": {"/repo/.github/x.yml": {"type": "add"}},
+                    "status": "completed",
+                    "stdout": "",
+                    "stderr": "",
+                }
+            ],
+            "Script completed",
+        )
+        del rows[0]  # no turn directory: the source path stays relative
+        self.assertEqual(len(blocks(adapter.render(rows), "tool_use")), 1)
+
     def test_routing_compares_commands_not_source_text(self) -> None:
         # "ls" occurs in every source ("tools."), but only the first
         # wrapper runs it.
