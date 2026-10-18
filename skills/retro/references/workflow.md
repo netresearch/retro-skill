@@ -280,8 +280,8 @@ versions each was measured on. `exec_command` and `shell` calls, and a direct
 `functions.exec` runtime, the default of `codex exec` 0.163.0, wraps tools in
 one JavaScript call: the converter unfolds its literal `tools.exec_command` and
 `tools.apply_patch` calls, so the wrapper is not misreported as repeated `exec`
-calls. A wrapper with one call gets the wrapper's output as its result, and a
-failed script is an error; a command's own non-zero exit code shows only in
+calls. A wrapper with exactly one call, and no computed one, gets the
+wrapper's output as that call's result, and a failed script is an error; a command's own non-zero exit code shows only in
 the output text. Computed arguments are not evaluated (they are counted on
 stderr), and the output of a wrapper with several calls cannot be attributed.
 For such a session, treat missing tool-error and review

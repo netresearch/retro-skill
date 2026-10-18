@@ -385,6 +385,96 @@ class RealWrapperTest(unittest.TestCase):
         self.assertEqual(blocks(lines, "tool_result"), [])
 
 
+class WrapperEdgeTest(unittest.TestCase):
+    """Wrapper rows a real rollout can carry in other combinations."""
+
+    def wrapper(self, source: str, call_id: str | None = "call-w") -> dict:
+        payload = {"type": "custom_tool_call", "name": "exec", "input": source}
+        if call_id is not None:
+            payload["call_id"] = call_id
+        return row(payload)
+
+    def output(self, header: str, body: str, call_id: str | None = "call-w") -> dict:
+        payload = {
+            "type": "custom_tool_call_output",
+            "output": [
+                {
+                    "type": "input_text",
+                    "text": f"{header}\nWall time 0.1 seconds\nOutput:\n",
+                },
+                {"type": "input_text", "text": body},
+            ],
+        }
+        if call_id is not None:
+            payload["call_id"] = call_id
+        return row(payload)
+
+    def test_a_call_whose_output_is_missing_is_still_counted(self) -> None:
+        rows = fixture("rollout-0.163.0-exec.jsonl")
+        del rows[11]
+        lines = adapter.render(rows)
+        uses = blocks(lines, "tool_use")
+        self.assertNotIn("id", uses[2])
+        self.assertEqual(detect(lines)["tool_uses"], 3)
+
+    def test_rows_without_call_id_do_not_crash(self) -> None:
+        rows = [
+            self.wrapper('await tools.exec_command({cmd:"ls"});', call_id=None),
+            self.output("Script completed", "x\n", call_id=None),
+        ]
+        (use,) = blocks(adapter.render(rows), "tool_use")
+        self.assertNotIn("id", use)
+
+    def test_a_computed_call_keeps_the_output_from_the_literal_one(self) -> None:
+        rows = [
+            self.wrapper(
+                'await tools.exec_command({cmd:"ls"});'
+                "await tools.exec_command({cmd: built});"
+            ),
+            self.output("Script completed", "both outputs\n"),
+        ]
+        with contextlib.redirect_stderr(io.StringIO()):
+            lines = adapter.render(rows)
+        (use,) = blocks(lines, "tool_use")
+        self.assertNotIn("id", use)
+        self.assertEqual(blocks(lines, "tool_result"), [])
+
+    def test_a_terminated_script_is_an_error(self) -> None:
+        rows = [
+            self.wrapper('await tools.exec_command({cmd:"sleep 999"});'),
+            self.output("Script terminated", ""),
+        ]
+        (result,) = blocks(adapter.render(rows), "tool_result")
+        self.assertEqual(result["tool_use_id"], "call-w")
+        self.assertTrue(result["is_error"])
+
+    def test_a_list_output_of_a_function_call_is_read_as_text(self) -> None:
+        rows = [
+            row(
+                {
+                    "type": "function_call",
+                    "name": "exec_command",
+                    "arguments": json.dumps({"cmd": "false"}),
+                    "call_id": "call-f",
+                }
+            ),
+            row(
+                {
+                    "type": "function_call_output",
+                    "call_id": "call-f",
+                    "output": [
+                        {
+                            "type": "input_text",
+                            "text": "Process exited with code 1\nOutput:\nboom",
+                        }
+                    ],
+                }
+            ),
+        ]
+        (result,) = blocks(adapter.render(rows), "tool_result")
+        self.assertEqual((result["content"], result["is_error"]), ("boom", True))
+
+
 class CommandLineTest(unittest.TestCase):
     def test_cli_output_can_be_read_by_the_detector(self) -> None:
         result = subprocess.run(

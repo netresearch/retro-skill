@@ -39,12 +39,14 @@ MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
     a call whose argument is computed is left out and counted on stderr. The
     wrapper's `custom_tool_call_output` is a list of text items, the first a
     `Script completed|failed|terminated` header ending in `Output:`. When the
-    wrapper holds exactly one literal call, that call takes the wrapper's
-    `call_id` and the output as its result; a failed or terminated script is
-    `is_error`. A command's own exit code is not in the output unless the
-    script printed it, so a failing command in a completed script is visible
-    only through the error text. With several calls the output cannot be
-    attributed: the calls stay id-less and the output is not rendered.
+    wrapper holds exactly one literal call and no computed one, and its output
+    row follows, that call takes the wrapper's `call_id` and the output as its
+    result; a failed or terminated script is `is_error`. Without an output row
+    the call stays id-less, so the detector still counts it. A command's own
+    exit code is not in the output unless the script printed it, so a failing
+    command in a completed script is visible only through the error text. In
+    any other wrapper the output cannot be attributed: the calls stay id-less
+    and the output is not rendered.
 
 HUMAN TURNS. Codex also writes injected text as `role: "user"` messages: the
 `<environment_context>` block, `AGENTS.md` instructions, skill text. A user
@@ -433,23 +435,26 @@ def _refuse_subagent(payload: dict[str, Any]) -> None:
 
 def _wrapper_events(
     payload: dict[str, Any], timestamp: Any, directory: str | None
-) -> tuple[list[dict[str, Any]], int]:
-    """The literal calls of a `functions.exec` wrapper, and the computed count."""
+) -> tuple[list[dict[str, Any]], int, dict[str, Any] | None]:
+    """A `functions.exec` wrapper's literal calls, its computed count, and the
+    one `tool_use` its output belongs to, if any.
+
+    The calls are rendered id-less, which the detector counts where they
+    stand. The wrapper's single output belongs to a call only when the wrapper
+    made exactly one, all literal; that block gets the wrapper's `call_id`
+    once the output row arrives, so a call whose output is missing still counts.
+    """
     source = payload.get("input")
     if not isinstance(source, str):
-        return [], 1
+        return [], 1, None
     nested, computed = _nested_tools(source, directory)
-    # The wrapper's single output belongs to its call only when it made exactly
-    # one; otherwise the calls stay id-less, which the detector counts where
-    # they stand, without a result.
-    call_id = payload.get("call_id") if len(nested) == 1 and not computed else None
-    events = []
-    for name, tool_input in nested:
-        use = {"type": "tool_use", "name": name, "input": tool_input}
-        if call_id:
-            use["id"] = call_id
-        events.append(_event("assistant", use, timestamp, payload.get("id")))
-    return events, computed
+    uses = [
+        {"type": "tool_use", "name": name, "input": tool_input}
+        for name, tool_input in nested
+    ]
+    events = [_event("assistant", use, timestamp, payload.get("id")) for use in uses]
+    owner = uses[0] if len(uses) == 1 and not computed else None
+    return events, computed, owner
 
 
 def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
@@ -460,8 +465,8 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
     rendered = 0
     computed = 0
     directory: str | None = None
-    #: call_id of each wrapper -> whether its one call took that id.
-    wrappers: dict[Any, bool] = {}
+    #: call_id of each wrapper -> the `tool_use` its output belongs to, or None.
+    wrappers: dict[str, dict[str, Any] | None] = {}
     for row in rows:
         kind = row.get("type")
         payload = row.get("payload")
@@ -485,13 +490,13 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
                     human_seen.extend(b["text"] for b in event["message"]["content"])
         elif item == "custom_tool_call" and payload.get("name") == "exec":
             calls_seen.append("exec")
-            nested, skipped = _wrapper_events(payload, timestamp, directory)
+            nested, skipped, owner = _wrapper_events(payload, timestamp, directory)
             events.extend(nested)
             rendered += len(nested)
             computed += skipped
-            wrappers[payload.get("call_id")] = any(
-                "id" in e["message"]["content"][0] for e in nested
-            )
+            call_id = payload.get("call_id")
+            if isinstance(call_id, str) and call_id:
+                wrappers[call_id] = owner
         elif item in ("function_call", "custom_tool_call"):
             calls_seen.append(str(payload.get("name")))
             name, tool_input = _call(payload, directory)
@@ -504,9 +509,12 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
             events.append(_event("assistant", use, timestamp, payload.get("id")))
             rendered += 1
         elif item == "custom_tool_call_output" and payload.get("call_id") in wrappers:
-            if wrappers[payload["call_id"]]:
+            call_id = payload["call_id"]
+            owner = wrappers.pop(call_id)
+            if owner is not None:
+                owner["id"] = call_id
                 result = _wrapper_result(payload.get("output"))
-                block = _opencode._tool_result(payload["call_id"], *result)
+                block = _opencode._tool_result(call_id, *result)
                 events.append(_event("user", block, timestamp, None))
         elif item in ("function_call_output", "custom_tool_call_output"):
             result = _result(payload.get("output"))
