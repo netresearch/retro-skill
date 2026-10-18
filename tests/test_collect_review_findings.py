@@ -3235,6 +3235,17 @@ class CreateAndReadyTest(unittest.TestCase):
         self.assertEqual(scan["origins"], {})
         self.assertEqual(scan["unresolved"], [command])
 
+    def test_a_failed_create_stays_unresolved_beside_a_resolved_ready(self):
+        # `;` runs the ready anyway; it resolves, the failed create does not.
+        command = "gh pr create -R o/r --fill; gh pr ready 7 -R o/r"
+        scan = self._scan(
+            command,
+            "pull request create failed: GraphQL: Something went wrong while executing your query on 2026-09-29T23:23:56Z.\n"
+            '✓ Pull request o/r#7 is marked as "ready for review"\n',
+        )
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/7": "acted"})
+        self.assertEqual(scan["unresolved"], [command])
+
 
 if __name__ == "__main__":
     unittest.main()
