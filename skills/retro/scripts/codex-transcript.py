@@ -13,7 +13,7 @@ WHY THIS EXISTS. Codex CLI keeps a session as one rollout file,
 format, so a rollout passed to them directly yields no turns and no tool calls.
 
 MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
-311 tool calls) and the message records of 0.163.0. Each record is
+311 tool calls) and 0.163.0 (`codex exec`, 4 wrapper calls). Each record is
 `{"timestamp", "type", "payload"}`; only `response_item`, `event_msg`,
 `turn_context` and `session_meta` rows are read.
 
@@ -32,13 +32,19 @@ MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
     against the turn's directory. This shape was reported from Codex
     0.38.0-0.142.5 rollouts in the review of retro-skill#168; none of the
     rollouts measured here contains one.
-  · The `functions.exec` runtime (reported for Codex Desktop 0.155) wraps
-    several tools in one `custom_tool_call` named `exec` whose `input` is
+  · The `functions.exec` runtime, the default of `codex exec` in 0.163.0,
+    wraps tools in one `custom_tool_call` named `exec` whose `input` is
     JavaScript. Literal `tools.exec_command({cmd: "..."})` and
-    `tools.apply_patch("...")` calls are rendered without ids, the wrapper
-    itself is not; a call whose argument is computed is left out and counted
-    on stderr. Results inside the wrapper cannot be attributed, so these calls
-    carry no error signal.
+    `tools.apply_patch("...")` calls are rendered, the wrapper itself is not;
+    a call whose argument is computed is left out and counted on stderr. The
+    wrapper's `custom_tool_call_output` is a list of text items, the first a
+    `Script completed|failed|terminated` header ending in `Output:`. When the
+    wrapper holds exactly one literal call, that call takes the wrapper's
+    `call_id` and the output as its result; a failed or terminated script is
+    `is_error`. A command's own exit code is not in the output unless the
+    script printed it, so a failing command in a completed script is visible
+    only through the error text. With several calls the output cannot be
+    attributed: the calls stay id-less and the output is not rendered.
 
 HUMAN TURNS. Codex also writes injected text as `role: "user"` messages: the
 `<environment_context>` block, `AGENTS.md` instructions, skill text. A user
@@ -72,6 +78,12 @@ from typing import Any
 TOOL_CALL = re.compile(r"tools\.([A-Za-z_][A-Za-z_0-9]*)\s*\(")
 EXIT_CODE = re.compile(r"^Process exited with code (-?\d+)\s*$", re.MULTILINE)
 RUNNING = re.compile(r"^Process running with session ID", re.MULTILINE)
+#: The first line of a `functions.exec` wrapper's output, per script outcome.
+SCRIPT_STATUS = {
+    "Script completed": False,
+    "Script failed": True,
+    "Script terminated": True,
+}
 #: In a single-quoted JS string: an escape sequence, or a bare double quote.
 SINGLE_QUOTED = re.compile(r'\\(.)|"', re.DOTALL)
 #: Injected user text in a rollout that carries no human-message record.
@@ -303,10 +315,28 @@ def _call(payload: dict[str, Any], directory: str | None) -> tuple[str, dict[str
     return name, arguments
 
 
+def _flatten(output: Any) -> str:
+    """A call output as text: a list of text items is joined, anything else dumped."""
+    if isinstance(output, str):
+        return output
+    if isinstance(output, list) and all(
+        isinstance(item, dict) and isinstance(item.get("text"), str) for item in output
+    ):
+        return "".join(item["text"] for item in output)
+    return json.dumps(output, ensure_ascii=False)
+
+
+def _wrapper_result(output: Any) -> tuple[str, bool]:
+    """A `functions.exec` output as (text after the header, script failed)."""
+    text = _flatten(output)
+    status, _, rest = text.partition("\n")
+    _, marker, body = rest.partition("Output:\n")
+    return (body if marker else text), SCRIPT_STATUS.get(status, False)
+
+
 def _result(output: Any) -> tuple[str, bool] | None:
     """A call output as (text, is_error); None while the call is still running."""
-    if not isinstance(output, str):
-        output = json.dumps(output, ensure_ascii=False)
+    output = _flatten(output)
     try:
         data = json.loads(output)
     except ValueError:
@@ -409,17 +439,16 @@ def _wrapper_events(
     if not isinstance(source, str):
         return [], 1
     nested, computed = _nested_tools(source, directory)
-    # No id: results inside a wrapper cannot be attributed, and the detector
-    # counts an id-less call where it stands.
-    events = [
-        _event(
-            "assistant",
-            {"type": "tool_use", "name": name, "input": tool_input},
-            timestamp,
-            payload.get("id"),
-        )
-        for name, tool_input in nested
-    ]
+    # The wrapper's single output belongs to its call only when it made exactly
+    # one; otherwise the calls stay id-less, which the detector counts where
+    # they stand, without a result.
+    call_id = payload.get("call_id") if len(nested) == 1 and not computed else None
+    events = []
+    for name, tool_input in nested:
+        use = {"type": "tool_use", "name": name, "input": tool_input}
+        if call_id:
+            use["id"] = call_id
+        events.append(_event("assistant", use, timestamp, payload.get("id")))
     return events, computed
 
 
@@ -431,6 +460,8 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
     rendered = 0
     computed = 0
     directory: str | None = None
+    #: call_id of each wrapper -> whether its one call took that id.
+    wrappers: dict[Any, bool] = {}
     for row in rows:
         kind = row.get("type")
         payload = row.get("payload")
@@ -458,6 +489,9 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
             events.extend(nested)
             rendered += len(nested)
             computed += skipped
+            wrappers[payload.get("call_id")] = any(
+                "id" in e["message"]["content"][0] for e in nested
+            )
         elif item in ("function_call", "custom_tool_call"):
             calls_seen.append(str(payload.get("name")))
             name, tool_input = _call(payload, directory)
@@ -469,6 +503,11 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
             }
             events.append(_event("assistant", use, timestamp, payload.get("id")))
             rendered += 1
+        elif item == "custom_tool_call_output" and payload.get("call_id") in wrappers:
+            if wrappers[payload["call_id"]]:
+                result = _wrapper_result(payload.get("output"))
+                block = _opencode._tool_result(payload["call_id"], *result)
+                events.append(_event("user", block, timestamp, None))
         elif item in ("function_call_output", "custom_tool_call_output"):
             result = _result(payload.get("output"))
             if result is not None:

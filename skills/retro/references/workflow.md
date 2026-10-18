@@ -277,11 +277,14 @@ from failing under a legacy console encoding.
 Coverage differs by record shape; the adapter's docstring names the Codex
 versions each was measured on. `exec_command` and `shell` calls, and a direct
 `apply_patch`, carry their results and exit codes, so error signals work. The
-`functions.exec` runtime wraps several tools in one JavaScript call: the
-converter unfolds its literal `tools.exec_command` and `tools.apply_patch`
-calls, so the wrapper is not misreported as repeated `exec` calls, but it
-cannot evaluate computed arguments (it counts them on stderr) or attribute the
-wrapper's results. For such a session, treat missing tool-error and review
+`functions.exec` runtime, the default of `codex exec` 0.163.0, wraps tools in
+one JavaScript call: the converter unfolds its literal `tools.exec_command` and
+`tools.apply_patch` calls, so the wrapper is not misreported as repeated `exec`
+calls. A wrapper with one call gets the wrapper's output as its result, and a
+failed script is an error; a command's own non-zero exit code shows only in
+the output text. Computed arguments are not evaluated (they are counted on
+stderr), and the output of a wrapper with several calls cannot be attributed.
+For such a session, treat missing tool-error and review
 signals as incomplete coverage, read the original rollout for context, and
 pass created PRs/MRs with `--pr-list` when the review collector cannot recover
 them. A rollout whose tool calls all fail to render is refused with exit 2.

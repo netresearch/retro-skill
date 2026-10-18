@@ -336,6 +336,55 @@ class ExecWrapperTest(unittest.TestCase):
         self.assertIn("3 tool call(s)", stderr.getvalue())
 
 
+class RealWrapperTest(unittest.TestCase):
+    """`codex exec` 0.163.0: every tool runs inside a `functions.exec` wrapper."""
+
+    def test_single_call_wrappers_pair_with_their_output(self) -> None:
+        lines = adapter.render(fixture("rollout-0.163.0-exec.jsonl"), "probe-r168")
+        uses = blocks(lines, "tool_use")
+        results = {r["tool_use_id"]: r for r in blocks(lines, "tool_result")}
+        self.assertEqual(
+            [(u["name"], u.get("input")) for u in uses],
+            [
+                ("Bash", {"command": "echo probe-r168"}),
+                ("Bash", {"command": "ls /nonexistent-r168"}),
+                ("Patch", {"file_paths": ["/repo/hello.txt"]}),
+            ],
+        )
+        self.assertEqual(set(results), {u["id"] for u in uses})
+        self.assertEqual(results[uses[0]["id"]]["content"], "probe-r168\n")
+        self.assertEqual(
+            [results[u["id"]]["is_error"] for u in uses], [False, False, False]
+        )
+        report = detect(lines)
+        self.assertEqual(report["tool_uses"], 3)
+
+    def test_a_failed_script_is_an_error(self) -> None:
+        lines = adapter.render(fixture("rollout-0.163.0-script-error.jsonl"))
+        (use,) = blocks(lines, "tool_use")
+        (result,) = blocks(lines, "tool_result")
+        self.assertEqual(result["tool_use_id"], use["id"])
+        self.assertTrue(result["is_error"])
+        self.assertTrue(result["content"].startswith("before\nScript error:\n"))
+        self.assertIn("A1", [f["signal"] for f in detect(lines)["findings"]])
+
+    def test_a_wrapper_with_several_calls_renders_no_result(self) -> None:
+        rows = fixture("rollout-0.163.0-script-error.jsonl")
+        call = rows[5]["payload"]
+        rows[5] = {
+            **rows[5],
+            "payload": {
+                **call,
+                "input": 'await tools.exec_command({cmd:"a"});'
+                'await tools.exec_command({cmd:"b"});',
+            },
+        }
+        lines = adapter.render(rows)
+        self.assertEqual(len(blocks(lines, "tool_use")), 2)
+        self.assertTrue(all("id" not in u for u in blocks(lines, "tool_use")))
+        self.assertEqual(blocks(lines, "tool_result"), [])
+
+
 class CommandLineTest(unittest.TestCase):
     def test_cli_output_can_be_read_by_the_detector(self) -> None:
         result = subprocess.run(
