@@ -9,6 +9,7 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -695,6 +696,44 @@ class CommandLineTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         report = detect(result.stdout.decode("utf-8").splitlines())
         self.assertIn("A1", [f["signal"] for f in report["findings"]])
+        # Any stdout encoding: the surrogate's escape is ASCII. Text the
+        # encoding cannot hold still fails visibly; it is never turned into
+        # an escape JSON does not have, with exit 0.
+        cases = (
+            ("ascii", "\ud800", True),
+            ("latin-1", "Größe \ud800", True),
+            ("ascii", "Größe 😀", False),
+        )
+        for encoding, text, writable in cases:
+            with self.subTest(encoding=encoding, text=text):
+                rows[1]["payload"]["output"] = (
+                    f"Process exited with code 1\nOutput:\nerror: {text} bad"
+                )
+                converted = self.run_cli(
+                    "\n".join(json.dumps(r) for r in rows) + "\n"
+                ).stdout.decode("utf-8")
+                with tempfile.TemporaryDirectory() as directory:
+                    session = Path(directory) / "session.jsonl"
+                    session.write_text(converted, encoding="utf-8")
+                    out = subprocess.run(
+                        [
+                            sys.executable,
+                            str(DETECTOR),
+                            "--transcript-file",
+                            str(session),
+                            "--output-format",
+                            "json",
+                        ],
+                        capture_output=True,
+                        check=False,
+                        env={**os.environ, "PYTHONIOENCODING": encoding},
+                    )
+                if not writable:
+                    self.assertNotEqual(out.returncode, 0)
+                    continue
+                self.assertEqual(out.returncode, 0, out.stderr)
+                snippets = json.dumps(json.loads(out.stdout.decode(encoding)))
+                self.assertIn(json.dumps(text)[1:-1], snippets)
 
     def test_too_deep_nesting_is_refused(self) -> None:
         result = self.run_cli("[" * 200000 + "\n")

@@ -2318,6 +2318,18 @@ SIGNAL_FUNCS = {
 }
 
 
+#: A lone surrogate, which a transcript can carry as a JSON escape.
+LONE_SURROGATE = re.compile("[\ud800-\udfff]")
+
+
+def _report_json(summary: dict) -> str:
+    """The report as JSON text. Non-ASCII stays literal, but a lone surrogate
+    is written as its escape: no encoding can write it, and printing it raised
+    UnicodeEncodeError instead of writing the report."""
+    text = json.dumps(summary, indent=2, ensure_ascii=False)
+    return LONE_SURROGATE.sub(lambda m: f"\\u{ord(m.group()):04x}", text)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--transcript-file", required=True, type=Path)
@@ -2328,10 +2340,6 @@ def main() -> int:
         help="Comma-separated signal IDs to run (default: all)",
     )
     args = parser.parse_args()
-    if hasattr(sys.stdout, "reconfigure"):
-        # A finding can quote a lone surrogate from the transcript, which
-        # cannot be encoded as UTF-8; the report must still be written.
-        sys.stdout.reconfigure(errors="backslashreplace")
 
     if not args.transcript_file.exists():
         print(f"Transcript not found: {args.transcript_file}", file=sys.stderr)
@@ -2351,7 +2359,7 @@ def main() -> int:
         }
         print(f"Unsupported transcript: {coverage['reason']}", file=sys.stderr)
         if args.output_format == "json":
-            print(json.dumps(summary, indent=2, ensure_ascii=False))
+            print(_report_json(summary))
         else:
             print(f"Transcript: {args.transcript_file}")
             print(f"Analysis not run: {coverage['reason']}")
@@ -2429,7 +2437,7 @@ def main() -> int:
         "findings": findings,
     }
     if args.output_format == "json":
-        print(json.dumps(summary, indent=2, ensure_ascii=False))
+        print(_report_json(summary))
     else:
         print(f"Transcript: {summary['transcript']}")
         print(
