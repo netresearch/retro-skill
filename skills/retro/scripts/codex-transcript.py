@@ -50,6 +50,8 @@ MEASURED AGAINST real rollouts of Codex CLI 0.39.0 and 0.101.0 (22 sessions,
     the items. A script that failed or was terminated (it threw after its
     commands succeeded) becomes one more failing call, `exec`, with the
     wrapper's `call_id` and output. An item that has not ended stays id-less.
+    A command still running when the session ended leaves no item, so a
+    wrapper without an output row also keeps the source's unmatched calls.
     A wrapper that no output row can close ends at the next response row, and
     an item while no wrapper is open is ignored, so nothing counts twice.
     The rest of this point is the fallback for a wrapper without items.
@@ -568,6 +570,41 @@ def _item_wrapper(
     return open_wrappers[-1]
 
 
+def _unmatched(
+    parsed: list[dict[str, Any]], executed: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """The source's `Bash` and `Patch` calls no executed item accounts for.
+
+    A command matches an item with the same command text; a patch matches any
+    patch item, since the source names relative paths and the item absolute
+    ones. Each item accounts for one call.
+    """
+
+    def use_of(event: dict[str, Any]) -> dict[str, Any]:
+        return event["message"]["content"][0]
+
+    commands: list[str] = []
+    patches = 0
+    for event in executed:
+        use = use_of(event)
+        if use["type"] != "tool_use":
+            continue
+        if use["name"] == "Bash":
+            commands.append(use["input"].get("command"))
+        elif use["name"] == "Patch":
+            patches += 1
+    left = []
+    for event in parsed:
+        use = use_of(event)
+        if use["name"] == "Bash" and use["input"].get("command") in commands:
+            commands.remove(use["input"].get("command"))
+        elif use["name"] == "Patch" and patches:
+            patches -= 1
+        elif use["name"] in ("Bash", "Patch"):
+            left.append(event)
+    return left
+
+
 def _close_wrapper(
     wrapper: dict[str, Any], output: dict[str, Any] | None
 ) -> tuple[int, int]:
@@ -579,8 +616,11 @@ def _close_wrapper(
     and output. The calls the script made on other tools come from its source,
     ahead of the items. A script that failed or was terminated after its
     commands succeeded keeps that error as a failing `exec` call, with the
-    wrapper's `call_id` and output. Without items, the parsed source and the
-    single-call output pairing apply.
+    wrapper's `call_id` and output. A wrapper without an output row (the
+    session ended) also keeps the source's commands and patches that no item
+    matched: one may have been running, and an unfinished one leaves no item.
+    With an output row, such a call never ran and is left out. Without items,
+    the parsed source and the single-call output pairing apply.
     """
     slot = wrapper["slot"]
     if wrapper["items"]:
@@ -591,6 +631,8 @@ def _close_wrapper(
         ]
         slot.extend(others)
         slot.extend(wrapper["items"])
+        if output is None:
+            slot.extend(_unmatched(wrapper["events"], wrapper["items"]))
         if output is not None:
             text, failed = _wrapper_result(output.get("output"))
             if failed:

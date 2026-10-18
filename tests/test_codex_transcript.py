@@ -525,6 +525,31 @@ class ExecutionItemTest(unittest.TestCase):
         ]
         self.assertEqual(commands, ["ls /nonexistent-r184", "echo ok-r184"])
 
+    def test_a_command_still_running_at_the_end_is_kept(self) -> None:
+        rows = fixture("rollout-0.163.0-multi-call.jsonl")
+        wrapper = next(r for r in rows if r["payload"].get("name") == "exec")
+        wrapper["payload"]["input"] += 'await tools.exec_command({cmd: "sleep 600"});'
+        rows = [
+            r for r in rows if r["payload"].get("type") != "custom_tool_call_output"
+        ]
+        uses = blocks(adapter.render(rows), "tool_use")
+        self.assertEqual(
+            [u["input"].get("command") for u in uses if u["name"] == "Bash"],
+            ["ls /nonexistent-r184b", "echo two-r184", "sleep 600"],
+        )
+        self.assertNotIn("id", uses[-1])
+
+    def test_a_command_the_script_never_reached_is_left_out(self) -> None:
+        rows = fixture("rollout-0.163.0-script-error-items.jsonl")
+        wrapper = next(r for r in rows if r["payload"].get("name") == "exec")
+        wrapper["payload"]["input"] += 'await tools.exec_command({cmd: "never"});'
+        commands = [
+            u["input"].get("command")
+            for u in blocks(adapter.render(rows), "tool_use")
+            if u["name"] == "Bash"
+        ]
+        self.assertEqual(commands, ["echo before-r184"])
+
     def test_an_interrupted_wrapper_keeps_its_executed_calls(self) -> None:
         rows = [
             r
