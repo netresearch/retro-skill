@@ -859,6 +859,64 @@ class PendingLookupTest(unittest.TestCase):
                 self.assertFalse(any(w["only_review_threads"] for w in scan["pending"]))
                 self.assertEqual(len(scan["unresolved"]), 1)
 
+    def test_a_document_that_may_write_elsewhere_is_never_complete(self):
+        # Review round 19: an object variable as input, a field hidden
+        # behind a comma, a byte-order mark or a CR-ended comment, a quoted
+        # `--input`, and a second operation picked by `operationName`.
+        resolve = 'resolveReviewThread(input:{threadId:"PRRT_kwDOa"}){thread{id}}'
+        merge = 'mergePullRequest(input:{pullRequestId:"PR_kwDOx"}){clientMutationId}'
+        for command in (
+            "gh api graphql -f query='mutation($in:UnresolveReviewThreadInput!){"
+            + resolve
+            + " unresolveReviewThread(input:$in){thread{id}}}' -F 'in[threadId]=PRRT_kwDOb'",
+            f"gh api graphql -f query='mutation{{{resolve} mergePullRequest,{merge[16:]}}}'",
+            f"gh api graphql -f query='mutation{{{resolve} mergePullRequest\ufeff{merge[16:]}}}'",
+            f"gh api graphql -f query='mutation{{{resolve} #c\rmergePullRequest{merge[16:]}}}'",
+            f"gh api graphql -f query='mutation{{{resolve}}}' \"--input\" body.json",
+            f"gh api graphql -f query='mutation{{{resolve}}}' '--input=body.json'",
+            f"F=--input; gh api graphql -f query='mutation{{{resolve}}}' $F body.json",
+            "gh api graphql -f query='mutation A{"
+            + resolve.replace("PRRT_kwDOa", "PRRT_kwDOz")
+            + "} mutation B{"
+            + resolve
+            + "}' -f operationName=B",
+        ):
+            with self.subTest(command=command[-50:]):
+                scan = _case("thread_id_assignment", command=command, result="{}")
+                self.assertFalse(any(w["only_review_threads"] for w in scan["pending"]))
+                self.assertEqual(len(scan["unresolved"]), 1)
+        # A named operation is still the thread shape.
+        command = f"gh api graphql -f query='mutation Done{{{resolve}}}'"
+        scan = _case("thread_id_assignment", command=command, result="{}")
+        self.assertEqual(scan["unresolved"], [])
+
+    def test_a_query_built_from_plain_parts_is_read_whole(self):
+        # Review round 19: setters a closed list still let through, and a
+        # mutation spelled across two plain variables.
+        send = 'gh api graphql -f query="$Q"'
+        for command in (
+            "Q='query{x}'; Q[0]=\"$(cat m)\"; " + send,
+            'P=$(cat m); declare "Q=${P}"; ' + send,
+            'P=$(cat m); export "Q=${P}"; ' + send,
+            "Q='query{x}'; P=$(cat m); POSIXLY_CORRECT=1; Q=\"$P\" :; " + send,
+            "o=-v; Q='query{x}'; printf $o Q %s \"$(cat m)\"; " + send,
+            "Q='query{x}'; printf \\-v Q %s \"$(cat m)\"; " + send,
+            'Q=\'query{x}\'; printf -"v" Q %s "$(cat m)"; ' + send,
+            "Q='query{x}'; for ((Q=1; Q<2; Q++)); do :; done; " + send,
+            "P=mut; Q='ation{x}'; gh api graphql -f query=\"$P$Q\"",
+            "M=mut; Q='query{x}'; gh api graphql -f query=\"${Q/query/${M}ation}\"",
+        ):
+            with self.subTest(command=command[:45]):
+                scan = _case("query_beside_mutation", command=command)
+                self.assertEqual(len(scan["unresolved"]), 1)
+        command = "Q='query{x}'; local_x=1; gh api graphql -f query=\"$Q\""
+        scan = _case(
+            "query_beside_mutation",
+            command=command,
+            result='{"data":{"x":1}}',
+        )
+        self.assertEqual(scan["unresolved"], [])
+
     def test_a_plain_query_read_stays_a_read(self):
         # Review round 18: the variable's name inside its own value, and a gh
         # call inside `$(…)`, read a plain query as a possible write.
