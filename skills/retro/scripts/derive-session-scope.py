@@ -1315,13 +1315,23 @@ def _sets_variable(shell: _Shell, node, name: str) -> bool:
     words = [_word(shell, c) for c in node.children if c.type != "command_name"]
     head = node.child_by_field_name("name")
     command = _word(shell, head) if head is not None else ""
+    while command in ("builtin", "command") and words:
+        command, words = words[0], words[1:]  # `builtin printf -v t …`
+
+    def names(word: str) -> bool:  # `t`, `t=…`, `t[0]`
+        return re.match(rf"{re.escape(name)}(?:$|=|\[)", word) is not None
+
     if command == "printf":
         return any(
-            w == "-v" and n == name or w == f"-v{name}"
+            w == "-v" and names(n) or w.startswith("-v") and names(w[2:])
             for w, n in itertools.pairwise(words + [""])
         )
+    if command == "eval":
+        return any(
+            re.search(rf"(?<![\w$]){re.escape(name)}(?:\[[^]]*\])?=", w) for w in words
+        )
     if command in VALUE_SETTERS or node.type == "declaration_command":
-        return any(w == name or w.startswith(name + "=") for w in words)
+        return any(names(w) for w in words)
     return False
 
 

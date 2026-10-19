@@ -627,6 +627,14 @@ class PendingLookupTest(unittest.TestCase):
             't=PRRT_kwDOa; printf -v t %s "$(cat id)"; '
             + mutation.replace("{ref}", "$t"),
             't=PRRT_kwDOa; declare t="$(cat id)"; ' + mutation.replace("{ref}", "$t"),
+            # Review round 13: setters behind `builtin`/`command`, `eval`,
+            # and an array element.
+            't=PRRT_kwDOa; builtin printf -v t %s "$(cat id)"; '
+            + mutation.replace("{ref}", "$t"),
+            "t=PRRT_kwDOa; command read t < id; " + mutation.replace("{ref}", "$t"),
+            "t=PRRT_kwDOa; eval 't=$(cat id)'; " + mutation.replace("{ref}", "$t"),
+            't=PRRT_kwDOa; printf -v "t[0]" %s "$(cat id)"; '
+            + mutation.replace("{ref}", "$t"),
         ):
             with self.subTest(command=command[:40]):
                 scan = _case("thread_id_assignment", command=command, result="true")
