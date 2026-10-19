@@ -824,6 +824,8 @@ class PendingLookupTest(unittest.TestCase):
             'mergePullRequest(input:{pullRequestId:"PR_kwDOother"}){clientMutationId}',
             'addPullRequestReviewComment(input:{inReplyTo:"PRRC_kwDOz",body:"x"}){clientMutationId}',
             "...F",
+            # A string that is no id where the id goes.
+            'b:resolveReviewThread(input:{threadId:"notanid"}){thread{id}}',
         ):
             with self.subTest(other=other[:20]):
                 command = f"gh api graphql -f query='mutation{{{resolve} {other}}}'"
@@ -834,6 +836,17 @@ class PendingLookupTest(unittest.TestCase):
             (
                 'r(){ gh api graphql -f query="mutation{resolveReviewThread(input:'
                 '{threadId:\\"$1""_old\\"}){thread{id}}}"; }; r PRRT_kwDOa'
+            ),
+            # A command substitution after the literal part of the document.
+            (
+                'gh api graphql -f query="mutation{resolveReviewThread(input:'
+                '{threadId:\\"PRRT_kwDOa\\"}){thread{id}}} $(cat more)"'
+            ),
+            # `%%|*` where the id ends before the delimiter: bash keeps `.b`.
+            (
+                "r(){ gh api graphql -f query='mutation($id:ID!){resolveReviewThread("
+                'input:{threadId:$id}){thread{id}}}\' -f id="${1%%|*}"; }; '
+                'r "PRRT_kwDOa.b|text"'
             ),
             # `%%-*` cuts inside the id.
             (
