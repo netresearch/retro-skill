@@ -465,6 +465,56 @@ class PendingLookupTest(unittest.TestCase):
         self.assertEqual(scan["pending"], [])
         self.assertEqual(len(scan["unresolved"]), 1)
 
+    def test_a_for_list_counts_only_where_it_holds_the_id(self):
+        # Advisor on round 16: the list was read by a regex over the text
+        # before the write, so a list with other words, a loop that rebinds
+        # the variable, or one that had ended counted as complete.
+        mutation = (
+            "gh api graphql -f query='mutation($t:ID!){resolveReviewThread("
+            'input:{threadId:$t}){thread{isResolved}}}\' -f t="$t"'
+        )
+        for command in (
+            f"for t in PRRT_kwDOa $(cat ids); do {mutation}; done",
+            f"for t in PRRT_kwDOa $X; do {mutation}; done",
+            f"for t in PRRT_kwDO*; do {mutation}; done",
+            f"for t in PRRT_kwDOa; do t=$(cat x); {mutation}; done",
+            f"for t in PRRT_kwDOa; do read t < x; {mutation}; done",
+            f"for t in PRRT_kwDOa; do printf -vt %s x; {mutation}; done",
+            f"for t in PRRT_kwDOa; do : ${{t:=x}}; {mutation}; done",
+            f"for t in PRRT_kwDOa; do (( t=1 )); {mutation}; done",
+            f"for t in PRRT_kwDOa; do unset t; {mutation}; done",
+            f"f(){{ t=$(cat x); }}; for t in PRRT_kwDOa; do f; {mutation}; done",
+            f"for t in PRRT_kwDOa; do . ./x; {mutation}; done",
+            f"for t in PRRT_kwDOa; do $g; {mutation}; done",
+            f"for t in PRRT_kwDOa; do for t in $(cat x); do {mutation}; done; done",
+            f"for t in PRRT_kwDOa; do :; done; {mutation}",
+            f"for t in PRRT_kwDOa; do :; done; t=$(cat x); {mutation}",
+            f"echo 'for t in PRRT_kwDOa'; {mutation}",
+            f"cat <<'E'\nfor t in PRRT_kwDOa\nE\n{mutation}",
+        ):
+            with self.subTest(command=command[:50]):
+                scan = _case("thread_id_assignment", command=command, result="true")
+                self.assertFalse(any(w["only_review_threads"] for w in scan["pending"]))
+                self.assertEqual(len(scan["unresolved"]), 1)
+        for command, ids in (
+            (
+                f'for t in PRRT_kwDOa "PRRT_kwDOb"; do {mutation}; done',
+                ["PRRT_kwDOa", "PRRT_kwDOb"],
+            ),
+            (f'for t in PRRT_kwDOa; do echo "t: $t"; {mutation}; done', ["PRRT_kwDOa"]),
+            (
+                f"for t in $(cat x); do for t in PRRT_kwDOa; do {mutation}; done; done",
+                ["PRRT_kwDOa"],
+            ),
+        ):
+            with self.subTest(command=command[:50]):
+                scan = _case("thread_id_assignment", command=command, result="true")
+                self.assertEqual(scan["unresolved"], [])
+                (write,) = scan["pending"]
+                self.assertEqual(
+                    (write["thread_ids"], write["only_review_threads"]), (ids, True)
+                )
+
     def test_a_variable_id_beside_a_literal_one_leaves_the_call_unresolved(self):
         command = (
             't=PRRT_kwDOb; gh api graphql -f query="mutation{a:resolveReviewThread('

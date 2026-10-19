@@ -359,9 +359,6 @@ COMMENT_ID_ARGUMENT_RE = re.compile(
 COMMENT_ENDPOINT_RE = re.compile(
     r"\brepos/[\w.-]+/[\w.-]+/(?:issues|pulls)/comments/\d+(?![\w/])"
 )
-# `for t in PRRT_a PRRT_b; do gh api graphql … $t …`: the list a loop variable
-# takes its values from.
-FOR_LIST_RE = re.compile(r"\bfor\s+(?P<var>\w+)\s+in\s+(?P<list>[^;\n]*)")
 # A call in list form, as a script spells it: `subprocess.run(["gh", "pr", …])`.
 LIST_CALL_RE = re.compile(r"""\[\s*["'](?:gh|glab)["'][^\]]*\]""")
 # MCP tools that write to a PR or issue; their input names owner/repo/number.
@@ -1305,6 +1302,12 @@ def _held_elsewhere(command: str, name: str) -> bool:
     return not assigned
 
 
+def _bare_name(name: str) -> re.Pattern:
+    """The variable `name` as a bare word (`read t`, `printf -vt`), not as
+    an expansion (`$t`, `${t}`)."""
+    return re.compile(rf"(?:(?<![\w$])|(?<=-v))(?<!\$\{{){re.escape(name)}(?!\w)")
+
+
 def _sets_variable(shell: _Shell, node, name: str) -> bool:
     """Whether a command may give the variable `name` a value at run time.
     Any command that names it as a bare word (not `$name`) counts, whatever
@@ -1314,7 +1317,7 @@ def _sets_variable(shell: _Shell, node, name: str) -> bool:
     if node.type not in ("command", "declaration_command"):
         return False
     text = shell.source[shell._char[node.start_byte] : shell._char[node.end_byte]]
-    if not re.search(rf"(?:(?<![\w$])|(?<=-v))(?<!\$\{{){re.escape(name)}(?!\w)", text):
+    if not _bare_name(name).search(text):
         return False
     head = node.child_by_field_name("name")
     command = os.path.basename(_word(shell, head)) if head is not None else ""
@@ -1821,6 +1824,75 @@ def _comment_endpoint(command: str, write: re.Match, call: _Call) -> str | None:
     return found.group(0) if found else None
 
 
+def _enclosing_for_lists(
+    command: str, write: re.Match
+) -> dict[str, tuple[list[str], bool]]:
+    """The `for` loops the write runs in, by loop variable (the nearest loop
+    for each name): the literal thread ids in its list, and whether the
+    variable holds only those when the write runs. That needs every list
+    word to be a literal id and no command in the loop body that may set the
+    variable (`t=$(cat x)`, `read t`, `${t:=…}`, `(( t=… ))`); only gh, glab,
+    `echo` and a `printf` without `-v` may name it there."""
+    shell = _shell(command)
+    located = _write_words(shell, write.start())
+    if located is None:
+        return {}
+    loops: dict[str, tuple[list[str], bool]] = {}
+    node = located[0].parent
+    while node is not None:
+        variable = node.child_by_field_name("variable")
+        body = node.child_by_field_name("body")
+        if node.type == "for_statement" and variable is not None and body is not None:
+            name = _word(shell, variable)
+            if name not in loops:
+                values = [_word(shell, v) for v in node.children_by_field_name("value")]
+                ids = [v for v in values if REVIEW_THREAD_ID_RE.fullmatch(v)]
+                literal = bool(values) and len(ids) == len(values)
+                loops[name] = (ids, literal and not _may_set_in(shell, body, name))
+        node = node.parent
+    return loops
+
+
+def _may_set_in(shell: _Shell, body, name: str) -> bool:
+    """Whether anything in `body` may give the variable `name` a value: a
+    bare mention of the name outside gh, glab, `echo` and a printing
+    `printf`, an expansion with an operator (`${name:=…}`), or a command
+    that runs code the names do not show: a function of the call, a builtin
+    such as `.` or `eval`, or a command named by an expansion."""
+    functions = {
+        _word(shell, n.child_by_field_name("name"))
+        for n in shell._walk()
+        if n.type == "function_definition" and n.child_by_field_name("name")
+    }
+    stack = [body]
+    while stack:
+        node = stack.pop()
+        stack.extend(node.children)
+        head = node.child_by_field_name("name") if node.type == "command" else None
+        if head is not None:
+            word = _word(shell, head)
+            if (
+                word in functions
+                or word in DISPATCHERS
+                or not re.fullmatch(r"[\w./-]+", word)
+            ):
+                return True
+    start, end = shell._char[body.start_byte], shell._char[body.end_byte]
+    text = shell.source[start:end]
+    if re.search(rf"\$\{{{re.escape(name)}[^}}\w]", text):
+        return True
+    for m in _bare_name(name).finditer(text):
+        holder = shell._node_at(start + m.start())
+        while holder is not None and holder.type not in (
+            "command",
+            "declaration_command",
+        ):
+            holder = holder.parent
+        if holder is None or _sets_variable(shell, holder, name):
+            return True
+    return False
+
+
 def _review_thread_ids(
     command: str, write: re.Match, call: _Call
 ) -> tuple[list[str], bool]:
@@ -1847,13 +1919,12 @@ def _review_thread_ids(
             segment,
         )
     ]
-    looped = set()  # loop variables whose `for` list names ids, as before #188
-    for loop in FOR_LIST_RE.finditer(command[: write.start()]):
-        if re.search(rf"\$\{{?{loop['var']}\b", segment):
-            ids = REVIEW_THREAD_ID_RE.findall(loop["list"])
+    looped = set()  # loop variables that hold only literal ids
+    for name, (ids, literal_only) in _enclosing_for_lists(command, write).items():
+        if re.search(rf"\$\{{?{name}\b", segment):
             found += ids
-            if ids:
-                looped.add(loop["var"])
+            if literal_only:
+                looped.add(name)
     # Every argument must be a literal id or a variable that traces to
     # literal ids; any other form (`threadId:"'"$T"'"`) leaves it unknown.
     literal = len(THREAD_ID_LITERAL_RE.findall(segment)) + len(
@@ -1964,8 +2035,8 @@ def _bindings(shell: _Shell, write_node, name: str) -> list[str] | None:
         return values or None
     # A named shell variable is not traced: which value it holds when the
     # write runs depends on every command in the call (`printf -vt`,
-    # `v=t; read "$v"`, `${t:=…}`, `(( t=… ))`, `source`), and five review
-    # rounds each found another that slipped past a list of them.
+    # `v=t; read "$v"`, `${t:=…}`, `(( t=… ))`, `source`); CodeRabbit and
+    # review rounds 13 to 15 each found another that a list of them missed.
     return None
 
 
