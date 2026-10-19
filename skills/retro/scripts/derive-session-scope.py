@@ -169,7 +169,6 @@ QUERY_ELSEWHERE_RE = re.compile(
 QUERY_VARIABLE_RE = re.compile(
     r"(?:(?<![\w-])|(?<=-[fF]))query=\"?\$\{?(?P<name>[A-Za-z_]\w*|[0-9]+|[@*])"
 )
-QUERY_REST_RE = re.compile(r"\$\{?(?P<name>[A-Za-z_]\w*|[0-9]+|[@*])")
 # The endpoint of a REST write names its target on its own: repository and
 # number are in the path, not in any text the call carries.
 GH_API_PATH_RE = re.compile(
@@ -1272,13 +1271,37 @@ def _query_from_run_time(command: str, call: str) -> bool:
     gives that variable is plain text (`Q='mutation{…}'`), it comes from a
     command, a file, another variable or an earlier call, and may be a
     mutation."""
+    shell = _shell(call)
     for held in QUERY_VARIABLE_RE.finditer(call):
-        # `query="$H$Q"`: every variable in the value counts.
-        rest = re.match(r"[^\s\"']*", call[held.end() :]).group(0)
-        names = [held["name"], *(m["name"] for m in QUERY_REST_RE.finditer(rest))]
-        if any(_held_elsewhere(command, name) for name in names):
+        # `query="$H $Q"`: every variable in the argument counts, read from
+        # the parse tree; a command substitution in it is from elsewhere.
+        names = _argument_variables(shell, held.start("name"))
+        if names is None or any(_held_elsewhere(command, name) for name in names):
             return True
     return False
+
+
+def _argument_variables(shell: _Shell, index: int) -> list[str] | None:
+    """The variables expanded in the command argument around `index`, or
+    None when it holds a command substitution or is not one argument."""
+    node = shell._node_at(index)
+    while node is not None and (node.parent is None or node.parent.type != "command"):
+        node = node.parent
+    if node is None:
+        return None
+    names: list[str] = []
+    stack = [node]
+    while stack:
+        part = stack.pop()
+        if part.type in ("command_substitution", "process_substitution"):
+            return None
+        if part.type in ("variable_name", "special_variable_name") and (
+            part.parent is not None
+            and part.parent.type in ("simple_expansion", "expansion")
+        ):
+            names.append(_word(shell, part))
+        stack.extend(part.children)
+    return names or None
 
 
 def _held_elsewhere(command: str, name: str) -> bool:

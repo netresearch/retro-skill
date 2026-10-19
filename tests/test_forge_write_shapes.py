@@ -706,6 +706,10 @@ class PendingLookupTest(unittest.TestCase):
             # Review round 16: a second variable in the value, an indirection.
             'H=""; Q=$(cat m); gh api graphql -f query="$H$Q"',
             'v=Q; Q=$(cat m); gh api graphql -f query="${!v}"',
+            # CodeRabbit on #190: a variable after a space in the value.
+            "Q='query{a}'; M=$(cat m); gh api graphql -f query=\"$Q $M\"",
+            "Q='query{a}'; gh api graphql -f query=\"$Q $(cat m)\"",
+            "Q='query{a}'; M=$(cat m); gh api graphql -f query=$Q\"$M\"",
         ):
             with self.subTest(other=other):
                 scan = _case("query_beside_mutation", command=other)
