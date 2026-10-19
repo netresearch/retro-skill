@@ -347,10 +347,6 @@ REVIEW_THREAD_ID_RE = re.compile(r"(?<![\w-])PRR[TC]_[A-Za-z0-9_-]+")
 THREAD_ID_LITERAL_RE = re.compile(
     r"\b(?:pullRequestReviewThreadId|threadId)\s*:\s*\\?\"(PRRT_[A-Za-z0-9_-]+)"
 )
-# `-f id=PRRT_…`: a GraphQL variable given a literal id.
-GQL_FIELD_ID_RE = re.compile(
-    r"(?:^|\s)(?:-f|-F|--field|--raw-field)[\s=]['\"]?(\w+)=['\"]?(PRR[TC]_[A-Za-z0-9_-]+)"
-)
 # The id an `updatePullRequestReviewComment` edits, given literally.
 COMMENT_ID_ARGUMENT_RE = re.compile(
     r"\bpullRequestReviewCommentId\s*:\s*\\?\"(PRRC_[A-Za-z0-9_-]+)"
@@ -1304,59 +1300,156 @@ def _argument_variables(shell: _Shell, index: int) -> list[str] | None:
     return names or None
 
 
+# Bash builtins and keywords that run as part of the calling shell; an
+# external program can never change one of its variables.
+SHELL_BUILTINS = frozenset(
+    {
+        ".",
+        ":",
+        "[",
+        "alias",
+        "bg",
+        "bind",
+        "break",
+        "builtin",
+        "caller",
+        "cd",
+        "command",
+        "compgen",
+        "complete",
+        "compopt",
+        "continue",
+        "coproc",
+        "declare",
+        "dirs",
+        "disown",
+        "echo",
+        "enable",
+        "eval",
+        "exec",
+        "exit",
+        "export",
+        "false",
+        "fc",
+        "fg",
+        "getopts",
+        "hash",
+        "help",
+        "history",
+        "jobs",
+        "kill",
+        "let",
+        "local",
+        "logout",
+        "mapfile",
+        "popd",
+        "printf",
+        "pushd",
+        "pwd",
+        "read",
+        "readarray",
+        "readonly",
+        "return",
+        "set",
+        "shift",
+        "shopt",
+        "source",
+        "suspend",
+        "test",
+        "time",
+        "times",
+        "trap",
+        "true",
+        "type",
+        "typeset",
+        "ulimit",
+        "umask",
+        "unalias",
+        "unset",
+        "wait",
+    }
+)
+# The builtins that never give a variable a value.
+SAFE_BUILTINS = frozenset(
+    {":", "[", "cd", "pwd", "true", "false", "test", "exit", "return"}
+    | {"echo", "printf", "command", "set", "shift", "break", "continue"}
+)
+
+
 def _held_elsewhere(command: str, name: str) -> bool:
-    """Whether the call gives the variable `name` anything but plain text.
-    A positional parameter (`$1`, `"$@"`) is never a variable assignment
-    the call shows, so it always counts as given elsewhere."""
+    """Whether the call may give the variable `name` anything but plain
+    text. It holds plain text only when every assignment to it is literal
+    (`Q='query{…}'`, also after a flag-less `local` or `export`) and nothing
+    else in the call could change it: no function, no arithmetic, no
+    `${…=…}`, no `for`/`select` over it, no command named by an expansion,
+    and no shell builtin outside a short list that sets nothing (`echo`,
+    `printf` without `-v`, `command -v`, `set` with options only, `cd`, …).
+    External programs cannot change a shell variable. A positional
+    parameter (`$1`, `"$@"`) is never assigned in the call's text, so it
+    always counts as given elsewhere."""
     shell = _shell(command)
     assigned = False
     for node in shell._walk():
-        if node.type == "variable_assignment":
+        kind = node.type
+        if kind == "variable_assignment":
             named = node.child_by_field_name("name")
             if named is None or _word(shell, named) != name:
                 continue
+            if node.parent is not None and node.parent.type == "command":
+                continue  # `Q=x cmd`: for that command only
             text = _word(shell, node)
             value = node.child_by_field_name("value")
             given = _word(shell, value) if value is not None else ""
             appended = "+=" in text[: len(text) - len(given)]
-            if appended or "$" in given or "`" in given:
+            if appended or "$" in given or "`" in given or "[" in text[: len(name) + 1]:
                 return True
             assigned = True
-        elif node.type == "for_statement":
+        elif kind in ("function_definition", "arithmetic_expansion"):
+            return True
+        elif (
+            kind == "compound_statement"
+            and node.children[:1]
+            and (node.children[0].type == "((")
+        ):
+            return True  # `(( Q=1 ))`
+        elif kind == "expansion" and re.match(r"\$\{[^}]*?=", _word(shell, node)):
+            return True  # `${Q:=…}`
+        elif kind == "for_statement":
             variable = node.child_by_field_name("variable")
             if variable is not None and _word(shell, variable) == name:
                 return True
-        elif _sets_variable(shell, node, name):
+        elif kind in ("unset_command", "test_command", "declaration_command"):
+            words = [_word(shell, c) for c in node.children[1:]]
+            if kind == "test_command":
+                continue
+            if kind == "declaration_command" and not any(
+                w.startswith(("-", "+")) or w == name for w in words
+            ):
+                continue  # `local q='…'`: its assignment is read above
             return True
-    # `source`, `eval`, a function, `unset Q; : "${Q:=$(cat m)}"`.
-    return not assigned or _may_set_in(shell, name)
-
-
-def _bare_name(name: str) -> re.Pattern:
-    """The variable `name` as a bare word (`read t`, `printf -vt`), not as
-    an expansion (`$t`, `${t}`)."""
-    return re.compile(rf"(?:(?<![\w$])|(?<=-v))(?<!\$\{{){re.escape(name)}(?!\w)")
-
-
-def _sets_variable(shell: _Shell, node, name: str) -> bool:
-    """Whether a command may give the variable `name` a value at run time.
-    Any command that names it as a bare word (not `$name`) counts, whatever
-    runs it: `read t`, `printf -v t`, `printf -vt`, `declare t=…`, `IFS= builtin read t`,
-    `eval 't=…'`, `\\read t`. Only gh and glab, `echo`, and a `printf`
-    without `-v` are known to set nothing."""
-    if node.type not in ("command", "declaration_command"):
-        return False
-    text = shell.source[shell._char[node.start_byte] : shell._char[node.end_byte]]
-    if not _bare_name(name).search(text):
-        return False
-    head = node.child_by_field_name("name")
-    command = os.path.basename(_word(shell, head)) if head is not None else ""
-    if node.type == "declaration_command" or command.startswith("\\"):
-        return True
-    if command in ("gh", "glab", "echo"):
-        return False
-    words = [_word(shell, c) for c in node.children_by_field_name("argument")]
-    return command != "printf" or any(w.startswith("-v") for w in words)
+        elif kind == "command":
+            head = node.child_by_field_name("name")
+            if head is None:
+                continue
+            word = _word(shell, head)
+            if not re.fullmatch(r"[\w./-]+|[:\[]", word):
+                return True  # `$f`, `$(…)`, `\read`
+            if word not in SHELL_BUILTINS:
+                continue
+            if word not in SAFE_BUILTINS:
+                return True
+            arguments = [
+                _word(shell, c) for c in node.children_by_field_name("argument")
+            ]
+            if word == "printf" and any(a.startswith("-v") for a in arguments):
+                return True
+            if word == "command" and not (
+                arguments[:1] and arguments[0] in ("-v", "-V")
+            ):
+                return True
+            if word == "set" and not all(a.startswith(("-", "+")) for a in arguments):
+                return True
+    return not assigned
 
 
 def _blank_texts(command: str) -> str:
@@ -1877,116 +1970,166 @@ def _loop_ids(command: str, write: re.Match, name: str) -> list[str]:
     return []
 
 
-# Builtins that may run code the call's words do not show in this shell.
-CODE_RUNNERS = frozenset({".", "source", "eval", "trap", "alias", "declare", "typeset"})
-
-
-def _may_set_in(shell: _Shell, name: str) -> bool:
-    """Whether the call may give the variable `name` a value other than by
-    `name=…`: a bare mention of the name outside a gh, glab, `echo` or
-    printing `printf` that runs on its own (`read Q`, `n=Q; read "$n"`,
-    `n=$(echo Q)`, `$((Q=1))`), an expansion with an operator
-    (`${Q:=…}`), or a command that runs code the words do not show: a
-    function of the call, `.`, `source`, `eval`, `trap`, `alias`,
-    `declare`, or a command named by an expansion."""
-    functions = {
-        _word(shell, n.child_by_field_name("name"))
-        for n in shell._walk()
-        if n.type == "function_definition" and n.child_by_field_name("name")
-    }
-    for node in shell._walk():
-        head = node.child_by_field_name("name") if node.type == "command" else None
-        if head is not None:
-            word = _word(shell, head)
-            if (
-                word in functions
-                or word in CODE_RUNNERS
-                or (word != ":" and not re.fullmatch(r"[\w./-]+", word))
-            ):
-                return True
-    text = shell.source
-    if re.search(rf"\$\{{{re.escape(name)}[^}}\w]", text):
-        return True
-    for m in _bare_name(name).finditer(text):
-        holder = shell._node_at(m.start())
-        if (
-            holder.type == "variable_name"
-            and holder.parent is not None
-            and holder.parent.type == "variable_assignment"
-        ):
-            continue  # `Q=…`, read by the caller
-        command = None
-        while holder is not None:
-            arithmetic = holder.type == "compound_statement" and any(
-                c.type == "((" for c in holder.children[:1]
-            )
-            if arithmetic or holder.type in (
-                "command_substitution",
-                "process_substitution",
-                "arithmetic_expansion",
-            ):
-                return True
-            if command is None and holder.type in ("command", "declaration_command"):
-                command = holder
-            holder = holder.parent
-        if command is None or _sets_variable(shell, command, name):
-            return True
-    return False
-
-
 def _review_thread_ids(
     command: str, write: re.Match, call: _Call
 ) -> tuple[list[str], bool]:
     """The review-thread and review-comment node ids a successful GraphQL
-    mutation names, literally or through a variable (`_traced_thread_ids`),
-    and whether those are all it names: False when a variable id does not
-    trace to literal ones. ([], True) for any other write and for a call
-    that failed."""
+    mutation names, and whether those are all it writes to: only when its
+    document is literal text in the call (`_literal_thread_write`). ([], True)
+    for any other write and for a call that failed."""
     segment = _segment(command, write)
     if call.failed or "graphql" not in segment:
         return [], True
     if not REVIEW_THREAD_MUTATION_RE.search(segment):
         return [], True
-    # An id counts only where a mutation takes it, never in a body or note.
+    literal = _literal_thread_write(command, write)
+    if literal is not None:
+        return literal
+    # A document with a shell expansion in it (`threadId:\"$t\"`) is never
+    # complete; the ids it plainly names are still looked up.
+    shell = _shell(command)
+    located = _write_words(shell, write.start())
     found = THREAD_ID_LITERAL_RE.findall(segment) + COMMENT_ID_ARGUMENT_RE.findall(
         segment
     )
-    found += [
-        v
-        for k, v in GQL_FIELD_ID_RE.findall(segment)
-        if re.search(
-            rf"(?:pullRequestReviewThreadId|threadId|pullRequestReviewCommentId)"
-            rf"\s*:\s*\${k}\b",
-            segment,
+    for value in _thread_ref_values(command, write):
+        plain = value and re.fullmatch(r"\$\{?([A-Za-z_]\w*)\}?", value)
+        if plain:
+            found += _loop_ids(command, write, plain[1])
+        elif value and located is not None:
+            found += _bound_ids(shell, located[0], value) or []
+    return list(dict.fromkeys(found)), False
+
+
+# The mutations that write to a review thread or a review comment.
+THREAD_MUTATIONS = frozenset(
+    {"resolveReviewThread", "unresolveReviewThread"}
+    | {"addPullRequestReviewThreadReply", "updatePullRequestReviewComment"}
+)
+# The GraphQL tokens whose text is no syntax: strings, block strings and
+# comments (GraphQL spec, section 2.1 and 2.9.4).
+GQL_TEXT_RE = re.compile(r'"""(?:\\"""|[\s\S])*?"""|"(?:[^"\\\n]|\\.)*"|#[^\n]*')
+GQL_ID_ARGUMENT_RE = re.compile(
+    r"(?<![$\w])(?:pullRequestReviewThreadId|threadId|pullRequestReviewCommentId)\s*:\s*"
+)
+
+
+def _literal_value(shell: _Shell, node) -> str | None:
+    """The value bash gives a word that expands nothing, or None."""
+    text = shell.source[shell._char[node.start_byte] : shell._char[node.end_byte]]
+    if node.type == "raw_string":
+        return text[1:-1]
+    if node.type == "word":
+        return None if re.search(r"[$`\\*?\[{~]", text) else text
+    if node.type == "string":
+        stack = list(node.children)
+        while stack:
+            part = stack.pop()
+            if part.type not in ('"', "string_content"):
+                return None
+            stack.extend(part.children)
+        return re.sub(
+            r'\\([$`"\\\n])', lambda m: "" if m[1] == "\n" else m[1], text[1:-1]
         )
-    ]
-    # Every argument must be a literal id or a variable that traces to
-    # literal ids; any other form (`threadId:"'"$T"'"`) leaves it unknown.
-    literal = len(THREAD_ID_LITERAL_RE.findall(segment)) + len(
-        COMMENT_ID_ARGUMENT_RE.findall(segment)
+    if node.type == "concatenation":
+        parts = [_literal_value(shell, c) for c in node.children]
+        return None if any(p is None for p in parts) else "".join(parts)
+    return None
+
+
+def _write_fields(shell: _Shell, index: int):
+    """The command node of the write at `index` and its `-f`/`-F` fields:
+    key -> (literal value or None, the value as written)."""
+    node = _enclosing(shell._node_at(index), "command")
+    if node is None:
+        return None, {}
+    offset = shell._byte[index]
+    group = next(
+        (
+            g
+            for g in _simple_commands(shell, node)
+            if g[0].start_byte <= offset < g[-1].end_byte
+        ),
+        [],
     )
-    by_variable = len(THREAD_ID_ARGUMENT_RE.findall(segment))
-    known = literal + by_variable >= len(ID_ARGUMENT_RE.findall(segment))
-    # A document from a file or a command may name other threads.
-    known = (
-        known
-        and not QUERY_ELSEWHERE_RE.search(segment)
-        and not _query_from_run_time(command, segment)
+    fields: dict[str, tuple[str | None, str]] = {}
+    pending = False
+    for word in group:
+        raw = shell.source[shell._char[word.start_byte] : shell._char[word.end_byte]]
+        value = _literal_value(shell, word)
+        given = value if value is not None else unquote(raw)
+        if pending:
+            pending = False
+        elif given in FIELD_FLAGS:
+            pending = True
+            continue
+        elif re.match(r"-[fF][^-]|--(?:raw-)?field=", given):
+            given = given.split("=", 1)[1] if given.startswith("--") else given[2:]
+            value = given if value is not None else None
+        else:
+            continue
+        key = given.partition("=")[0]
+        literal = value.partition("=")[2] if value is not None else None
+        fields[key] = (literal, unquote(raw.partition("=")[2]))
+    if any(w.type == "word" and _word(shell, w).startswith("--input") for w in group):
+        fields["query"] = (None, "")
+    return node, fields
+
+
+def _literal_thread_write(
+    command: str, write: re.Match
+) -> tuple[list[str], bool] | None:
+    """For a write whose GraphQL document is literal text: the thread and
+    comment ids it writes to, and whether those are all it writes. It is
+    complete only when every field with arguments is `mutation` or a thread
+    mutation, with no fragment or directive, and every id argument outside
+    a string is a literal id or a `$var` whose field is one (or a function's
+    `$1` traced to literal ids). None when the document is not literal."""
+    shell = _shell(command)
+    node, fields = _write_fields(shell, write.start())
+    document = fields.get("query", (None, ""))[0]
+    if node is None or document is None:
+        return None
+    blanked = GQL_TEXT_RE.sub(
+        lambda m: (
+            m[0][0] + " " * (len(m[0]) - 2) + m[0][-1]
+            if m[0].startswith('"')
+            else " " * len(m[0])
+        ),
+        document,
     )
-    if by_variable:
-        # A thread named by a variable, beside literal ones or not: every
-        # such variable must trace to literal ids, or the write is unknown.
-        traced = _traced_thread_ids(command, write)
-        if traced is None:
-            # A `for` loop over literal ids: they are looked up, but the
-            # call stays unresolved.
-            for value in _thread_ref_values(command, write):
-                plain = value and re.fullmatch(r"\$\{?([A-Za-z_]\w*)\}?", value)
-                if plain:
-                    found += _loop_ids(command, write, plain[1])
-            return list(dict.fromkeys(found)), False
-        found += traced
-    return list(dict.fromkeys(found)), known
+    complete = bool(re.match(r"\s*mutation\b", blanked)) and not re.search(
+        r"@|\.\.\.", blanked
+    )
+    for m in re.finditer(r"([_A-Za-z]\w*)\s*\(", blanked):
+        complete = complete and (m[1] == "mutation" or m[1] in THREAD_MUTATIONS)
+    ids: list[str] = []
+    arguments = list(GQL_ID_ARGUMENT_RE.finditer(blanked))
+    complete = complete and bool(arguments)
+    for m in arguments:
+        rest = document[m.end() :]
+        if string := re.match(r'"((?:[^"\\]|\\.)*)"', rest):
+            if REVIEW_THREAD_ID_RE.fullmatch(string[1]):
+                ids.append(string[1])
+            else:
+                complete = False
+            continue
+        variable = re.match(r"\$([_A-Za-z]\w*)", rest)
+        literal, written = (
+            fields.get(variable[1], (None, "")) if variable else (None, "")
+        )
+        if literal is not None and REVIEW_THREAD_ID_RE.fullmatch(literal):
+            ids.append(literal)
+            continue
+        plain = re.fullmatch(r"\$\{?([A-Za-z_]\w*)\}?", written)
+        traced = _bound_ids(shell, node, written) if written and not plain else None
+        if traced:
+            ids += traced  # a function's `$1`, given literal ids
+            continue
+        complete = False
+        if plain:
+            ids += _loop_ids(command, write, plain[1])
+    return list(dict.fromkeys(ids)), complete
 
 
 # The GraphQL argument a thread mutation names its thread by:
@@ -1996,10 +2139,6 @@ def _review_thread_ids(
 THREAD_ID_ARGUMENT_RE = re.compile(
     r"\b(?:pullRequestReviewThreadId|threadId|pullRequestReviewCommentId)\s*:\s*(?:\\?\")?"
     r"\\?(?P<ref>\$(?:\{[^}\"]*\}|\w+))"
-)
-# Every place a mutation takes a thread or comment id, whatever follows.
-ID_ARGUMENT_RE = re.compile(
-    r"(?<!\$)\b(?:pullRequestReviewThreadId|threadId|pullRequestReviewCommentId)\s*:"
 )
 # `$id`, `${id}`, `$1`, `${pair%%|*}`: a variable and the operator applied to it.
 SHELL_REF_RE = re.compile(
@@ -2117,14 +2256,16 @@ def _bound_ids(
 ) -> list[str] | None:
     """The thread ids `value` stands for: itself when it is one, or the
     values of the function parameter it expands. `${1%%|*}` keeps the front
-    of each value, so `r "PRRT_x|reply text"` gives PRRT_x."""
+    of each value, so `r "PRRT_x|reply text"` gives PRRT_x; only `%%c*` with
+    a delimiter `c` that no id holds is read."""
     if REVIEW_THREAD_ID_RE.fullmatch(value):
         return [value]
     ref = SHELL_REF_RE.fullmatch(value)
     if ref is None or depth > 2:
         return None
     name, op = ref["braced"] or ref["name"], ref["op"] or ""
-    if op and not op.startswith("%"):
+    cut = re.fullmatch(r"%%([^A-Za-z0-9_-])\*", op) if op else None
+    if op and cut is None:
         return None
     values = _bindings(shell, write_node, name)
     if values is None:
@@ -2134,6 +2275,8 @@ def _bound_ids(
         front = (REVIEW_THREAD_ID_RE.match if op else REVIEW_THREAD_ID_RE.fullmatch)(
             bound
         )
+        if front and cut and bound[front.end() : front.end() + 1] not in ("", cut[1]):
+            front = None  # `PRRT_x.y|…`: bash keeps `PRRT_x.y`
         nested = (
             None if front or op else _bound_ids(shell, write_node, bound, depth + 1)
         )
@@ -2144,23 +2287,6 @@ def _bound_ids(
         else:
             return None
     return ids
-
-
-def _traced_thread_ids(command: str, write: re.Match) -> list[str] | None:
-    """The ids of a thread mutation that names its thread by a variable,
-    when every value that variable takes is a literal id in this call; None
-    otherwise (an id read from a query, a file or the network)."""
-    shell = _shell(command)
-    located = _write_words(shell, write.start())
-    if located is None:
-        return None
-    ids: list[str] = []
-    for value in _thread_ref_values(command, write):
-        found = _bound_ids(shell, located[0], value) if value else None
-        if not found:
-            return None
-        ids += found
-    return ids or None
 
 
 def _thread_ref_values(command: str, write: re.Match) -> list[str | None]:

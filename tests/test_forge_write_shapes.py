@@ -803,6 +803,68 @@ class PendingLookupTest(unittest.TestCase):
                 )
                 self.assertEqual(scan["unresolved"], [])
 
+    def test_a_literal_document_is_complete_only_in_its_thread_shape(self):
+        # Review round 18: an id inside a body string was read as an
+        # argument, and a second mutation in the document was never looked
+        # up. The document is now read with its strings blanked.
+        body_id = (
+            "gh api graphql -f query='mutation{addPullRequestReviewThreadReply(input:"
+            '{pullRequestReviewThreadId:"PRRT_kwDOa",body:"dup of threadId:\\"PRRT_kwDOb\\""})'
+            "{comment{id}}}'"
+        )
+        scan = _case("thread_id_assignment", command=body_id, result="{}")
+        self.assertEqual(scan["unresolved"], [])
+        (write,) = scan["pending"]
+        self.assertEqual(
+            (write["thread_ids"], write["only_review_threads"]), (["PRRT_kwDOa"], True)
+        )
+        resolve = 'resolveReviewThread(input:{threadId:"PRRT_kwDOa"}){thread{id}}'
+        for other in (
+            'addComment(input:{subjectId:"PR_kwDOother",body:"done"}){clientMutationId}',
+            'mergePullRequest(input:{pullRequestId:"PR_kwDOother"}){clientMutationId}',
+            'addPullRequestReviewComment(input:{inReplyTo:"PRRC_kwDOz",body:"x"}){clientMutationId}',
+            "...F",
+        ):
+            with self.subTest(other=other[:20]):
+                command = f"gh api graphql -f query='mutation{{{resolve} {other}}}'"
+                scan = _case("thread_id_assignment", command=command, result="{}")
+                self.assertEqual(len(scan["unresolved"]), 1)
+        for command in (
+            # The shell's own quote closes the string: the id is PRRT_a_old.
+            (
+                'r(){ gh api graphql -f query="mutation{resolveReviewThread(input:'
+                '{threadId:\\"$1""_old\\"}){thread{id}}}"; }; r PRRT_kwDOa'
+            ),
+            # `%%-*` cuts inside the id.
+            (
+                "r(){ gh api graphql -f query='mutation($id:ID!){resolveReviewThread("
+                'input:{threadId:$id}){thread{id}}}\' -f id="${1%%-*}"; }; r PRRT_kw-abc'
+            ),
+        ):
+            with self.subTest(command=command[:40]):
+                scan = _case("thread_id_function", command=command, result="true")
+                self.assertFalse(any(w["only_review_threads"] for w in scan["pending"]))
+                self.assertEqual(len(scan["unresolved"]), 1)
+
+    def test_a_plain_query_read_stays_a_read(self):
+        # Review round 18: the variable's name inside its own value, and a gh
+        # call inside `$(…)`, read a plain query as a possible write.
+        for command in (
+            "query='query{viewer{login}}'; gh api graphql -f query=\"$query\"",
+            'query=\'{viewer{login}}\'; out=$(gh api graphql -f query="$query"); echo "$out"',
+        ):
+            with self.subTest(command=command[:40]):
+                scan = _case(
+                    "query_beside_mutation",
+                    command=command,
+                    result='{"data":{"viewer":{"login":"x"}}}',
+                )
+                self.assertEqual(scan, {"origins": {}, "unresolved": [], "pending": []})
+        # A builtin sets it by a name no text shows (`$'\x51'` is `Q`).
+        command = "Q='query{viewer{login}}'; read $'\\x51' < m; gh api graphql -f query=\"$Q\""
+        scan = _case("query_beside_mutation", command=command)
+        self.assertEqual(len(scan["unresolved"]), 1)
+
     def test_a_parameter_that_is_no_literal_id_stays_unresolved(self):
         define = (
             "r(){ gh api graphql -f query='mutation($t:ID!){resolveReviewThread("

@@ -212,32 +212,40 @@ substitution, or run with
 (`xargs`, a `for` list, `cat pr-merge.sh | bash -s`, `bash <(cat …)`) may be
 a run.
 A GraphQL write on a review thread or a review comment names it by node id
-(`PRRT_…`, `PRRC_…`) where the mutation takes it (`threadId:`,
-`pullRequestReviewThreadId:`, `pullRequestReviewCommentId:`; an id in a body
-or another field is text): literally, or as a parameter `$1` of a
-function that neither shifts nor resets its parameters and is called only by
-its plain name with literal ids, in a call where no command is named by an
-expansion and no builtin such as `.`, `eval` or `xargs` runs what it is
-given. Any other form leaves the call unresolved, while its literal ids are
-still asked for. That includes a named variable (`t=PRRT_…`, `for pair in
-"PRRT_…|reply"` with `${pair%%|*}`) and a `for` loop variable: the value it
-holds when the write runs depends on every command in the call (`printf -vt`,
-`read "$v"`, `${t:=…}`, `$((t=5))`), and a list of the commands that can set
-it was never complete. The ids of a `for` list that holds only literal ids
-are asked for when the write is given exactly that variable; a REST edit of one comment names its path
-(`gh api -X PATCH repos/o/r/issues/comments/N`). A deleted comment leaves
-nothing to ask for and stays unresolved. Such a write
-is pending, not unresolved: the collector asks the forge for its PR or issue
-(`review_thread_writes` in the scope output) and lists the call as
-unresolved only when that lookup fails. A GraphQL query written into the
-call (`-f query='query{…}'`) is no write, even beside a mutation; a document
-from a file or a command (`query=@q.graphql`, `query="$(cat q.graphql)"`,
-`--input body.json`, or `query="$Q"` unless the call assigns `Q` and every
-value it gives it is plain text, and no command may set it otherwise, such
-as `read Q`, `printf -vQ`, `${Q:=…}`, `$((Q=1))`, a mention of `Q` inside
-`$(…)`, a function of the call, `source`, `eval`, `trap`, `alias`,
-`declare`, or a command named by an expansion) may be a mutation: it counts as a write, and a call whose
-thread ids it may hold is never complete. MCP writes count by their input. A `-R` with a scheme and a
+(`PRRT_…`, `PRRC_…`). Such a write is pending, not unresolved: the collector
+asks the forge for its PR or issue (`review_thread_writes` in the scope
+output) and lists the call as unresolved only when that lookup fails. A call
+is complete by its thread ids only in one shape: the `query=` field is
+literal text with no shell expansion in it, every field with arguments in
+the document is `mutation` or a thread mutation (`resolveReviewThread`,
+`unresolveReviewThread`, `addPullRequestReviewThreadReply`,
+`updatePullRequestReviewComment`), it has no fragment or directive, and
+every id argument (`threadId:`, `pullRequestReviewThreadId:`,
+`pullRequestReviewCommentId:`), read with the document's strings and
+comments blanked, is a literal id or a `$var` whose `-f` field is a literal
+id or a function's `$1`. That function neither shifts nor resets its
+parameters, is called only by its plain name with literal ids, and no
+command in the call is named by an expansion or is a builtin such as `.`,
+`eval` or `xargs`; `${1%%|*}` is read only with a delimiter no id holds. Any
+other shape leaves the call unresolved, while the ids it plainly names are
+still asked for. That includes a named variable (`t=PRRT_…`) and a `for`
+loop variable, whose value when the write runs depends on every command in
+the call; the ids of a `for` list that holds only literal ids are asked for
+when the write is given exactly that variable. A REST edit of one comment
+names its path (`gh api -X PATCH repos/o/r/issues/comments/N`). A deleted
+comment leaves nothing to ask for and stays unresolved. A GraphQL query
+written into the call (`-f query='query{…}'`) is no write, even beside a
+mutation; a document from a file or a command (`query=@q.graphql`,
+`query="$(cat q.graphql)"`, `--input body.json`) may be a mutation. So may
+`query="$Q"`, unless every variable in the argument holds plain text: every
+assignment to it is literal (also after a flag-less `local` or `export`),
+and nothing else in the call could change it. That rules out a function,
+arithmetic, `${Q:=…}`, a `for` over it, a command named by an expansion, and
+every shell builtin except `echo`, `printf` without `-v`, `command -v`,
+`set` with options only, `shift`, `cd`, `pwd`, `test`, `[`, `:`, `true`,
+`false`, `break`, `continue`, `exit` and `return`; external programs cannot
+change a shell variable. A possible mutation counts as a write, and a call
+whose thread ids it may hold is never complete. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
 dotted first segment is a GitLab group. Writes through other tools — `curl`
