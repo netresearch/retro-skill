@@ -214,14 +214,16 @@ a run.
 A GraphQL write on a review thread or a review comment names it by node id
 (`PRRT_…`, `PRRC_…`) where the mutation takes it (`threadId:`,
 `pullRequestReviewThreadId:`, `pullRequestReviewCommentId:`; an id in a body
-or another field is text): literally, or through a variable whose every value
-in the call is one (`t=PRRT_…`, `for pair in "PRRT_…|reply"` with
-`${pair%%|*}`, a function given it as `$1` that neither shifts nor resets its
-parameters and is called only by its plain name, in a call where no command
-is named by an expansion and no builtin such as `.`, `eval` or `xargs` runs
-what it is given). Any other form, such as a value
-from `read` or a command, leaves the call unresolved, while its literal ids
-are still asked for; a REST edit of one comment names its path
+or another field is text): literally, as a `for` loop variable over a list
+of literal ids (`for t in PRRT_a PRRT_b`), or as a parameter `$1` of a
+function that neither shifts nor resets its parameters and is called only by
+its plain name with literal ids, in a call where no command is named by an
+expansion and no builtin such as `.`, `eval` or `xargs` runs what it is
+given. Any other form leaves the call unresolved, while its literal ids are
+still asked for. That includes a named variable (`t=PRRT_…`, `for pair in
+"PRRT_…|reply"` with `${pair%%|*}`): the value it holds when the write runs
+depends on every command in the call (`printf -vt`, `read "$v"`, `${t:=…}`),
+and a list of the commands that can set it was never complete; a REST edit of one comment names its path
 (`gh api -X PATCH repos/o/r/issues/comments/N`). A deleted comment leaves
 nothing to ask for and stays unresolved. Such a write
 is pending, not unresolved: the collector asks the forge for its PR or issue

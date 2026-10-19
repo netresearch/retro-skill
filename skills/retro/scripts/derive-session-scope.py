@@ -1308,13 +1308,13 @@ def _held_elsewhere(command: str, name: str) -> bool:
 def _sets_variable(shell: _Shell, node, name: str) -> bool:
     """Whether a command may give the variable `name` a value at run time.
     Any command that names it as a bare word (not `$name`) counts, whatever
-    runs it: `read t`, `printf -v t`, `declare t=…`, `IFS= builtin read t`,
+    runs it: `read t`, `printf -v t`, `printf -vt`, `declare t=…`, `IFS= builtin read t`,
     `eval 't=…'`, `\\read t`. Only gh and glab, `echo`, and a `printf`
     without `-v` are known to set nothing."""
     if node.type not in ("command", "declaration_command"):
         return False
     text = shell.source[shell._char[node.start_byte] : shell._char[node.end_byte]]
-    if not re.search(rf"(?<![\w$])(?<!\$\{{){re.escape(name)}(?!\w)", text):
+    if not re.search(rf"(?:(?<![\w$])|(?<=-v))(?<!\$\{{){re.escape(name)}(?!\w)", text):
         return False
     head = node.child_by_field_name("name")
     command = os.path.basename(_word(shell, head)) if head is not None else ""
@@ -1847,9 +1847,13 @@ def _review_thread_ids(
             segment,
         )
     ]
+    looped = set()  # loop variables whose `for` list names ids, as before #188
     for loop in FOR_LIST_RE.finditer(command[: write.start()]):
         if re.search(rf"\$\{{?{loop['var']}\b", segment):
-            found += REVIEW_THREAD_ID_RE.findall(loop["list"])
+            ids = REVIEW_THREAD_ID_RE.findall(loop["list"])
+            found += ids
+            if ids:
+                looped.add(loop["var"])
     # Every argument must be a literal id or a variable that traces to
     # literal ids; any other form (`threadId:"'"$T"'"`) leaves it unknown.
     literal = len(THREAD_ID_LITERAL_RE.findall(segment)) + len(
@@ -1868,7 +1872,10 @@ def _review_thread_ids(
         # such variable must trace to literal ids, or the write is unknown.
         traced = _traced_thread_ids(command, write)
         if traced is None:
-            return list(dict.fromkeys(found)), False
+            names = {
+                m["ref"].strip("${}") for m in THREAD_ID_ARGUMENT_RE.finditer(segment)
+            }
+            return list(dict.fromkeys(found)), known and names <= looped
         found += traced
     return list(dict.fromkeys(found)), known
 
@@ -1932,10 +1939,9 @@ def _in_shell_expansion(shell: _Shell, index: int) -> bool:
 
 
 def _bindings(shell: _Shell, write_node, name: str) -> list[str] | None:
-    """Every value the variable `name` takes in this call, as written, or
-    None when one of them is not in the call's text: a positional parameter
-    of the function the write is in (`reply(){ … "$1" …; }; reply PRRT_x …`),
-    an assignment (`t=PRRT_x`) or a `for` list (`for t in PRRT_x …`)."""
+    """Every value a positional parameter of the function the write is in
+    takes (`reply(){ … "$1" …; }; reply PRRT_x …`), as written, or None when
+    one of them is not in the call's text or the variable is a named one."""
     values: list[str] = []
     if name.isdigit():
         function = _enclosing(write_node, "function_definition")
@@ -1956,25 +1962,11 @@ def _bindings(shell: _Shell, write_node, name: str) -> list[str] | None:
                 return None
             values.append(_word(shell, arguments[int(name) - 1]))
         return values or None
-    for node in shell._walk():
-        if node.type == "variable_assignment" and (
-            node.parent is None or node.parent.type != "command"
-        ):
-            named, value = (
-                node.child_by_field_name("name"),
-                node.child_by_field_name("value"),
-            )
-            if named is not None and _word(shell, named) == name:
-                values.append(_word(shell, value) if value is not None else "")
-        elif node.type == "for_statement":
-            variable = node.child_by_field_name("variable")
-            if variable is not None and _word(shell, variable) == name:
-                values += [
-                    _word(shell, v) for v in node.children_by_field_name("value")
-                ]
-        elif _sets_variable(shell, node, name):
-            return None  # a value set at run time
-    return values or None
+    # A named shell variable is not traced: which value it holds when the
+    # write runs depends on every command in the call (`printf -vt`,
+    # `v=t; read "$v"`, `${t:=…}`, `(( t=… ))`, `source`), and five review
+    # rounds each found another that slipped past a list of them.
+    return None
 
 
 def _called_indirectly(shell: _Shell, function: str) -> bool:
@@ -2015,8 +2007,8 @@ def _bound_ids(
     shell: _Shell, write_node, value: str, depth: int = 0
 ) -> list[str] | None:
     """The thread ids `value` stands for: itself when it is one, or the
-    values of the variable it expands. `${pair%%|*}` keeps the front of each
-    value, so `for pair in "PRRT_x|reply text"` gives PRRT_x."""
+    values of the function parameter it expands. `${1%%|*}` keeps the front
+    of each value, so `r "PRRT_x|reply text"` gives PRRT_x."""
     if REVIEW_THREAD_ID_RE.fullmatch(value):
         return [value]
     ref = SHELL_REF_RE.fullmatch(value)
