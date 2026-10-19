@@ -290,6 +290,17 @@ class HeredocShapesTest(unittest.TestCase):
                 self.assertNotIn("https://github.com/o/r/pull/89", scan["origins"])
                 self.assertEqual(len(scan["unresolved"]), 1)
 
+    def test_a_call_that_runs_a_program_it_carries_names_nothing_silently(self):
+        # Also without a heredoc: `bash -c …` may write anywhere, so the
+        # numbered write printing nothing is not taken as the call's only
+        # write (stricter than `main`, which attributed #89; review round 6).
+        for prefix in ("bash -c 'true'\n", "echo 'gh pr comment 90 -R o/r -b x'\n"):
+            command = prefix + "gh pr edit 89 -R o/r --body-file b.md"
+            with self.subTest(prefix=prefix[:20]):
+                scan = _case("quoted_heredoc", command=command, result="ok")
+                self.assertEqual(scan["origins"], {})
+                self.assertEqual(len(scan["unresolved"]), 1)
+
     def test_listed_git_and_gh_subcommands_keep_the_rule(self):
         command = (
             "git -C /tmp/r fetch -q origin && git -C /tmp/r push origin b\n"
