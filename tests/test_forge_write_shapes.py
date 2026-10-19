@@ -442,16 +442,99 @@ class PendingLookupTest(unittest.TestCase):
                 self.assertEqual(scan["pending"], [])
                 self.assertEqual(len(scan["unresolved"]), 1)
 
-    def test_a_for_list_of_thread_ids_stays_known(self):
-        # The form the scope read before #188: a loop over literal ids.
-        command = (
-            "for t in PRRT_kwDOa PRRT_kwDOb; do gh api graphql -f query='mutation($t:ID!)"
-            '{resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}\' -f t="$t"; done'
+    def test_a_for_list_of_thread_ids_is_looked_up_but_unresolved(self):
+        # The form the scope read before #188: a loop over literal ids. Its
+        # ids are asked for; review rounds 16 and 17 found body commands that
+        # change the variable unseen (`read -r "$n"`, `$((t=5))`, a trap),
+        # so the call is never complete by them.
+        mutation = (
+            "gh api graphql -f query='mutation($t:ID!)"
+            '{resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}\' -f t="$t"'
         )
-        scan = _case("thread_id_assignment", command=command, result="true\ntrue")
-        self.assertEqual(scan["unresolved"], [])
-        (write,) = scan["pending"]
-        self.assertEqual(write["thread_ids"], ["PRRT_kwDOa", "PRRT_kwDOb"])
+        for command, ids in (
+            (
+                f"for t in PRRT_kwDOa PRRT_kwDOb; do {mutation}; done",
+                ["PRRT_kwDOa", "PRRT_kwDOb"],
+            ),
+            (
+                f'for t in PRRT_kwDOa "PRRT_kwDOb"; do {mutation}; done',
+                ["PRRT_kwDOa", "PRRT_kwDOb"],
+            ),
+            (f'for t in PRRT_kwDOa; do echo "t: $t"; {mutation}; done', ["PRRT_kwDOa"]),
+            (
+                f"for t in $(cat x); do for t in PRRT_kwDOa; do {mutation}; done; done",
+                ["PRRT_kwDOa"],
+            ),
+            (
+                f'n=t; for t in PRRT_kwDOa; do read -r "$n" < f; {mutation}; done',
+                ["PRRT_kwDOa"],
+            ),
+            (
+                f"for t in PRRT_kwDOa; do echo $((t=5)); {mutation}; done",
+                ["PRRT_kwDOa"],
+            ),
+        ):
+            with self.subTest(command=command[:50]):
+                scan = _case("thread_id_assignment", command=command, result="true")
+                self.assertEqual(len(scan["unresolved"]), 1)
+                (write,) = scan["pending"]
+                self.assertEqual(
+                    (write["thread_ids"], write["only_review_threads"]), (ids, False)
+                )
+
+    def test_a_loop_adds_only_the_ids_the_write_uses(self):
+        # Review round 17: loop ids were added wherever `$t` appeared in the
+        # call, and `\"${t}x\"` was read as `$t`.
+        resolve = "resolveReviewThread(input:{threadId:{ref}}){thread{isResolved}}"
+        for command, ids, complete in (
+            (
+                "for t in PRRT_kwDOa; do gh api graphql -f query='mutation{"
+                + resolve.replace("{ref}", '"PRRT_kwDOb"')
+                + '}\' -f note="$t"; done',
+                ["PRRT_kwDOb"],
+                True,
+            ),
+            (
+                "for t in PRRT_kwDOa; do gh api graphql -f query='mutation($t:ID!){"
+                + resolve.replace("{ref}", "$t")
+                + "}' -f t=PRRT_kwDOb; done",
+                ["PRRT_kwDOb"],
+                True,
+            ),
+            (
+                'for t in PRRT_kwDOa; do gh api graphql -f query="mutation{'
+                + resolve.replace("{ref}", '\\"${t}x\\"')
+                + '}"; done',
+                [],
+                False,
+            ),
+            (
+                "for t in PRRT_kwDOa $(cat ids); do gh api graphql -f query='mutation($t:ID!){"
+                + resolve.replace("{ref}", "$t")
+                + '}\' -f t="$t"; done',
+                [],
+                False,
+            ),
+            (
+                "select t in PRRT_kwDOa; do gh api graphql -f query='mutation($t:ID!){"
+                + resolve.replace("{ref}", "$t")
+                + '}\' -f t="$t"; break; done',
+                [],
+                False,
+            ),
+            (
+                "for t in PRRT_kwDOa; do f(){ gh api graphql -f query='mutation($t:ID!){"
+                + resolve.replace("{ref}", "$t")
+                + '}\' -f t="$t"; }; done; t=$(cat x); f',
+                [],
+                False,
+            ),
+        ):
+            with self.subTest(command=command[:50]):
+                scan = _case("thread_id_assignment", command=command, result="true")
+                self.assertEqual(scan["unresolved"] == [], complete)
+                pending = [w["thread_ids"] for w in scan["pending"]]
+                self.assertEqual(pending, [ids] if ids else [])
 
     def test_a_thread_id_read_at_run_time_stays_unresolved(self):
         # A later value from a command replaces the literal one.
@@ -501,24 +584,6 @@ class PendingLookupTest(unittest.TestCase):
                 scan = _case("thread_id_assignment", command=command, result="true")
                 self.assertFalse(any(w["only_review_threads"] for w in scan["pending"]))
                 self.assertEqual(len(scan["unresolved"]), 1)
-        for command, ids in (
-            (
-                f'for t in PRRT_kwDOa "PRRT_kwDOb"; do {mutation}; done',
-                ["PRRT_kwDOa", "PRRT_kwDOb"],
-            ),
-            (f'for t in PRRT_kwDOa; do echo "t: $t"; {mutation}; done', ["PRRT_kwDOa"]),
-            (
-                f"for t in $(cat x); do for t in PRRT_kwDOa; do {mutation}; done; done",
-                ["PRRT_kwDOa"],
-            ),
-        ):
-            with self.subTest(command=command[:50]):
-                scan = _case("thread_id_assignment", command=command, result="true")
-                self.assertEqual(scan["unresolved"], [])
-                (write,) = scan["pending"]
-                self.assertEqual(
-                    (write["thread_ids"], write["only_review_threads"]), (ids, True)
-                )
 
     def test_a_variable_id_beside_a_literal_one_leaves_the_call_unresolved(self):
         command = (
@@ -698,6 +763,10 @@ class PendingLookupTest(unittest.TestCase):
             'eval "$SETQ"; ',
             "f(){ Q=$(cat m); }; f; ",
             'unset Q; echo "${Q:=$(cat m)}" >/dev/null; ',
+            # Review round 17: a name the call computes, arithmetic.
+            'n=$(echo Q); read -r "$n" < m; ',
+            "(( Q=1 )); ",
+            "echo $((Q=1)); ",
         ):
             with self.subTest(setter=setter):
                 scan = _case("query_beside_mutation", command=plain + setter + send)
@@ -706,6 +775,8 @@ class PendingLookupTest(unittest.TestCase):
             # Review round 16: a second variable in the value, an indirection.
             'H=""; Q=$(cat m); gh api graphql -f query="$H$Q"',
             'v=Q; Q=$(cat m); gh api graphql -f query="${!v}"',
+            # An empty literal filled in by an operator expansion.
+            'Q=\'\'; echo "${Q:=$(cat m)}" >/dev/null; gh api graphql -f query="$Q"',
             # CodeRabbit on #190: a variable after a space in the value.
             "Q='query{a}'; M=$(cat m); gh api graphql -f query=\"$Q $M\"",
             "Q='query{a}'; gh api graphql -f query=\"$Q $(cat m)\"",
@@ -714,7 +785,16 @@ class PendingLookupTest(unittest.TestCase):
             with self.subTest(other=other):
                 scan = _case("query_beside_mutation", command=other)
                 self.assertEqual(len(scan["unresolved"]), 1)
-        for harmless in ("", "printf 'Q: %s\\n' \"$Q\"; ", "echo Q; "):
+        for harmless in (
+            "",
+            "printf 'Q: %s\\n' \"$Q\"; ",
+            "echo Q; ",
+            # Review round 17: commands that run no code in this shell.
+            "timeout 30 ",
+            "command -v gh >/dev/null && ",
+            "env GH_HOST=github.com ",
+            ": start; ",
+        ):
             with self.subTest(harmless=harmless):
                 scan = _case(
                     "query_beside_mutation",

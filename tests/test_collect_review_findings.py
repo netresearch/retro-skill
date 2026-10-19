@@ -2918,10 +2918,11 @@ class ReviewThreadWriteTest(unittest.TestCase):
         self.assertFalse(writes[mixed]["only_review_threads"])
         self.assertEqual(len(writes), 3)  # a review on a PR node id is no thread
         # A thread write is pending, not unresolved: only the calls with
-        # another unknown write are listed (#188).
+        # another unknown write are listed (#188). A loop's ids are looked
+        # up, but what its variable holds depends on the loop body.
         self.assertEqual(
             data["unresolved_forge_commands"],
-            [dss.squeeze(mixed, 200), dss.squeeze(review, 200)],
+            [dss.squeeze(loop, 200), dss.squeeze(mixed, 200), dss.squeeze(review, 200)],
         )
 
     def test_a_failed_thread_mutation_names_no_thread(self):

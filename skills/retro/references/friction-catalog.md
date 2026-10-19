@@ -214,17 +214,17 @@ a run.
 A GraphQL write on a review thread or a review comment names it by node id
 (`PRRT_…`, `PRRC_…`) where the mutation takes it (`threadId:`,
 `pullRequestReviewThreadId:`, `pullRequestReviewCommentId:`; an id in a body
-or another field is text): literally, as the variable of a `for` loop
-around the write whose every list word is a literal id (`for t in PRRT_a
-PRRT_b`) and whose body may not set it, or as a parameter `$1` of a
+or another field is text): literally, or as a parameter `$1` of a
 function that neither shifts nor resets its parameters and is called only by
 its plain name with literal ids, in a call where no command is named by an
 expansion and no builtin such as `.`, `eval` or `xargs` runs what it is
 given. Any other form leaves the call unresolved, while its literal ids are
 still asked for. That includes a named variable (`t=PRRT_…`, `for pair in
-"PRRT_…|reply"` with `${pair%%|*}`): the value it holds when the write runs
-depends on every command in the call (`printf -vt`, `read "$v"`, `${t:=…}`),
-and a list of the commands that can set it was never complete; a REST edit of one comment names its path
+"PRRT_…|reply"` with `${pair%%|*}`) and a `for` loop variable: the value it
+holds when the write runs depends on every command in the call (`printf -vt`,
+`read "$v"`, `${t:=…}`, `$((t=5))`), and a list of the commands that can set
+it was never complete. The ids of a `for` list that holds only literal ids
+are asked for when the write is given exactly that variable; a REST edit of one comment names its path
 (`gh api -X PATCH repos/o/r/issues/comments/N`). A deleted comment leaves
 nothing to ask for and stays unresolved. Such a write
 is pending, not unresolved: the collector asks the forge for its PR or issue
@@ -233,9 +233,10 @@ unresolved only when that lookup fails. A GraphQL query written into the
 call (`-f query='query{…}'`) is no write, even beside a mutation; a document
 from a file or a command (`query=@q.graphql`, `query="$(cat q.graphql)"`,
 `--input body.json`, or `query="$Q"` unless the call assigns `Q` and every
-value it gives it is plain text, and no command may set it otherwise: no
-`read Q`, `printf -vQ`, `${Q:=…}`, function of the call, `source`, `eval` or
-command named by an expansion) may be a mutation: it counts as a write, and a call whose
+value it gives it is plain text, and no command may set it otherwise, such
+as `read Q`, `printf -vQ`, `${Q:=…}`, `$((Q=1))`, a mention of `Q` inside
+`$(…)`, a function of the call, `source`, `eval`, `trap`, `alias`,
+`declare`, or a command named by an expansion) may be a mutation: it counts as a write, and a call whose
 thread ids it may hold is never complete. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other

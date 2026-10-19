@@ -1329,7 +1329,7 @@ def _held_elsewhere(command: str, name: str) -> bool:
         elif _sets_variable(shell, node, name):
             return True
     # `source`, `eval`, a function, `unset Q; : "${Q:=$(cat m)}"`.
-    return not assigned or _may_set_in(shell, shell.root, name, assignments=False)
+    return not assigned or _may_set_in(shell, name)
 
 
 def _bare_name(name: str) -> re.Pattern:
@@ -1854,79 +1854,82 @@ def _comment_endpoint(command: str, write: re.Match, call: _Call) -> str | None:
     return found.group(0) if found else None
 
 
-def _enclosing_for_lists(
-    command: str, write: re.Match
-) -> dict[str, tuple[list[str], bool]]:
-    """The `for` loops the write runs in, by loop variable (the nearest loop
-    for each name): the literal thread ids in its list, and whether the
-    variable holds only those when the write runs. That needs every list
-    word to be a literal id and no command in the loop body that may set the
-    variable (`t=$(cat x)`, `read t`, `${t:=…}`, `(( t=… ))`); only gh, glab,
-    `echo` and a `printf` without `-v` may name it there."""
+def _loop_ids(command: str, write: re.Match, name: str) -> list[str]:
+    """The literal thread ids of the nearest `for` loop around the write
+    whose variable is `name`, when every word of its list is one; else [].
+    They are looked up, but the call is never complete by them: what the
+    variable holds when the write runs depends on the loop body."""
     shell = _shell(command)
     located = _write_words(shell, write.start())
-    if located is None:
-        return {}
-    loops: dict[str, tuple[list[str], bool]] = {}
-    node = located[0].parent
-    while node is not None:
+    node = located[0].parent if located else None
+    while node is not None and node.type != "function_definition":
         variable = node.child_by_field_name("variable")
-        body = node.child_by_field_name("body")
-        if node.type == "for_statement" and variable is not None and body is not None:
-            name = _word(shell, variable)
-            if name not in loops:
-                values = [_word(shell, v) for v in node.children_by_field_name("value")]
-                ids = [v for v in values if REVIEW_THREAD_ID_RE.fullmatch(v)]
-                literal = bool(values) and len(ids) == len(values)
-                loops[name] = (ids, literal and not _may_set_in(shell, body, name))
+        if node.type == "for_statement" and variable is not None:
+            if _word(shell, variable) != name:
+                node = node.parent
+                continue
+            if not node.children or _word(shell, node.children[0]) != "for":
+                return []  # `select`
+            values = [_word(shell, v) for v in node.children_by_field_name("value")]
+            ids = [v for v in values if REVIEW_THREAD_ID_RE.fullmatch(v)]
+            return ids if values and len(ids) == len(values) else []
         node = node.parent
-    return loops
+    return []
 
 
-def _may_set_in(shell: _Shell, body, name: str, assignments: bool = True) -> bool:
-    """Whether anything in `body` may give the variable `name` a value: a
-    bare mention of the name outside gh, glab, `echo` and a printing
-    `printf`, an expansion with an operator (`${name:=…}`), or a command
-    that runs code the names do not show: a function of the call, a builtin
-    such as `.` or `eval`, or a command named by an expansion. With
-    `assignments` False, `name=…` itself is left to the caller."""
+# Builtins that may run code the call's words do not show in this shell.
+CODE_RUNNERS = frozenset({".", "source", "eval", "trap", "alias", "declare", "typeset"})
+
+
+def _may_set_in(shell: _Shell, name: str) -> bool:
+    """Whether the call may give the variable `name` a value other than by
+    `name=…`: a bare mention of the name outside a gh, glab, `echo` or
+    printing `printf` that runs on its own (`read Q`, `n=Q; read "$n"`,
+    `n=$(echo Q)`, `$((Q=1))`), an expansion with an operator
+    (`${Q:=…}`), or a command that runs code the words do not show: a
+    function of the call, `.`, `source`, `eval`, `trap`, `alias`,
+    `declare`, or a command named by an expansion."""
     functions = {
         _word(shell, n.child_by_field_name("name"))
         for n in shell._walk()
         if n.type == "function_definition" and n.child_by_field_name("name")
     }
-    stack = [body]
-    while stack:
-        node = stack.pop()
-        stack.extend(node.children)
+    for node in shell._walk():
         head = node.child_by_field_name("name") if node.type == "command" else None
         if head is not None:
             word = _word(shell, head)
             if (
                 word in functions
-                or word in DISPATCHERS
-                or not re.fullmatch(r"[\w./-]+", word)
+                or word in CODE_RUNNERS
+                or (word != ":" and not re.fullmatch(r"[\w./-]+", word))
             ):
                 return True
-    start, end = shell._char[body.start_byte], shell._char[body.end_byte]
-    text = shell.source[start:end]
+    text = shell.source
     if re.search(rf"\$\{{{re.escape(name)}[^}}\w]", text):
         return True
     for m in _bare_name(name).finditer(text):
-        holder = shell._node_at(start + m.start())
+        holder = shell._node_at(m.start())
         if (
-            not assignments
-            and holder.type == "variable_name"
+            holder.type == "variable_name"
             and holder.parent is not None
             and holder.parent.type == "variable_assignment"
         ):
-            continue
-        while holder is not None and holder.type not in (
-            "command",
-            "declaration_command",
-        ):
+            continue  # `Q=…`, read by the caller
+        command = None
+        while holder is not None:
+            arithmetic = holder.type == "compound_statement" and any(
+                c.type == "((" for c in holder.children[:1]
+            )
+            if arithmetic or holder.type in (
+                "command_substitution",
+                "process_substitution",
+                "arithmetic_expansion",
+            ):
+                return True
+            if command is None and holder.type in ("command", "declaration_command"):
+                command = holder
             holder = holder.parent
-        if holder is None or _sets_variable(shell, holder, name):
+        if command is None or _sets_variable(shell, command, name):
             return True
     return False
 
@@ -1957,12 +1960,6 @@ def _review_thread_ids(
             segment,
         )
     ]
-    looped = set()  # loop variables that hold only literal ids
-    for name, (ids, literal_only) in _enclosing_for_lists(command, write).items():
-        if re.search(rf"\$\{{?{name}\b", segment):
-            found += ids
-            if literal_only:
-                looped.add(name)
     # Every argument must be a literal id or a variable that traces to
     # literal ids; any other form (`threadId:"'"$T"'"`) leaves it unknown.
     literal = len(THREAD_ID_LITERAL_RE.findall(segment)) + len(
@@ -1981,11 +1978,13 @@ def _review_thread_ids(
         # such variable must trace to literal ids, or the write is unknown.
         traced = _traced_thread_ids(command, write)
         if traced is None:
-            # Each argument's shell value must be one such loop variable.
-            values = _thread_ref_values(command, write)
-            plain = [v and re.fullmatch(r"\$\{?(\w+)\}?", v) for v in values]
-            known = known and all(p and p[1] in looped for p in plain)
-            return list(dict.fromkeys(found)), known
+            # A `for` loop over literal ids: they are looked up, but the
+            # call stays unresolved.
+            for value in _thread_ref_values(command, write):
+                plain = value and re.fullmatch(r"\$\{?([A-Za-z_]\w*)\}?", value)
+                if plain:
+                    found += _loop_ids(command, write, plain[1])
+            return list(dict.fromkeys(found)), False
         found += traced
     return list(dict.fromkeys(found)), known
 
@@ -2180,7 +2179,9 @@ def _thread_ref_values(command: str, write: re.Match) -> list[str | None]:
     for m in THREAD_ID_ARGUMENT_RE.finditer(_segment(command, write)):
         ref = m["ref"]
         if _in_shell_expansion(shell, write.start() + m.start("ref")):
-            values.append(ref)
+            # `threadId:\"$t\"`; `\"${t}x\"` sends more than `$t`.
+            after = _segment(command, write)[m.end("ref") :]
+            values.append(ref if after.startswith(('\\"', '"')) else None)
         else:
             parsed = SHELL_REF_RE.fullmatch(ref)
             values.append(
