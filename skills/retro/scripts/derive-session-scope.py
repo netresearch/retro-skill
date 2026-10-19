@@ -207,6 +207,7 @@ FAILED_OUTPUT_RE = re.compile(
     f"{REPORTED_FAILURE_RE.pattern}|{BACKGROUND_RE.pattern}", re.MULTILINE
 )
 
+
 # An MCP tool that fails often returns its error as ordinary text with
 # is_error unset: "Error: 404 not found", "Issue does not exist".
 TOOL_ERROR_TEXT_RE = re.compile(
@@ -247,24 +248,9 @@ PR_MERGE_REPORT_RE = re.compile(
     r"(?P<project>[\w.-]+/[\w.-]+)#(?P<number>\d+)(?: merged| queued|$)",
     re.MULTILINE,
 )
-# The wrapper's own report that it wrote nothing to one PR.
-PR_MERGE_SHUT_RE = re.compile(
-    r"^pr-merge: (?:not merging (?P<target>[\w.-]+/[\w.-]+#\d+)\b"
-    r"|(?P<failed>[\w.-]+/[\w.-]+#\d+) failed)",
-    re.MULTILINE,
-)
 PR_MERGE_NO_WRITE_RE = re.compile(
     r"^pr-merge: (?:not merging|dry-run|.*#\d+ failed)", re.MULTILINE
 )
-# A report line that names no PR: the script stopped (`die`, `unknown flag`,
-# `--self-reviewed refused: …`), perhaps after it posted an attestation.
-PR_MERGE_UNNAMED_RE = re.compile(r"^pr-merge: (?!.*[\w.-]+/[\w.-]+#\d+)", re.MULTILINE)
-# `pr-merge.sh` flags with which it writes nothing.
-NO_WRITE_FLAGS = frozenset({"--dry-run", "--help", "-h", "--version"})
-# Every flag it knows besides `-R`/`--repo`; any other one stops it.
-WRAPPER_FLAGS = NO_WRITE_FLAGS | {"--self-reviewed"}
-# The duration `timeout` takes before the command it runs: `timeout 600 x`.
-DURATION_RE = re.compile(r"\d+(?:\.\d+)?[smhd]?")
 # A heredoc the same call runs: fed to an interpreter (`python3 - <<'PY'`), or
 # written to a file (`cat > x.sh <<'EOF'`) that the call then executes.
 # A shell runs every line; another interpreter runs a command only through a
@@ -1178,10 +1164,12 @@ class _Shell:
         return False
 
     @functools.cached_property
-    def heredocs_closed(self) -> bool:
-        """Whether every heredoc ends on a line bash takes as its end: the
-        delimiter alone on it, after leading tabs under `<<-`. The grammar
-        also ends one at `EOF ` or `  EOF`, where bash reads on to the end."""
+    def heredocs_inert(self) -> bool:
+        """Whether every heredoc is text bash neither expands nor ends
+        anywhere else than the grammar does: its delimiter is quoted
+        (`<<'X'`, `<<"X"`, `<<\\X`), so a `` `cmd` `` or `$(cmd)` in the body
+        runs nothing, and its end line is the delimiter alone, after leading
+        tabs only under `<<-` (the grammar also ends one at `X ` or `  X`)."""
         data = self._data
         for node in self._walk():
             if node.type != "heredoc_redirect":
@@ -1190,9 +1178,10 @@ class _Shell:
             start, end = kinds.get("heredoc_start"), kinds.get("heredoc_end")
             if start is None or end is None:
                 return False
-            delimiter = re.sub(
-                rb"[\"'\\]", b"", data[start.start_byte : start.end_byte]
-            )
+            written = data[start.start_byte : start.end_byte]
+            if not re.search(rb"[\"'\\]", written):
+                return False
+            delimiter = re.sub(rb"[\"'\\]", b"", written)
             first = data.rfind(b"\n", 0, end.start_byte) + 1
             last = data.find(b"\n", end.end_byte)
             line = data[first : last if last != -1 else len(data)]
@@ -1321,10 +1310,9 @@ class _Call:
             return []
         # Silent success in the one unambiguous shape: `<verb> N -R repo`, in
         # a call the parser reads whole (an unclosed heredoc, which hides its
-        # extent, is an ERROR node) and whose heredocs bash closes where the
-        # grammar does (`EOF ` with a trailing space is no end). A run in the
-        # background names its target
-        # the same way; only its output is elsewhere.
+        # extent, is an ERROR node) and whose heredocs bash neither expands
+        # nor ends elsewhere (`heredocs_inert`). A run in the background
+        # names its target the same way; only its output is elsewhere.
         # Never when the output names this number under another repository:
         # then the `-R` was not understood, and a guess would name a wrong one.
         if (
@@ -1333,7 +1321,7 @@ class _Call:
             and not same_number
             and not self.reported_failure
             and not _shell(self.command).misparsed
-            and _shell(self.command).heredocs_closed
+            and _shell(self.command).heredocs_inert
             and not _is_text(self.command, write)
         ):
             return [
@@ -1464,97 +1452,17 @@ def _joined(command: str) -> str:
     return command.replace("\\\n", "  ")
 
 
-def _enclosing(node, kind: str):
-    while node is not None and node.type != kind:
-        node = node.parent
-    return node
-
-
-def _run_words(words: list[str]) -> list[str]:
-    """A simple command's words from the program it runs: `timeout 600`,
-    `env A=1`, `bash -x` and the other wrappers peeled off."""
-    index = 0
-    while index < len(words):
-        head = os.path.basename(words[index])
-        if head not in COMMAND_WRAPPERS and head not in SHELLS:
-            return words[index:]
-        index += 1
-        while index < len(words) and (
-            words[index].startswith("-")
-            or (head == "timeout" and DURATION_RE.fullmatch(words[index]))
-            or (head == "env" and "=" in words[index])
-        ):
-            index += 1
-    return []
-
-
-def _wrapper_mentions(command: str) -> list[list[str] | None]:
-    """Each `pr-merge.sh` outside a text that may run: the words of the
-    simple command it runs (`pr-merge.sh -R o/r 5 …`), or None when that
-    command is not the script itself (a `for` list, `xargs`, `grep …
-    pr-merge.sh`): such a mention may be a run."""
-    shell = _shell(command)
-    mentions: list[list[str] | None] = []
-    for m in PR_MERGE_WRAPPER_RE.finditer(shell.blanked):
-        node = _enclosing(shell._node_at(m.start()), "command")
-        group = None
-        if node is not None:
-            offset = shell._byte[m.start()]
-            group = next(
-                (
-                    g
-                    for g in _simple_commands(shell, node)
-                    if g[0].start_byte <= offset < g[-1].end_byte
-                ),
-                None,
-            )
-        words = _run_words([_word(shell, w) for w in group]) if group else []
-        head = os.path.basename(words[0]) if words else ""
-        mentions.append(words if head == "pr-merge.sh" else None)
-    return mentions
-
-
-def _wrapper_target(words: list[str]) -> tuple[str, int] | None:
-    """(repository, number) a `pr-merge.sh` run names in literal words."""
-    repo = last = None
-    rest = iter(words[1:])
-    for word in rest:
-        if word in ("-R", "--repo"):
-            repo = next(rest, None)
-        elif word.startswith("-"):
-            if word not in WRAPPER_FLAGS:
-                return None  # `--repo=x`, `--`, `--merge`: it stops, `unknown flag`
-        else:
-            last = word  # the script keeps its last positional argument
-    if (
-        repo
-        and last
-        and re.fullmatch(r"[0-9]+", last)
-        and re.fullmatch(r"[\w.-]+/[\w.-]+", repo)
-    ):
-        return repo, int(last)
-    return None
-
-
 def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     """What `pr-merge.sh` merged or commented on, from its own report lines;
-    [] when it says it wrote nothing, None when it says neither. A run with
-    a literal `-R` and number names its target in its words, since every
-    write it makes (the merge, the queue entry, the self-review attestation)
-    goes to that PR; its report may be in a file the transcript does not
-    show (`pr-merge.sh -R o/r 5 > merge.txt`)."""
-    mentions = [
-        w
-        for w in _wrapper_mentions(command)
-        if w is None or not NO_WRITE_FLAGS & set(w)
+    [] when it says it wrote nothing, None when it says neither."""
+    blank = _blank_texts(command)
+    runs = [
+        m
+        for m in PR_MERGE_WRAPPER_RE.finditer(blank)
+        if "--dry-run" not in blank[m.start() : _shell(command).segment_end(m.start())]
     ]
-    if not mentions:
+    if not runs:
         return []
-    targets = [_wrapper_target(w) if w else None for w in mentions]
-    # A visible report line that names no PR says the script stopped, maybe
-    # after a write: only its report lines can tell, as for a variable target.
-    if all(targets) and not PR_MERGE_UNNAMED_RE.search(result):
-        return _literal_wrapper_targets(targets, result)
     found = [
         dict(
             artefact(GITHUB_HOST, m["project"], "pull", int(m["number"])),
@@ -1565,33 +1473,6 @@ def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     if found or PR_MERGE_NO_WRITE_RE.search(result):
         return found
     return None
-
-
-def _literal_wrapper_targets(
-    runs: list[tuple[str, int]], result: str
-) -> list[dict[str, Any]]:
-    """The PRs runs with literal targets wrote to: each target, unless a
-    report at a line start says it wrote nothing there (`pr-merge: not
-    merging o/r#5 …`, `pr-merge: o/r#5 failed …`) once per run on it, and
-    none says it wrote (the attestation it posts before it declines to
-    merge)."""
-    wrote = {
-        (m["project"].lower(), int(m["number"]))
-        for m in PR_MERGE_REPORT_RE.finditer(result)
-    }
-    shut: dict[tuple[str, int], int] = {}
-    for m in PR_MERGE_SHUT_RE.finditer(result):
-        project, _, number = (m["target"] or m["failed"]).rpartition("#")
-        key = (project.lower(), int(number))
-        shut[key] = shut.get(key, 0) + 1
-    counts: dict[tuple[str, int], int] = {}
-    for repo, number in runs:
-        counts[(repo, number)] = counts.get((repo, number), 0) + 1
-    return [
-        dict(artefact(GITHUB_HOST, repo, "pull", number), origin="acted")
-        for (repo, number), n in counts.items()
-        if (repo.lower(), number) in wrote or shut.get((repo.lower(), number), 0) < n
-    ]
 
 
 def _runs_a_program(command: str) -> bool:

@@ -147,7 +147,7 @@ The report distinguishes `UNRESOLVED REF`, `UNSUPPORTED`, `NOT READ`, and
 `TRUNCATED`. JSON reports `complete: false` for any of those, or for unresolved
 forge writes (`unresolved_forge_commands`): calls of the session or its
 subagents that wrote to a PR, MR or issue whose target neither its output nor
-its own words name (`gh pr edit 5 -R o/r`, `pr-merge.sh -R o/r 5` name theirs).
+its own words name (`gh pr edit 5 -R o/r` names its own).
 `gh pr create … && gh pr ready <branch> …` is not one of them, since the
 create printed its URL; a create whose output was discarded or that reported
 a failure is. Never translate incomplete coverage into "no feedback" or a green

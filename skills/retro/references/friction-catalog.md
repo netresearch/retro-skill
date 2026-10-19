@@ -177,35 +177,21 @@ call with a write whose command the parser cannot read whole — a truncated
 command, text that is not shell, or two lines the grammar joins into one
 command — is unresolved. A
 write that prints nothing counts only as `<verb> <number> -R <repo>`
-outside any heredoc or quoted text, in a call the parser reads whole: a
-closed heredoc before it (`python3 - <<'PY' … PY`, then `gh pr edit 89 -R o/r`)
-changes nothing, an unclosed one is an ERROR node and leaves it unresolved,
-and so does an end line bash does not take as one (the delimiter with a
-trailing space, or indented by spaces, or without `<<-` by tabs).
-A background run (a Bash call sent or moved to the background, a Monitor)
-holds no output at all, so only such a numbered write, or `pr-merge.sh` with
-a literal target (below), counts there, by its own words. Output that reports a failure is not a
+outside any heredoc or quoted text, in a call the parser reads whole and
+whose heredocs bash neither expands nor ends elsewhere: a heredoc with a
+quoted delimiter before it (`python3 - <<'PY' … PY`, then
+`gh pr edit 89 -R o/r`) changes nothing. An unquoted delimiter (`<<PY`,
+whose body may run a backtick or `$(…)` command), an unclosed heredoc (an
+ERROR node) or an end line bash does not take as one (the delimiter with a
+trailing space, or indented by spaces, or without `<<-` by tabs) leaves the
+write unresolved. A background run (a Bash call sent or moved to the
+background, a Monitor) holds no output at all, so only such a numbered
+write counts there, by its own words. Output that reports a failure is not a
 success: an `HTTP 4xx/5xx`, glab's `422 {message: …}`, a JSON error body
 with `"status":"405"` or `}gh: …` behind it, `GraphQL:` at a
 line start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`,
 `failed to` or `Cannot perform`; and a write whose own `&& echo A || echo B`
-printed B and not A.
-`pr-merge.sh -R o/r N` counts by its literal `-R` and number (its last
-positional argument, as the script reads it; a URL or branch there names no
-target, nor does any flag the script rejects, such as `--repo=o/r` or `--`),
-because every write it makes (the merge,
-the queue entry, the attestation) goes to that PR, also when its report went
-to a file (`> merge.txt 2>&1`); not when a report at a line start, once per
-run on that PR, says it wrote nothing (`pr-merge: not merging o/r#N`,
-`pr-merge: o/r#N failed`) and none says it posted an attestation there. A
-visible report line that names no PR (`pr-merge: unknown flag: …`,
-`pr-merge: --self-reviewed refused: …`) says the script stopped; then, as for
-a target in a variable (`-R o/$1 $2`), the target is read from report lines
-at a line start only, and without one stays unresolved. A run with
-`--dry-run`, `--help` or `--version` writes nothing. Any other mention of
-`pr-merge.sh` — a file reader given it (`grep … pr-merge.sh`), `xargs`, a
-`for` list — may be a run and stays unresolved without a report line. MCP
-writes count by their input. A `-R` with a scheme and a
+printed B and not A. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
 dotted first segment is a GitLab group. Writes through other tools — `curl`

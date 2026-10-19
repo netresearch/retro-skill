@@ -1,38 +1,14 @@
 {
-  "reader": {
-    "source": "session e72080f1, subagents/agent-aa659adbc3f580135.jsonl",
-    "command": "grep -n -E '^\\s*--[a-z-]+\\)|UNSTABLE|usage|Usage' /home/cybot/.claude/skills/git-workflow/scripts/pr-merge.sh | head -30",
-    "result": "18:# Usage:\n37:# gate is shut and nothing was attempted, 2 an error — usage, lookup, the merge\n86:    --dry-run) DRY=1; shift ;;\n87:    --self-reviewed) SELF_REVIEWED=1; shift ;;\n88:    --version) skill_version; exit 0 ;;",
+  "quoted_heredoc": {
+    "source": "session e72080f1, subagents/agent-abebbd4343eee335e.jsonl",
+    "command": "python3 - <<'PY'\np='/tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/finish-others_04/wk-body.md'\ns=open(p,encoding='utf-8').read(); assert s.count('8d9ab81')==1\nopen(p,'w',encoding='utf-8').write(s.replace('8d9ab81','e08b7c5')); print('ok')\nPY\ngh pr edit 19 -R netresearch/t3x-nr-wellknown --body-file /tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/finish-others_04/wk-body.md >/dev/null; echo \"EXIT: $?\"",
+    "result": "ok\nEXIT: 0",
     "is_error": false
   },
-  "help": {
-    "source": "session e72080f1, subagents/agent-a7f535438f459ffd9.jsonl",
-    "command": "S=/tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/secfix-G04; cat > $S/nrlp-review-note.md <<'EOF'\nReview note for head 688debe: six review rounds by fresh independent reviewer agents, each bounded to defects in this PR's diff. Findings per round: 4, 1, 1, 3, 1, 0. All findings were fixed in this branch; round 6 reported no findings at 688debe. Copilot review was unavailable (account quota exhausted); CodeRabbit reviewed this head with no actionable comments. Gates on 688debe: unit, functional, PHPStan, CGL, architecture, lint and e2e green in CI.\n\n_Assisted by claude-code:claude-opus-5-5 — [Session](https://claude.ai/code/session_018YeAfZRDbYWzRMVUPmZDXj)_\nEOF\ngh api repos/netresearch/nr-landingpage/commits/main --jq .sha; /home/cybot/.claude/skills/git-workflow/scripts/pr-merge.sh --help 2>&1 | head -30",
-    "result": "a8822e89e2de567d2b065ac4aef86e889c58119e\npr-merge.sh — merge a pull request with the method the repository allows,\nand only when the merge gate is actually open.\n\nWhy this exists: `gh pr merge --merge --delete-branch` is wrong in several\nrepository configurations and gives no useful error until it fails. Two of\nthem answer with a message; the other two are silent. A repo\nwith `allow_merge_commit: false` answers \"Merge commits are not allowed on\nthis repository\"; a repo with a merge queue answers \"Cannot use --delete-branch\nwhen merge queue enabled\". Hand-rolling the detection per call site is how a\n54-repository rollout hit both, three times each. The silent two are a fork\nhead, which is not ours to delete, and a branch another open pull request is\nbased on, whose deletion closes that pull request. pr-status.sh already knows\nmost of the answer — this reads it instead of guessing.\n\nSquash is never used: it discards atomic commits and their signatures.\n\nUsage:\n  pr-merge.sh                       # PR for the current branch\n  pr-merge.sh 123\n  pr-merge.sh -R owner/repo 123\n  pr-merge.sh -R owner/repo 123 --dry-run   # print the command, run nothing\n  pr-merge.sh -R owner/repo 123 --self-reviewed\n                                    # the review the gate demands is one an\n                                    # exhausted Copilot quota (or two failed\n                                    # reviews on this head) makes\n                                    # unsatisfiable, and the operator has\n                                    # reviewed the diff instead: post the\n                                    # on-the-record `Self-review: <head-sha>`\n                                    # attestation comment as the PR author,\n                                    # then merge. Refused whenever a live",
-    "is_error": false
-  },
-  "closed_heredoc": {
+  "unquoted_heredoc": {
     "source": "session e72080f1, subagents/agent-a29572d7b94808120.jsonl",
     "command": "S=/tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/secfix-G12; python3 - <<PY\np=\"$S/dd-pr.md\"; s=open(p).read(); o=\"Against \\`origin/main\\` 7 of its 10 checks fail.\"; assert s.count(o)==1; open(p,'w').write(s.replace(o,\"Against \\`origin/main\\` 6 of its 10 checks fail.\"))\nPY\ngh pr edit 89 -R netresearch/typo3-ddev-skill --body-file $S/dd-pr.md >/dev/null && echo ok",
     "result": "ok",
-    "is_error": false
-  },
-  "report_in_file": {
-    "source": "session e72080f1, subagents/agent-a1e4c1bb2db9905c3.jsonl",
-    "command": "/home/cybot/.claude/skills/git-workflow/scripts/pr-merge.sh -R netresearch/t3x-nr-saml-auth 120 > /tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/slo-120/merge.txt 2>&1; echo \"exit=$?\"",
-    "result": "exit=0",
-    "is_error": false
-  },
-  "loop_variable_target": {
-    "source": "session e72080f1, subagents/agent-a1bcb23e59c7ab000.jsonl",
-    "command": "cd /tmp; O=/tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/g14; for x in \"t3x-nr-wellknown 23\" \"t3x-nr-llm 1014\" \"t3x-rte_ckeditor_image 916\"; do set -- $x; timeout 600 /home/cybot/.claude/skills/git-workflow/scripts/pr-merge.sh -R netresearch/$1 $2 > $O/merge-$1-r.txt 2>&1; echo \"$1 exit=$?\"; done",
-    "result": "t3x-nr-wellknown exit=0\nt3x-nr-llm exit=0\nt3x-rte_ckeditor_image exit=0",
-    "is_error": false
-  },
-  "echoed_report": {
-    "source": "session e72080f1, subagents/agent-a3bbc8fd4a316ea70.jsonl",
-    "command": "E=/tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/enrol; for p in \"composer-installers 8\" \"composer-audit-responsibility 19\"; do set -- $p; /home/cybot/.claude/skills/git-workflow/scripts/pr-merge.sh -R netresearch/$1 $2 > $E/merge-$1.txt 2>&1; echo \"$1 exit=$? $(head -c 200 $E/merge-$1.txt)\"; done",
-    "result": "composer-installers exit=0 pr-merge: netresearch/composer-installers#8 merged (--merge)\ncomposer-audit-responsibility exit=0 pr-merge: netresearch/composer-audit-responsibility#19 merged (--merge)",
     "is_error": false
   },
   "background_numbered": {

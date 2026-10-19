@@ -4,13 +4,13 @@
 
 """Forge writes that kept `complete` false although their target is known (#188).
 
-Each case is a tool call copied byte for byte from session e72080f1
-(`fixtures/review-findings/forge-write-shapes-188.json`, 2026-10-18). Before
-#188 every one of them was listed in `unresolved_forge_commands`; 73 of the
-213 such calls in that session named their target in their own words.
-Left as on main by decision: review-thread writes named by a forge id (the
-collector's thread lookup resolves them online) and calls that only read
-`pr-merge.sh` (`grep … pr-merge.sh`), which stay unresolved.
+Each recorded case is a tool call copied byte for byte from session e72080f1
+(`fixtures/review-findings/forge-write-shapes-188.json`, 2026-10-18). Only two
+shapes are resolved offline: a numbered write printing nothing after heredocs
+bash does not expand (quoted delimiter, closed where the grammar closes it),
+and a numbered write run in the background. Everything the parsing cannot
+prove stays unresolved, as on main: unquoted heredocs, `pr-merge.sh` calls
+and review-thread writes named by a forge id.
 """
 
 from __future__ import annotations
@@ -122,202 +122,84 @@ def _case(name: str, command: str | None = None, result: str | None = None) -> d
 GH = "https://github.com/netresearch"
 
 
-class WrapperShapesTest(unittest.TestCase):
-    """git-workflow's `pr-merge.sh`."""
-
-    def test_a_reader_given_the_script_stays_unresolved(self):
-        # `grep … pr-merge.sh | head -30`: left as on main by decision; telling
-        # a reader from a run took a new guard in each review round.
-        self.assertEqual(len(_scan("reader")["unresolved"]), 1)
-
-    def test_a_mention_the_words_do_not_place_still_counts(self):
-        # Not the script itself: `xargs` may run it.
-        scan = _case("reader", command="ls | xargs pr-merge.sh -R o/r", result="")
-        self.assertEqual(len(scan["unresolved"]), 1)
-
-    def test_its_help_writes_nothing(self):
-        self.assertEqual(
-            _scan("help"), {"origins": {}, "unresolved": [], "pending": []}
-        )
-
-    def test_a_report_in_a_file_is_named_by_its_literal_target(self):
-        # `pr-merge.sh -R o/r N > merge.txt`: every write it makes goes to o/r#N.
-        scan = _scan("report_in_file")
-        self.assertEqual(scan["origins"], {f"{GH}/t3x-nr-saml-auth/pull/120": "acted"})
+class HeredocShapesTest(unittest.TestCase):
+    def test_a_numbered_edit_after_a_quoted_heredoc(self):
+        # `python3 - <<'PY' … PY`, then `gh pr edit 19 -R … >/dev/null`.
+        scan = _scan("quoted_heredoc")
+        self.assertEqual(scan["origins"], {f"{GH}/t3x-nr-wellknown/pull/19": "acted"})
         self.assertEqual(scan["unresolved"], [])
 
-    def test_a_target_from_a_loop_variable_stays_unresolved(self):
-        scan = _scan("loop_variable_target")
+    def test_a_numbered_edit_after_an_unquoted_heredoc_stays_unresolved(self):
+        # `<<PY` with `$S` in the body: bash expands it, and a backtick or
+        # `$(…)` there would run a command the parsing does not model.
+        scan = _scan("unquoted_heredoc")
         self.assertEqual(scan["origins"], {})
         self.assertEqual(
             scan["unresolved"],
-            [dss.squeeze(CASES["loop_variable_target"]["command"], 200)],
+            [dss.squeeze(CASES["unquoted_heredoc"]["command"], 200)],
         )
 
-    def test_an_echoed_report_of_a_loop_variable_target_stays_unresolved(self):
-        # `echo "$1 exit=$? $(head -c 200 merge-$1.txt)"`: the echoed line
-        # names a PR, but any text can quote such a line (review round 1).
-        scan = _scan("echoed_report")
+    def test_a_backtick_in_an_unquoted_heredoc_stays_unresolved(self):
+        # Bash runs the backtick write to #90; the grammar reads it as text
+        # (review round 3). Neither PR may be named, the call is unresolved.
+        command = (
+            "cat > b.md <<EOF\n`gh pr edit 90 -R o/r --add-label x`\nEOF\n"
+            "gh pr edit 89 -R o/r --body-file b.md"
+        )
+        scan = _case("quoted_heredoc", command=command, result="")
         self.assertEqual(scan["origins"], {})
         self.assertEqual(len(scan["unresolved"]), 1)
 
-    def test_a_report_naming_another_pr_does_not_replace_the_literal_target(self):
-        for command, printed in (
-            (
-                "pr-merge.sh -R o/r 7 > m.txt 2>&1; cat notes.md",
-                "see pr-merge: o/r#5 merged (--merge)",
-            ),
-            (
-                "pr-merge.sh -R o/r 5; pr-merge.sh -R o/r 7 > m.txt",
-                "pr-merge: o/r#5 merged",
-            ),
-        ):
-            with self.subTest(command=command):
-                scan = _case("reader", command=command, result=printed)
-                self.assertIn("https://github.com/o/r/pull/7", scan["origins"])
-                self.assertEqual(scan["unresolved"], [])
-
-    def test_a_literal_target_its_own_report_shuts_wrote_nothing(self):
-        scan = _case(
-            "reader",
-            command="pr-merge.sh -R o/r 7 2>&1 | tail -1",
-            result="pr-merge: not merging o/r#7 — request-review: no review",
-        )
-        self.assertEqual(scan, {"origins": {}, "unresolved": [], "pending": []})
-
-    def test_an_attestation_before_not_merging_is_a_write(self):
-        # Verbatim from the session: the attestation was posted, the merge not.
-        command = "/home/cybot/.claude/skills/git-workflow/scripts/pr-merge.sh --self-reviewed -R netresearch/timalytics 32; echo EXIT $?"
-        printed = (
-            "pr-merge: posted Self-review attestation for 82e500c1515e on netresearch/timalytics#32\n"
-            "pr-merge: not merging netresearch/timalytics#32 — wait: UNSTABLE while 5 non-required check(s) have not finished (1 running, 4 queued) — nothing has failed\n"
-            "EXIT 1"
-        )
-        scan = _case("reader", command=command, result=printed)
-        self.assertEqual(scan["origins"], {f"{GH}/timalytics/pull/32": "acted"})
-        self.assertEqual(scan["unresolved"], [])
-
-    def test_one_stop_line_leaves_the_other_run_counted(self):
-        scan = _case(
-            "reader",
-            command="pr-merge.sh -R o/r 5; pr-merge.sh -R o/r 5 --self-reviewed > m.txt",
-            result="pr-merge: not merging o/r#5 — request-review: no review",
-        )
-        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
-
-    def test_a_number_that_is_no_ascii_digit_names_no_target(self):
-        # `"²".isdigit()` is true and `int("²")` raises (review round 2).
-        for number in ("²", "５"):
-            with self.subTest(number=number):
-                scan = _case(
-                    "reader", command=f"pr-merge.sh -R o/r {number} > m 2>&1", result=""
+    def test_every_quoting_of_the_delimiter_counts(self):
+        for start in ("<<'EOF'", '<<"EOF"', "<<\\EOF"):
+            command = (
+                f"cat > b.md {start}\n`x` $(y)\nEOF\n"
+                "gh pr edit 89 -R o/r --body-file b.md"
+            )
+            with self.subTest(start=start):
+                scan = _case("quoted_heredoc", command=command, result="")
+                self.assertEqual(
+                    scan["origins"], {"https://github.com/o/r/pull/89": "acted"}
                 )
-                self.assertEqual(scan["origins"], {})
-                self.assertEqual(len(scan["unresolved"]), 1)
-
-    def test_the_last_number_is_the_pr(self):
-        # pr-merge.sh keeps the last positional argument.
-        scan = _case("reader", command="pr-merge.sh -R o/r 5 6 > m.txt", result="")
-        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/6": "acted"})
-
-    def test_a_last_positional_that_is_no_number_names_no_target(self):
-        # pr-merge.sh takes its last positional argument as the PR.
-        for command in (
-            "pr-merge.sh -R o/r 5 https://github.com/o/r/pull/7 > m.txt 2>&1",
-            "pr-merge.sh -R o/r 5 feature-x > m.txt 2>&1",
-        ):
-            with self.subTest(command=command):
-                scan = _case("reader", command=command, result="")
-                self.assertEqual(scan["origins"], {})
-                self.assertEqual(len(scan["unresolved"]), 1)
-
-    def test_an_argument_the_script_rejects_names_no_target(self):
-        # pr-merge.sh knows `-R`/`--repo <value>` and four flags; any other
-        # dash word ends it in `unknown flag` before it writes.
-        for command, printed in (
-            ("pr-merge.sh --repo=o/r 5 > m.txt 2>&1", ""),
-            ("pr-merge.sh -R o/r -- 5 > m.txt 2>&1", ""),
-            (
-                "pr-merge.sh -R o/r 5 --merge",
-                "Exit code 2\npr-merge: unknown flag: --merge",
-            ),
-        ):
-            with self.subTest(command=command):
-                scan = _case("reader", command=command, result=printed)
-                self.assertEqual(scan["origins"], {})
-                self.assertEqual(len(scan["unresolved"]), 1)
-
-    def test_a_report_line_naming_no_pr_is_a_stop(self):
-        # `die` prints `pr-merge: <message>` without `repo#N`.
-        for printed in (
-            "Exit code 2\npr-merge: --self-reviewed refused: the attestation must come from the PR author (a); gh is authenticated as b",
-            "Exit code 2\npr-merge: pr-status.sh failed",
-        ):
-            with self.subTest(printed=printed[:40]):
-                scan = _case(
-                    "reader",
-                    command="pr-merge.sh -R o/r 5 --self-reviewed",
-                    result=printed,
-                )
-                self.assertEqual(scan["origins"], {})
-                self.assertEqual(len(scan["unresolved"]), 1)
-        # A stop after the attestation: the attestation line still counts.
-        scan = _case(
-            "reader",
-            command="pr-merge.sh -R o/r 5 --self-reviewed",
-            result="pr-merge: posted Self-review attestation for abc on o/r#5\n"
-            "pr-merge: pr-status.sh failed",
-        )
-        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
-
-
-class SubcommandShapesTest(unittest.TestCase):
-    def test_a_numbered_edit_after_a_closed_heredoc(self):
-        # `python3 - <<PY … PY` then `gh pr edit 89 -R … >/dev/null`: 48 calls.
-        scan = _scan("closed_heredoc")
-        self.assertEqual(scan["origins"], {f"{GH}/typo3-ddev-skill/pull/89": "acted"})
-        self.assertEqual(scan["unresolved"], [])
+        # `<<E'O'F` is quoted for bash, but the grammar does not end it where
+        # bash does: fail closed, nothing is named.
+        command = "cat > b.md <<E'O'F\nx\nEOF\ngh pr edit 89 -R o/r --body-file b.md"
+        scan = _case("quoted_heredoc", command=command, result="")
+        self.assertEqual(scan["origins"], {})
 
     def test_a_numbered_edit_inside_an_unclosed_heredoc_is_not_attributed(self):
         # Without its `PY` line the heredoc runs to the end: the edit is text
         # fed to python, not a command, and never a silent success.
-        command = CASES["closed_heredoc"]["command"].replace("\nPY\n", "\n", 1)
-        self.assertNotEqual(command, CASES["closed_heredoc"]["command"])
-        self.assertEqual(_case("closed_heredoc", command=command)["origins"], {})
+        command = CASES["quoted_heredoc"]["command"].replace("\nPY\n", "\n", 1)
+        self.assertNotEqual(command, CASES["quoted_heredoc"]["command"])
+        self.assertEqual(_case("quoted_heredoc", command=command)["origins"], {})
 
     def test_a_numbered_edit_the_parser_cannot_read_whole_stays_unresolved(self):
         # An unclosed quoted delimiter is an ERROR node: the extent is unknown.
         command = "python3 - <<'PY'\nprint(1)\ngh pr edit 89 -R o/r --body-file b.md"
-        scan = _case("closed_heredoc", command=command, result="")
+        scan = _case("quoted_heredoc", command=command, result="")
         self.assertEqual(scan["origins"], {})
         self.assertEqual(len(scan["unresolved"]), 1)
 
     def test_a_heredoc_bash_does_not_close_hides_the_edit(self):
-        # tree-sitter-bash ends a heredoc at `EOF ` or `  EOF`; bash reads
-        # on to the end and the edit is heredoc text (review round 1).
-        for end in ("EOF ", "  EOF"):
+        # tree-sitter-bash ends a heredoc at `EOF `, `  EOF` or a tab-indented
+        # `EOF` without `<<-`; bash reads on to the end, and the edit is
+        # heredoc text (review rounds 1 and 2).
+        for end in ("EOF ", "  EOF", "\tEOF"):
             command = (
                 f"cat > /tmp/b.md <<'EOF'\nbody\n{end}\n"
                 "gh pr edit 89 -R o/r --body-file /tmp/b.md"
             )
             with self.subTest(end=end):
-                scan = _case("closed_heredoc", command=command, result="")
+                scan = _case("quoted_heredoc", command=command, result="")
                 self.assertEqual(scan["origins"], {})
                 self.assertEqual(len(scan["unresolved"]), 1)
-        # Without `<<-` a tab-indented end line closes nothing either.
-        command = (
-            "cat > /tmp/b.md <<EOF\nbody\n\tEOF\n"
-            "gh pr edit 89 -R o/r --body-file /tmp/b.md"
-        )
-        scan = _case("closed_heredoc", command=command, result="")
-        self.assertEqual(scan["origins"], {})
-        self.assertEqual(len(scan["unresolved"]), 1)
         # `<<-` strips leading tabs only: a tab-indented end closes it.
         command = (
-            "cat > /tmp/b.md <<-EOF\n\tbody\n\tEOF\n"
+            "cat > /tmp/b.md <<-'EOF'\n\tbody\n\tEOF\n"
             "gh pr edit 89 -R o/r --body-file /tmp/b.md"
         )
-        scan = _case("closed_heredoc", command=command, result="")
+        scan = _case("quoted_heredoc", command=command, result="")
         self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/89": "acted"})
 
     def test_a_heredoc_program_that_carries_a_write_stays_unresolved(self):
@@ -326,9 +208,11 @@ class SubcommandShapesTest(unittest.TestCase):
             "subprocess.run(['gh', 'pr', 'comment', '7', '-R', 'o/r', '-b', 'x'])\nPY\n"
             "gh pr edit 89 -R netresearch/typo3-ddev-skill --body-file b.md >/dev/null && echo ok"
         )
-        scan = _case("closed_heredoc", command=command, result="ok")
+        scan = _case("quoted_heredoc", command=command, result="ok")
         self.assertEqual(len(scan["unresolved"]), 1)
 
+
+class BackgroundShapesTest(unittest.TestCase):
     def test_a_numbered_write_run_in_the_background(self):
         # Its output is in a task file; its words name the PR.
         scan = _scan("background_numbered")

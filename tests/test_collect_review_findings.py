@@ -1480,14 +1480,7 @@ class SeventhRoundTest(unittest.TestCase):
         shut = "pr-merge: not merging o/r#150 — request-review: no review on the current head"
         urls, data = self.urls([({"command": "pr-merge.sh -R o/r 150"}, shut)])
         self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
-        # Its report went elsewhere: the literal `-R` and number name the
-        # only PR it writes to (#188); a target in a variable does not.
         urls, data = self.urls([({"command": "pr-merge.sh -R o/r 150"}, "")])
-        self.assertEqual(
-            (urls, data["unresolved_forge_commands"]),
-            ({"https://github.com/o/r/pull/150": "acted"}, []),
-        )
-        urls, data = self.urls([({"command": 'pr-merge.sh -R o/r "$N"'}, "")])
         self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
 
     def test_a_status_line_of_the_same_pr_is_not_unclaimed(self):
@@ -1941,17 +1934,12 @@ class EleventhRoundTest(unittest.TestCase):
 
     def test_a_write_in_a_substitution_inside_quotes_runs(self):
         # Copied shape: a Monitor loop polling `pr-merge.sh` inside `echo "#865: $(…)"`.
-        # The substitution runs; its literal `-R o/r 5` names the PR (#188).
-        # The echo prefix keeps its report off the line start, so a stop line
-        # there would not count either: accepted, the call aimed only at #5.
+        # The echo prefix keeps its report off the start of the line: unresolved.
         cmd = 'echo "#5: $(pr-merge.sh -R o/r 5 --self-reviewed 2>&1 | tail -1)"'
         urls, data = self.urls(
             [({"command": cmd}, "#5: pr-merge: o/r#5 queued (--merge)")]
         )
-        self.assertEqual(
-            (urls, data["unresolved_forge_commands"]),
-            ({"https://github.com/o/r/pull/5": "acted"}, []),
-        )
+        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 1))
         cmd = 'echo "#5: $(gh pr merge 5 -R o/r --merge 2>&1 | tail -1)"'
         urls, _ = self.urls([({"command": cmd}, "")])
         self.assertEqual(urls, {"https://github.com/o/r/pull/5": "acted"})
