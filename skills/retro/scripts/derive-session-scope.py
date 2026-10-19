@@ -1378,6 +1378,12 @@ SHELL_BUILTINS = frozenset(
         "wait",
     }
 )
+# Variables the shell itself sets.
+SHELL_SET_RE = re.compile(
+    r"BASH\w*|PWD|OLDPWD|REPLY|RANDOM|SRANDOM|SECONDS|LINENO|PPID|UID|EUID|GROUPS"
+    r"|MAPFILE|OPTARG|OPTIND|COPROC|HISTCMD|EPOCH\w*|FUNCNAME|PIPESTATUS|HOSTNAME"
+    r"|HOSTTYPE|MACHTYPE|OSTYPE|SHLVL|DIRSTACK|COMP_\w*|READLINE_\w*"
+)
 # The builtins that never give a variable a value.
 SAFE_BUILTINS = frozenset(
     {":", "[", "cd", "pwd", "true", "false", "test", "exit", "return"}
@@ -1396,8 +1402,14 @@ def _plain_value(command: str, name: str) -> str | None:
     (`echo`, `printf` whose first argument is literal and not `-v…`,
     `command -v`, `set` with literal options, `cd`, `test`, …). External
     programs cannot change a shell variable. A positional or special
-    parameter is never assigned in the call's text."""
+    parameter, or a variable the shell sets itself (`BASH_REMATCH`, `PWD`),
+    never holds plain text, nor does one a `{Q}>` redirection or a
+    `[[ … ]]` test names."""
     shell = _shell(command)
+    if SHELL_SET_RE.fullmatch(name) or re.search(
+        rf"\{{{re.escape(name)}\}}\s*[<>]", shell.source
+    ):
+        return None  # `[[ … =~ … ]]` sets BASH_REMATCH; `{Q}>f` sets Q
     values: set[str] = set()
     for node in shell._walk():
         kind = node.type
@@ -1441,6 +1453,10 @@ def _plain_value(command: str, name: str) -> str | None:
             variable = node.child_by_field_name("variable")
             if variable is not None and _word(shell, variable) == name:
                 return None
+        elif kind == "test_command" and re.search(
+            rf"(?<![\w$]){re.escape(name)}(?!\w)", _word(shell, node)
+        ):
+            return None  # `[[ 1 -eq Q=1 ]]`
         elif kind == "declaration_command":
             for part in node.children[1:]:
                 if part.type == "variable_assignment":
@@ -2077,30 +2093,50 @@ def _write_fields(shell: _Shell, index: int):
         [],
     )
     fields: dict[str, tuple[str | None, str]] = {}
-    pending = opaque = False
+    pending = ""  # the flag whose value the next word is
+    opaque = False
     for word in group:
         raw = shell.source[shell._char[word.start_byte] : shell._char[word.end_byte]]
         value = _literal_value(shell, word)
         given = value if value is not None else unquote(raw)
-        if pending:
-            pending = False
+        flag, pending = pending, ""
+        if flag in GH_VALUE_FLAGS:
+            continue  # `-t '-fid=x'`: the template, not a field
+        if flag:
+            pass
         elif value is not None and value in FIELD_FLAGS:
-            pending = True
+            pending = value
             continue
         elif value is not None and re.match(r"-[fF][^-]|--(?:raw-)?field=", value):
+            flag = value[:2] if not value.startswith("--") else value.split("=")[0]
             given = value.split("=", 1)[1] if value.startswith("--") else value[2:]
             value = given
+        elif value is not None and value in GH_VALUE_FLAGS:
+            pending = value
+            continue
+        elif value is not None and re.fullmatch(r"-[A-Za-z]+", value):
+            if value[-1] in "HXpqt":  # `-it`: the last flag takes the next word
+                pending = "-" + value[-1]
+            continue
         elif value is None or value.startswith("--input"):
             opaque = True  # `$F body.json`, `"--input"`: gh may read anything
             continue
         else:
             continue
         key = given.partition("=")[0]
-        if value is None and not re.fullmatch(r"[\w-]+", key):
-            opaque = True  # a field name the call computes
+        if (value is None and not re.fullmatch(r"[\w-]+", key)) or key in fields:
+            opaque = True  # a name the call computes, or one given twice
             continue
         literal = value.partition("=")[2] if value is not None else None
-        fields.setdefault(key, (literal, unquote(raw.partition("=")[2])))
+        if (
+            flag in ("-F", "--field")
+            and literal is not None
+            and re.search(
+                r"\{(?:owner|repo|branch)\}|:(?:owner|repo|branch)\b", literal
+            )
+        ):
+            literal = None  # gh fills these in a typed field
+        fields[key] = (literal, unquote(raw.partition("=")[2]))
     if opaque:
         fields["query"] = (None, "")
     return node, fields
@@ -2141,10 +2177,11 @@ def _literal_thread_write(
     )
     threads = 0
     named = re.match(r"\s*mutation\s+([_A-Za-z]\w*)", blanked)  # `mutation Name(`
-    allowed = THREAD_MUTATIONS | {"mutation", named[1] if named else "mutation"}
     for m in re.finditer(r"([_A-Za-z]\w*)\s*\(", blanked):
+        if named and m.start(1) == named.start(1):
+            continue  # the operation's own name
         threads += m[1] in THREAD_MUTATIONS
-        complete = complete and m[1] in allowed
+        complete = complete and (m[1] == "mutation" or m[1] in THREAD_MUTATIONS)
     ids: list[str] = []
     arguments = list(GQL_ID_ARGUMENT_RE.finditer(blanked))
     # Each thread mutation names its id itself, not through `input:$in`.
@@ -2188,6 +2225,11 @@ SHELL_REF_RE = re.compile(
     r"\$(?:\{(?P<braced>[A-Za-z_]\w*|\d)(?P<op>[^}]*)\}|(?P<name>[A-Za-z_]\w*|\d))"
 )
 FIELD_FLAGS = frozenset({"-f", "-F", "--field", "--raw-field"})
+# The other `gh api` flags that take the next word as their value.
+GH_VALUE_FLAGS = frozenset(
+    {"-H", "--header", "-X", "--method", "-p", "--preview", "-q", "--jq"}
+    | {"-t", "--template", "--hostname", "--cache"}
+)
 # Builtins and wrappers that run a command they are given as data.
 DISPATCHERS = frozenset(
     {".", "source", "eval", "trap", "xargs", "command", "builtin", "exec", "compgen"}

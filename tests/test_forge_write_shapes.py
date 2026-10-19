@@ -880,6 +880,19 @@ class PendingLookupTest(unittest.TestCase):
             + "} mutation B{"
             + resolve
             + "}' -f operationName=B",
+            # Review round 20: the operation named after a field it holds,
+            # a template value read as a field, a key given twice, and a
+            # typed field gh fills in.
+            "gh api graphql -f query='mutation mergePullRequest{"
+            + resolve
+            + " "
+            + merge
+            + "}'",
+            (
+                "gh api graphql -f query='mutation($id:ID!){resolveReviewThread("
+                "input:{threadId:$id}){thread{id}}}' -f id=PRRT_kwDOa -f id=PRRT_kwDOb"
+            ),
+            f"gh api graphql -F query='mutation{{{resolve} x:{{repo}}(input:{{}}){{id}}}}'",
             # A thread mutation that names no id of its own.
             (
                 f"gh api graphql -f query='mutation{{{resolve} "
@@ -890,6 +903,17 @@ class PendingLookupTest(unittest.TestCase):
                 scan = _case("thread_id_assignment", command=command, result="{}")
                 self.assertFalse(any(w["only_review_threads"] for w in scan["pending"]))
                 self.assertEqual(len(scan["unresolved"]), 1)
+        # The word after `-t` is the template, not a field: gh writes PRRT_b.
+        for flags in ("-t", "-it"):
+            command = (
+                f"gh api graphql {flags} -fid=PRRT_kwDOa -f query='mutation($id:ID!){{"
+                "resolveReviewThread(input:{threadId:$id}){thread{id}}}' -f id=PRRT_kwDOb"
+            )
+            scan = _case("thread_id_assignment", command=command, result="{}")
+            self.assertEqual(scan["unresolved"], [])
+            self.assertEqual(
+                [w["thread_ids"] for w in scan["pending"]], [["PRRT_kwDOb"]]
+            )
         # A named operation is still the thread shape.
         command = (
             "gh api graphql -f query='mutation Done($t:ID!){resolveReviewThread("
@@ -913,6 +937,14 @@ class PendingLookupTest(unittest.TestCase):
             "Q='query{x}'; for ((Q=1; Q<2; Q++)); do :; done; " + send,
             "P=mut; Q='ation{x}'; gh api graphql -f query=\"$P$Q\"",
             "M=mut; Q='query{x}'; gh api graphql -f query=\"${Q/query/${M}ation}\"",
+            # Review round 20: variables the shell itself sets, and a named
+            # descriptor or an arithmetic test that sets `Q`.
+            (
+                "BASH_REMATCH='query{x}'; [[ $(cat m) =~ .+ ]]; "
+                'gh api graphql -f query="$BASH_REMATCH"'
+            ),
+            "Q='query{x}'; : {Q}>/dev/null; " + send,
+            "Q='query{x}'; [[ 1 -eq Q=1 ]]; " + send,
         ):
             with self.subTest(command=command[:45]):
                 scan = _case("query_beside_mutation", command=command)

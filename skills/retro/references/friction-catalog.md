@@ -216,12 +216,15 @@ A GraphQL write on a review thread or a review comment names it by node id
 asks the forge for its PR or issue (`review_thread_writes` in the scope
 output) and lists the call as unresolved only when that lookup fails. A call
 is complete by its thread ids only in one shape. Every word of the gh call
-outside a field value is literal, and none is `--input`; the `query=` field
-is literal text with no shell expansion; the document, with its strings and
+outside a field value or a flag's value (`-t`, `--jq`, …) is literal, and
+none is `--input`; no field is given twice; the `query=` field is literal
+text with no shell expansion, and a typed `-F` field holds no `{owner}`,
+`{repo}` or `{branch}`; the document, with its strings and
 comments blanked and commas and byte-order marks read as white space, holds
 one operation, a `mutation` with no fragment, no directive and no
 `input:$var`; every field with
-arguments is that operation or a thread mutation (`resolveReviewThread`,
+arguments, other than the operation's own name, is a thread mutation
+(`resolveReviewThread`,
 `unresolveReviewThread`, `addPullRequestReviewThreadReply`,
 `updatePullRequestReviewComment`), and each thread mutation has its own id
 argument (`threadId:`, `pullRequestReviewThreadId:`,
@@ -246,11 +249,13 @@ built only from literal text and variables that hold plain text (`$Q`,
 text when every assignment to it is the same literal (also inside a
 flag-less `local` or `export`), and the call has no function, arithmetic
 command or expansion, `${…=…}`, `for` over it, `unset`, command named by an
-expansion, assignment to it before a builtin, and no shell builtin except
+expansion, assignment to it before a builtin, `{Q}>` redirection, mention
+in a `[[ … ]]` test, and no shell builtin except
 `echo`, `printf` whose first argument is literal and not `-v…`, `command
 -v`, `set` with literal options, `shift`, `cd`, `pwd`, `test`, `[`, `:`,
 `true`, `false`, `break`, `continue`, `exit` and `return`; external programs
-cannot change a shell variable. A possible mutation counts as a write, and
+cannot change a shell variable. A variable the shell sets itself
+(`BASH_REMATCH`, `PWD`, `REPLY`, …) never holds plain text. A possible mutation counts as a write, and
 a call whose thread ids it may hold is never complete. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
