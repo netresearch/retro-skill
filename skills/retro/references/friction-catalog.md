@@ -214,8 +214,9 @@ a run.
 A GraphQL write on a review thread or a review comment names it by node id
 (`PRRT_…`, `PRRC_…`) where the mutation takes it (`threadId:`,
 `pullRequestReviewThreadId:`, `pullRequestReviewCommentId:`; an id in a body
-or another field is text): literally, as a `for` loop variable over a list
-of literal ids (`for t in PRRT_a PRRT_b`), or as a parameter `$1` of a
+or another field is text): literally, as the variable of a `for` loop
+around the write whose every list word is a literal id (`for t in PRRT_a
+PRRT_b`) and whose body may not set it, or as a parameter `$1` of a
 function that neither shifts nor resets its parameters and is called only by
 its plain name with literal ids, in a call where no command is named by an
 expansion and no builtin such as `.`, `eval` or `xargs` runs what it is
@@ -232,7 +233,9 @@ unresolved only when that lookup fails. A GraphQL query written into the
 call (`-f query='query{…}'`) is no write, even beside a mutation; a document
 from a file or a command (`query=@q.graphql`, `query="$(cat q.graphql)"`,
 `--input body.json`, or `query="$Q"` unless the call assigns `Q` and every
-value it gives it is plain text) may be a mutation: it counts as a write, and a call whose
+value it gives it is plain text, and no command may set it otherwise: no
+`read Q`, `printf -vQ`, `${Q:=…}`, function of the call, `source`, `eval` or
+command named by an expansion) may be a mutation: it counts as a write, and a call whose
 thread ids it may hold is never complete. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other

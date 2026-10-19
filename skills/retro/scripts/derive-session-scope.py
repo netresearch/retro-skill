@@ -162,11 +162,14 @@ EXPLICIT_GET_RE = re.compile(r"(?:-X|--method)[\s=]*GET\b")
 # `-f query='query{…}'`: the GraphQL document itself, not a variable holding it.
 LITERAL_QUERY_RE = re.compile(r"\bquery=(?:'|\"(?!\$))")
 # A GraphQL document from a file or a command: it may be a mutation.
-QUERY_ELSEWHERE_RE = re.compile(r"query=(?:@|\"?\$\(|\"?`)|(?:^|\s)--input[\s=]")
+QUERY_ELSEWHERE_RE = re.compile(
+    r"query=(?:@|\"?\$\(|\"?`|\"?\$\{!)|(?:^|\s)--input[\s=]"
+)
 # `query="$Q"`: a document in a variable, read where the call assigns it.
 QUERY_VARIABLE_RE = re.compile(
     r"(?:(?<![\w-])|(?<=-[fF]))query=\"?\$\{?(?P<name>[A-Za-z_]\w*|[0-9]+|[@*])"
 )
+QUERY_REST_RE = re.compile(r"\$\{?(?P<name>[A-Za-z_]\w*|[0-9]+|[@*])")
 # The endpoint of a REST write names its target on its own: repository and
 # number are in the path, not in any text the call carries.
 GH_API_PATH_RE = re.compile(
@@ -1269,10 +1272,13 @@ def _query_from_run_time(command: str, call: str) -> bool:
     gives that variable is plain text (`Q='mutation{…}'`), it comes from a
     command, a file, another variable or an earlier call, and may be a
     mutation."""
-    return any(
-        _held_elsewhere(command, held["name"])
-        for held in QUERY_VARIABLE_RE.finditer(call)
-    )
+    for held in QUERY_VARIABLE_RE.finditer(call):
+        # `query="$H$Q"`: every variable in the value counts.
+        rest = re.match(r"[^\s\"']*", call[held.end() :]).group(0)
+        names = [held["name"], *(m["name"] for m in QUERY_REST_RE.finditer(rest))]
+        if any(_held_elsewhere(command, name) for name in names):
+            return True
+    return False
 
 
 def _held_elsewhere(command: str, name: str) -> bool:
@@ -1299,7 +1305,8 @@ def _held_elsewhere(command: str, name: str) -> bool:
                 return True
         elif _sets_variable(shell, node, name):
             return True
-    return not assigned
+    # `source`, `eval`, a function, `unset Q; : "${Q:=$(cat m)}"`.
+    return not assigned or _may_set_in(shell, shell.root, name, assignments=False)
 
 
 def _bare_name(name: str) -> re.Pattern:
@@ -1853,12 +1860,13 @@ def _enclosing_for_lists(
     return loops
 
 
-def _may_set_in(shell: _Shell, body, name: str) -> bool:
+def _may_set_in(shell: _Shell, body, name: str, assignments: bool = True) -> bool:
     """Whether anything in `body` may give the variable `name` a value: a
     bare mention of the name outside gh, glab, `echo` and a printing
     `printf`, an expansion with an operator (`${name:=…}`), or a command
     that runs code the names do not show: a function of the call, a builtin
-    such as `.` or `eval`, or a command named by an expansion."""
+    such as `.` or `eval`, or a command named by an expansion. With
+    `assignments` False, `name=…` itself is left to the caller."""
     functions = {
         _word(shell, n.child_by_field_name("name"))
         for n in shell._walk()
@@ -1883,6 +1891,13 @@ def _may_set_in(shell: _Shell, body, name: str) -> bool:
         return True
     for m in _bare_name(name).finditer(text):
         holder = shell._node_at(start + m.start())
+        if (
+            not assignments
+            and holder.type == "variable_name"
+            and holder.parent is not None
+            and holder.parent.type == "variable_assignment"
+        ):
+            continue
         while holder is not None and holder.type not in (
             "command",
             "declaration_command",
@@ -1943,10 +1958,11 @@ def _review_thread_ids(
         # such variable must trace to literal ids, or the write is unknown.
         traced = _traced_thread_ids(command, write)
         if traced is None:
-            names = {
-                m["ref"].strip("${}") for m in THREAD_ID_ARGUMENT_RE.finditer(segment)
-            }
-            return list(dict.fromkeys(found)), known and names <= looped
+            # Each argument's shell value must be one such loop variable.
+            values = _thread_ref_values(command, write)
+            plain = [v and re.fullmatch(r"\$\{?(\w+)\}?", v) for v in values]
+            known = known and all(p and p[1] in looped for p in plain)
+            return list(dict.fromkeys(found)), known
         found += traced
     return list(dict.fromkeys(found)), known
 
@@ -2116,27 +2132,38 @@ def _traced_thread_ids(command: str, write: re.Match) -> list[str] | None:
     located = _write_words(shell, write.start())
     if located is None:
         return None
-    node, words = located
-    fields = {}
-    for flag, value in itertools.pairwise(words):
-        if flag in FIELD_FLAGS and "=" in value:
-            key, _, given = value.partition("=")
-            fields[key] = unquote(given)
-    segment = _segment(command, write)
     ids: list[str] = []
-    refs = list(THREAD_ID_ARGUMENT_RE.finditer(segment))
-    for m in refs:
-        ref = m["ref"]
-        if _in_shell_expansion(shell, write.start() + m.start("ref")):
-            value = ref
-        else:
-            parsed = SHELL_REF_RE.fullmatch(ref)
-            value = fields.get(parsed["braced"] or parsed["name"]) if parsed else None
-        found = _bound_ids(shell, node, value) if value else None
+    for value in _thread_ref_values(command, write):
+        found = _bound_ids(shell, located[0], value) if value else None
         if not found:
             return None
         ids += found
     return ids or None
+
+
+def _thread_ref_values(command: str, write: re.Match) -> list[str | None]:
+    """What the shell gives each id argument a thread mutation names by a
+    variable, as written: `$t` itself inside a double-quoted query, or the
+    value of the `-f t=…` field for a GraphQL variable; None where neither
+    is in the call."""
+    shell = _shell(command)
+    located = _write_words(shell, write.start())
+    fields = {}
+    for flag, value in itertools.pairwise(located[1] if located else []):
+        if flag in FIELD_FLAGS and "=" in value:
+            key, _, given = value.partition("=")
+            fields[key] = unquote(given)
+    values: list[str | None] = []
+    for m in THREAD_ID_ARGUMENT_RE.finditer(_segment(command, write)):
+        ref = m["ref"]
+        if _in_shell_expansion(shell, write.start() + m.start("ref")):
+            values.append(ref)
+        else:
+            parsed = SHELL_REF_RE.fullmatch(ref)
+            values.append(
+                fields.get(parsed["braced"] or parsed["name"]) if parsed else None
+            )
+    return values
 
 
 def _forge_write_artefacts(

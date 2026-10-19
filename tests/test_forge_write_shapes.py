@@ -480,7 +480,7 @@ class PendingLookupTest(unittest.TestCase):
             f"for t in PRRT_kwDOa; do t=$(cat x); {mutation}; done",
             f"for t in PRRT_kwDOa; do read t < x; {mutation}; done",
             f"for t in PRRT_kwDOa; do printf -vt %s x; {mutation}; done",
-            f"for t in PRRT_kwDOa; do : ${{t:=x}}; {mutation}; done",
+            f'for t in PRRT_kwDOa; do echo "${{t:=x}}"; {mutation}; done',
             f"for t in PRRT_kwDOa; do (( t=1 )); {mutation}; done",
             f"for t in PRRT_kwDOa; do unset t; {mutation}; done",
             f"f(){{ t=$(cat x); }}; for t in PRRT_kwDOa; do f; {mutation}; done",
@@ -491,6 +491,11 @@ class PendingLookupTest(unittest.TestCase):
             f"for t in PRRT_kwDOa; do :; done; t=$(cat x); {mutation}",
             f"echo 'for t in PRRT_kwDOa'; {mutation}",
             f"cat <<'E'\nfor t in PRRT_kwDOa\nE\n{mutation}",
+            # Review round 16: the field passes another variable than the
+            # loop's, under the loop variable's name.
+            "for t in PRRT_kwDOa; do u=$(cat ids); "
+            + mutation.replace('-f t="$t"', '-f t="$u"')
+            + "; done",
         ):
             with self.subTest(command=command[:50]):
                 scan = _case("thread_id_assignment", command=command, result="true")
@@ -687,9 +692,23 @@ class PendingLookupTest(unittest.TestCase):
             'printf -v "Q[0]" %s "$(cat m)"; ',
             # Review round 15: the name joined to the flag.
             'printf -vQ %s "$(cat m)"; ',
+            # Review round 16: code the call runs without naming `Q`.
+            "source ./q.sh; ",
+            ". ./q.sh; ",
+            'eval "$SETQ"; ',
+            "f(){ Q=$(cat m); }; f; ",
+            'unset Q; echo "${Q:=$(cat m)}" >/dev/null; ',
         ):
             with self.subTest(setter=setter):
                 scan = _case("query_beside_mutation", command=plain + setter + send)
+                self.assertEqual(len(scan["unresolved"]), 1)
+        for other in (
+            # Review round 16: a second variable in the value, an indirection.
+            'H=""; Q=$(cat m); gh api graphql -f query="$H$Q"',
+            'v=Q; Q=$(cat m); gh api graphql -f query="${!v}"',
+        ):
+            with self.subTest(other=other):
+                scan = _case("query_beside_mutation", command=other)
                 self.assertEqual(len(scan["unresolved"]), 1)
         for harmless in ("", "printf 'Q: %s\\n' \"$Q\"; ", "echo Q; "):
             with self.subTest(harmless=harmless):
