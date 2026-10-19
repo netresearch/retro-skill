@@ -34,4 +34,4 @@ jobs:
         uv run --python "$PYTHON_VERSION" python -m py_compile skills/retro/scripts/*.py
         uv run --python "$PYTHON_VERSION" --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 python -m unittest discover -s tests -v
         uv run --python "$PYTHON_VERSION" python skills/retro/scripts/validate-evals.py
-      python-versions: '["3.10", "3.12", "3.13", "3.14"]'
+      python-versions: '["3.11", "3.12", "3.13", "3.14"]'

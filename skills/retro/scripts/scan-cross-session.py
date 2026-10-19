@@ -34,7 +34,7 @@ import shlex
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -106,7 +106,7 @@ def session_files(
 ) -> list[tuple[Path, str]]:
     """Return list of (jsonl_path, project_slug) within the last N days."""
     # Use elapsed days so local clock changes cannot shift the cutoff.
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    cutoff = datetime.now(UTC) - timedelta(days=days)
     out = []
     if project_slug:
         candidates = [projects_dir / project_slug]
@@ -117,7 +117,7 @@ def session_files(
             continue
         for f in proj_dir.glob("*.jsonl"):
             try:
-                mtime = datetime.fromtimestamp(f.stat().st_mtime, timezone.utc)
+                mtime = datetime.fromtimestamp(f.stat().st_mtime, UTC)
             except OSError:
                 continue
             if mtime >= cutoff:
@@ -252,7 +252,7 @@ def _timestamp(value: Any) -> datetime | None:
     if not isinstance(value, str):
         return None
     try:
-        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+        return datetime.fromisoformat(value)
     except ValueError:
         return None
 

@@ -15,7 +15,7 @@ import sys
 import tempfile
 import time
 import unittest
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import mock
 
@@ -128,7 +128,7 @@ class SessionFilesTest(TempDirCase):
             for name in ("before", "at", "after")
         }
         for month, day in ((3, 29), (10, 25)):
-            instant = datetime(2026, month, day, 12, tzinfo=timezone.utc)
+            instant = datetime(2026, month, day, 12, tzinfo=UTC)
             cutoff = instant - timedelta(days=1)
             for name, seconds in (("before", -1), ("at", 0), ("after", 1)):
                 stamp = cutoff.timestamp() + seconds

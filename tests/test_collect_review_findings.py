@@ -22,7 +22,7 @@ import tempfile
 import time
 import typing
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -367,7 +367,7 @@ class CollectTest(unittest.TestCase):
             dss.artefact("github.com", "netresearch/retro-skill", "pull", 122)
             | {"origin": "created"}
         ]
-        late = datetime(2026, 9, 22, 5, 0, tzinfo=timezone.utc)
+        late = datetime(2026, 9, 22, 5, 0, tzinfo=UTC)
         result = crf.collect(items, late, run=self.runner)
         everything = crf.collect(items, None, run=self.runner)
         self.assertGreater(result["findings_before_since"], 0)
@@ -579,9 +579,7 @@ class ReviewFixesParseTest(unittest.TestCase):
             }
         }
         found = crf.parse_github_pr(_pr(threads=[thread]), set())["findings"]
-        kept, hidden = crf._split_by_since(
-            found, datetime(2026, 9, 21, tzinfo=timezone.utc)
-        )
+        kept, hidden = crf._split_by_since(found, datetime(2026, 9, 21, tzinfo=UTC))
         self.assertEqual(
             ({f["source"] for f in kept}, hidden),
             ({"review-thread", "review-reply"}, 0),
@@ -647,12 +645,12 @@ class ReviewFixesParseTest(unittest.TestCase):
 
     def test_without_an_author_date_after_the_thread_the_committer_date_decides(self):
         commits = [
-            {"sha": "a", "date": datetime(2026, 9, 26, 12, tzinfo=timezone.utc),
-             "authored": datetime(2026, 9, 17, tzinfo=timezone.utc)},
-            {"sha": "b", "date": datetime(2026, 9, 26, 13, tzinfo=timezone.utc),
+            {"sha": "a", "date": datetime(2026, 9, 26, 12, tzinfo=UTC),
+             "authored": datetime(2026, 9, 17, tzinfo=UTC)},
+            {"sha": "b", "date": datetime(2026, 9, 26, 13, tzinfo=UTC),
              "authored": None},
         ]  # fmt: skip
-        moment = datetime(2026, 9, 22, tzinfo=timezone.utc)
+        moment = datetime(2026, 9, 22, tzinfo=UTC)
         self.assertEqual(crf.first_commit_after(commits, moment), "a")
 
     def test_more_commits_than_read_is_named(self):
@@ -2489,7 +2487,7 @@ class DecodeTest(unittest.TestCase):
     def test_jira_offset_without_colon(self):
         self.assertEqual(
             crf.parse_time("2026-09-17T09:15:11.286+0000"),
-            datetime(2026, 9, 17, 9, 15, 11, 286000, tzinfo=timezone.utc),
+            datetime(2026, 9, 17, 9, 15, 11, 286000, tzinfo=UTC),
         )
 
 
