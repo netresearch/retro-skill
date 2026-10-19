@@ -903,6 +903,36 @@ class PendingLookupTest(unittest.TestCase):
                 scan = _case("thread_id_assignment", command=command, result="{}")
                 self.assertFalse(any(w["only_review_threads"] for w in scan["pending"]))
                 self.assertEqual(len(scan["unresolved"]), 1)
+        # Review round 21: gh reads a short cluster as pflag does, so these
+        # give `id` twice, or read `--input` or a computed word.
+        by_id = (
+            "gh api graphql -f query='mutation($id:ID!){resolveReviewThread("
+            "input:{threadId:$id}){thread{id}}}' -f id=PRRT_kwDOa "
+        )
+        literal = "gh api graphql FLAGS -f query='mutation{" + resolve + "}'"
+        for command in (
+            by_id + "-f=id=PRRT_kwDOb",
+            by_id + "-if id=PRRT_kwDOb",
+            by_id + "-ifid=PRRT_kwDOb",
+            by_id + "-iF=id=PRRT_kwDOb",
+            by_id + "-pt -fid=PRRT_kwDOb",
+            literal.replace("FLAGS", "-pt --input=body.json"),
+            literal.replace("FLAGS", "-Xpost --input body.json"),
+            literal.replace("FLAGS", '-pt "$F"'),
+        ):
+            with self.subTest(command=command[-40:]):
+                scan = _case("thread_id_assignment", command=command, result="{}")
+                self.assertFalse(any(w["only_review_threads"] for w in scan["pending"]))
+                self.assertEqual(len(scan["unresolved"]), 1)
+        for command in (
+            by_id.replace("-f id=", "-fid="),
+            by_id.replace("-f id=", "-if=id="),
+        ):
+            scan = _case("thread_id_assignment", command=command, result="{}")
+            self.assertEqual(scan["unresolved"], [])
+            self.assertEqual(
+                [w["thread_ids"] for w in scan["pending"]], [["PRRT_kwDOa"]]
+            )
         # The word after `-t` is the template, not a field: gh writes PRRT_b.
         for flags in ("-t", "-it"):
             command = (
@@ -945,10 +975,24 @@ class PendingLookupTest(unittest.TestCase):
             ),
             "Q='query{x}'; : {Q}>/dev/null; " + send,
             "Q='query{x}'; [[ 1 -eq Q=1 ]]; " + send,
+            # Review round 21: `set -k` lets a later `: Q=…` assign.
+            "set -k; Q='query{x}'; P=$(cat m); : Q=\"$P\"; set +k; " + send,
         ):
             with self.subTest(command=command[:45]):
                 scan = _case("query_beside_mutation", command=command)
                 self.assertEqual(len(scan["unresolved"]), 1)
+        for command in (
+            "Q='query{x}'; local_x=1; gh api graphql -f query=\"$Q\"",
+            # `[ … ]` sets nothing: `Q=1` is no integer there.
+            "Q='query{x}'; [ 1 -eq Q=1 ]; gh api graphql -f query=\"$Q\"",
+            "set -euo pipefail; Q='query{x}'; gh api graphql -f query=\"$Q\"",
+        ):
+            scan = _case(
+                "query_beside_mutation",
+                command=command,
+                result='{"data":{"x":1}}',
+            )
+            self.assertEqual(scan["unresolved"], [], command)
         command = "Q='query{x}'; local_x=1; gh api graphql -f query=\"$Q\""
         scan = _case(
             "query_beside_mutation",

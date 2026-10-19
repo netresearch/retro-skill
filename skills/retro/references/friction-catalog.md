@@ -216,8 +216,9 @@ A GraphQL write on a review thread or a review comment names it by node id
 asks the forge for its PR or issue (`review_thread_writes` in the scope
 output) and lists the call as unresolved only when that lookup fails. A call
 is complete by its thread ids only in one shape. Every word of the gh call
-outside a field value or a flag's value (`-t`, `--jq`, …) is literal, and
-none is `--input`; no field is given twice; the `query=` field is literal
+outside a field value or a flag's value (`-t`, `--jq`, …) is literal, read
+the way gh's flag parser reads a short cluster (`-ifid=x` is the field
+`id=x`), and none is `--input` or `--`; no field is given twice; the `query=` field is literal
 text with no shell expansion, and a typed `-F` field holds no `{owner}`,
 `{repo}` or `{branch}`; the document, with its strings and
 comments blanked and commas and byte-order marks read as white space, holds
@@ -252,7 +253,7 @@ command or expansion, `${…=…}`, `for` over it, `unset`, command named by an
 expansion, assignment to it before a builtin, `{Q}>` redirection, mention
 in a `[[ … ]]` test, and no shell builtin except
 `echo`, `printf` whose first argument is literal and not `-v…`, `command
--v`, `set` with literal options, `shift`, `cd`, `pwd`, `test`, `[`, `:`,
+-v`, `set` with only `-e`, `-u`, `-x`, `-v`, `-C` or `-o pipefail`, `shift`, `cd`, `pwd`, `test`, `[`, `:`,
 `true`, `false`, `break`, `continue`, `exit` and `return`; external programs
 cannot change a shell variable. A variable the shell sets itself
 (`BASH_REMATCH`, `PWD`, `REPLY`, …) never holds plain text. A possible mutation counts as a write, and

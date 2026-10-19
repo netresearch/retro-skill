@@ -1378,6 +1378,8 @@ SHELL_BUILTINS = frozenset(
         "wait",
     }
 )
+# The `set` arguments that only switch error and trace handling.
+SAFE_SET_RE = re.compile(r"[-+][euxvC]+|[-+][euxvC]*o|pipefail|errexit|nounset|xtrace")
 # Variables the shell itself sets.
 SHELL_SET_RE = re.compile(
     r"BASH\w*|PWD|OLDPWD|REPLY|RANDOM|SRANDOM|SECONDS|LINENO|PPID|UID|EUID|GROUPS"
@@ -1400,7 +1402,7 @@ def _plain_value(command: str, name: str) -> str | None:
     `unset`, no command named by an expansion, no assignment before a
     builtin, and no shell builtin outside a short list that sets nothing
     (`echo`, `printf` whose first argument is literal and not `-v…`,
-    `command -v`, `set` with literal options, `cd`, `test`, …). External
+    `command -v`, `set -euxo pipefail`, `cd`, `test`, …). External
     programs cannot change a shell variable. A positional or special
     parameter, or a variable the shell sets itself (`BASH_REMATCH`, `PWD`),
     never holds plain text, nor does one a `{Q}>` redirection or a
@@ -1453,8 +1455,10 @@ def _plain_value(command: str, name: str) -> str | None:
             variable = node.child_by_field_name("variable")
             if variable is not None and _word(shell, variable) == name:
                 return None
-        elif kind == "test_command" and re.search(
-            rf"(?<![\w$]){re.escape(name)}(?!\w)", _word(shell, node)
+        elif (
+            kind == "test_command"
+            and _word(shell, node).startswith("[[")
+            and re.search(rf"(?<![\w$]){re.escape(name)}(?!\w)", _word(shell, node))
         ):
             return None  # `[[ 1 -eq Q=1 ]]`
         elif kind == "declaration_command":
@@ -1484,9 +1488,9 @@ def _plain_value(command: str, name: str) -> str | None:
             if word == "command" and first not in ("-v", "-V"):
                 return None
             if word == "set" and not all(
-                a is not None and a.startswith(("-", "+")) for a in arguments
+                a is not None and SAFE_SET_RE.fullmatch(a) for a in arguments
             ):
-                return None
+                return None  # `set -k` lets `: Q=…` assign; `set --` moves `$1`
     return values.pop() if len(values) == 1 else None
 
 
@@ -2079,7 +2083,13 @@ def _literal_value(shell: _Shell, node) -> str | None:
 
 def _write_fields(shell: _Shell, index: int):
     """The command node of the write at `index` and its `-f`/`-F` fields:
-    key -> (literal value or None, the value as written)."""
+    key -> (literal value or None, the value as written). The words are read
+    the way gh's flag parser (pflag) reads them: in a short cluster `-i` is
+    the only switch, and the first letter that takes a value takes the rest
+    of the cluster (`-ifid=x`, `-f=id=x`), or the next word when nothing is
+    left. `query` maps to (None, "") when gh may read the request from
+    elsewhere: `--input`, a word the call computes, a field given twice, an
+    unknown flag, or `--`."""
     node = _enclosing(shell._node_at(index), "command")
     if node is None:
         return None, {}
@@ -2093,50 +2103,75 @@ def _write_fields(shell: _Shell, index: int):
         [],
     )
     fields: dict[str, tuple[str | None, str]] = {}
-    pending = ""  # the flag whose value the next word is
     opaque = False
-    for word in group:
-        raw = shell.source[shell._char[word.start_byte] : shell._char[word.end_byte]]
-        value = _literal_value(shell, word)
-        given = value if value is not None else unquote(raw)
-        flag, pending = pending, ""
-        if flag in GH_VALUE_FLAGS:
-            continue  # `-t '-fid=x'`: the template, not a field
-        if flag:
-            pass
-        elif value is not None and value in FIELD_FLAGS:
-            pending = value
-            continue
-        elif value is not None and re.match(r"-[fF][^-]|--(?:raw-)?field=", value):
-            flag = value[:2] if not value.startswith("--") else value.split("=")[0]
-            given = value.split("=", 1)[1] if value.startswith("--") else value[2:]
-            value = given
-        elif value is not None and value in GH_VALUE_FLAGS:
-            pending = value
-            continue
-        elif value is not None and re.fullmatch(r"-[A-Za-z]+", value):
-            if value[-1] in "HXpqt":  # `-it`: the last flag takes the next word
-                pending = "-" + value[-1]
-            continue
-        elif value is None or value.startswith("--input"):
-            opaque = True  # `$F body.json`, `"--input"`: gh may read anything
-            continue
-        else:
-            continue
+
+    def field(flag: str, given: str, literal: str | None, written: str) -> None:
+        nonlocal opaque
+        if flag in ("i", "include", "paginate", "silent", "verbose", "slurp"):
+            return
+        if flag == "input":
+            opaque = True
+        if flag not in ("f", "F", "raw-field", "field"):
+            return
         key = given.partition("=")[0]
-        if (value is None and not re.fullmatch(r"[\w-]+", key)) or key in fields:
+        if (literal is None and not re.fullmatch(r"[\w-]+", key)) or key in fields:
             opaque = True  # a name the call computes, or one given twice
-            continue
-        literal = value.partition("=")[2] if value is not None else None
+            return
+        value = literal.partition("=")[2] if literal is not None else None
         if (
-            flag in ("-F", "--field")
-            and literal is not None
-            and re.search(
-                r"\{(?:owner|repo|branch)\}|:(?:owner|repo|branch)\b", literal
-            )
+            flag in ("F", "field")
+            and value is not None
+            and re.search(r"\{(?:owner|repo|branch)\}|:(?:owner|repo|branch)\b", value)
         ):
-            literal = None  # gh fills these in a typed field
-        fields[key] = (literal, unquote(raw.partition("=")[2]))
+            value = None  # gh fills these in a typed field
+        fields[key] = (value, unquote(written.partition("=")[2]))
+
+    words = [_literal_value(shell, w) for w in group]
+    if "api" not in words:
+        return node, {"query": (None, "")}
+    pending = ""
+    for word in group[words.index("api") + 1 :]:
+        raw = shell.source[shell._char[word.start_byte] : shell._char[word.end_byte]]
+        literal = _literal_value(shell, word)
+        if pending:
+            given = literal if literal is not None else unquote(raw)
+            field(pending, given, literal, raw)
+            pending = ""
+            continue
+        if literal is None:
+            opaque = True  # `$F body.json`: gh may read it as any flag
+            continue
+        if literal == "--":
+            opaque = True
+            break
+        if literal.startswith("--"):
+            name, eq, rest = literal[2:].partition("=")
+            if name in GH_LONG_FLAGS:
+                if eq:
+                    field(name, rest, rest, raw.partition("=")[2])
+                else:
+                    pending = name
+            elif name not in GH_LONG_SWITCHES:
+                opaque = True
+            continue
+        if not literal.startswith("-") or len(literal) == 1:
+            continue  # the endpoint
+        cluster = literal[1:]
+        for at, letter in enumerate(cluster):
+            if letter == "i":
+                continue
+            if letter not in "fFHXpqt":
+                opaque = True  # `-h` or an unknown letter
+                break
+            rest = cluster[at + 1 :]
+            rest = rest.removeprefix("=")
+            if rest:
+                field(letter, rest, rest, rest)
+            else:
+                pending = letter
+            break
+    if pending:
+        opaque = True
     if opaque:
         fields["query"] = (None, "")
     return node, fields
@@ -2225,11 +2260,13 @@ SHELL_REF_RE = re.compile(
     r"\$(?:\{(?P<braced>[A-Za-z_]\w*|\d)(?P<op>[^}]*)\}|(?P<name>[A-Za-z_]\w*|\d))"
 )
 FIELD_FLAGS = frozenset({"-f", "-F", "--field", "--raw-field"})
-# The other `gh api` flags that take the next word as their value.
-GH_VALUE_FLAGS = frozenset(
-    {"-H", "--header", "-X", "--method", "-p", "--preview", "-q", "--jq"}
-    | {"-t", "--template", "--hostname", "--cache"}
+# `gh api`'s long flags that take a value, and its switches (cli/cli
+# v2.102.0, pkg/cmd/api/api.go lines 292-307).
+GH_LONG_FLAGS = frozenset(
+    {"field", "raw-field", "header", "method", "preview", "jq", "template"}
+    | {"hostname", "cache", "input"}
 )
+GH_LONG_SWITCHES = frozenset({"include", "paginate", "silent", "verbose", "slurp"})
 # Builtins and wrappers that run a command they are given as data.
 DISPATCHERS = frozenset(
     {".", "source", "eval", "trap", "xargs", "command", "builtin", "exec", "compgen"}
