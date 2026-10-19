@@ -176,14 +176,35 @@ call the harness refused (`is_error` without `Exit code N`) ran nothing. A
 call with a write whose command the parser cannot read whole — a truncated
 command, text that is not shell, or two lines the grammar joins into one
 command — is unresolved. A
-successful write that prints nothing counts only as `<verb> <number> -R <repo>`
-outside any heredoc or quoted text. Output that reports a failure is not a
+write that prints nothing counts only as `<verb> <number> -R <repo>`
+outside any heredoc or quoted text, in a call the parser reads whole: a
+closed heredoc before it (`python3 - <<'PY' … PY`, then `gh pr edit 89 -R o/r`)
+changes nothing, an unclosed one is an ERROR node and leaves it unresolved.
+A background run (a Bash call sent or moved to the background, a Monitor)
+holds no output at all, so only such a numbered write counts there, by its
+own words. Output that reports a failure is not a
 success: an `HTTP 4xx/5xx`, glab's `422 {message: …}`, a JSON error body
 with `"status":"405"` or `}gh: …` behind it, `GraphQL:` at a
 line start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`,
-`failed to` or `Cannot perform`, or a background run (a Bash call sent or
-moved to the background, a Monitor), whose output is not in the result at
-all; and a write whose own `&& echo A || echo B` printed B and not A. MCP writes count by their input. A `-R` with a scheme and a
+`failed to` or `Cannot perform`; and a write whose own `&& echo A || echo B`
+printed B and not A.
+`pr-merge.sh -R o/r N` counts by its literal `-R` and number (its last
+positional argument, as the script reads it; a URL or branch there names no
+target), because every write it makes (the merge,
+the queue entry, the attestation) goes to that PR: also when its report went
+to a file (`> merge.txt 2>&1`; it reports a refusal on standard error, so
+`> /dev/null` alone still shows one), and not when its own report, at a line
+start and once per run on that PR whose output the call shows, says it wrote
+nothing (`pr-merge: not merging o/r#N`, `pr-merge: o/r#N failed`) and none
+says it posted an attestation there. Any other report line is somebody
+else's text then. A target in a variable (`-R o/$1 $2`) is
+read from report lines at a line start only, and without one stays
+unresolved. `pr-merge.sh` given as a file to a reader (`grep`, `head`, `cat`,
+`sed`, `git show`, …) whose output goes to no other program, file or
+substitution, or run with
+`--help` or `--version`, writes nothing; a mention whose words do not say
+(`xargs`, a `for` list, `cat pr-merge.sh | bash -s`, `bash <(cat …)`) may be
+a run. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
 dotted first segment is a GitLab group. Writes through other tools — `curl`
