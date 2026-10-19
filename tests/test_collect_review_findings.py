@@ -1941,7 +1941,9 @@ class EleventhRoundTest(unittest.TestCase):
 
     def test_a_write_in_a_substitution_inside_quotes_runs(self):
         # Copied shape: a Monitor loop polling `pr-merge.sh` inside `echo "#865: $(…)"`.
-        # The substitution runs; its report counts behind the echo prefix (#188).
+        # The substitution runs; its literal `-R o/r 5` names the PR (#188).
+        # The echo prefix keeps its report off the line start, so a stop line
+        # there would not count either: accepted, the call aimed only at #5.
         cmd = 'echo "#5: $(pr-merge.sh -R o/r 5 --self-reviewed 2>&1 | tail -1)"'
         urls, data = self.urls(
             [({"command": cmd}, "#5: pr-merge: o/r#5 queued (--merge)")]

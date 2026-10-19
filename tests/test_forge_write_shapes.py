@@ -252,6 +252,66 @@ class WrapperShapesTest(unittest.TestCase):
         )
         self.assertEqual(scan, {"origins": {}, "unresolved": [], "pending": []})
 
+    def test_an_argument_the_script_rejects_names_no_target(self):
+        # pr-merge.sh knows `-R`/`--repo <value>` and four flags; any other
+        # dash word ends it in `unknown flag` before it writes.
+        for command, printed in (
+            ("pr-merge.sh --repo=o/r 5 > m.txt 2>&1", ""),
+            ("pr-merge.sh -R o/r -- 5 > m.txt 2>&1", ""),
+            (
+                "pr-merge.sh -R o/r 5 --merge",
+                "Exit code 2\npr-merge: unknown flag: --merge",
+            ),
+        ):
+            with self.subTest(command=command):
+                scan = _case("reader", command=command, result=printed)
+                self.assertEqual(scan["origins"], {})
+                self.assertEqual(len(scan["unresolved"]), 1)
+
+    def test_a_report_line_naming_no_pr_is_a_stop(self):
+        # `die` prints `pr-merge: <message>` without `repo#N`.
+        for printed in (
+            "Exit code 2\npr-merge: --self-reviewed refused: the attestation must come from the PR author (a); gh is authenticated as b",
+            "Exit code 2\npr-merge: pr-status.sh failed",
+        ):
+            with self.subTest(printed=printed[:40]):
+                scan = _case(
+                    "reader",
+                    command="pr-merge.sh -R o/r 5 --self-reviewed",
+                    result=printed,
+                )
+                self.assertEqual(scan["origins"], {})
+                self.assertEqual(len(scan["unresolved"]), 1)
+        # A stop after the attestation: the attestation line still counts.
+        scan = _case(
+            "reader",
+            command="pr-merge.sh -R o/r 5 --self-reviewed",
+            result="pr-merge: posted Self-review attestation for abc on o/r#5\n"
+            "pr-merge: pr-status.sh failed",
+        )
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
+
+    def test_a_reader_that_writes_or_runs_may_run_it(self):
+        for command in (
+            "> /tmp/m.sh cat pr-merge.sh; bash /tmp/m.sh -R o/r 5",
+            "sed -n 'w /tmp/m.sh' pr-merge.sh; bash /tmp/m.sh -R o/r 5",
+            "git show --output=/tmp/m.sh HEAD:pr-merge.sh; bash /tmp/m.sh -R o/r 5",
+            """awk 'NR==1{system("bash " FILENAME " -R o/r 5")}' pr-merge.sh""",
+        ):
+            with self.subTest(command=command):
+                scan = _case("reader", command=command, result="")
+                self.assertEqual(len(scan["unresolved"]), 1)
+
+    def test_a_redirect_before_the_run_hides_its_report_too(self):
+        # A stop line from `notes.md` does not cancel the run, wherever its
+        # own redirect stands.
+        scan = _case(
+            "reader",
+            command="cat notes.md; >m.txt 2>&1 pr-merge.sh -R o/r 5",
+            result="pr-merge: not merging o/r#5 — x: y",
+        )
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
+
     def test_a_reader_piped_into_a_shell_may_run_it(self):
         for command in (
             "cat pr-merge.sh | bash -s -- -R o/r 5",
@@ -287,6 +347,26 @@ class SubcommandShapesTest(unittest.TestCase):
         scan = _case("closed_heredoc", command=command, result="")
         self.assertEqual(scan["origins"], {})
         self.assertEqual(len(scan["unresolved"]), 1)
+
+    def test_a_heredoc_bash_does_not_close_hides_the_edit(self):
+        # tree-sitter-bash ends a heredoc at `EOF ` or `  EOF`; bash reads
+        # on to the end and the edit is heredoc text (review round 1).
+        for end in ("EOF ", "  EOF"):
+            command = (
+                f"cat > /tmp/b.md <<'EOF'\nbody\n{end}\n"
+                "gh pr edit 89 -R o/r --body-file /tmp/b.md"
+            )
+            with self.subTest(end=end):
+                scan = _case("closed_heredoc", command=command, result="")
+                self.assertEqual(scan["origins"], {})
+                self.assertEqual(len(scan["unresolved"]), 1)
+        # `<<-` strips leading tabs only: a tab-indented end closes it.
+        command = (
+            "cat > /tmp/b.md <<-EOF\n\tbody\n\tEOF\n"
+            "gh pr edit 89 -R o/r --body-file /tmp/b.md"
+        )
+        scan = _case("closed_heredoc", command=command, result="")
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/89": "acted"})
 
     def test_a_heredoc_program_that_carries_a_write_stays_unresolved(self):
         command = (
