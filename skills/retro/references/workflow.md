@@ -447,7 +447,7 @@ tracker (customer complaints, prod alerts, Slack / Matrix / Sentry); feedback on
 an external ticket for which no owning integration supplied evidence; a PR or
 MR a script opened inside one call, unless its list is passed with `--pr-list`
 (a fleet release driver's `opened.jsonl` is such a list); an opaque
-reference whose tracker, instance and artifact identity remain unresolved; a write whose output and words name no target (listed as an
+reference whose tracker, instance and artifact identity remain unresolved; a write whose output and words name no target in a shape the scope script can prove (listed as an
 unresolved forge command instead); a write through `curl` or another tool
 than `gh`, `glab`, the GitHub MCP tools and `pr-merge.sh`; slow constitutional drift
 without `audit`; or outcomes the agent never saw (a reverted commit or rejected

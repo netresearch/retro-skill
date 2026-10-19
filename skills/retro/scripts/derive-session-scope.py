@@ -1165,23 +1165,41 @@ class _Shell:
 
     @functools.cached_property
     def heredocs_inert(self) -> bool:
-        """Whether every heredoc is text bash neither expands nor ends
-        anywhere else than the grammar does: its delimiter is quoted
-        (`<<'X'`, `<<"X"`, `<<\\X`), so a `` `cmd` `` or `$(cmd)` in the body
-        runs nothing, and its end line is the delimiter alone, after leading
-        tabs only under `<<-` (the grammar also ends one at `X ` or `  X`)."""
+        """Whether every heredoc is text that runs nothing bash-side and ends
+        where the grammar ends it; anything this cannot prove is False:
+        - its delimiter is written exactly `'X'`, `"X"` or `\\X` with no quote
+          or backslash in X, so a `` `cmd` `` or `$(cmd)` in the body runs
+          nothing (`'E\\F'` keeps its backslash for bash; not modelled);
+        - its end line is the delimiter alone, after leading tabs only under
+          `<<-` (the grammar also ends one at `X ` or `  X`);
+        - it feeds `cat` or `python`/`python3` directly, not a shell,
+          `source`, `eval` or a pipeline, and stands in no `$(…)` or `<(…)`;
+        - the call has no here-string (`<<<`), as `main` required."""
         data = self._data
         for node in self._walk():
+            if node.type == "herestring_redirect":
+                return False
             if node.type != "heredoc_redirect":
                 continue
+            if {c.type for c in node.children} - HEREDOC_PARTS:
+                return False  # a pipeline or command inside: `cat <<'X' | bash`
+            if _heredoc_reader(self, node) not in HEREDOC_READERS:
+                return False
+            outer = node.parent
+            while outer is not None:
+                if outer.type in ("command_substitution", "process_substitution"):
+                    return False
+                outer = outer.parent
             kinds = {c.type: c for c in node.children}
             start, end = kinds.get("heredoc_start"), kinds.get("heredoc_end")
             if start is None or end is None:
+                return False  # defensive: such a call is `misparsed` already
+            quoted = HEREDOC_QUOTED_RE.fullmatch(
+                data[start.start_byte : start.end_byte]
+            )
+            if quoted is None:
                 return False
-            written = data[start.start_byte : start.end_byte]
-            if not re.search(rb"[\"'\\]", written):
-                return False
-            delimiter = re.sub(rb"[\"'\\]", b"", written)
+            delimiter = next(g for g in quoted.groups() if g is not None)
             first = data.rfind(b"\n", 0, end.start_byte) + 1
             last = data.find(b"\n", end.end_byte)
             line = data[first : last if last != -1 else len(data)]
@@ -1190,6 +1208,33 @@ class _Shell:
             if line != delimiter:
                 return False
         return True
+
+
+# What `_Shell.heredocs_inert` accepts: a heredoc's own parts (and a file
+# redirect written after it), a delimiter quoted as a whole, and the
+# programs that read the body as data or as their own script only.
+HEREDOC_PARTS = frozenset(
+    {"<<", "<<-", "heredoc_start", "heredoc_body", "heredoc_end", "file_redirect"}
+)
+HEREDOC_QUOTED_RE = re.compile(rb"'([^'\"\\\s]+)'|\"([^'\"\\\s$`]+)\"|\\([^'\"\\\s]+)")
+HEREDOC_READERS = frozenset({"cat", "python", "python3"})
+
+
+def _heredoc_reader(shell: _Shell, heredoc) -> str:
+    """The program a heredoc feeds: the command it is written after, or the
+    last command of a list (`cd x && python3 - <<'PY'`). "" when unknown."""
+    statement = heredoc.parent
+    if statement is None or statement.type != "redirected_statement":
+        return ""
+    body = statement.child_by_field_name("body")
+    if body is not None and body.type == "list":
+        body = body.children[-1] if body.children else None
+    name = (
+        body.child_by_field_name("name")
+        if body is not None and body.type == "command"
+        else None
+    )
+    return os.path.basename(_word(shell, name)) if name is not None else ""
 
 
 @functools.lru_cache(maxsize=256)
@@ -1232,6 +1277,23 @@ def _is_text(command: str, write: re.Match) -> bool:
 
 class _Call:
     """One tool call: its command, its output, and whether it failed."""
+
+    @functools.cached_property
+    def holds_text_writes(self) -> bool:
+        """Whether the call carries a write as text (a heredoc body, a quoted
+        string, a list-form call) or runs a program it carries: bash may run
+        such a write (`source /dev/stdin <<'X'`, `eval "$(cat …)"`, a script
+        file it writes and runs), so no write of the call prints nothing
+        safely."""
+        return (
+            bool(LIST_CALL_RE.search(self.command))
+            or any(_is_text(self.command, w) for w in _writes(self.command))
+            or any(
+                _is_text(self.command, m)
+                for m in PR_MERGE_WRAPPER_RE.finditer(self.command)
+            )
+            or _runs_a_program(self.command)
+        )
 
     def __init__(self, command: str, result: str, gitlab_host: str, failed: bool):
         self.command = command
@@ -1322,6 +1384,7 @@ class _Call:
             and not self.reported_failure
             and not _shell(self.command).misparsed
             and _shell(self.command).heredocs_inert
+            and not self.holds_text_writes
             and not _is_text(self.command, write)
         ):
             return [

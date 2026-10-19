@@ -211,6 +211,55 @@ class HeredocShapesTest(unittest.TestCase):
         scan = _case("quoted_heredoc", command=command, result="ok")
         self.assertEqual(len(scan["unresolved"]), 1)
 
+    def test_more_end_lines_bash_does_not_take_under_a_dash(self):
+        # `<<-` strips tabs, never spaces (review round 4).
+        for end in ("\t EOF", "  EOF"):
+            command = (
+                f"cat > /tmp/b.md <<-'EOF'\nbody\n{end}\n"
+                "gh pr edit 89 -R o/r --body-file /tmp/b.md"
+            )
+            with self.subTest(end=end):
+                scan = _case("quoted_heredoc", command=command, result="")
+                self.assertEqual(scan["origins"], {})
+                self.assertEqual(len(scan["unresolved"]), 1)
+
+    def test_a_backslash_inside_a_quoted_delimiter_is_not_modelled(self):
+        # Bash keeps it: `<<'E\F'` ends at `E\F`, not at `EF` (review round 4).
+        for start in ("<<'E\\F'", "<<-'E\\F'", '<<"E\\F"'):
+            command = (
+                f"cat > b.md {start}\nbody\nEF\n"
+                "gh pr edit 89 -R o/r --body-file b.md\nE\\F\necho done"
+            )
+            with self.subTest(start=start):
+                scan = _case("quoted_heredoc", command=command, result="")
+                self.assertEqual(scan["origins"], {})
+
+    def test_a_quoted_heredoc_a_shell_runs_stays_unresolved(self):
+        # Bash runs the body; the write to #90 in it, or one no pattern
+        # sees (`$G pr comment …`), must not leave the call complete.
+        for command in (
+            "source /dev/stdin <<'EOF'\ngh pr comment 90 -R o/r -b x\nEOF\n",
+            ". /dev/stdin <<'EOF'\ngh pr comment 90 -R o/r -b x\nEOF\n",
+            "eval \"$(cat <<'EOF'\ngh pr comment 90 -R o/r -b x\nEOF\n)\"\n",
+            "bash <<'EOF'\nG=gh; $G pr comment 90 -R o/r -b x\nEOF\n",
+            "cat <<'EOF' | bash\nG=gh; $G pr comment 90 -R o/r -b x\nEOF\n",
+            "cat > x.sh <<'EOF'\nG=gh; $G pr comment 90 -R o/r -b x\nEOF\nbash x.sh\n",
+            'bash <<< "$CMD"\n',
+        ):
+            command += "gh pr edit 89 -R o/r --body-file b.md"
+            with self.subTest(command=command[:30]):
+                scan = _case("quoted_heredoc", command=command, result="")
+                self.assertNotIn("https://github.com/o/r/pull/89", scan["origins"])
+                self.assertEqual(len(scan["unresolved"]), 1)
+
+    def test_a_heredoc_after_a_list_feeds_its_last_command(self):
+        command = (
+            "cd /tmp && python3 - <<'PY'\nprint(1)\nPY\n"
+            "gh pr edit 89 -R o/r --body-file b.md >/dev/null"
+        )
+        scan = _case("quoted_heredoc", command=command, result="")
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/89": "acted"})
+
 
 class BackgroundShapesTest(unittest.TestCase):
     def test_a_numbered_write_run_in_the_background(self):
@@ -218,6 +267,17 @@ class BackgroundShapesTest(unittest.TestCase):
         scan = _scan("background_numbered")
         self.assertEqual(scan["origins"], {f"{GH}/nr-landingpage/pull/84": "acted"})
         self.assertEqual(scan["unresolved"], [])
+
+    def test_a_rest_write_run_in_the_background_stays_unresolved(self):
+        # Only a numbered subcommand names its target in its words; a REST
+        # write's output is elsewhere, so it is unresolved (review round 4).
+        scan = _case(
+            "background_numbered",
+            command="gh api -X PUT repos/o/r/pulls/5/merge",
+            result="Command running in background with ID: b1.",
+        )
+        self.assertEqual(scan["origins"], {})
+        self.assertEqual(len(scan["unresolved"]), 1)
 
 
 if __name__ == "__main__":

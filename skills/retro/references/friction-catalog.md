@@ -177,14 +177,17 @@ call with a write whose command the parser cannot read whole — a truncated
 command, text that is not shell, or two lines the grammar joins into one
 command — is unresolved. A
 write that prints nothing counts only as `<verb> <number> -R <repo>`
-outside any heredoc or quoted text, in a call the parser reads whole and
-whose heredocs bash neither expands nor ends elsewhere: a heredoc with a
-quoted delimiter before it (`python3 - <<'PY' … PY`, then
-`gh pr edit 89 -R o/r`) changes nothing. An unquoted delimiter (`<<PY`,
-whose body may run a backtick or `$(…)` command), an unclosed heredoc (an
-ERROR node) or an end line bash does not take as one (the delimiter with a
-trailing space, or indented by spaces, or without `<<-` by tabs) leaves the
-write unresolved. A background run (a Bash call sent or moved to the
+outside any heredoc or quoted text, in a call the parser reads whole, that
+carries no write as text and runs no program it carries, and whose
+heredocs bash neither expands, runs nor ends elsewhere: a heredoc whose
+delimiter is quoted as a whole (`'PY'`, `"PY"`, `\PY`) and that feeds `cat`
+or `python3` directly (`python3 - <<'PY' … PY`, then `gh pr edit 89 -R o/r`)
+changes nothing. An unquoted delimiter (`<<PY`, whose body may run a
+backtick or `$(…)` command), one with a quote or backslash inside it, a
+heredoc fed to a shell, `source`, `eval` or a pipeline or written inside
+`$(…)`, a here-string, an unclosed heredoc (an ERROR node) or an end line
+bash does not take as one (the delimiter with a trailing space, or indented
+by spaces, or without `<<-` by tabs) leaves the write unresolved. A background run (a Bash call sent or moved to the
 background, a Monitor) holds no output at all, so only such a numbered
 write counts there, by its own words. Output that reports a failure is not a
 success: an `HTTP 4xx/5xx`, glab's `422 {message: …}`, a JSON error body
