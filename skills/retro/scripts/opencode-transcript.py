@@ -83,7 +83,7 @@ import os
 import re
 import sqlite3
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import quote
 
@@ -257,7 +257,7 @@ def _iso_timestamp(value: Any) -> Any:
     if isinstance(value, bool) or not isinstance(value, (int, float)):
         return value
     try:
-        stamp = datetime.fromtimestamp(value / 1000, tz=timezone.utc)
+        stamp = datetime.fromtimestamp(value / 1000, tz=UTC)
     except (OverflowError, OSError, ValueError):
         return value
     return stamp.strftime("%Y-%m-%dT%H:%M:%S.") + f"{stamp.microsecond // 1000:03d}Z"

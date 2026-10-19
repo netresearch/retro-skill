@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
 #
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = ["tree-sitter==0.26.0", "tree-sitter-bash==0.25.1"]
 # ///
 """

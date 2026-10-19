@@ -332,7 +332,7 @@ def main() -> int:
 
 def stale_findings(candidates: list[dict], max_age_days: int) -> list[dict]:
     out: list[dict] = []
-    today = _dt.datetime.now(_dt.timezone.utc).date()
+    today = _dt.datetime.now(_dt.UTC).date()
     for entry in candidates:
         try:
             verified = _dt.date.fromisoformat(entry["date"])

@@ -114,7 +114,7 @@ class TestStaleFindings(unittest.TestCase):
         old = {"checkpoint": "XX-01", "date": "2020-01-01", "file": "c.yaml", "line": 5}
         fresh = {
             "checkpoint": "XX-02",
-            "date": datetime.datetime.now(datetime.timezone.utc).date().isoformat(),
+            "date": datetime.datetime.now(datetime.UTC).date().isoformat(),
             "file": "c.yaml",
             "line": 9,
         }

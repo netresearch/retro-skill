@@ -12,7 +12,7 @@ import io
 import json
 import tempfile
 import unittest
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
@@ -354,7 +354,7 @@ class FeedbackContractTest(unittest.TestCase):
         record = external_record()
         result = crf.collect(
             [],
-            datetime(2026, 9, 25, 12, tzinfo=timezone.utc),
+            datetime(2026, 9, 25, 12, tzinfo=UTC),
             external=evidence(record),
         )
         self.assertEqual(result["findings"], [])

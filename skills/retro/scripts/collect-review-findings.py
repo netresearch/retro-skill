@@ -3,7 +3,7 @@
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
 #
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = ["tree-sitter==0.26.0", "tree-sitter-bash==0.25.1"]
 # ///
 """
@@ -90,7 +90,7 @@ import re
 import subprocess
 import sys
 from collections.abc import Callable
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote, urlparse
@@ -227,7 +227,7 @@ def parse_time(value: str | None) -> datetime | None:
         stamp = datetime.fromisoformat(text)
     except ValueError:
         return None
-    return stamp if stamp.tzinfo else stamp.replace(tzinfo=timezone.utc)
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
 
 
 def transcript_start(transcript: Path) -> datetime | None:
