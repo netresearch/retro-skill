@@ -252,6 +252,53 @@ class HeredocShapesTest(unittest.TestCase):
                 self.assertNotIn("https://github.com/o/r/pull/89", scan["origins"])
                 self.assertEqual(len(scan["unresolved"]), 1)
 
+    def test_a_call_with_a_heredoc_runs_only_listed_plain_commands(self):
+        # Review round 5: every input below made bash run a write to #90 (or
+        # `$CMD`) that no pattern sees, while head named #89 and reported the
+        # call complete. Each is held by one guard of `heredocs_inert`.
+        g = "G=gh; $G pr comment 90 -R o/r -b x"
+        for command in (
+            f"source /dev/stdin <<'EOF'\n{g}\nEOF\n",  # reader
+            f". /dev/stdin <<'EOF'\n{g}\nEOF\n",
+            'source /dev/stdin <<< "$CMD"\n',  # here-string
+            f"eval \"$(cat <<'EOF'\n{g}\nEOF\n)\"\n",  # `$(…)` around it
+            f"cat <<'EOF' > >(bash)\n{g}\nEOF\n",  # process substitution
+            "python3 - <<'PY' > >(bash)\nprint('x')\nPY\n",
+            f"exec 3> >(bash)\ncat <<'EOF' >&3\n{g}\nEOF\n",
+            f"{{ cat <<'EOF'\n{g}\nEOF\n}} | bash\n",  # group
+            f"( cat <<'EOF'\n{g}\nEOF\n) | bash\n",  # subshell
+            f"f() {{ cat <<'EOF'\n{g}\nEOF\n}}; f | bash\n",  # function
+            f"for i in 1; do cat <<'EOF'\n{g}\nEOF\ndone | bash\n",
+            f"cat > b.md <<'EOF'\n{g}\nEOF\nsource b.md\n",
+            f"./cat <<'EOF'\n{g}\nEOF\n",  # not the plain name
+            f"\\cat <<'EOF'\n{g}\nEOF\n",
+            "/usr/bin/python3 - <<'PY'\nprint(1)\nPY\n",
+            f"export GH_PAGER=bash\ncat > b.md <<'EOF'\n{g}\nEOF\n",
+            f"GH_PAGER=bash gh pr view 1 -R o/r\ncat > b.md <<'EOF'\n{g}\nEOF\n",
+            f"git -c alias.x='!bash b.md' x\ncat > b.md <<'EOF'\n{g}\nEOF\n",
+            f"cat > b.md <<'EOF'\n{g}\nEOF\ngh alias set --shell x 'bash b.md'\n",
+            # A backslash-newline bash keeps inside the quoted heredoc: the
+            # folded text ends it at the second `EOF`, hiding `bash -c`.
+            (
+                "cat > a.md <<'EOF'\nends in a hard break \\\nEOF\n"
+                "bash -c \"$CMD\"\ncat > b.md <<'EOF'\nbody\nEOF\n"
+            ),
+        ):
+            command += "gh pr edit 89 -R o/r --body-file b.md"
+            with self.subTest(command=command[:40]):
+                scan = _case("quoted_heredoc", command=command, result="")
+                self.assertNotIn("https://github.com/o/r/pull/89", scan["origins"])
+                self.assertEqual(len(scan["unresolved"]), 1)
+
+    def test_listed_git_and_gh_subcommands_keep_the_rule(self):
+        command = (
+            "git -C /tmp/r fetch -q origin && git -C /tmp/r push origin b\n"
+            "python3 - <<'PY'\nprint(1)\nPY\n"
+            "gh pr edit 89 -R o/r --body-file b.md >/dev/null"
+        )
+        scan = _case("quoted_heredoc", command=command, result="")
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/89": "acted"})
+
     def test_a_heredoc_after_a_list_feeds_its_last_command(self):
         command = (
             "cd /tmp && python3 - <<'PY'\nprint(1)\nPY\n"

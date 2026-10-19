@@ -1165,31 +1165,30 @@ class _Shell:
 
     @functools.cached_property
     def heredocs_inert(self) -> bool:
-        """Whether every heredoc is text that runs nothing bash-side and ends
-        where the grammar ends it; anything this cannot prove is False:
-        - its delimiter is written exactly `'X'`, `"X"` or `\\X` with no quote
-          or backslash in X, so a `` `cmd` `` or `$(cmd)` in the body runs
-          nothing (`'E\\F'` keeps its backslash for bash; not modelled);
+        """Whether a call that writes `<<` runs nothing but what it shows.
+        A call without `<<` is True, as `main` read it. Otherwise everything
+        this cannot prove is False:
+        - every command is a plain name from `HEREDOC_CALL_COMMANDS` (`git`
+          and `gh` with a listed subcommand, `git` without `-c`), with no
+          variable assignment before it; no function, subshell, group,
+          process substitution or here-string anywhere in the call;
+        - every heredoc's delimiter is written exactly `'X'`, `"X"` or `\\X`
+          with no quote or backslash in X, so a `` `cmd` `` or `$(cmd)` in
+          the body runs nothing (`'E\\F'` keeps its backslash; not modelled);
         - its end line is the delimiter alone, after leading tabs only under
-          `<<-` (the grammar also ends one at `X ` or `  X`);
-        - it feeds `cat` or `python`/`python3` directly, not a shell,
-          `source`, `eval` or a pipeline, and stands in no `$(…)` or `<(…)`;
-        - the call has no here-string (`<<<`), as `main` required."""
+          `<<-` (the grammar also ends one at `X ` or `  X`).
+        Whatever reads a heredoc is then a listed command: none of them runs
+        what it reads, except `python3` running its own program."""
+        if "<<" not in self.source:
+            return True
         data = self._data
         for node in self._walk():
-            if node.type == "herestring_redirect":
+            if node.type in HEREDOC_CALL_UNSAFE:
+                return False
+            if node.type == "command" and not _plain_safe_command(self, node):
                 return False
             if node.type != "heredoc_redirect":
                 continue
-            if {c.type for c in node.children} - HEREDOC_PARTS:
-                return False  # a pipeline or command inside: `cat <<'X' | bash`
-            if _heredoc_reader(self, node) not in HEREDOC_READERS:
-                return False
-            outer = node.parent
-            while outer is not None:
-                if outer.type in ("command_substitution", "process_substitution"):
-                    return False
-                outer = outer.parent
             kinds = {c.type: c for c in node.children}
             start, end = kinds.get("heredoc_start"), kinds.get("heredoc_end")
             if start is None or end is None:
@@ -1210,31 +1209,48 @@ class _Shell:
         return True
 
 
-# What `_Shell.heredocs_inert` accepts: a heredoc's own parts (and a file
-# redirect written after it), a delimiter quoted as a whole, and the
-# programs that read the body as data or as their own script only.
-HEREDOC_PARTS = frozenset(
-    {"<<", "<<-", "heredoc_start", "heredoc_body", "heredoc_end", "file_redirect"}
-)
+# What `_Shell.heredocs_inert` accepts as a quoted delimiter.
 HEREDOC_QUOTED_RE = re.compile(rb"'([^'\"\\\s]+)'|\"([^'\"\\\s$`]+)\"|\\([^'\"\\\s]+)")
-HEREDOC_READERS = frozenset({"cat", "python", "python3"})
+# The only commands a call with a heredoc may hold: none of them runs a
+# shell, a file or a command it is given (measured on session e72080f1,
+# where they cover 45 of the 46 such calls). `python3` can run anything
+# from its own program, as `python3 -c` can on `main`.
+HEREDOC_CALL_COMMANDS = frozenset(
+    {"gh", "git", "python", "python3", "cat", "echo", "printf", "grep", "cd"}
+    | {"head", "tail", "ls", "wc"}
+)
+HEREDOC_CALL_GIT = frozenset({"fetch", "log", "push", "rev-parse", "show", "status"})
+HEREDOC_CALL_GH = frozenset({"pr", "issue", "api", "run", "repo", "release"})
+HEREDOC_CALL_UNSAFE = frozenset(
+    {
+        "process_substitution",
+        "subshell",
+        "compound_statement",
+        "function_definition",
+        "herestring_redirect",
+        "declaration_command",  # `export GH_PAGER=…`, `declare -x …`
+        "unset_command",
+    }
+)
 
 
-def _heredoc_reader(shell: _Shell, heredoc) -> str:
-    """The program a heredoc feeds: the command it is written after, or the
-    last command of a list (`cd x && python3 - <<'PY'`). "" when unknown."""
-    statement = heredoc.parent
-    if statement is None or statement.type != "redirected_statement":
-        return ""
-    body = statement.child_by_field_name("body")
-    if body is not None and body.type == "list":
-        body = body.children[-1] if body.children else None
-    name = (
-        body.child_by_field_name("name")
-        if body is not None and body.type == "command"
-        else None
-    )
-    return os.path.basename(_word(shell, name)) if name is not None else ""
+def _plain_safe_command(shell: _Shell, command) -> bool:
+    """Whether `command` is a listed program named by a plain word, with no
+    assignment before it, and for `git`/`gh` a listed subcommand."""
+    name = command.child_by_field_name("name")
+    if name is None or any(c.type == "variable_assignment" for c in command.children):
+        return False
+    program = _word(shell, name)
+    if program not in HEREDOC_CALL_COMMANDS:
+        return False  # `$G`, `./cat`, `\cat`, `bash`, `source`, `eval`, …
+    words = [_word(shell, a) for a in command.children_by_field_name("argument")]
+    if program == "git":
+        while words[:1] == ["-C"] and len(words) > 1:
+            words = words[2:]
+        return bool(words) and words[0] in HEREDOC_CALL_GIT
+    if program == "gh":
+        return bool(words) and words[0] in HEREDOC_CALL_GH
+    return True
 
 
 @functools.lru_cache(maxsize=256)
@@ -1299,6 +1315,9 @@ class _Call:
         self.command = command
         self.result = result
         self.gitlab_host = gitlab_host
+        # `_forge_write_artefacts` folds backslash-newlines; inside a quoted
+        # heredoc bash keeps them, so the folded text is not what bash read.
+        self.folded = False
         # The output says a write failed.
         self.reported_failure = (
             failed
@@ -1384,6 +1403,7 @@ class _Call:
             and not self.reported_failure
             and not _shell(self.command).misparsed
             and _shell(self.command).heredocs_inert
+            and not (self.folded and "<<" in self.command)
             and not self.holds_text_writes
             and not _is_text(self.command, write)
         ):
@@ -1617,8 +1637,10 @@ def _forge_write_artefacts(
     until the forge has named each thread's pull request."""
     if refused(result, failed):
         return [], False, []
+    folded = _joined(command) != command
     command = _joined(command)
     call = _Call(command, result, gitlab_host, failed)
+    call.folded = folded
     writes = sorted(_writes(command), key=lambda w: _write_order(command, w))
     wrapper = _wrapper_targets(command, result)
     found: list[dict[str, Any]] = list(wrapper or [])
