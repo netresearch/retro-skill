@@ -6,10 +6,11 @@
 
 Each case is a tool call copied byte for byte from session e72080f1
 (`fixtures/review-findings/forge-write-shapes-188.json`, 2026-10-18). Before
-#188 every one of them was listed in `unresolved_forge_commands`; 96 of the
-213 such calls in that session named their target in their own words or
-output. Review-thread writes named by a forge id are not covered here: they
-stay resolved online by collect-review-findings.py's thread lookup.
+#188 every one of them was listed in `unresolved_forge_commands`; 73 of the
+213 such calls in that session named their target in their own words.
+Left as on main by decision: review-thread writes named by a forge id (the
+collector's thread lookup resolves them online) and calls that only read
+`pr-merge.sh` (`grep … pr-merge.sh`), which stay unresolved.
 """
 
 from __future__ import annotations
@@ -124,14 +125,13 @@ GH = "https://github.com/netresearch"
 class WrapperShapesTest(unittest.TestCase):
     """git-workflow's `pr-merge.sh`."""
 
-    def test_a_reader_given_the_script_does_not_run_it(self):
-        # `grep … pr-merge.sh | head -30`: 22 such calls in the session.
-        self.assertEqual(
-            _scan("reader"), {"origins": {}, "unresolved": [], "pending": []}
-        )
+    def test_a_reader_given_the_script_stays_unresolved(self):
+        # `grep … pr-merge.sh | head -30`: left as on main by decision; telling
+        # a reader from a run took a new guard in each review round.
+        self.assertEqual(len(_scan("reader")["unresolved"]), 1)
 
     def test_a_mention_the_words_do_not_place_still_counts(self):
-        # Neither a run nor a reader: `xargs` may run it.
+        # Not the script itself: `xargs` may run it.
         scan = _case("reader", command="ls | xargs pr-merge.sh -R o/r", result="")
         self.assertEqual(len(scan["unresolved"]), 1)
 
@@ -197,27 +197,23 @@ class WrapperShapesTest(unittest.TestCase):
         self.assertEqual(scan["origins"], {f"{GH}/timalytics/pull/32": "acted"})
         self.assertEqual(scan["unresolved"], [])
 
-    def test_a_shut_line_in_other_text_does_not_cancel_a_redirected_run(self):
-        for command, printed in (
-            (
-                "cat notes.md; pr-merge.sh -R o/r 5 > m.txt 2>&1",
-                "earlier: pr-merge: not merging o/r#5 — no review",
-            ),
-            (
-                "pr-merge.sh -R o/r 5; pr-merge.sh -R o/r 5 --self-reviewed > m.txt",
-                "pr-merge: not merging o/r#5 — request-review: no review",
-            ),
-            (
-                # A line-start quote from a file, the run's own report elsewhere.
-                "cat notes.md; pr-merge.sh -R o/r 5 > m.txt 2>&1",
-                "pr-merge: not merging o/r#5 — no review",
-            ),
-        ):
-            with self.subTest(command=command):
-                scan = _case("reader", command=command, result=printed)
-                self.assertEqual(
-                    scan["origins"], {"https://github.com/o/r/pull/5": "acted"}
+    def test_one_stop_line_leaves_the_other_run_counted(self):
+        scan = _case(
+            "reader",
+            command="pr-merge.sh -R o/r 5; pr-merge.sh -R o/r 5 --self-reviewed > m.txt",
+            result="pr-merge: not merging o/r#5 — request-review: no review",
+        )
+        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
+
+    def test_a_number_that_is_no_ascii_digit_names_no_target(self):
+        # `"²".isdigit()` is true and `int("²")` raises (review round 2).
+        for number in ("²", "５"):
+            with self.subTest(number=number):
+                scan = _case(
+                    "reader", command=f"pr-merge.sh -R o/r {number} > m 2>&1", result=""
                 )
+                self.assertEqual(scan["origins"], {})
+                self.assertEqual(len(scan["unresolved"]), 1)
 
     def test_the_last_number_is_the_pr(self):
         # pr-merge.sh keeps the last positional argument.
@@ -234,23 +230,6 @@ class WrapperShapesTest(unittest.TestCase):
                 scan = _case("reader", command=command, result="")
                 self.assertEqual(scan["origins"], {})
                 self.assertEqual(len(scan["unresolved"]), 1)
-
-    def test_a_refusal_on_standard_error_shows_beside_a_stdout_redirect(self):
-        scan = _case(
-            "reader",
-            command="pr-merge.sh -R o/r 5 > /dev/null",
-            result="pr-merge: not merging o/r#5 — request-review: no review",
-        )
-        self.assertEqual(scan, {"origins": {}, "unresolved": [], "pending": []})
-
-    def test_redirects_apply_left_to_right(self):
-        # `2>&1 > m.txt`: standard error still reaches the transcript.
-        scan = _case(
-            "reader",
-            command="pr-merge.sh -R o/r 5 2>&1 > m.txt",
-            result="pr-merge: not merging o/r#5 — request-review: no review",
-        )
-        self.assertEqual(scan, {"origins": {}, "unresolved": [], "pending": []})
 
     def test_an_argument_the_script_rejects_names_no_target(self):
         # pr-merge.sh knows `-R`/`--repo <value>` and four flags; any other
@@ -291,41 +270,6 @@ class WrapperShapesTest(unittest.TestCase):
         )
         self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
 
-    def test_a_reader_that_writes_or_runs_may_run_it(self):
-        for command in (
-            "> /tmp/m.sh cat pr-merge.sh; bash /tmp/m.sh -R o/r 5",
-            "sed -n 'w /tmp/m.sh' pr-merge.sh; bash /tmp/m.sh -R o/r 5",
-            "git show --output=/tmp/m.sh HEAD:pr-merge.sh; bash /tmp/m.sh -R o/r 5",
-            """awk 'NR==1{system("bash " FILENAME " -R o/r 5")}' pr-merge.sh""",
-        ):
-            with self.subTest(command=command):
-                scan = _case("reader", command=command, result="")
-                self.assertEqual(len(scan["unresolved"]), 1)
-
-    def test_a_redirect_before_the_run_hides_its_report_too(self):
-        # A stop line from `notes.md` does not cancel the run, wherever its
-        # own redirect stands.
-        scan = _case(
-            "reader",
-            command="cat notes.md; >m.txt 2>&1 pr-merge.sh -R o/r 5",
-            result="pr-merge: not merging o/r#5 — x: y",
-        )
-        self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/5": "acted"})
-
-    def test_a_reader_piped_into_a_shell_may_run_it(self):
-        for command in (
-            "cat pr-merge.sh | bash -s -- -R o/r 5",
-            "sed -n 1,400p pr-merge.sh | bash -s -- -R o/r 5",
-            "{ cat pr-merge.sh; } | bash -s -- -R o/r 5",
-            "( cat pr-merge.sh ) | bash -s -- -R o/r 5",
-            "bash <(cat pr-merge.sh) -R o/r 5",
-            'eval "$(cat pr-merge.sh)"',
-            "cat pr-merge.sh > /tmp/m.sh; bash /tmp/m.sh -R o/r 5",
-        ):
-            with self.subTest(command=command):
-                scan = _case("reader", command=command, result="")
-                self.assertEqual(len(scan["unresolved"]), 1)
-
 
 class SubcommandShapesTest(unittest.TestCase):
     def test_a_numbered_edit_after_a_closed_heredoc(self):
@@ -360,6 +304,14 @@ class SubcommandShapesTest(unittest.TestCase):
                 scan = _case("closed_heredoc", command=command, result="")
                 self.assertEqual(scan["origins"], {})
                 self.assertEqual(len(scan["unresolved"]), 1)
+        # Without `<<-` a tab-indented end line closes nothing either.
+        command = (
+            "cat > /tmp/b.md <<EOF\nbody\n\tEOF\n"
+            "gh pr edit 89 -R o/r --body-file /tmp/b.md"
+        )
+        scan = _case("closed_heredoc", command=command, result="")
+        self.assertEqual(scan["origins"], {})
+        self.assertEqual(len(scan["unresolved"]), 1)
         # `<<-` strips leading tabs only: a tab-indented end closes it.
         command = (
             "cat > /tmp/b.md <<-EOF\n\tbody\n\tEOF\n"

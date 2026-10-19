@@ -259,36 +259,6 @@ PR_MERGE_NO_WRITE_RE = re.compile(
 # A report line that names no PR: the script stopped (`die`, `unknown flag`,
 # `--self-reviewed refused: …`), perhaps after it posted an attestation.
 PR_MERGE_UNNAMED_RE = re.compile(r"^pr-merge: (?!.*[\w.-]+/[\w.-]+#\d+)", re.MULTILINE)
-# Programs that read a file they are given and never run it or write another:
-# `grep … pr-merge.sh` names the wrapper without running it. Any other
-# mention may be a run (`sed 'w m.sh'`, `awk 'system(…)'`, `git show
-# --output=m.sh` can write or run it).
-FILE_READERS = frozenset(
-    [
-        "grep",
-        "egrep",
-        "fgrep",
-        "rg",
-        "ugrep",
-        "ag",
-        "head",
-        "tail",
-        "cat",
-        "bat",
-        "less",
-        "more",
-        "wc",
-        "ls",
-        "stat",
-        "file",
-        "diff",
-        "cmp",
-        "sha256sum",
-        "sha1sum",
-        "md5sum",
-        "shellcheck",
-    ]
-)
 # `pr-merge.sh` flags with which it writes nothing.
 NO_WRITE_FLAGS = frozenset({"--dry-run", "--help", "-h", "--version"})
 # Every flag it knows besides `-R`/`--repo`; any other one stops it.
@@ -1518,15 +1488,13 @@ def _run_words(words: list[str]) -> list[str]:
     return []
 
 
-def _wrapper_mentions(command: str) -> list[tuple[list[str] | None, bool]]:
-    """Each `pr-merge.sh` outside a text that may run, with whether its
-    output goes to a file: the words of the simple command it runs
-    (`pr-merge.sh -R o/r 5 …`), or None when the words around it do not say
-    (a `for` list, `xargs`). A mention a file reader is given (`grep -n x
-    pr-merge.sh`, `head pr-merge.sh`) is no run, unless the reader's output
-    may reach a program (`_read_output_may_run`)."""
+def _wrapper_mentions(command: str) -> list[list[str] | None]:
+    """Each `pr-merge.sh` outside a text that may run: the words of the
+    simple command it runs (`pr-merge.sh -R o/r 5 …`), or None when that
+    command is not the script itself (a `for` list, `xargs`, `grep …
+    pr-merge.sh`): such a mention may be a run."""
     shell = _shell(command)
-    mentions: list[tuple[list[str] | None, bool]] = []
+    mentions: list[list[str] | None] = []
     for m in PR_MERGE_WRAPPER_RE.finditer(shell.blanked):
         node = _enclosing(shell._node_at(m.start()), "command")
         group = None
@@ -1540,92 +1508,10 @@ def _wrapper_mentions(command: str) -> list[tuple[list[str] | None, bool]]:
                 ),
                 None,
             )
-        if group is None:
-            mentions.append((None, False))
-            continue
-        words = _run_words([_word(shell, w) for w in group])
+        words = _run_words([_word(shell, w) for w in group]) if group else []
         head = os.path.basename(words[0]) if words else ""
-        if head == "pr-merge.sh":
-            mentions.append((words, _to_a_file(shell, node)))
-        elif head not in FILE_READERS or _read_output_may_run(shell, node):
-            mentions.append((None, False))
+        mentions.append(words if head == "pr-merge.sh" else None)
     return mentions
-
-
-# Where a reader's output only reaches the terminal (or more readers).
-READER_CONTEXT = frozenset(
-    {
-        "program",
-        "list",
-        "do_group",
-        "for_statement",
-        "while_statement",
-        "if_statement",
-        "elif_clause",
-        "else_clause",
-        "negated_command",
-    }
-)
-
-
-def _to_a_file(shell: _Shell, node, stdout_only: bool = False) -> bool:
-    """Whether a command prints nothing the transcript shows: its standard
-    output and its standard error both end in a file (`> m.txt 2>&1`,
-    `&> m.txt`; not `2>&1 > m.txt`, applied left to right). `pr-merge.sh`
-    reports a refusal on standard error. With `stdout_only`, whether its
-    standard output alone ends in a file. A redirect may stand before the
-    command or between its words (`> m.txt cmd …`); those apply first."""
-    redirects = list(node.children_by_field_name("redirect"))
-    parent = node.parent
-    if parent is not None and parent.type == "redirected_statement":
-        redirects += parent.children_by_field_name("redirect")
-    out = err = "terminal"
-    for r in redirects:
-        if r.type != "file_redirect":
-            continue
-        text = _word(shell, r).replace(" ", "")
-        if text.startswith("&>"):
-            out = err = "file"
-        elif text == "2>&1":
-            err = out
-        elif re.match(r"1?>&2", text):
-            out = err
-        elif text.startswith("2>"):
-            err = "file"
-        elif re.match(r"1?>", text):
-            out = "file"
-    return out == "file" and (err == "file" or stdout_only)
-
-
-def _read_output_may_run(shell: _Shell, node) -> bool:
-    """Whether what a reader prints may reach a program: a pipeline into a
-    command that is not a reader (`cat pr-merge.sh | bash -s`), a file
-    (`cat pr-merge.sh > m.sh`), or a substitution, group or subshell whose
-    output goes on (`bash <(cat pr-merge.sh)`, `eval "$(cat …)"`,
-    `{ cat pr-merge.sh; } | bash`). `grep … | head` reaches none."""
-    if _to_a_file(shell, node, stdout_only=True):
-        return True  # `> m.sh cat pr-merge.sh`
-    child, parent = node, node.parent
-    while parent is not None and parent.type != "program":
-        if parent.type == "pipeline":
-            for part in parent.children:
-                if part.start_byte <= child.start_byte or part.type in ("|", "|&"):
-                    continue
-                name = (
-                    part.child_by_field_name("name") if part.type == "command" else None
-                )
-                if (
-                    name is None
-                    or os.path.basename(_word(shell, name)) not in FILE_READERS
-                ):
-                    return True
-        elif parent.type == "redirected_statement":
-            if _to_a_file(shell, child, stdout_only=True):
-                return True
-        elif parent.type not in READER_CONTEXT:
-            return True
-        child, parent = parent, parent.parent
-    return False
 
 
 def _wrapper_target(words: list[str]) -> tuple[str, int] | None:
@@ -1640,32 +1526,35 @@ def _wrapper_target(words: list[str]) -> tuple[str, int] | None:
                 return None  # `--repo=x`, `--`, `--merge`: it stops, `unknown flag`
         else:
             last = word  # the script keeps its last positional argument
-    if repo and last and last.isdigit() and re.fullmatch(r"[\w.-]+/[\w.-]+", repo):
+    if (
+        repo
+        and last
+        and re.fullmatch(r"[0-9]+", last)
+        and re.fullmatch(r"[\w.-]+/[\w.-]+", repo)
+    ):
         return repo, int(last)
     return None
 
 
 def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
     """What `pr-merge.sh` merged or commented on, from its own report lines;
-    [] when it says it wrote nothing or never runs, None when it says
-    neither. Its report can be in a file the transcript does not show
-    (`pr-merge.sh -R o/r 5 > merge.txt`); then its literal `-R` and number
-    name the target, since every write it makes (the merge, the queue
-    entry, the self-review attestation) goes to that PR."""
+    [] when it says it wrote nothing, None when it says neither. A run with
+    a literal `-R` and number names its target in its words, since every
+    write it makes (the merge, the queue entry, the self-review attestation)
+    goes to that PR; its report may be in a file the transcript does not
+    show (`pr-merge.sh -R o/r 5 > merge.txt`)."""
     mentions = [
-        (w, to_file)
-        for w, to_file in _wrapper_mentions(command)
+        w
+        for w in _wrapper_mentions(command)
         if w is None or not NO_WRITE_FLAGS & set(w)
     ]
     if not mentions:
         return []
-    targets = [_wrapper_target(w) if w else None for w, _ in mentions]
+    targets = [_wrapper_target(w) if w else None for w in mentions]
     # A visible report line that names no PR says the script stopped, maybe
     # after a write: only its report lines can tell, as for a variable target.
     if all(targets) and not PR_MERGE_UNNAMED_RE.search(result):
-        return _literal_wrapper_targets(
-            [(t, to_file) for t, (_, to_file) in zip(targets, mentions)], result
-        )
+        return _literal_wrapper_targets(targets, result)
     found = [
         dict(
             artefact(GITHUB_HOST, m["project"], "pull", int(m["number"])),
@@ -1679,14 +1568,13 @@ def _wrapper_targets(command: str, result: str) -> list[dict[str, Any]] | None:
 
 
 def _literal_wrapper_targets(
-    runs: list[tuple[tuple[str, int], bool]], result: str
+    runs: list[tuple[str, int]], result: str
 ) -> list[dict[str, Any]]:
-    """The PRs runs with literal targets wrote to: each target, unless every
-    run on it shows its output and a report at a line start says it wrote
-    nothing there (`pr-merge: not merging o/r#5 …`, `pr-merge: o/r#5
-    failed …`), once per run, and none says it wrote (the attestation it
-    posts before it declines to merge). Any other report line is somebody
-    else's text."""
+    """The PRs runs with literal targets wrote to: each target, unless a
+    report at a line start says it wrote nothing there (`pr-merge: not
+    merging o/r#5 …`, `pr-merge: o/r#5 failed …`) once per run on it, and
+    none says it wrote (the attestation it posts before it declines to
+    merge)."""
     wrote = {
         (m["project"].lower(), int(m["number"]))
         for m in PR_MERGE_REPORT_RE.finditer(result)
@@ -1696,15 +1584,13 @@ def _literal_wrapper_targets(
         project, _, number = (m["target"] or m["failed"]).rpartition("#")
         key = (project.lower(), int(number))
         shut[key] = shut.get(key, 0) + 1
-    counts: dict[tuple[str, int], list[bool]] = {}
-    for (repo, number), to_file in runs:
-        counts.setdefault((repo, number), []).append(to_file)
+    counts: dict[tuple[str, int], int] = {}
+    for repo, number in runs:
+        counts[(repo, number)] = counts.get((repo, number), 0) + 1
     return [
         dict(artefact(GITHUB_HOST, repo, "pull", number), origin="acted")
-        for (repo, number), files in counts.items()
-        if any(files)
-        or (repo.lower(), number) in wrote
-        or shut.get((repo.lower(), number), 0) < len(files)
+        for (repo, number), n in counts.items()
+        if (repo.lower(), number) in wrote or shut.get((repo.lower(), number), 0) < n
     ]
 
 
