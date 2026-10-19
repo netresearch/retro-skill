@@ -2113,7 +2113,7 @@ def _literal_thread_write(
     comment ids it writes to, and whether those are all it writes. It is
     complete only when the document is one `mutation` operation whose every
     field with arguments is the operation or a thread mutation, with no
-    fragment, directive, `input:$var` or `operationName`, each thread
+    fragment, directive or `input:$var`, each thread
     mutation names its own id, and every id argument outside a string is a
     literal id or a `$var` whose field is one (or a function's `$1` traced to
     literal ids). None when the document is not literal, or a word of the
@@ -2138,7 +2138,6 @@ def _literal_thread_write(
         and len(re.findall(r"(?<![$\w])(?:mutation|query|subscription)\b", blanked))
         == 1
         and not re.search(r"@|\.\.\.|\binput\s*:\s*\$", blanked)
-        and "operationName" not in fields
     )
     threads = 0
     named = re.match(r"\s*mutation\s+([_A-Za-z]\w*)", blanked)  # `mutation Name(`

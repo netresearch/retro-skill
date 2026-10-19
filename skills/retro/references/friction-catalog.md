@@ -220,7 +220,7 @@ outside a field value is literal, and none is `--input`; the `query=` field
 is literal text with no shell expansion; the document, with its strings and
 comments blanked and commas and byte-order marks read as white space, holds
 one operation, a `mutation` with no fragment, no directive and no
-`input:$var`, and no `operationName` field is given; every field with
+`input:$var`; every field with
 arguments is that operation or a thread mutation (`resolveReviewThread`,
 `unresolveReviewThread`, `addPullRequestReviewThreadReply`,
 `updatePullRequestReviewComment`), and each thread mutation has its own id

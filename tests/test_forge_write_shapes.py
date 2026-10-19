@@ -880,13 +880,21 @@ class PendingLookupTest(unittest.TestCase):
             + "} mutation B{"
             + resolve
             + "}' -f operationName=B",
+            # A thread mutation that names no id of its own.
+            (
+                f"gh api graphql -f query='mutation{{{resolve} "
+                "unresolveReviewThread(input:{}){thread{id}}}'"
+            ),
         ):
             with self.subTest(command=command[-50:]):
                 scan = _case("thread_id_assignment", command=command, result="{}")
                 self.assertFalse(any(w["only_review_threads"] for w in scan["pending"]))
                 self.assertEqual(len(scan["unresolved"]), 1)
         # A named operation is still the thread shape.
-        command = f"gh api graphql -f query='mutation Done{{{resolve}}}'"
+        command = (
+            "gh api graphql -f query='mutation Done($t:ID!){resolveReviewThread("
+            "input:{threadId:$t}){thread{id}}}' -f t=PRRT_kwDOa"
+        )
         scan = _case("thread_id_assignment", command=command, result="{}")
         self.assertEqual(scan["unresolved"], [])
 
