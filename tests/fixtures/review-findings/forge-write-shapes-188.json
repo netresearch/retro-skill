@@ -1,0 +1,20 @@
+{
+  "quoted_heredoc": {
+    "source": "session e72080f1, subagents/agent-abebbd4343eee335e.jsonl",
+    "command": "python3 - <<'PY'\np='/tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/finish-others_04/wk-body.md'\ns=open(p,encoding='utf-8').read(); assert s.count('8d9ab81')==1\nopen(p,'w',encoding='utf-8').write(s.replace('8d9ab81','e08b7c5')); print('ok')\nPY\ngh pr edit 19 -R netresearch/t3x-nr-wellknown --body-file /tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/finish-others_04/wk-body.md >/dev/null; echo \"EXIT: $?\"",
+    "result": "ok\nEXIT: 0",
+    "is_error": false
+  },
+  "unquoted_heredoc": {
+    "source": "session e72080f1, subagents/agent-a29572d7b94808120.jsonl",
+    "command": "S=/tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/scratchpad/work/agents/secfix-G12; python3 - <<PY\np=\"$S/dd-pr.md\"; s=open(p).read(); o=\"Against \\`origin/main\\` 7 of its 10 checks fail.\"; assert s.count(o)==1; open(p,'w').write(s.replace(o,\"Against \\`origin/main\\` 6 of its 10 checks fail.\"))\nPY\ngh pr edit 89 -R netresearch/typo3-ddev-skill --body-file $S/dd-pr.md >/dev/null && echo ok",
+    "result": "ok",
+    "is_error": false
+  },
+  "background_numbered": {
+    "source": "session e72080f1, subagents/agent-a7f535438f459ffd9.jsonl",
+    "command": "gh pr ready 84 -R netresearch/nr-landingpage && cd /home/cybot/projects && gh pr checks 84 -R netresearch/nr-landingpage --watch --interval 30 >/dev/null 2>&1; /home/cybot/.claude/skills/git-workflow/scripts/pr-status.sh -R netresearch/nr-landingpage 84 2>&1 | sed -n '1,10p'",
+    "result": "Command running in background with ID: b1hut4p2k. Output is being written to: /tmp/claude-1001/-home-cybot-projects/e72080f1-e094-41a8-bcee-7378e1f24a72/tasks/b1hut4p2k.output. You will be notified when it completes. To check interim output, use Read on that file path.\nSession cwd remains /home/cybot/projects; directory changes made by the backgrounded command do not apply to subsequent commands.",
+    "is_error": false
+  }
+}

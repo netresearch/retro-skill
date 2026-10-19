@@ -176,14 +176,29 @@ call the harness refused (`is_error` without `Exit code N`) ran nothing. A
 call with a write whose command the parser cannot read whole — a truncated
 command, text that is not shell, or two lines the grammar joins into one
 command — is unresolved. A
-successful write that prints nothing counts only as `<verb> <number> -R <repo>`
-outside any heredoc or quoted text. Output that reports a failure is not a
+write that prints nothing counts only as `<verb> <number> -R <repo>`
+outside any heredoc or quoted text, in a call the parser reads whole, that
+carries no write as text and runs no program it carries. A call with a
+heredoc counts only when it runs nothing but what it shows: every command
+in it is a plain `gh` (`pr`, `issue`, `api`, `run`, `repo`, `release`),
+`git` (`fetch`, `log`, `push`, `rev-parse`, `show`, `status`; no `-c`),
+`python`, `python3`, `cat`, `echo`, `printf`, `grep`, `cd`, `head`, `tail`, `ls` or
+`wc` with no assignment before it; no function, subshell, group, process
+substitution, here-string, `export` or `unset` appears; every heredoc
+delimiter is quoted as a whole (`'PY'`, `"PY"`, `\PY`), so a backtick or
+`$(…)` in the body runs nothing; every end line is one bash takes (not the
+delimiter with a trailing space, or indented by spaces, or without `<<-` by
+tabs); and no backslash-newline appears, since bash keeps one inside a
+quoted heredoc. So `python3 - <<'PY' … PY`, then `gh pr edit 89 -R o/r`,
+counts; anything else leaves the write unresolved, as before.
+A background run (a Bash call sent or moved to the
+background, a Monitor) holds no output at all, so only such a numbered
+write counts there, by its own words. Output that reports a failure is not a
 success: an `HTTP 4xx/5xx`, glab's `422 {message: …}`, a JSON error body
 with `"status":"405"` or `}gh: …` behind it, `GraphQL:` at a
 line start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`,
-`failed to` or `Cannot perform`, or a background run (a Bash call sent or
-moved to the background, a Monitor), whose output is not in the result at
-all; and a write whose own `&& echo A || echo B` printed B and not A. MCP writes count by their input. A `-R` with a scheme and a
+`failed to` or `Cannot perform`; and a write whose own `&& echo A || echo B`
+printed B and not A. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
 dotted first segment is a GitLab group. Writes through other tools — `curl`

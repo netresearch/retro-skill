@@ -193,13 +193,20 @@ ECHO_BRANCHES_RE = re.compile(
 )
 # A message's own redirection (`echo failed >&2`) is not part of its text.
 ECHO_REDIRECT_RE = re.compile(r"\s*\d*>&?\s*\S+$")
-FAILED_OUTPUT_RE = re.compile(
+REPORTED_FAILURE_RE = re.compile(
     r"HTTP [45]\d\d|: [45]\d\d \{message|\"status\":\"[45]\d\d\"|\}gh: "
     r"|(?:^|: )GraphQL: "
-    r"|^\s*(?:[xX✗]\s|gh: |failed to |Cannot perform)"
-    r"|Command running in background|moved to the background|^Monitor started \(",
+    r"|^\s*(?:[xX✗]\s|gh: |failed to |Cannot perform)",
     re.MULTILINE,
 )
+BACKGROUND_RE = re.compile(
+    r"Command running in background|moved to the background|^Monitor started \(",
+    re.MULTILINE,
+)
+FAILED_OUTPUT_RE = re.compile(
+    f"{REPORTED_FAILURE_RE.pattern}|{BACKGROUND_RE.pattern}", re.MULTILINE
+)
+
 
 # An MCP tool that fails often returns its error as ordinary text with
 # is_error unset: "Error: 404 not found", "Issue does not exist".
@@ -1156,6 +1163,95 @@ class _Shell:
                     return True
         return False
 
+    @functools.cached_property
+    def heredocs_inert(self) -> bool:
+        """Whether a call that writes `<<` runs nothing but what it shows.
+        A call without `<<` is True, as `main` read it. Otherwise everything
+        this cannot prove is False:
+        - every command is a plain name from `HEREDOC_CALL_COMMANDS` (`git`
+          and `gh` with a listed subcommand, `git` without `-c`), with no
+          variable assignment before it; no function, subshell, group,
+          process substitution or here-string anywhere in the call;
+        - every heredoc's delimiter is written exactly `'X'`, `"X"` or `\\X`
+          with no quote or backslash in X, so a `` `cmd` `` or `$(cmd)` in
+          the body runs nothing (`'E\\F'` keeps its backslash; not modelled);
+        - its end line is the delimiter alone, after leading tabs only under
+          `<<-` (the grammar also ends one at `X ` or `  X`).
+        Whatever reads a heredoc is then a listed command: none of them runs
+        what it reads, except `python3` running its own program."""
+        if "<<" not in self.source:
+            return True
+        data = self._data
+        for node in self._walk():
+            if node.type in HEREDOC_CALL_UNSAFE:
+                return False
+            if node.type == "command" and not _plain_safe_command(self, node):
+                return False
+            if node.type != "heredoc_redirect":
+                continue
+            kinds = {c.type: c for c in node.children}
+            start, end = kinds.get("heredoc_start"), kinds.get("heredoc_end")
+            if start is None or end is None:
+                return False  # defensive: such a call is `misparsed` already
+            quoted = HEREDOC_QUOTED_RE.fullmatch(
+                data[start.start_byte : start.end_byte]
+            )
+            if quoted is None:
+                return False
+            delimiter = next(g for g in quoted.groups() if g is not None)
+            first = data.rfind(b"\n", 0, end.start_byte) + 1
+            last = data.find(b"\n", end.end_byte)
+            line = data[first : last if last != -1 else len(data)]
+            if "<<-" in kinds:
+                line = line.lstrip(b"\t")
+            if line != delimiter:
+                return False
+        return True
+
+
+# What `_Shell.heredocs_inert` accepts as a quoted delimiter.
+HEREDOC_QUOTED_RE = re.compile(rb"'([^'\"\\\s]+)'|\"([^'\"\\\s$`]+)\"|\\([^'\"\\\s]+)")
+# The only commands a call with a heredoc may hold: none of them runs a
+# shell, a file or a command it is given (measured on session e72080f1,
+# where they cover 45 of the 46 such calls). `python3` can run anything
+# from its own program, as `python3 -c` can on `main`.
+HEREDOC_CALL_COMMANDS = frozenset(
+    {"gh", "git", "python", "python3", "cat", "echo", "printf", "grep", "cd"}
+    | {"head", "tail", "ls", "wc"}
+)
+HEREDOC_CALL_GIT = frozenset({"fetch", "log", "push", "rev-parse", "show", "status"})
+HEREDOC_CALL_GH = frozenset({"pr", "issue", "api", "run", "repo", "release"})
+HEREDOC_CALL_UNSAFE = frozenset(
+    {
+        "process_substitution",
+        "subshell",
+        "compound_statement",
+        "function_definition",
+        "herestring_redirect",
+        "declaration_command",  # `export GH_PAGER=…`, `declare -x …`
+        "unset_command",
+    }
+)
+
+
+def _plain_safe_command(shell: _Shell, command) -> bool:
+    """Whether `command` is a listed program named by a plain word, with no
+    assignment before it, and for `git`/`gh` a listed subcommand."""
+    name = command.child_by_field_name("name")
+    if name is None or any(c.type == "variable_assignment" for c in command.children):
+        return False
+    program = _word(shell, name)
+    if program not in HEREDOC_CALL_COMMANDS:
+        return False  # `$G`, `./cat`, `\cat`, `bash`, `source`, `eval`, …
+    words = [_word(shell, a) for a in command.children_by_field_name("argument")]
+    if program == "git":
+        while words[:1] == ["-C"] and len(words) > 1:
+            words = words[2:]
+        return bool(words) and words[0] in HEREDOC_CALL_GIT
+    if program == "gh":
+        return bool(words) and words[0] in HEREDOC_CALL_GH
+    return True
+
 
 @functools.lru_cache(maxsize=256)
 def _shell(command: str) -> _Shell:
@@ -1198,15 +1294,38 @@ def _is_text(command: str, write: re.Match) -> bool:
 class _Call:
     """One tool call: its command, its output, and whether it failed."""
 
+    @functools.cached_property
+    def holds_text_writes(self) -> bool:
+        """Whether the call carries a write as text (a heredoc body, a quoted
+        string, a list-form call) or runs a program it carries: bash may run
+        such a write (`source /dev/stdin <<'X'`, `eval "$(cat …)"`, a script
+        file it writes and runs), so no write of the call prints nothing
+        safely."""
+        return (
+            bool(LIST_CALL_RE.search(self.command))
+            or any(_is_text(self.command, w) for w in _writes(self.command))
+            or any(
+                _is_text(self.command, m)
+                for m in PR_MERGE_WRAPPER_RE.finditer(self.command)
+            )
+            or _runs_a_program(self.command)
+        )
+
     def __init__(self, command: str, result: str, gitlab_host: str, failed: bool):
         self.command = command
         self.result = result
         self.gitlab_host = gitlab_host
-        self.failed = (
+        # `_forge_write_artefacts` folds backslash-newlines; inside a quoted
+        # heredoc bash keeps them, so the folded text is not what bash read.
+        self.folded = False
+        # The output says a write failed.
+        self.reported_failure = (
             failed
-            or bool(FAILED_OUTPUT_RE.search(result))
+            or bool(REPORTED_FAILURE_RE.search(result))
             or _took_the_failure_branch(command, result)
         )
+        # Or it is not in the result at all: the call ran in the background.
+        self.failed = self.reported_failure or bool(BACKGROUND_RE.search(result))
         # URLs a create in this call already took: each create takes the next.
         self.claimed: set[str] = set()
 
@@ -1271,15 +1390,21 @@ class _Call:
         ):
             return []
         # Silent success in the one unambiguous shape: `<verb> N -R repo`, in
-        # a call without any heredoc (an unclosed one hides its extent).
+        # a call the parser reads whole (an unclosed heredoc, which hides its
+        # extent, is an ERROR node) and whose heredocs bash neither expands
+        # nor ends elsewhere (`heredocs_inert`). A run in the background
+        # names its target the same way; only its output is elsewhere.
         # Never when the output names this number under another repository:
         # then the `-R` was not understood, and a guess would name a wrong one.
         if (
             number
             and slug
             and not same_number
-            and not self.failed
-            and "<<" not in self.command
+            and not self.reported_failure
+            and not _shell(self.command).misparsed
+            and _shell(self.command).heredocs_inert
+            and not (self.folded and "<<" in self.command)
+            and not self.holds_text_writes
             and not _is_text(self.command, write)
         ):
             return [
@@ -1512,8 +1637,10 @@ def _forge_write_artefacts(
     until the forge has named each thread's pull request."""
     if refused(result, failed):
         return [], False, []
+    folded = _joined(command) != command
     command = _joined(command)
     call = _Call(command, result, gitlab_host, failed)
+    call.folded = folded
     writes = sorted(_writes(command), key=lambda w: _write_order(command, w))
     wrapper = _wrapper_targets(command, result)
     found: list[dict[str, Any]] = list(wrapper or [])

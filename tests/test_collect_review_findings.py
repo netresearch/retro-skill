@@ -1169,7 +1169,12 @@ class FourthRoundTest(unittest.TestCase):
             ),
         ]
         urls, data = self.urls([({"command": c}, r) for c, r in cmds])
-        self.assertEqual((urls, len(data["unresolved_forge_commands"])), ({}, 3))
+        # The background run reports nothing, failure included; its own words
+        # name its PR (#188). The two failures stay unresolved.
+        self.assertEqual(
+            (urls, data["unresolved_forge_commands"]),
+            ({"https://github.com/o/r/pull/5": "acted"}, [c for c, _ in cmds[:2]]),
+        )
 
     def test_a_create_counts_only_its_own_kind(self):
         cmd = "gh pr create -R o/r --fill"
@@ -1953,8 +1958,17 @@ class EleventhRoundTest(unittest.TestCase):
             "Monitor started (task b3, timeout 1800000ms).",
         ):
             with self.subTest(printed=printed[:30]):
+                # A numbered write names its target in its words, wherever its
+                # output went (#188); one by branch names it only in its output.
                 urls, data = self.urls(
                     [({"command": "gh pr merge 5 -R o/r --merge"}, printed)]
+                )
+                self.assertEqual(
+                    (urls, data["unresolved_forge_commands"]),
+                    ({"https://github.com/o/r/pull/5": "acted"}, []),
+                )
+                urls, data = self.urls(
+                    [({"command": "gh pr merge x -R o/r --merge"}, printed)]
                 )
                 self.assertEqual(
                     (urls, len(data["unresolved_forge_commands"])), ({}, 1)
