@@ -604,7 +604,7 @@ class PendingLookupTest(unittest.TestCase):
 
     def test_a_printf_that_only_prints_keeps_the_id(self):
         command = (
-            "t=PRRT_kwDOa; printf '%s\\n' \"$t\"; gh api graphql -f query='mutation($t:ID!)"
+            "t=PRRT_kwDOa; printf 'thread t: %s\\n' \"$t\"; gh api graphql -f query='mutation($t:ID!)"
             '{resolveReviewThread(input:{threadId:$t}){thread{isResolved}}}\' -f t="$t"'
         )
         scan = _case("thread_id_assignment", command=command, result="PRRT_kwDOa\ntrue")
@@ -633,6 +633,12 @@ class PendingLookupTest(unittest.TestCase):
             + mutation.replace("{ref}", "$t"),
             "t=PRRT_kwDOa; command read t < id; " + mutation.replace("{ref}", "$t"),
             "t=PRRT_kwDOa; eval 't=$(cat id)'; " + mutation.replace("{ref}", "$t"),
+            # Review round 14: any other command that names the variable.
+            "t=PRRT_kwDOa; IFS= builtin read t < id; "
+            + mutation.replace("{ref}", "$t"),
+            "t=PRRT_kwDOa; command -p read t < id; " + mutation.replace("{ref}", "$t"),
+            "t=PRRT_kwDOa; eval 'read t < id'; " + mutation.replace("{ref}", "$t"),
+            "t=PRRT_kwDOa; \\read t < id; " + mutation.replace("{ref}", "$t"),
             't=PRRT_kwDOa; printf -v "t[0]" %s "$(cat id)"; '
             + mutation.replace("{ref}", "$t"),
         ):

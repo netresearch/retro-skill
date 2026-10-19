@@ -1306,37 +1306,24 @@ def _held_elsewhere(command: str, name: str) -> bool:
 
 
 def _sets_variable(shell: _Shell, node, name: str) -> bool:
-    """Whether a command gives the variable `name` a value at run time:
-    `read name`, `mapfile name`, `getopts … name`, `printf -v name …`, or a
-    declaration (`declare`, `local`, `export name=…`). `printf` without
-    `-v` only prints."""
+    """Whether a command may give the variable `name` a value at run time.
+    Any command that names it as a bare word (not `$name`) counts, whatever
+    runs it: `read t`, `printf -v t`, `declare t=…`, `IFS= builtin read t`,
+    `eval 't=…'`, `\\read t`. Only gh and glab, `echo`, and a `printf`
+    without `-v` are known to set nothing."""
     if node.type not in ("command", "declaration_command"):
         return False
-    words = [_word(shell, c) for c in node.children if c.type != "command_name"]
+    text = shell.source[shell._char[node.start_byte] : shell._char[node.end_byte]]
+    if not re.search(rf"(?<![\w$])(?<!\$\{{){re.escape(name)}(?!\w)", text):
+        return False
     head = node.child_by_field_name("name")
-    command = _word(shell, head) if head is not None else ""
-    while command in ("builtin", "command") and words:
-        command, words = words[0], words[1:]  # `builtin printf -v t …`
-
-    def names(word: str) -> bool:  # `t`, `t=…`, `t[0]`
-        return re.match(rf"{re.escape(name)}(?:$|=|\[)", word) is not None
-
-    if command == "printf":
-        return any(
-            w == "-v" and names(n) or w.startswith("-v") and names(w[2:])
-            for w, n in itertools.pairwise(words + [""])
-        )
-    if command == "eval":
-        return any(
-            re.search(rf"(?<![\w$]){re.escape(name)}(?:\[[^]]*\])?=", w) for w in words
-        )
-    if command in VALUE_SETTERS or node.type == "declaration_command":
-        return any(names(w) for w in words)
-    return False
-
-
-# Commands that set a variable they are given by name.
-VALUE_SETTERS = frozenset({"read", "mapfile", "readarray", "getopts"})
+    command = os.path.basename(_word(shell, head)) if head is not None else ""
+    if node.type == "declaration_command" or command.startswith("\\"):
+        return True
+    if command in ("gh", "glab", "echo"):
+        return False
+    words = [_word(shell, c) for c in node.children_by_field_name("argument")]
+    return command != "printf" or any(w.startswith("-v") for w in words)
 
 
 def _blank_texts(command: str) -> str:
