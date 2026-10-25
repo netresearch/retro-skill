@@ -1,10 +1,15 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 
 """Render an opencode session as the JSONL shape `detect-mechanical.py` reads.
 
-    python3 opencode-transcript.py --match "<a token from the session>" \\
+    uv run opencode-transcript.py --match "<a token from the session>" \\
         [--db ~/.local/share/opencode/opencode.db] [--session <id>] > session.jsonl
 
 WHY THIS EXISTS. `detect-mechanical.py` parses a Claude Code transcript, and an

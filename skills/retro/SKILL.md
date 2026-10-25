@@ -4,12 +4,12 @@
 name: retro
 description: "Use when a Claude Code or Codex session ends or is declared finished, a friction needs fixing, a reusable learning needs capturing, local memory needs promoting upward, or for cross-session audits — detect friction AND learnings, route each to the right destination, and gate 'done'. Triggers: /retro, /retro done, 'retrospective', 'capture this learning', 'fix this skill', 'promote memory', 'audit', 'alles erledigt'."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
-compatibility: "Requires python3, uv, jq, and gh and/or glab (PR creation)."
+compatibility: "Requires uv (runs the scripts on Python 3.11 or later), jq, and gh and/or glab (PR creation)."
 metadata:
   author: Netresearch DTT GmbH
   version: "3.0.0"
   repository: https://github.com/netresearch/retro-skill
-allowed-tools: Bash(python3 ${CLAUDE_SKILL_DIR}/scripts/*) Bash(bash ${CLAUDE_SKILL_DIR}/scripts/*) Bash(${CLAUDE_SKILL_DIR}/scripts/*) Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) Bash(grep:*) Bash(jq:*) Read Write Edit Glob Grep Task
+allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/*) Bash(${CLAUDE_SKILL_DIR}/scripts/*) Bash(uv run ${CLAUDE_SKILL_DIR}/scripts/*) Bash(gh:*) Bash(glab:*) Bash(git:*) Bash(find:*) Bash(grep:*) Bash(jq:*) Read Write Edit Glob Grep Task
 ---
 
 # Retro — LLM-driven Session Retrospection
@@ -48,16 +48,18 @@ approval.
 
 ## Pipeline (all modes)
 
-1. Mechanical pre-pass — `${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py` (Promote:
-   `${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py`). It requires `--transcript-file`, and the
+1. Mechanical pre-pass — `uv run ${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py` (Promote:
+   `uv run ${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py`). Every Python
+   script runs through `uv run`: its header declares Python 3.11 or later, and
+   `python3` can be an older interpreter (macOS ships 3.9). It requires `--transcript-file`, and the
    transcript is located **by content** — a token from this session — never by
    mtime: several sessions share one project slug, so the newest JSONL is
    regularly somebody else's. Codex rollout JSONL must first be converted with
-   `scripts/codex-transcript.py`; on Windows use `py -3 -X utf8` for the Python
-   scripts. Invocation and adapter limits are in `references/workflow.md`.
+   `scripts/codex-transcript.py`; on Windows set `PYTHONUTF8=1` before
+   `uv run`. Invocation and adapter limits are in `references/workflow.md`.
    Then `uv run ${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py` on the
-   same transcript (`uv run`, because its header declares the tree-sitter
-   parser; plain `python3` stops with a message): review threads, bot reviews,
+   same transcript (its header also declares the tree-sitter parser; plain
+   `python3` stops with a message): review threads, bot reviews,
    and comments on the session's PRs/MRs, their linked issues, plus normalized tracker feedback supplied via
    `--feedback-file` (input for B18–B20, D4, D6). The subagents' transcripts
    (`<session id>/subagents/agent-*.jsonl`) are read with it; `transcripts`

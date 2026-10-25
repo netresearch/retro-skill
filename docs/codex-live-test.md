@@ -7,7 +7,7 @@ Checked on macOS on 2026-10-15 with `codex-cli 0.155.0`, using the native
 `codex plugin list --json` output rather than a hand-built marketplace file.
 
 ```sh
-python3 skills/retro/scripts/find-org-skills.py --host codex > catalogue.json
+uv run skills/retro/scripts/find-org-skills.py --host codex > catalogue.json
 ```
 
 The inventory returned 385 entries, 377 with readable skill paths. It included

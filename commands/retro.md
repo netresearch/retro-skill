@@ -35,7 +35,7 @@ correct destination.
 Run the deterministic friction detector against the session transcript:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py \
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py \
   --transcript-file ~/.claude/projects/<slug>/<session-id>.jsonl \
   --output-format json
 ```
@@ -123,7 +123,7 @@ See `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` Schicht 
 Scan session JSONL across projects for related friction:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>"
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>"
 ```
 
 `--pattern` searches **user turns only** — mostly text the user typed, plus
@@ -194,7 +194,7 @@ Run up front, for **every** candidate learning (not only once a destination is
 chosen) — discover the full catalogue:
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-org-skills.py
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-org-skills.py
 ```
 
 Returns every skill in every configured marketplace — installed or not —
@@ -375,7 +375,7 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
   transcript:
 
   ```bash
-  python3 ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py \
+  uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py \
     --output-format json [--project=<slug>]
   ```
 

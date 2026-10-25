@@ -52,8 +52,7 @@ An LLM reading the *actual* transcript classifies friction more accurately and f
 | Tool | Used for |
 |---|---|
 | Claude Code | The host that runs the plugin and the `/retro` command |
-| `python3` | Mechanical pre-pass and the cross-session scan |
-| `uv` | Session scope and review feedback (`derive-session-scope.py`, `collect-review-findings.py`): installs the shell parser tree-sitter-bash the scripts declare; the first run downloads it |
+| `uv` | Runs every Python script on the Python 3.11 or later its header declares (PEP 723), downloading that interpreter when the host has none; `python3` alone is not enough, macOS ships 3.9. For session scope and review feedback (`derive-session-scope.py`, `collect-review-findings.py`) it also installs the shell parser tree-sitter-bash the scripts declare; the first run downloads it |
 | `jq` | Skill discovery, manifest parsing, and the optional hook |
 | `gh` and/or `glab` | Creating pull/merge requests for skill updates |
 | `git` | Cloning source repos and materializing changes |
@@ -280,15 +279,17 @@ Deeper reading: the [`skills/retro/references/`](skills/retro/references/) docs,
 
 ## Tests
 
-The behavioural tests live in `tests/test_*.py` and use the standard library's `unittest`. Run them from the repository root with the commands CI runs (CI adds `--python <version>` to each `uv run`):
+The behavioural tests live in `tests/test_*.py` and use the standard library's `unittest`. Run them from the repository root with the commands CI runs (CI runs them once per version of its matrix):
 
 ```bash
-uv run --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 python -m unittest discover -s tests -v
-uv run python -m py_compile skills/retro/scripts/*.py
-uv run python skills/retro/scripts/validate-evals.py
+uv run --python 3.11 --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 python -m unittest discover -s tests -v
+uv run --python 3.11 python -m py_compile skills/retro/scripts/*.py
+uv run --python 3.11 python skills/retro/scripts/validate-evals.py
 ```
 
-The tests need `python3` 3.11 or later, `bash`, `git` and `jq` on `PATH`, and no network: `gh` is either a stub script on `PATH` (`tests/test_materialize_pr.py`) or replaced by an injected runner that returns recorded responses (`tests/test_collect_review_findings.py`, `tests/test_tracker_neutrality.py`). Transcripts, opencode databases, memory stores, plugin caches and git repositories are built in temporary directories.
+`--python` matters here: `uv run python …` reads no script header and takes the interpreter from `.python-version` or the system, which can be older than 3.11.
+
+The tests run on the Python 3.11 or later that the commands above select, and need `bash`, `git`, `jq` and `uv` on `PATH`, and no network: `gh` is either a stub script on `PATH` (`tests/test_materialize_pr.py`) or replaced by an injected runner that returns recorded responses (`tests/test_collect_review_findings.py`, `tests/test_tracker_neutrality.py`). Transcripts, opencode databases, memory stores, plugin caches and git repositories are built in temporary directories.
 
 Each script under `skills/retro/scripts/` except `feedback-contract.py` has its own test file, named after it (`detect-mechanical.py` → `tests/test_detect_mechanical.py` and `tests/test_detect_mechanical_review.py`); `feedback-contract.py` is exercised through `tests/test_tracker_neutrality.py`, and the two shell scripts are run for real by `tests/test_find_installed_skills.py` and `tests/test_materialize_pr.py`. `check-upstream-sources.py` is tested on its offline paths only. `skills/retro/evals/*.md` are scenarios for grading a retro transcript; `validate-evals.py` checks their structure, it does not run them.
 
@@ -314,7 +315,7 @@ A pull request that adds or changes behaviour in a script adds or updates a test
 
 ## Dependencies
 
-- **Runtime:** the scripts need `python3` (3.11 or later) and use only the standard library, except `derive-session-scope.py` and `collect-review-findings.py`, which declare `tree-sitter==0.26.0` and `tree-sitter-bash==0.25.1` in an inline script-metadata block (PEP 723). `uv run --script` installs exactly those versions from the configured package index (PyPI by default) into a cached environment on first use. The shell scripts need `bash`, `git` and `jq`; `materialize-pr.sh` also needs `gh`. The tools a `/retro` run uses are listed under [Requirements](#requirements); they are installed by the user and not declared in any manifest. Ruff targets the Python 3.11 minimum using `.ruff.toml`, and the CI matrix includes that minimum.
+- **Runtime:** the scripts need Python 3.11 or later and use only the standard library, except `derive-session-scope.py` and `collect-review-findings.py`, which declare `tree-sitter==0.26.0` and `tree-sitter-bash==0.25.1`. Every script that runs as a command declares `requires-python = ">=3.11"` in an inline script-metadata block (PEP 723) and is started with `uv run`, which picks a matching interpreter; `tests/test_python_floor.py` keeps the headers and the documented invocations in step. For the two tree-sitter scripts, `uv run --script` installs exactly the declared versions from the configured package index (PyPI by default) into a cached environment on first use. The shell scripts need `bash`, `git`, `jq` and `uv`; `materialize-pr.sh` also needs `gh`. The tools a `/retro` run uses are listed under [Requirements](#requirements); they are installed by the user and not declared in any manifest. Ruff targets the Python 3.11 minimum using `.ruff.toml`, and the CI matrix includes that minimum.
 - **Packaging:** `composer.json` requires `netresearch/composer-agent-skill-plugin`, which registers the skill in a consuming Composer project. `composer.lock` is ignored (`.gitignore`); the skill-repo convention publishes no lock file. The Claude Code plugin manifests (`plugin.json`, `.claude-plugin/plugin.json`) declare no dependencies.
 - **Development and CI:** the pre-commit hooks are pinned by `rev:` in `.pre-commit-config.yaml`. The test command pins the tree-sitter packages with `--with` in `.github/workflows/lint.yml`, matching the scripts' inline metadata. The workflows call reusable workflows from `netresearch/skill-repo-skill`, `netresearch/.github` and (`security.yml`) `netresearch/typo3-ci-workflows` at `@main`; the third-party actions inside those are pinned to commit SHAs there.
 - **Selection and tracking:** a third-party package is added only when the standard library cannot do the job, and it is pinned to an exact version. The tree-sitter packages are the only ones so far: they replaced regular expressions for reading the structure of shell commands in `derive-session-scope.py`, after review rounds kept finding defects in the regex splitting (commit `6f05551`). Renovate (`renovate.json`, `config:recommended` with the pre-commit manager enabled) opens update pull requests, and `.github/workflows/auto-merge-deps.yml` hands Renovate and Dependabot pull requests to the organisation's auto-merge workflow. Licence and vulnerability rules for dependencies are those of the organisation's security policy linked below.

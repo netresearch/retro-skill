@@ -179,7 +179,7 @@ if [ -z "$TF" ]; then
   done
 fi
 [ -n "$TF" ] || { echo "transcripts exist but none contain the token — pick another phrase"; exit 1; }
-python3 "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" \
+uv run "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" \
   --transcript-file "$TF" --output-format json
 ```
 
@@ -246,13 +246,13 @@ rollout, whose user messages repeat the main session's:
 TOKEN='an exact phrase the user typed'
 TF=""
 for f in $(find ~/.codex/sessions -name 'rollout-*.jsonl' -printf '%T@ %p\n' | sort -rn | cut -d' ' -f2); do
-  if python3 "${CLAUDE_SKILL_DIR}/scripts/codex-transcript.py" --transcript-file "$f" --match "$TOKEN" > /tmp/retro-codex-session.jsonl 2>/dev/null; then
+  if uv run "${CLAUDE_SKILL_DIR}/scripts/codex-transcript.py" --transcript-file "$f" --match "$TOKEN" > /tmp/retro-codex-session.jsonl 2>/dev/null; then
     TF=/tmp/retro-codex-session.jsonl
     break
   fi
 done
 [ -n "$TF" ] || echo "no Codex rollout carries the token as a human message"
-python3 "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" --transcript-file "$TF" --output-format json
+uv run "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" --transcript-file "$TF" --output-format json
 uv run "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" --transcript-file "$TF" --output-format json
 ```
 
@@ -263,16 +263,18 @@ $skillDir = 'C:\path\to\retro\skills\retro'
 $transcript = 'C:\Users\you\.codex\sessions\YYYY\MM\DD\rollout-....jsonl'
 $token = 'an exact phrase the user typed'
 $normalized = Join-Path $env:TEMP 'retro-codex-session.jsonl'
-py -3 -X utf8 "$skillDir\scripts\codex-transcript.py" --transcript-file $transcript --match $token |
+$env:PYTHONUTF8 = '1'
+uv run "$skillDir\scripts\codex-transcript.py" --transcript-file $transcript --match $token |
   Set-Content -LiteralPath $normalized -Encoding utf8NoBOM
-py -3 -X utf8 "$skillDir\scripts\detect-mechanical.py" --transcript-file $normalized --output-format json
+uv run "$skillDir\scripts\detect-mechanical.py" --transcript-file $normalized --output-format json
 uv run "$skillDir\scripts\collect-review-findings.py" --transcript-file $normalized --output-format json
 ```
 
-The command above uses PowerShell 7's `utf8NoBOM` encoding. On Windows,
-`python` or `python3` can resolve to a different interpreter;
-`py -3 -X utf8` selects Python 3 and keeps Chinese and other non-ASCII output
-from failing under a legacy console encoding.
+The command above uses PowerShell 7's `utf8NoBOM` encoding. `uv run` selects
+the Python 3.11 or later that each script's header declares, where `python` or
+`python3` can resolve to an older interpreter; `PYTHONUTF8=1` turns on
+Python's UTF-8 mode, the same as `-X utf8`, and keeps Chinese and other
+non-ASCII output from failing under a legacy console encoding.
 
 Coverage differs by record shape; the adapter's docstring names the Codex
 versions each was measured on. `exec_command` and `shell` calls, and a direct
