@@ -109,7 +109,7 @@ class FindInstalledSkillsTest(unittest.TestCase):
         """`[]` with exit 0 would read as "no skills installed"."""
         bin_dir = self.home / "bin"
         bin_dir.mkdir()
-        for tool in ("bash", "dirname", "basename", "readlink", "python3", "git"):
+        for tool in ("bash", "dirname", "basename", "readlink", "uv", "git"):
             found = shutil.which(tool)
             self.assertIsNotNone(found, tool)
             (bin_dir / tool).symlink_to(found)

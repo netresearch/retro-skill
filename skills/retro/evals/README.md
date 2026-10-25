@@ -47,7 +47,7 @@ equal the filename stem and be unique.
 ## Running them
 
 ```bash
-python3 scripts/validate-evals.py            # well-formedness + inventory (CI gates RT-40..42)
+uv run scripts/validate-evals.py             # well-formedness + inventory (CI gates RT-40..42)
 ```
 
 To exercise retro against them, run `/retro "fix the retro skill"` and judge the

@@ -1,6 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 
 """
 find-org-skills.py — discover every skill available to the user, installed or not.
@@ -33,7 +38,7 @@ Code, so no network or `gh` auth is required. Generic by design: it reads
 whatever marketplaces are configured, never a hardcoded org.
 
 Usage:
-    python3 find-org-skills.py [--host auto|claude|codex] \
+    uv run find-org-skills.py [--host auto|claude|codex] \
         [--claude-home PATH | --codex-home PATH] [--output-format json|text]
 """
 

@@ -1,10 +1,15 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 
 """Render a Codex rollout JSONL as the Claude-shaped JSONL retro reads.
 
-    python3 codex-transcript.py --transcript-file rollout.jsonl \\
+    uv run codex-transcript.py --transcript-file rollout.jsonl \\
         --match "a phrase the user typed" > session.jsonl
 
 WHY THIS EXISTS. Codex CLI keeps a session as one rollout file,

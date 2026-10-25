@@ -50,7 +50,7 @@ start)
     name=$(basename "${branch//\//-}")
     # Bare layout: worktrees live inside the project dir, next to .bare.
     if [[ -d "$repo/.bare" ]]; then wt="$repo/$name"; else wt="$repo/../$name"; fi
-    wt=$(python3 -c "import os,sys; print(os.path.abspath(sys.argv[1]))" "$wt")
+    wt=$(uv run --no-project --python '>=3.11' python -c "import os,sys; print(os.path.abspath(sys.argv[1]))" "$wt")
     git -C "$gitdir" worktree add -b "$branch" "$wt" "origin/$default" >/dev/null
     printf '%s\n' "$wt"
     ;;
@@ -70,7 +70,7 @@ finish)
     # An eval retro adds or tightens must carry samples, or the fleet's eval
     # gate has nothing to grade it against (retro-skill#92). Runs before any
     # git write, so a refusal leaves the worktree untouched.
-    python3 "$(dirname "$0")/check-eval-samples.py" --repo "$wt" -- "$@" \
+    uv run "$(dirname "$0")/check-eval-samples.py" --repo "$wt" -- "$@" \
         || die "eval(s) added or tightened without samples - see above"
     git -C "$wt" add -- "$@"
     # The pathspec limits the commit to the named files: anything else that

@@ -76,8 +76,8 @@ LOCAL_API_KEY=x "$O/oc2.sh" run --standalone --auto --model local/<model-id> \
   "Use your tools. Read app.py, edit it, run it, read it again."
 DB="$O/home/.local/share/opencode/opencode.db"
 sqlite3 "file:$DB?mode=ro" "select id from session_v2"
-python3 "$RETRO/skills/retro/scripts/opencode-transcript.py" --db "$DB" --session <id> > "$O/session.jsonl"
-python3 "$RETRO/skills/retro/scripts/detect-mechanical.py" --transcript-file "$O/session.jsonl"
+uv run "$RETRO/skills/retro/scripts/opencode-transcript.py" --db "$DB" --session <id> > "$O/session.jsonl"
+uv run "$RETRO/skills/retro/scripts/detect-mechanical.py" --transcript-file "$O/session.jsonl"
 ```
 
 `run --session <id> --fork "…"` creates a fork: its copied rows carry ids ending in `_<seq>`, and `session_v2.fork_session_id` names the parent. A prompt that reads a missing file produces a failed tool call (`state.error`, `content: []`).

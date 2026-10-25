@@ -56,11 +56,11 @@ Read-only by construction; stdlib-only; emits the `detect-mechanical.py`
 envelope so Phases 4–10 consume it as-is.
 
 ```
-python3 scan-memory-inventory.py [--project=SLUG] \
+uv run scan-memory-inventory.py [--project=SLUG] \
     [--memory-root PATH] [--project-dir PATH] [--include-flagged-locations] \
     [--include-global-rules] [--global-rules-file PATH] \
     [--output-format json|text]
-python3 scan-memory-inventory.py drain PATH [--memory-root PATH] [--expect-sha256 HEX]
+uv run scan-memory-inventory.py drain PATH [--memory-root PATH] [--expect-sha256 HEX]
 ```
 
 | Scanned | Signal | Note |

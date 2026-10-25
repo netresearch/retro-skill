@@ -1,6 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 
 """
 scan-memory-inventory.py — inventory already-written local memory stores and emit promotable findings.
@@ -32,11 +37,11 @@ global-rule drain is an approval-gated agent edit that removes the section
 only after the upward write is verified (see references/promote-mode.md).
 
 Usage:
-    python3 scan-memory-inventory.py [--project SLUG] [--memory-root PATH] \
+    uv run scan-memory-inventory.py [--project SLUG] [--memory-root PATH] \
         [--include-flagged-locations] [--project-dir PATH] \
         [--include-global-rules] [--global-rules-file PATH] \
         [--output-format json|text]
-    python3 scan-memory-inventory.py drain PATH [--memory-root PATH] [--expect-sha256 HEX]
+    uv run scan-memory-inventory.py drain PATH [--memory-root PATH] [--expect-sha256 HEX]
 """
 
 from __future__ import annotations

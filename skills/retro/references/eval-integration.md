@@ -103,7 +103,7 @@ skill-update path it is a step in `patch-workflow.md`'s self-review, run before
 the commit:
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/check-eval-samples.py --repo . <path>/evals.json
+uv run ${CLAUDE_SKILL_DIR}/scripts/check-eval-samples.py --repo . <path>/evals.json
 ```
 
 ### 3. Pre-emptive findings (CI integration)

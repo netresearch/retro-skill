@@ -1,6 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 
 """
 detect-mechanical.py — Schicht A mechanical friction detector for retro-skill.
@@ -9,8 +14,8 @@ Reads a Claude Code session transcript (JSONL) and emits a structured list of
 mechanical friction candidates. Output is JSON, consumed by the LLM in Schicht B.
 
 Usage:
-    python3 detect-mechanical.py --transcript-file <path> [--output-format json]
-    python3 detect-mechanical.py --transcript-file <path> --signals A1,A6,A17
+    uv run detect-mechanical.py --transcript-file <path> [--output-format json]
+    uv run detect-mechanical.py --transcript-file <path> --signals A1,A6,A17
 
 Signals implemented (Schicht A — full catalog):
     A1  Tool errors

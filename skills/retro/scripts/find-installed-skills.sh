@@ -14,10 +14,10 @@
 
 set -euo pipefail
 
-# Hard dependencies: jq JSON-escapes every value (`jq -Rs .`), python3 reads
-# the frontmatter. A missing tool exits 2 rather than printing `[]`, which would
-# read as "no skills installed".
-for tool in jq python3; do
+# Hard dependencies: jq JSON-escapes every value (`jq -Rs .`), uv runs the
+# Python 3.11+ that reads the frontmatter. A missing tool exits 2 rather than
+# printing `[]`, which would read as "no skills installed".
+for tool in jq uv; do
   if ! command -v "$tool" >/dev/null 2>&1; then
     echo "find-installed-skills.sh: $tool is required" >&2
     exit 2
@@ -157,7 +157,7 @@ done
 printf '\n]\n'
 }
 
-# One python3 pass fills every description with find-org-skills.py's
+# One Python pass fills every description with find-org-skills.py's
 # frontmatter parser, so both discovery scripts read quoting, block scalars
 # and multi-line values the same way.
 # shellcheck disable=SC2016  # $-free Python source, single quotes intended
@@ -175,4 +175,4 @@ rows = [json.dumps({k: s[k] for k in ("name", "path", "description", "repo_url")
 print("[" + ",".join("\n  " + r for r in rows) + "\n]")
 '
 
-emit_skills | python3 -c "$FILL_DESCRIPTIONS" "$SCRIPT_DIR/find-org-skills.py"
+emit_skills | uv run --no-project --python '>=3.11' python -c "$FILL_DESCRIPTIONS" "$SCRIPT_DIR/find-org-skills.py"

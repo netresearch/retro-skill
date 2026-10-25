@@ -144,7 +144,7 @@ diff and check:
   with no `samples.passing` / `samples.failing` is never executed by anything —
   see `eval-integration.md`. Run the check before committing:
   ```bash
-  python3 ${CLAUDE_SKILL_DIR}/scripts/check-eval-samples.py --repo . <path>/evals.json
+  uv run ${CLAUDE_SKILL_DIR}/scripts/check-eval-samples.py --repo . <path>/evals.json
   ```
   It compares each eval against the base revision and reports the ones that are
   new or whose assertions changed without samples. `materialize-pr.sh finish`

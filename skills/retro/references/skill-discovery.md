@@ -5,7 +5,7 @@
 
 ## Codex hosts
 
-Run `python3 <skill-dir>/scripts/find-org-skills.py --host codex`. The directory
+Run `uv run <skill-dir>/scripts/find-org-skills.py --host codex`. The directory
 comes from the loaded `SKILL.md`; Codex does not provide `CLAUDE_SKILL_DIR`.
 `CODEX_THREAD_ID`, which Codex sets per session, selects this host automatically.
 `CODEX_HOME` alone does not, because it is a persistent user variable that can be
@@ -42,7 +42,7 @@ exists somewhere in the org.
 ## The complete catalogue (primary)
 
 ```bash
-python3 ${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py
+uv run ${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py
 ```
 
 returns every skill in every configured marketplace — installed or not — as a

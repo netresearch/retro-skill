@@ -1,6 +1,11 @@
-#!/usr/bin/env python3
+#!/usr/bin/env -S uv run --script
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
+#
+# /// script
+# requires-python = ">=3.11"
+# dependencies = []
+# ///
 
 """
 scan-cross-session.py — Schicht-C cross-session data source.
@@ -10,10 +15,10 @@ patterns. Used to detect "same friction again" (C1), "cross-project pattern"
 (C2) and "follow-up-fix session" (C5) signals.
 
 Usage:
-    python3 scan-cross-session.py --pattern "<keyword or phrase>" [--days 30] [--project <slug>]
-    python3 scan-cross-session.py --user-correction-summary [--days 7]
-    python3 scan-cross-session.py --recurring-failures [--days 30] [--limit 20] [--include-refusals]
-    python3 scan-cross-session.py --follow-up-sessions [--days 30] [--window-days 7] [--limit 20]
+    uv run scan-cross-session.py --pattern "<keyword or phrase>" [--days 30] [--project <slug>]
+    uv run scan-cross-session.py --user-correction-summary [--days 7]
+    uv run scan-cross-session.py --recurring-failures [--days 30] [--limit 20] [--include-refusals]
+    uv run scan-cross-session.py --follow-up-sessions [--days 30] [--window-days 7] [--limit 20]
 
 The last two modes read every tool call of every transcript in the window, so
 they run on demand (an audit), not per event. Each reports only what recurs in

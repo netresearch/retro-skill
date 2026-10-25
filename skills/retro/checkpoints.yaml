@@ -10,7 +10,7 @@ preconditions:
     desc: "project IS the retro skill repo — RT-* audit its own layout"
   - type: command
     pattern: "python3 --version"
-    desc: "python3 available for mechanical pre-pass"
+    desc: "python3 available for the RT-* compile and eval checks (the checkpoint runner's allowlist has no uv)"
 
 mechanical:
   - id: RT-01
