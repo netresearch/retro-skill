@@ -1497,6 +1497,69 @@ class TestMechanizableWaste(unittest.TestCase):
         evs = tool_use_pair("u", "Bash", {"command": "gh pr checks 1"}, "")
         self.assertEqual(self._findings(evs, "A20"), [])
 
+    def test_A20_search_text_is_not_a_loop(self):
+        # The actual false positive from the nr-vault workflow investigation.
+        cmd = (
+            "rg -n 'poll|sleep|while|timeout|setInterval|MAX_WAIT|15' "
+            "work/shared-auto-merge-deps.yml work/shared-release-gate.yml"
+        )
+        self.assertEqual(
+            self._findings(tool_use_pair("u", "Bash", {"command": cmd}, ""), "A20"),
+            [],
+        )
+
+    def test_A20_shell_data_does_not_fire(self):
+        commands = (
+            "printf '%s\\n' 'while true; do sleep 30; done'",
+            "cat <<'EOF'\nwhile true; do sleep 30; done\nEOF",
+            "cat <<EOF\nwhile true; do sleep 30; done\nEOF",
+            "python -c 'while True: sleep(30)'",
+            "# while true; do sleep 30; done\ngh pr checks 1",
+            "while true; do printf '%s' sleep; break; done",
+            "while true; do gh pr checks 1; break; done; sleep 30",
+            "while true; do sleeping 30; done",
+            "while true; do sleep 30",
+            'while true; do "$TOOLS/sleep" 30; done',
+            'while true; do "$(printf sleep)" 30; done',
+        )
+        for cmd in commands:
+            with self.subTest(command=cmd):
+                self.assertEqual(
+                    self._findings(
+                        tool_use_pair("u", "Bash", {"command": cmd}, ""), "A20"
+                    ),
+                    [],
+                )
+
+    def test_A20_while_until_and_executed_substitution_fire(self):
+        commands = (
+            "while true; do gh pr checks 1; sleep 30; done",
+            "until gh pr checks 1; do sleep 30; done",
+            "while sleep 30; do gh pr checks 1; done",
+            "while true; do /bin/sleep 30; done",
+            "while true; do 'sleep' 30; done",
+            'while true; do "sleep" 30; done',
+            'echo "$(while true; do sleep 30; done)"',
+            "cat <<EOF\n$(while true; do sleep 30; done)\nEOF",
+        )
+        for cmd in commands:
+            with self.subTest(command=cmd):
+                findings = self._findings(
+                    tool_use_pair("u", "Bash", {"command": cmd}, ""), "A20"
+                )
+                self.assertEqual(len(findings), 1)
+
+    def test_A20_terminal_condition_is_scoped_to_the_polling_loop(self):
+        cmd = (
+            'pending=0; [ "$pending" = 0 ]; '
+            "while true; do gh pr checks 1; sleep 30; done"
+        )
+        findings = self._findings(
+            tool_use_pair("u", "Bash", {"command": cmd}, ""), "A20"
+        )
+        self.assertEqual(len(findings), 1)
+        self.assertFalse(findings[0]["waits_for_everything"])
+
     def test_C6_fires_only_when_a_matching_rule_exists(self):
         evs = []
         for i in range(4):

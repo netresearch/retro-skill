@@ -392,7 +392,7 @@ class DetectMechanicalFieldsTest(unittest.TestCase):
             (
                 5,
                 "Bash",
-                {"command": f"until [ $pending == 0 ]; do sleep 1 {GH}"},
+                {"command": f"until [ $pending == 0 ]; do sleep 1 {GH}; done"},
                 "",
                 0,
             ),

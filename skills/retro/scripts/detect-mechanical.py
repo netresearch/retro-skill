@@ -4,7 +4,7 @@
 #
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = ["tree-sitter==0.26.0", "tree-sitter-bash==0.25.1"]
 # ///
 
 """
@@ -58,6 +58,16 @@ from collections import Counter, defaultdict
 from collections.abc import Iterable
 from pathlib import Path
 from typing import Any
+
+try:
+    import tree_sitter_bash
+    from tree_sitter import Language, Parser
+except ImportError:  # pragma: no cover - depends on how the script is started
+    sys.exit(
+        "detect-mechanical.py reads polling loops with tree-sitter-bash, which "
+        "is not installed here. Run it with `uv run <path>/detect-mechanical.py` "
+        "(the dependencies are declared in the script header)."
+    )
 
 
 def _load_sibling(filename: str):
@@ -2165,6 +2175,63 @@ def signal_repeated_probe(tool_uses, min_count: int = A19_MIN_COUNT) -> list[dic
     return out
 
 
+@functools.cache
+def _bash_parser():
+    return Parser(Language(tree_sitter_bash.language()))
+
+
+def _walk_shell(node):
+    stack = [node]
+    while stack:
+        current = stack.pop()
+        yield current
+        stack.extend(reversed(current.named_children))
+
+
+def _polling_loops(command: str) -> list[str]:
+    """Literal while/until loops containing a sleep command, never search text.
+
+    The Bash grammar represents both while and until as while_statement. Text
+    arguments, comments and heredoc prose do not create statement/command nodes;
+    executed $(...) substitutions inside strings or heredocs do. This is a
+    syntactic candidate detector, not shell evaluation or reachability proof.
+    """
+    data = command.encode("utf-8", "surrogatepass")
+    root = _bash_parser().parse(data).root_node
+    loops = []
+    for node in _walk_shell(root):
+        if node.type != "while_statement" or node.has_error:
+            continue
+        for child in _walk_shell(node):
+            if child.type != "command":
+                continue
+            name = child.child_by_field_name("name")
+            if name is None:
+                continue
+            if any(
+                part.type in {"expansion", "simple_expansion", "command_substitution"}
+                for part in _walk_shell(name)
+            ):
+                continue
+            spelling = data[name.start_byte : name.end_byte].decode(
+                "utf-8", "surrogatepass"
+            )
+            try:
+                words = shlex.split(spelling)
+            except ValueError:
+                continue
+            # Quote removal accepts 'sleep', "sleep" and escaped spellings;
+            # variable expansion, aliases and wrappers are not evaluated.
+            if len(words) == 1 and words[0].rsplit("/", 1)[-1] == "sleep":
+                loops.append(
+                    data[node.start_byte : node.end_byte].decode(
+                        "utf-8", "surrogatepass"
+                    )
+                )
+                break
+    return loops
+
+
 def signal_wait_loop_inefficiency(tool_uses) -> list[dict]:
     """A20: polling that waits for everything instead of the first actionable event.
 
@@ -2178,15 +2245,18 @@ def signal_wait_loop_inefficiency(tool_uses) -> list[dict]:
         if name != "Bash":
             continue
         cmd = (inp or {}).get("command", "") or ""
-        if not re.search(r"\b(until|while)\b", cmd) or "sleep" not in cmd:
+        loops = _polling_loops(cmd)
+        if not loops:
             continue
         # "waits for everything" = the loop exits only when a backlog counter
         # reaches zero. The counter and the comparison are usually far apart —
         # the count is computed inside a nested $( ... --jq ... ) — so proximity
         # matching misses almost all of them; presence of both is the signal.
-        counts_backlog = re.search(r"\b(pending|in_progress|queued|running)\b", cmd)
-        compares_zero = re.search(r"(==|=|-eq)\s*[\"']?0[\"']?", cmd)
-        terminal = bool(counts_backlog and compares_zero)
+        terminal = any(
+            re.search(r"\b(pending|in_progress|queued|running)\b", loop)
+            and re.search(r"(==|=|-eq)\s*[\"']?0[\"']?", loop)
+            for loop in loops
+        )
         out.append(
             {
                 "signal": "A20",

@@ -38,7 +38,7 @@ Schicht A is feature-complete. See `references/destination-taxonomy.md` for what
 
 ## Schicht A — Mechanical (Python pre-pass)
 
-Fast, deterministic, regex/count-based. Runs before LLM pass to reduce token cost. See `${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py`.
+Fast, deterministic, regex/count-based, with Bash syntax parsing for A20 polling loops. Runs before LLM pass to reduce token cost. See `${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py`.
 
 | # | Signal | Detection | Hint at |
 |---|---|---|---|
@@ -61,7 +61,7 @@ Fast, deterministic, regex/count-based. Runs before LLM pass to reduce token cos
 | A17 | Upstream failure | `git push` fails on pre-receive, `gh pr checks` fails post-push, post-commit lint fail | Pre-push verification gap (shift-left) |
 | A18 | Permission re-approval | Same permission prompt approved ≥3× in session | Allowlist needed |
 | A19 | Repeated command shape | One program+subcommand shape invoked >=8x (plumbing excluded, remote calls flagged) | The same derived answer recomputed by hand — script candidate |
-| A20 | Wait-loop inefficiency | `until`/`while` + `sleep` polling, flagged when it exits only on a backlog counter reaching zero | Learns nothing until the slowest job ends; the first failure was workable much earlier |
+| A20 | Wait-loop inefficiency | Bash `until`/`while` syntax containing a literal `sleep` command; quoted search text, comments and heredoc prose are excluded. The stronger terminal-condition candidate also requires backlog/zero comparison text inside that loop | A syntactic polling candidate to inspect, not execution or reachability proof; waiting for every check may delay an actionable failure |
 
 ## Schicht B — LLM Inference
 
