@@ -2188,6 +2188,27 @@ def _walk_shell(node):
         stack.extend(reversed(current.named_children))
 
 
+def _literal_sleep_command(node, data: bytes) -> bool:
+    if node.type != "command":
+        return False
+    name = node.child_by_field_name("name")
+    if name is None:
+        return False
+    if any(
+        part.type in {"expansion", "simple_expansion", "command_substitution"}
+        for part in _walk_shell(name)
+    ):
+        return False
+    spelling = data[name.start_byte : name.end_byte].decode("utf-8", "surrogatepass")
+    try:
+        words = shlex.split(spelling)
+    except ValueError:
+        return False
+    # Quote removal accepts 'sleep', "sleep" and escaped spellings;
+    # variable expansion, aliases and wrappers are not evaluated.
+    return len(words) == 1 and words[0].rsplit("/", 1)[-1] == "sleep"
+
+
 def _polling_loops(command: str) -> list[str]:
     """Literal while/until loops containing a sleep command, never search text.
 
@@ -2202,33 +2223,10 @@ def _polling_loops(command: str) -> list[str]:
     for node in _walk_shell(root):
         if node.type != "while_statement" or node.has_error:
             continue
-        for child in _walk_shell(node):
-            if child.type != "command":
-                continue
-            name = child.child_by_field_name("name")
-            if name is None:
-                continue
-            if any(
-                part.type in {"expansion", "simple_expansion", "command_substitution"}
-                for part in _walk_shell(name)
-            ):
-                continue
-            spelling = data[name.start_byte : name.end_byte].decode(
-                "utf-8", "surrogatepass"
+        if any(_literal_sleep_command(child, data) for child in _walk_shell(node)):
+            loops.append(
+                data[node.start_byte : node.end_byte].decode("utf-8", "surrogatepass")
             )
-            try:
-                words = shlex.split(spelling)
-            except ValueError:
-                continue
-            # Quote removal accepts 'sleep', "sleep" and escaped spellings;
-            # variable expansion, aliases and wrappers are not evaluated.
-            if len(words) == 1 and words[0].rsplit("/", 1)[-1] == "sleep":
-                loops.append(
-                    data[node.start_byte : node.end_byte].decode(
-                        "utf-8", "surrogatepass"
-                    )
-                )
-                break
     return loops
 
 
