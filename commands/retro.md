@@ -437,8 +437,8 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
 Answers "are we actually finished?" with evidence, not memory. Eight gates —
 task delivered (live state of every PR/MR/issue), interim findings fixed / filed
 (URL) / rejected, retro run, cleanup sweep, no open questions, tickets updated,
-time booked per day, every B21 item written to its owner / filed / rejected
-(URL) — each ✅ / ⏸ / ❌ with its evidence. Full detail in
+time booked per day, every B21 item written to its owner (URL) / filed (URL) /
+rejected (reason the user has seen) — each ✅ / ⏸ / ❌ with its evidence. Full detail in
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/done-mode.md`.
 
 - Phases 1–3 are skipped (announce it) unless gate 3 finds no Sweep has run —
