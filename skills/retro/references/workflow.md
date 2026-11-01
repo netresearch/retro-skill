@@ -333,7 +333,7 @@ Differences between modes:
 | 3b (outcome D) | No | No | **Primary** | Some | No |
 | 3c (constitutional E) | No | No | No | **Primary** | No |
 | 4b (project harness) | Yes | Only the argument's surface | Skipped | **Primary** (with E) | Yes |
-| 4c (documentation lookup) | Every B21 candidate | Only the argument's facts | Skipped | Skipped | Yes |
+| 4c (documentation lookup) | Every B21 candidate | Only the argument's facts | B21 candidates, if any | B21 and team-record reconciliation candidates, if any | Yes |
 | 4-9 | Same | Same (fewer findings) | D-focused | E-focused | Same |
 | 10 (report) | Detailed | Targeted | Outcome-table | Architectural-table | Reminder only |
 

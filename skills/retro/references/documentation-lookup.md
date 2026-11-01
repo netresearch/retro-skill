@@ -21,8 +21,9 @@ fixes neither: the first case needs a link, the second a correction.
 
 ## When it runs
 
-For every B21 candidate from Phase 2, and in Promote for every note holding a
-fact about the team's own systems. It runs before Phase 5, because the result
+For every B21 candidate from Phase 2 in any mode, in Promote for every note
+holding a fact about the team's own systems, and in Audit for team-record
+reconciliation candidates. It runs before Phase 5, because the result
 decides the route. It only reads: writes happen in Phase 9, after approval.
 
 ## Which systems
@@ -56,7 +57,7 @@ the starting point?
 |---|---|---|
 | `found-correct` | It exists, is correct, and the starting point leads to it | No doc write. This was B13: nobody opened it |
 | `found-unreachable` | It exists and is correct, but nothing leads there from the starting point | Add a link from the starting point. A new page or a second copy is the wrong fix |
-| `found-wrong` | A record says something the session disproved | A finding, also when the fact was not a B21 candidate. Report the record, the wrong statement, the correction and the evidence, and propose the correction |
+| `found-wrong` | A record says something the session disproved | A finding, also when the fact was not a B21 candidate. Report the record, the wrong statement, the correction and the evidence, and propose the correction. If the starting point does not lead there either, propose the link with it |
 | `searched-absent` | The search ran and found nothing | Propose adding it to the owner; the proposal names the search |
 | `not-searched` | No integration, no access, a failed or truncated read | **Unknown, never absent.** Say so, and propose "check, then add" |
 
