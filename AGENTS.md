@@ -11,7 +11,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/checkpoints.yaml` — Skill quality gates
 - `commands/retro.md` — `/retro` slash command definition
 - `hooks/session-end.json` — Optional SessionEnd hook: prints a reminder to run `/retro`, does not invoke it (off by default)
-- `skills/retro/references/` — Friction catalog, destination taxonomy, classification heuristic, skill discovery, patch workflow, eval integration, workflow modes
+- `skills/retro/references/` — Friction catalog, destination taxonomy, classification heuristic, skill discovery, documentation lookup, patch workflow, eval integration, workflow modes
 - `skills/retro/scripts/detect-mechanical.py` — Schicht-A pre-pass (mechanical friction detection)
 - `skills/retro/scripts/mask-secrets.py` — Credential masking that `detect-mechanical.py`, `scan-cross-session.py`, `derive-session-scope.py`, `collect-review-findings.py` and `scan-memory-inventory.py` apply to the text they quote (not a command)
 - `skills/retro/scripts/opencode-transcript.py` — Renders an opencode session (SQLite) as the JSONL Schicht A reads
@@ -36,7 +36,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `/retro outcome [session-id|--since N]` — Outcome: post-hoc review of a past session
 - `/retro audit [--scope project|repo|skill]` — Audit: cross-session architectural review
 - `/retro promote` — Promote: re-home accumulated local memory upward
-- `/retro done` — Done: seven-gate definition-of-done check (task, findings, retro, cleanup, questions, tickets, time)
+- `/retro done` — Done: eight-gate definition-of-done check (task, findings, retro, cleanup, questions, tickets, time, docs)
 
 ## Rules
 

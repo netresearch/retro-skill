@@ -9,7 +9,7 @@ analysis.
 
 Despite the name, this catalog covers **two classes**: *friction* (things that
 went wrong) and *reusable learnings* (knowledge that went right but is not
-captured anywhere — Schicht B, signals B16–B20). Both are first-class retro
+captured anywhere — Schicht B, signals B16–B21). Both are first-class retro
 findings; a signal-free stretch of a session can still carry a learning worth
 propagating.
 
@@ -29,7 +29,7 @@ Ingestion of error trackers, monitoring and chat is out of scope — see "Future
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
 | A — Mechanical | 20 | 20 (all of A1–A20) |
-| B — LLM inference | 20 | LLM-driven; B16–B20 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py` |
+| B — LLM inference | 21 | LLM-driven; B16–B21 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py` |
 | C — Cross-session | 6 | Partial (script `scan-cross-session.py`: C1, C2, C5) |
 | D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
@@ -85,7 +85,7 @@ Requires conversational context understanding. The LLM reads pre-pass output + r
 | B14 | Doc drift | Assistant used outdated API/library version when context7 would have helped |
 | B15 | Skill trigger-coverage gap | A **systematic** pass (not opportunistic): load *every* installed skill's `description` via `${CLAUDE_SKILL_DIR}/scripts/find-installed-skills.sh`, then judge — given what this session actually did — which skills *should* have triggered but were never invoked. Each miss whose root cause is weak/missing trigger words → `skill-update` to that skill's `description`. (B2/B4 are the opportunistic, single-skill version; B15 is the exhaustive sweep across the whole inventory. See the trigger-coverage step in `SKILL.md`.) |
 
-### Reusable-learning signals (B16–B20) — scan even when nothing went wrong
+### Reusable-learning signals (B16–B21) — scan even when nothing went wrong
 
 These are **positive** signals: the session produced knowledge worth propagating,
 with **no** friction to trigger it. The mechanical pre-pass cannot see them (there
@@ -107,6 +107,32 @@ only a reference plus the agent-specific delta.
 | B18 | Review-issue learning | A generalizable lesson from a code-review comment (given OR received) — a reviewer taught a rule that applies beyond the current diff. → `skill-update` (or `project-rule` if genuinely repo-specific) |
 | B19 | Escaped defect | A finding the session's own checks did not catch before the push: a review thread resolved by a later commit (`resolved` plus `commit_after`), a `CHANGES_REQUESTED` review, a failed quality gate, a ticket sent back from QA (`ticket-transition`). The learning is the missing check, not the fix. Ask which check would have caught it before the push, and route there: the skill that owns that check, a hook, or an eval stub. → `skill-update` (or a gate) |
 | B20 | Maintainer request | A human reviewer, maintainer or ticket owner states how work is done here — "please always link the ticket", "agree on rollouts across projects first". A convention the agent did not know, not a defect. → `project-rule` in the repo's `AGENTS.md` when it is about one repository; `skill-update` when it is a team convention across repositories |
+| B21 | Dug-out knowledge | A fact the session had to find out with effort, or that a person had to supply, and that a reader of the team's documentation should have found there: which host runs a service, why a ticket went the way it did, how a repository is built, how a recurring procedure goes. Ask for each one: **where should this have stood, does it stand there, and is that place correct?** Details and how it differs from B13, B14 and B16: [below](#dug-out-knowledge-b21). → `canonical-source` (team record); a skill keeps only the agent-specific delta |
+
+### Dug-out knowledge (B21)
+
+B16 asks what an agent should know next time; B21 asks what the team's
+documentation should have said this time. The fact is about our own systems and
+work, and a human would have needed it too.
+
+Look for a run of lookups that ended in one fact, a user message that supplied a
+fact rather than a correction, or a fact in the session's result that no document
+was cited for. Often there is friction around it, often not; either way the
+mechanical pre-pass cannot tell a dug-out fact from ordinary reading.
+
+| Not B21 | Because | Signal |
+|---|---|---|
+| The fact stood in the right record and was simply not read | The document is fine; the gap is the path to it | B13 |
+| Only an agent needs it: a flag, a tool trap, a workflow step | Its owner is a skill | B16 |
+| Library or vendor docs were out of date | The owner is upstream | B14 |
+| A convention a person stated for this repo | It is a rule, not a fact | B20 |
+| One read away, or volatile (current load, today's CI state) | Writing it down saves nothing or goes stale at once | none |
+
+Whether a candidate is B13 or B21 is settled in Phase 4c
+([documentation lookup](documentation-lookup.md)), not by assumption: until the
+records were searched, it stays a candidate. A team record found stale on the way
+is a B21 finding too. Credentials are never a B21 item; at most, where they are
+stored is.
 
 ### Feedback from outside the transcript
 
@@ -351,7 +377,7 @@ and is in fact the finish line waiting on a cutover.
 - Session is too recent (< 24h) — most D signals haven't had time to manifest
 - Session was a refactor or doc-only change — D2/D9 fire spuriously
 - Working on a long-lived feature branch — `git log --grep="revert"` is noisy
-- Change is **local / specific with no transferable approach** — D11 must NOT fire; codifying a one-off is exactly the noise the generalizability filter exists to stop (see B16–B20: "would a future agent re-derive this?")
+- Change is **local / specific with no transferable approach** — D11 must NOT fire; codifying a one-off is exactly the noise the generalizability filter exists to stop (see B16–B21: "would a future agent re-derive this?")
 - A PR/MR is **open and stale** — that is not a D-signal at all; see [Stale-open is not an outcome](#stale-open-is-not-an-outcome) above before proposing to close it
 
 D mode is best for **monthly retros over a 30-day window**, not real-time.

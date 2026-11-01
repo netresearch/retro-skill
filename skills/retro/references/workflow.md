@@ -12,7 +12,7 @@ The modes of `/retro` and how they share the underlying pipeline.
 Full session analysis. Use at end of session — whether or not friction
 accumulated. The sweep captures **both** classes: friction *and* reusable
 learnings (hard-won techniques, proactive improvements, code-review lessons;
-Schicht B, B16–B20). A session that went smoothly is not exempt — it still owes
+Schicht B, B16–B21). A session that went smoothly is not exempt — it still owes
 its learnings.
 
 ```
@@ -114,9 +114,10 @@ drains the source LAST, only after the upward write is verified. Full detail:
 
 ### Done — `/retro done`
 
-Not a detector but a **gate**: seven checks that must all hold before the
+Not a detector but a **gate**: eight checks that must all hold before the
 session may be called finished — task delivered, findings triaged, retro run,
-cleanup done, no open questions, tickets updated, time booked.
+cleanup done, no open questions, tickets updated, time booked, dug-out
+knowledge documented.
 
 ```
 Input: live state of the session's artefacts (forge, tracker, configured time service,
@@ -310,6 +311,8 @@ re-presented.
 3. Cross-session enrichment (Schicht C, optional)
 4. Skill discovery (full catalogue, input to classification)
 4b. Project-harness inspection (for project-rule / harness-artefact)
+4c. Documentation lookup (B21 candidates: inventory, repo docs, runbooks, wiki,
+    tickets; states what it searched)
 5. Classification → 7 destinations (authority first)
 6. Eval consultation (when present)
 7. Proposal generation (prose Why + How-to-apply)
@@ -330,12 +333,14 @@ Differences between modes:
 | 3b (outcome D) | No | No | **Primary** | Some | No |
 | 3c (constitutional E) | No | No | No | **Primary** | No |
 | 4b (project harness) | Yes | Only the argument's surface | Skipped | **Primary** (with E) | Yes |
+| 4c (documentation lookup) | Every B21 candidate | Only the argument's facts | Skipped | Skipped | Yes |
 | 4-9 | Same | Same (fewer findings) | D-focused | E-focused | Same |
 | 10 (report) | Detailed | Targeted | Outcome-table | Architectural-table | Reminder only |
 
 **Promote** substitutes Phase 1 with `${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py` (a
 filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
-1b/2/2b/3/3b/3c, runs Phases 4–10, and adds a verified **materialize-then-drain**
+1b/2/2b/3/3b/3c, runs Phases 4–10 (4c for notes holding a fact about the team's
+own systems), and adds a verified **materialize-then-drain**
 post-step to Phase 9 — drain via `scan-memory-inventory.py drain <path>` only
 after the upward write is confirmed (tombstone move, never `rm`). The Phase-10
 report gains a "Source drained?" column.
@@ -343,7 +348,7 @@ report gains a "Source drained?" column.
 **Done** skips Phases 1–3 (announce it) unless its retro gate finds no Sweep
 for this session; then the Sweep runs in full first. Phase 8 approves each write
 Done proposes (a booking, a ticket comment, removing anything unpushed), and the
-Phase-10 report is the scope line plus the seven-gate table. See
+Phase-10 report is the scope line plus the eight-gate table. See
 `references/done-mode.md`.
 
 ## Efficiency targets
@@ -417,6 +422,7 @@ two restarts and re-ran verbatim only because the briefs were SHA-pinned).
 | Batch returns counts without evidence | Re-ask for the table; do not enter counts on trust |
 | JSONL scan slow | Limit to current project's sessions, last 30 days |
 | Skill discovery returns no matches | Propose `new-skill` instead |
+| A documentation system is unreachable | Report it `not-searched`; never as absent |
 | Source repo URL unresolvable | Ask user; offer local-edit fallback |
 | Worktree dirty | Use /tmp clone (with notification) |
 | Private repo not authenticated | Graceful failure with login instruction |
@@ -448,7 +454,8 @@ the agent never recognized as a learning); external signals outside forge and
 tracker (customer complaints, prod alerts, Slack / Matrix / Sentry); feedback on
 an external ticket for which no owning integration supplied evidence; a PR or
 MR a script opened inside one call, unless its list is passed with `--pr-list`
-(a fleet release driver's `opened.jsonl` is such a list); an opaque
+(a fleet release driver's `opened.jsonl` is such a list); what a documentation
+system holds when no integration reaches it (`not-searched`); an opaque
 reference whose tracker, instance and artifact identity remain unresolved; a write whose output and words name no target in a shape the scope script can prove (listed as an
 unresolved forge command instead); a write through `curl` or another tool
 than `gh`, `glab`, the GitHub MCP tools and `pr-merge.sh`; slow constitutional drift
@@ -462,4 +469,5 @@ PR is seen, an unspoken "the customer hated it" is not). For those, run
 - `references/destination-taxonomy.md` — Where it goes
 - `references/classification-heuristic.md` — How it's routed
 - `references/project-harness-inspection.md` — What the worked-in repo could gate
+- `references/documentation-lookup.md` — What the team's records already say
 - Spec: `docs/specs/retro-skill.md`

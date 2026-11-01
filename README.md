@@ -94,7 +94,7 @@ composer require netresearch/retro-skill
 | `/retro outcome [session-id\|--since N]` | **Outcome** (layer D) — replay a *past* session through what happened to its output afterwards (reverted commits, rejected PRs, CI failures, follow-up fix sessions) | Periodically, e.g. monthly. **Do not run within 24h of the session** — the outcomes have not landed yet |
 | `/retro audit [--scope project\|repo\|skill]` | **Constitutional audit** — cross-session architectural review (design drift, convention erosion) over weeks/months | Monthly or quarterly health check |
 | `/retro promote` | **Promote** — inventory accumulated project-local memory (all slugs) and re-home each note upward (canonical-source › skill-update › project-rule › personal-rule; never project-local memory), draining the source only after the upward write is verified | When local memory has piled up and you want it shared and emptied |
-| `/retro done` | **Done** — definition-of-done gate: seven evidence-backed checks (task, findings, retro, cleanup, questions, tickets, time) | As the last command of a session, before calling it finished |
+| `/retro done` | **Done** — definition-of-done gate: eight evidence-backed checks (task, findings, retro, cleanup, questions, tickets, time, docs) | As the last command of a session, before calling it finished |
 
 Sweep and Spotlight answer *"what went wrong this session?"*. Outcome and Audit answer *"did our past decisions survive contact with reality?"* and *"is the system still on track?"* — friction that does not show up inside a single session.
 
@@ -136,7 +136,7 @@ Every finding routes to exactly one destination — chosen authority-first: befo
 
 | Destination | When | Materializes to |
 |---|---|---|
-| `canonical-source` | The fact's canonical owner is an artefact outside the agent system (upstream docs, code, schema, handbook) | Open a PR/patch against the owning artefact; the skill keeps a reference + agent-specific delta |
+| `canonical-source` | The fact's canonical owner is an artefact outside the agent system (upstream docs, code, schema, handbook, or a team record: inventory, ticket, repository docs, runbook, wiki) | Open a PR/patch against the owning artefact, or edit the team record through its integration after approval; the skill keeps a reference + agent-specific delta |
 | `personal-rule` | A personal, cross-project preference | Append a titled rule to `~/.claude/CLAUDE.md` (the always-loaded global rules file) |
 | `project-rule` | A convention for *this* project | Append a titled rule to `<project>/AGENTS.md` |
 | `skill-update` | An existing skill is wrong, weak, under-triggering, or carries an obsolete instruction (removal is a valid edit) | Open a PR against the skill's **source repo** (never the plugin cache) |
@@ -152,7 +152,7 @@ The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — la
 
 1. **Mechanical pre-pass (layer A)** — `skills/retro/scripts/detect-mechanical.py` parses the transcript for exactly **20** deterministic signals (A1–A20): tool errors, retry clusters, output verbosity, tool-call inefficiency, sequential-vs-parallel, user-correction phrases, prompt/prompt-sequence/tool-sequence repetition, skill-reminder-vs-invoke, wrong-tool choice, re-read-same-file, skipped verification, work on `main`/`master`, bot attribution in commits, outdated-tool warnings, upstream failure, permission re-approval, repeated command shapes, and wait-loop polling. Deterministic; it does **not** classify.
    Then `skills/retro/scripts/collect-review-findings.py` reads native PR/MR review threads and linked issue feedback, including issues a GitHub PR names as `GH-N` in its title or description (GitHub's own reference syntax). Other tracker integrations supply normalized local evidence with `--feedback-file`. Short branch/title/tool references remain contextual hints until explicitly resolved; they never select a tracker. See [the feedback contract](skills/retro/references/feedback-contract.md) for delegation, coverage states and migration from the removed Jira CLI flags.
-2. **LLM enrichment (layer B)** — adds **20** inferential signals, B16–B20 of them reusable-learning signals (wrong skill choice, skill capability gap, hallucination, convention violation, missing skill, repeated mistake, assumption-without-asking, doc drift, …) and filters layer-A false positives. Includes a trigger-coverage sweep over every installed skill's description.
+2. **LLM enrichment (layer B)** — adds **21** inferential signals, B16–B21 of them reusable-learning signals (wrong skill choice, skill capability gap, hallucination, convention violation, missing skill, repeated mistake, assumption-without-asking, doc drift, dug-out knowledge, …) and filters layer-A false positives. Includes a trigger-coverage sweep over every installed skill's description.
 3. **Cross-session enrichment (layer C, optional)** — scans `~/.claude/projects/<slug>/*.jsonl` across projects via `skills/retro/scripts/scan-cross-session.py`. **6** signals: same-friction-again, cross-project pattern, memory drift, ineffective skill update, follow-up-fix session, written rule violated repeatedly.
 4. **Skill discovery (runtime)** — `skills/retro/scripts/find-org-skills.py` lists every skill in every configured marketplace, installed or not, to match the friction topic against its description and resolve the source-repo URL; `skills/retro/scripts/find-installed-skills.sh` adds on-disk paths and git remotes of installed skills.
 5. **Classification** — map each finding to one of the seven destinations, authority first (`skills/retro/references/classification-heuristic.md`), using the catalogue from step 4.
@@ -220,7 +220,7 @@ retro-skill/
 ├── skills/retro/                     # the self-contained skill subtree (ships via npx-skills)
 │   ├── SKILL.md                  # main skill definition (all modes)
 │   ├── checkpoints.yaml          # skill quality gates
-│   ├── references/               # 11 reference docs
+│   ├── references/               # 12 reference docs
 │   │   ├── feedback-contract.md
 │   │   ├── friction-catalog.md
 │   │   ├── destination-taxonomy.md
@@ -229,6 +229,7 @@ retro-skill/
 │   │   ├── patch-workflow.md
 │   │   ├── eval-integration.md
 │   │   ├── project-harness-inspection.md
+│   │   ├── documentation-lookup.md
 │   │   ├── promote-mode.md
 │   │   ├── done-mode.md
 │   │   └── workflow.md

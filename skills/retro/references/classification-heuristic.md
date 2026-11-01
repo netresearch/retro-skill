@@ -13,7 +13,7 @@ Maps friction signals (from `friction-catalog.md`) to one of the seven destinati
 > and a row naming a prose destination does not rule out a gate. The right
 > owner may be a different (or not-installed) skill — or no skill at all: a
 > fact whose canonical owner is an artefact outside the agent system routes to
-> `canonical-source` regardless of the row (Axis 0 below; B14 and B16–B20 are
+> `canonical-source` regardless of the row (Axis 0 below; B14 and B16–B21 are
 > the main inlets).
 
 | Friction signal | Primary destination | Alternate (LLM decides from context) |
@@ -58,6 +58,7 @@ Maps friction signals (from `friction-catalog.md`) to one of the seven destinati
 | **B18** review-issue learning | `skill-update` (generalize the review lesson) | `project-rule` (genuinely repo-specific) |
 | **B19** escaped defect | `skill-update` to the skill that owns the check which would have caught it before the push | `harness-artefact` (a hook or CI gate, when prose already exists and did not prevent it — cf. C6) / eval stub for that skill |
 | **B20** maintainer request | `project-rule` (the repository's `AGENTS.md`) | `skill-update` (a convention the team applies across repositories) |
+| **B21** dug-out knowledge | `canonical-source`, team record: the record kind from Axis 0, after Phase 4c searched it | `project-rule` / `skill-update` pointer when Phase 4c says `found-correct` (then it was B13) / `skill-update` for the agent-specific delta only, never the fact |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
 | **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`personal-rule` (LLM picks from `current_location` + content) |
@@ -81,7 +82,17 @@ and most facts have a canonical owner *outside* the agent system:
 | Official standard, product/tool behaviour | Upstream documentation | "guides.xml accepts X" → the tool's official manual |
 | Value derivable from an artefact | The code / manifest / schema itself | a CLI flag → the Command's `configure()`; a version → `ext_emconf.php` |
 | Org-wide process or policy | Handbook / policy doc | escalation path, booking rules |
+| Fact about a host, service, network or other asset we run | Inventory / asset system | which host runs a job, who owns a service |
+| What happened on one case: decision, diagnosis, outcome | That case's ticket in the ticket system | why a change was reverted |
+| How one repository works: build, layout, local setup, deployment | That repository's README and docs | which service the tests need running |
+| A repeatable operational procedure | Runbook | how to rotate a certificate |
+| Cross-cutting explanation nothing above owns | Wiki — last | how several systems work together |
 | Agent behaviour, agent workflow, observed agent failure mode | **A skill** | "`fullPage` screenshots clip the TYPO3 backend iframe" |
+
+**Decide a team record by what kind of record it is**, top to bottom, first fit
+wins. The wiki comes last because it accepts anything: a fact filed there
+instead of with its owner goes stale beside the real record. Phase 4c
+(`documentation-lookup.md`) says what the record holds today.
 
 **A skill is the canonical source only for facts about agent behaviour or the
 skill's own procedure.** When the canonical owner is outside the agent system,
@@ -137,7 +148,7 @@ Three tiers, strongest first:
 3. **Prose instruction** — the rule needs context weighed at the time of use →
    `skill-update` / `project-rule` / `personal-rule`.
 
-Most B16–B20 reusable learnings land in tier 3 legitimately; do not contort a
+Most B16–B21 reusable learnings land in tier 3 legitimately; do not contort a
 judgment lesson into a brittle regex to reach tier 1. The test is whether a
 check could have *failed* on the friction as it actually occurred.
 
@@ -301,14 +312,14 @@ Which fits better?
 Severity is set during classification, not during detection:
 
 - `critical` — Recurring (C-layer match) OR caused upstream failure (A17) OR user-visible bug
-- `important` — User correction phrase present (A6) OR known rule violated (A15) OR a **reusable-learning finding** (B16–B20, or D11 durable-improvement in outcome mode): knowledge a future agent will otherwise re-derive is *important* by definition — never auto-grade a genuine learning `nice-to-have`
+- `important` — User correction phrase present (A6) OR known rule violated (A15) OR a **reusable-learning finding** (B16–B21, or D11 durable-improvement in outcome mode): knowledge a future agent will otherwise re-derive is *important* by definition — never auto-grade a genuine learning `nice-to-have`
 - `nice-to-have` — Efficiency / style / convention (most other cases)
 
 Use severity to rank proposals in the output. Higher severity first.
 
 **Cap protection — friction must not crowd out learnings.** When there are more
 than 10 candidates and the list is trimmed to the ≤10 cap, reserve slots so the
-top reusable-learning findings (B16–B20) survive the trim. Friction findings are
+top reusable-learning findings (B16–B21) survive the trim. Friction findings are
 usually more numerous and easier to grade high; without this rule a busy session
 returns 10 friction items and zero learnings, silently dropping exactly the
 knowledge the second class exists to capture. If learnings must still be dropped
