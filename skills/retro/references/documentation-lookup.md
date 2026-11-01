@@ -69,8 +69,8 @@ nothing about the others.
 
 ## What the report must state
 
-Every B21 item gets one row in the Phase-10 report. Gate 8 of Done mode reads
-this table.
+Every B21 item gets one row in the Phase-10 report. A report with no B21 item
+states `B21: none` instead. Gate 8 of Done mode reads either form.
 
 ```
 | Fact | Starting point | Searched | State | Action |

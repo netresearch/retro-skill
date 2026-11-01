@@ -87,10 +87,11 @@ checkpoint `verified:` dates older than the max age for an LLM re-read. Only
 reported as a failed probe, not as dead.
 
 With `--scope skill`, the audit is also a **reconciliation** pass: classify the
-skill's existing content by authority (upstream / code / org policy /
-agent-evidence — Axis 0 in `classification-heuristic.md`). Content already
+skill's existing content by authority (upstream / code / org policy / team
+record / agent-evidence — Axis 0 in `classification-heuristic.md`). Content already
 documented by its canonical owner → propose prune-to-reference; content humans
-need that the owner lacks → propose `canonical-source` (upstream PR) paired
+need that the owner lacks → propose `canonical-source` (upstream PR, or a
+team-record edit after Phase 4c) paired
 with the skill cleanup. Promote makes ephemeral knowledge durable; reconcile
 moves already-durable knowledge to its rightful owner and dissolves the
 duplicates. A learning system that can only ADD degrades — this is the REMOVE /
@@ -125,12 +126,14 @@ Input: live state of the session's artefacts (forge, tracker, configured time se
 Output: scope line + gate table (✅ / ❌ / ⏸ / N-A + evidence); writes only
        after approval
 Use case: the last command of a session; the answer to "alles erledigt?"
-Token cost: moderate — no transcript pass, but one live-state read per
+Token cost: moderate — no transcript pass, except gate 8 on a report without a
+       B21 statement, but one live-state read per
        artefact, one sweep per repository and one read of existing time entries per applicable day; a
        chained Sweep adds its own
 ```
 
-Phases 1–3 skipped; chains the Sweep for gate 3 when none ran; Phases 8–10
+Phases 1–3 skipped, except Phase 2 for B21 when gate 8 meets a report without
+a B21 statement; chains the Sweep for gate 3 when none ran; Phases 8–10
 for the bookings, comments and removals it proposes. Full detail:
 `references/done-mode.md`.
 
@@ -346,7 +349,8 @@ after the upward write is confirmed (tombstone move, never `rm`). The Phase-10
 report gains a "Source drained?" column.
 
 **Done** skips Phases 1–3 (announce it) unless its retro gate finds no Sweep
-for this session; then the Sweep runs in full first. Phase 8 approves each write
+for this session; then the Sweep runs in full first. Gate 8 runs Phase 2 for B21
+alone on a report without a B21 statement. Phase 8 approves each write
 Done proposes (a booking, a ticket comment, removing anything unpushed), and the
 Phase-10 report is the scope line plus the eight-gate table. See
 `references/done-mode.md`.

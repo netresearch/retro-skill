@@ -327,7 +327,8 @@ Summary table:
 ```
 
 Every B21 item also gets a row in the documentation table: fact, starting point,
-what was searched, state, action (`documentation-lookup.md`). Gate 8 of Done mode reads it.
+what was searched, state, action (`documentation-lookup.md`). A report with no B21 item
+states `B21: none` instead of the table. Gate 8 of Done mode reads either form.
 
 ## Spotlight Mode
 
@@ -416,10 +417,10 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
 - Phases 4–10 run verbatim; destination skew is **upward** per scope-escalation
   (skill-update › project-rule › personal-rule), **never** project-local memory
 - Phase 8 adds a mandatory default-**N** warning on every `project-rule` /
-  `skill-update` proposal: "promoting this makes it team-visible; source is
-  currently private"
+  `skill-update` / team-record `canonical-source` proposal: "promoting this
+  makes it team-visible; source is currently private"
 - **Phase 9 gains a post-step:** after the upward write is *verified* (rule text
-  re-read, or PR URL returned), drain the source via
+  re-read, team record read back at its URL, or PR URL returned), drain the source via
   `scan-memory-inventory.py drain <path> --expect-sha256 <sha>` — a tombstone
   move to `.promoted/` plus a `MEMORY.md` prune, **never** `rm`. On verify
   failure, keep the source. For `skill-update`, drain only after the PR is opened.
@@ -443,7 +444,8 @@ rejected (reason the user has seen) — each ✅ / ⏸ / ❌ with its evidence. 
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/done-mode.md`.
 
 - Phases 1–3 are skipped (announce it) unless gate 3 finds no Sweep has run —
-  then run the Sweep in full first
+  then run the Sweep in full first. Gate 8 runs Phase 2 for B21 alone on a report
+  that holds neither a B21 table nor `B21: none`
 - Phase 8 applies to every write the gate proposes: time entries in the
   project's configured system (read before writing to prevent duplicates),
   ticket comments and worktree removals. Apply the owning project's QA and
