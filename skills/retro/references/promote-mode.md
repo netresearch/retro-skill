@@ -183,10 +183,11 @@ Two checks run at Phase 7, before a note enters a proposal:
 Source deletion is **last** and **gated on confirmed materialization**, per item:
 
 1. **Write/PR first** — append the titled rule to `~/.claude/CLAUDE.md` or
-   `<project>/AGENTS.md`, or open the `feat/retro-<slug>` PR with a signed
-   (`git commit -s`) commit.
+   `<project>/AGENTS.md`, write the team record, or open the `feat/retro-<slug>`
+   PR with a signed (`git commit -s`) commit.
 2. **Verify** — for file appends, re-read the target and confirm the rule text
-   is present; for PRs, confirm `gh`/`glab` returned a URL (PR *exists* =
+   is present; for a team record, read it back at its URL and confirm the
+   approved text, correction or link is present; for PRs, confirm `gh`/`glab` returned a URL (PR *exists* =
    materialized; merge is not required).
 3. **Drain only now** — `scan-memory-inventory.py drain <path> --expect-sha256 <sha>`
    tombstone-**moves** the source into `<slug>/memory/.promoted/` (never `rm`)
@@ -214,8 +215,8 @@ installer. Git records each drained note as a rename into `.promoted/`.
    reach) and fits the `/retro <verb>` convention. (`dream` / `upsert` rejected.)
 2. **Team-visibility of personal notes.** Two layers: (a) at Phase 5, personal
    content (a `$HOME` path, an "I prefer…" style note) is **not** auto-escalated
-   past personal-rule; (b) at Phase 8, every `project-rule` / `skill-update`
-   proposal triggers a mandatory, default-**N** warning stating exactly where it
+   past personal-rule; (b) at Phase 8, every `project-rule` / `skill-update` /
+   team-record `canonical-source` proposal triggers a mandatory, default-**N** warning stating exactly where it
    becomes team-visible and that the source is currently private. The promotion
    and its paired drain are one approval unit.
 3. **Deletion timing / data loss.** Strict write → verify → drain ordering;

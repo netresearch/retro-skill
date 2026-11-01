@@ -4,7 +4,7 @@
 # Done Mode — `/retro done`
 
 Every other retro mode asks *what did we learn*. Done mode asks *are we actually
-finished* — and refuses to say so until seven gates hold with evidence. It
+finished* — and refuses to say so until eight gates hold with evidence. It
 exists because "done" was being declared with the retro not run and the time
 not booked: the original task was complete, the session was not.
 
@@ -12,7 +12,7 @@ It is a **gate**, not a detector: it reuses the pipeline's approval and
 materialization phases (8–10) for the writes it triggers (bookings, ticket
 comments) and chains the Sweep for gate 3 when no retro has run yet.
 
-## The seven gates
+## The eight gates
 
 A gate is ✅ only with evidence from the system that owns the truth — a status
 read back, a URL, a command's output — never from what the agent remembers
@@ -45,6 +45,7 @@ structurally absent is N/A with its reason. `done` may be said when every row is
 | 5 | **Questions** — nothing is pending on the user that the task still needs | Either no open question, or exactly one human-gated decision stated once with the exact command, and the loop stopped there. Re-listing a parked decision is a ❌. |
 | 6 | **Tickets** — required outcomes are recorded on the confirmed work items | Print each canonical URL, native state and responsible party where applicable, read back after approved writes. Apply the owning project's QA, hand-back and assignment rules; do not invent status names or transitions. N/A only when no ticket obligation applies. Unresolved relevant references or unavailable required integrations are not a pass. |
 | 7 | **Time** — applicable time-accounting obligations are met | List the required per-day entries and read-back evidence from the configured service. Apply the project/organization policy, not a default provider. N/A requires an explicit applicability reason; missing tickets alone are not enough. See *Booking* below. |
+| 8 | **Docs** — every B21 item from the Sweep and Spotlight reports is written to its owner, filed or rejected | One row per item from the Phase-10 table of every Sweep or Spotlight of this session (`documentation-lookup.md`; a repeat `/retro` reports only new items): written (URL of the record, read back, or of the PR for repository docs; a link or a correction counts) · filed (issue/ticket URL) · rejected (one-line reason the user has seen). An item that stays `not-searched` is closed only by a filed or rejected row, never by being absent from the table. A Sweep or Spotlight report that holds neither a B21 table nor `B21: none` → run Phase 2 for B21 over that report's scope, Phase 4c, then Phases 5 and 7 for what they find, so that Phase 8 has a proposal to approve. N/A only when all of those reports state `B21: none`. Gate 6 stays about ticket state: a ticket comment that records the knowledge closes its row here, not gate 6. |
 
 ## Cleanup sweep (gate 4)
 
@@ -208,9 +209,12 @@ next run; do not silently discard it.
 ## Pipeline mapping
 
 - Phases 1–3 (detection) are skipped — announce it in one line — unless gate 3
-  triggers the Sweep, which then runs in full.
+  triggers the Sweep, which then runs in full. The one exception is gate 8: on a
+  report that holds neither a B21 table nor `B21: none`, it runs Phase 2 for B21
+  alone.
 - Phase 8 (approval) applies to every write Done mode proposes: each booking,
-  each ticket comment, each worktree removal with anything unpushed.
+  each ticket comment, each write to a team record, each worktree removal with
+  anything unpushed.
 - Phase 10 report is the scope line plus the gate table; the word **done**
   appears only when every row is ✅ or N/A.
 
@@ -232,6 +236,7 @@ Scope (derive-session-scope.py): t3x-nr-llm, agent-rules-skill, retro-skill · 2
 | 5 | Questions | ✅    | none; CI wiring parked by user (stated once) |
 | 6 | Tickets   | ✅    | https://tracker.example/NEXT-155 · Closed · — · https://tracker.example/NEXT-156 · Closed · — (assignee cleared: project closes with no owner) |
 | 7 | Time      | N/A   | project policy explicitly exempts this work from time recording |
+| 8 | Docs      | ✅    | 2 B21 items: 1 written https://inventory.example/assets/17 · 1 filed https://tracker.example/NEXT-157 (wiki not searched) |
 ```
 
 A ⏸ or ❌ row ends the report with what is needed to close it — not with
@@ -256,3 +261,6 @@ owns.
 `../evals/done-gate-holds-on-unbooked-time.md` — the gate must refuse "done"
 when the retro or the booking is missing, even though the code task is
 complete.
+
+`../evals/done-gate-holds-on-unwritten-doc-fact.md` — the gate must refuse
+"done" while a B21 item has no URL and no recorded rejection.

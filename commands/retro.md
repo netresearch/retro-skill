@@ -27,7 +27,7 @@ correct destination.
 /retro outcome [session-id|--since N] Outcome — post-hoc review of past session(s)
 /retro audit [--scope X]              Audit — cross-session architectural review
 /retro promote [--project=<slug>]     Promote — re-home accumulated local memory upward
-/retro done                           Done — seven-gate finish check; "done" only when all hold
+/retro done                           Done — eight-gate finish check; "done" only when all hold
 ```
 
 ## Phase 1: Mechanical Pre-Pass
@@ -111,10 +111,18 @@ or they are lost. A clean session still owes these findings.
 - **Maintainer request (B20):** a human states how work is done in this
   repository or team. → `project-rule` (the repo's `AGENTS.md`), or
   `skill-update` for a cross-repository convention.
+- **Dug-out knowledge (B21):** a fact the session had to find out with effort, or
+  that a person had to supply, and that a reader of the team's documentation
+  should have found there. Ask: does a document exist, is it correct, could a
+  reader reach it from where they start (asset, ticket, repo README, skill)?
+  Phase 4c settles it. → `canonical-source` (team record): a link when the
+  document exists but was out of reach, a correction when it is wrong, new text
+  only when none exists. A skill keeps only the agent-specific delta.
 
 For each learning ask: **"Would a future agent re-derive this, and does an
 existing skill already say it?"** If re-derivable and not covered → it is a
-finding.
+finding. For B21 a skill's coverage does not end the candidate: Phase 4c checks
+the team's records.
 
 See `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
@@ -223,13 +231,31 @@ narrower destination) correct.
 For installed skills' on-disk paths / git remotes when patching, also:
 `bash ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-installed-skills.sh`.
 
+## Phase 4c: Documentation Lookup
+
+For every B21 candidate, search the team's records before proposing anything:
+inventory or asset system, repository docs, runbooks, wiki, ticket system. Use
+the integrations the project names; retro brings none of its own. Start with the
+record that should own the fact, then search the others, read each hit, and
+name the reader's starting point. Result per fact: `found-correct` (no doc write;
+a session finding was B13, a Promote note holding nothing else is drained, an
+Audit copy is pruned to
+a reference), `found-unreachable` (add a link from the starting point, never a
+new page), `found-wrong` (report it with the correction), `searched-absent` or
+`not-searched`.
+
+State what you searched and with which terms. A system you could not reach is
+`not-searched`: unknown, never absent. A wrong record found on the way is a
+finding. Detail: `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/documentation-lookup.md`.
+
 ## Phase 5: Classification
 
 The Phase 4 catalogue of all skills (installed *and* available) is a required
 input to classification, not a consequence of it. Map each finding to one of seven destinations using
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/classification-heuristic.md` — authority first: a fact
-owned by an artefact outside the agent system (upstream docs, code, schema)
-routes to `canonical-source`, not into a skill — then check the catalogue for
+owned by an artefact outside the agent system (upstream docs, code, schema, a
+team record: inventory, ticket, repository docs, runbook, wiki last) routes to
+`canonical-source`, not into a skill — then check the catalogue for
 an owning skill before any narrower destination. When uncertain, ask the user.
 
 `user-memory` is a deprecated alias of `personal-rule`. Accept it wherever a
@@ -251,7 +277,7 @@ Group proposals by destination. Show ≤10 items, ranked by severity (see
 
 **Do not let friction crowd out learnings.** When more than 10 candidates exist
 and the list is trimmed to fit, reserve slots so the top reusable-learning
-findings (B16–B20) survive — a friction-free learning is graded *at least*
+findings (B16–B21) survive — a friction-free learning is graded *at least*
 `important`, never auto-`nice-to-have`, precisely so it is not the first thing
 dropped. A retro that returns 10 friction items and zero learnings on a session
 that produced learnings has failed its second class.
@@ -298,7 +324,12 @@ Summary table:
 | personal-rule | wrote | ~/.claude/CLAUDE.md | ✓ |
 | skill-update | opened PR | netresearch/typo3-conformance-skill#456 | ✓ |
 | checkpoint | added AH-22 | agent-harness-skill | ✓ |
+| canonical-source (team record: inventory) | updated | https://inventory.example/assets/17 | ✓ |
 ```
+
+Every B21 item also gets a row in the documentation table: fact, starting point,
+what was searched, state, action (`documentation-lookup.md`). A report with no B21 item
+states `B21: none` instead of the table. Gate 8 of Done mode reads either form.
 
 ## Spotlight Mode
 
@@ -341,7 +372,7 @@ Steps:
 - **Phase 3b is the primary detection step:** walk forward from session end with `collect-review-findings.py --transcript-file <past session> --since <session end>` (reviews, issue and ticket feedback that arrived later, GitHub and GitLab), `git log`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the failures, the durable successes, and superseded temporary copies (D12: a tracked canonical-source upstream PR merged → propose pruning the skill's labelled copy).
 - Phase 3c may also fire if the window is large
 - Phases 4–10 proceed; destinations skew toward `skill-update` — the skill should learn both what to avoid (D1–D10) and what to codify (D11) — and `personal-rule` for personal patterns
-- Guard D11 with the same generalizability filter as B16–B20: a local, one-off change that merged cleanly is **not** a learning; codifying it is noise
+- Guard D11 with the same generalizability filter as B16–B21: a local, one-off change that merged cleanly is **not** a learning; codifying it is noise
 
 Requires latency. Don't run within 24h of the session — most D signals (including D11's "survived the window") haven't manifested yet.
 
@@ -387,10 +418,10 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
 - Phases 4–10 run verbatim; destination skew is **upward** per scope-escalation
   (skill-update › project-rule › personal-rule), **never** project-local memory
 - Phase 8 adds a mandatory default-**N** warning on every `project-rule` /
-  `skill-update` proposal: "promoting this makes it team-visible; source is
-  currently private"
+  `skill-update` / team-record `canonical-source` proposal: "promoting this
+  makes it team-visible; source is currently private"
 - **Phase 9 gains a post-step:** after the upward write is *verified* (rule text
-  re-read, or PR URL returned), drain the source via
+  re-read, team record read back at its URL, or PR URL returned), drain the source via
   `scan-memory-inventory.py drain <path> --expect-sha256 <sha>` — a tombstone
   move to `.promoted/` plus a `MEMORY.md` prune, **never** `rm`. On verify
   failure, keep the source. For `skill-update`, drain only after the PR is opened.
@@ -406,17 +437,19 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
 /retro done
 ```
 
-Answers "are we actually finished?" with evidence, not memory. Seven gates —
+Answers "are we actually finished?" with evidence, not memory. Eight gates —
 task delivered (live state of every PR/MR/issue), interim findings fixed / filed
 (URL) / rejected, retro run, cleanup sweep, no open questions, tickets updated,
-time booked per day — each ✅ / ⏸ / ❌ with its evidence. Full detail in
+time booked per day, every B21 item written to its owner (URL) / filed (URL) /
+rejected (reason the user has seen) — each ✅ / ⏸ / ❌ with its evidence. Full detail in
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/done-mode.md`.
 
 - Phases 1–3 are skipped (announce it) unless gate 3 finds no Sweep has run —
-  then run the Sweep in full first
+  then run the Sweep in full first. Gate 8 runs Phase 2 for B21 alone on a report
+  that holds neither a B21 table nor `B21: none`
 - Phase 8 applies to every write the gate proposes: time entries in the
   project's configured system (read before writing to prevent duplicates),
   ticket comments and worktree removals. Apply the owning project's QA and
   billing rules; a missing integration is not evidence that a requirement is N/A.
 - Phase 10 report is the gate table; the word **done** appears only when all
-  seven rows are ✅ or justified N/A — a ⏸ (waiting on the user) or ❌ ends with what closes it
+  eight rows are ✅ or justified N/A — a ⏸ (waiting on the user) or ❌ ends with what closes it

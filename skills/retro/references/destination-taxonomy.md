@@ -18,7 +18,7 @@ by a specialist skill.
 | 4 | `new-skill` | Friction is skill-shaped gap, no existing skill matches | `skill-repo-skill` (defines scaffolding) | New repo via scaffolding workflow |
 | 5 | `checkpoint` | Mechanically detectable rule, regex/script possible | `automated-assessment-skill` (defines YAML schema) | Entry in target skill's `checkpoints.yaml` |
 | 6 | `harness-artefact` | Repo missing hook / CI / template | `agent-harness-skill` (defines artefact templates) | Hook / CI workflow / PR template in target repo |
-| 7 | `canonical-source` | The fact's canonical owner is an artefact outside the agent system: upstream docs, code, schema, handbook (Axis 0 in `classification-heuristic.md`) | Domain skill's contribution reference (e.g. `typo3-docs`'s `upstream-docs-contribution.md`); mechanics per `patch-workflow.md` | PR/patch to the canonical source (docs repo, defining code, manifest) |
+| 7 | `canonical-source` | The fact's canonical owner is an artefact outside the agent system: upstream docs, code, schema, handbook, or a team record such as the inventory, a ticket, repository docs, a runbook or the wiki (Axis 0 in `classification-heuristic.md`) | Domain skill's contribution reference (e.g. `typo3-docs`'s `upstream-docs-contribution.md`); mechanics per `patch-workflow.md`; a team record through its owning integration | PR/patch to the canonical source (docs repo, defining code, manifest), or an approved edit of the team record |
 
 ## Format details
 
@@ -122,7 +122,32 @@ CI/hook parity, and why server-side rules cannot be a PR — are in
 For facts whose canonical owner sits outside the agent system (Axis 0 in
 `classification-heuristic.md`): official upstream documentation, the code that
 defines the value (a `configure()` method, a schema, a manifest), an org
-handbook.
+handbook, or a team record.
+
+**Team records (sub-case, not an eighth destination).** A fact about our own
+systems and work has its owner outside the agent system too. Axis 0 in
+`classification-heuristic.md` picks the record: inventory or asset system, ticket
+system, repository docs, runbook, wiki last. Phase 4c
+(`documentation-lookup.md`) has already said what it holds, and the state picks
+the write: new text for `searched-absent`, a correction for `found-wrong`, a link
+from the reader's starting point for `found-unreachable`. Report it as
+`canonical-source (team record: <kind>)`.
+
+- Repository docs and runbooks in a repository go by PR as above. Everything else
+  is edited through its **owning integration**: retro owns no credentials or tool
+  paths for it, and it is not a PR. Read the record back; its URL is the evidence.
+- Phase 8 approval names the exact record and the exact text. Many people read
+  these records, and nothing is written silently.
+- Check the audience: everyone who can read the record must be allowed to see the
+  fact. Internal names stay out of a public README. A credential goes into no
+  record; name where it is stored instead.
+- **No temporary copy in a skill.** The fallback below is for upstream gaps. A
+  skill reaches everyone who installs it and can be public, so a fact about our
+  own systems never goes there. With no integration or no write access, file a
+  ticket for the record's owner with the proposed text, or hand the text to the
+  user.
+- The skill keeps at most the pointer ("host facts live in the inventory") plus
+  the agent-specific delta.
 
 - Materialize as a PR/patch **to the owning artefact**, following the owning
   project's contribution workflow. A domain skill often documents that path
@@ -153,7 +178,7 @@ half-materialized.
 
 | Question | Answer | Pick |
 |---|---|---|
-| Is the fact owned by an artefact outside the agent system (official docs / code / schema / handbook)? | yes | `canonical-source` (+ paired `skill-update` reference/cleanup) |
+| Is the fact owned by an artefact outside the agent system (official docs / code / schema / handbook / a team record)? | yes | `canonical-source` (+ paired `skill-update` reference/cleanup) |
 | Is the rule mechanical (regex / script)? | yes | `checkpoint` (`mechanical:`) |
 | Is the rule mechanical but enforces a workflow gate? | yes | `harness-artefact` (pre-commit / CI / linter rule) |
 | Is it checkable but by judgment, not by pattern? | yes | `checkpoint` (`llm_reviews:`) |
@@ -190,7 +215,7 @@ coupled parts**:
 | Pair shape | Part 1 | Part 2 |
 |---|---|---|
 | **Gate + propagation** — the finding is enforceable in the repo it occurred in *and* the same gate belongs in sibling repos | `harness-artefact` or `checkpoint`: the check, in the repo the friction happened in | `skill-update`: the recipe for installing that gate elsewhere, in the skill that owns the topic |
-| **Canonical fix + cleanup** — the fact's owner is outside the agent system *and* a skill currently duplicates or contradicts it | `canonical-source`: PR/patch to the owning artefact | `skill-update`: replace the skill's copy with a reference (+ agent-specific delta) |
+| **Canonical fix + cleanup** — the fact's owner is outside the agent system *and* a skill currently duplicates or contradicts it | `canonical-source`: PR/patch to the owning artefact, or the approved edit of a team record | `skill-update`: replace the skill's copy with a reference (+ agent-specific delta) |
 
 Rules, all binding:
 
@@ -198,7 +223,7 @@ Rules, all binding:
   cap.** Splitting it into two proposals allows one half to be approved while
   the other is rejected — a prose rule without its gate reproduces the failure
   the enforceability axis exists to prevent, and a skill cleanup without its
-  upstream PR deletes knowledge before its new home exists.
+  owner's update deletes knowledge before its new home exists.
 - **The approval line names both targets**, because they are usually two
   different repos and one of them is not the repo the user is standing in:
   `harness-artefact → <repo> (lefthook.yml) + skill-update → <skill> (install recipe)`.
@@ -210,7 +235,8 @@ Rules, all binding:
   skill states *where the truth lives* plus the agent-specific delta. If the
   skill text still asserts the fact itself, it is a copy, not a reference.
   Ordering is materialize-then-drain, as in promote mode: the upstream PR must
-  exist before the skill's copy is reduced to a reference.
+  exist, or the edited team record must have been read back at its URL, before
+  the skill's copy is reduced to a reference.
 - **Two parts maximum.** No three-part materializations. If a finding seems to
   need a third, it is more than one finding.
 - **Both parts appear as separate rows in the Phase-10 report**, so a pair that
@@ -225,4 +251,5 @@ duplicates is a plain `canonical-source` with no second half.
 
 - `references/classification-heuristic.md` — Friction signal → destination mapping
 - `references/patch-workflow.md` — Materialization mechanics for skill-update / new-skill
+- `references/documentation-lookup.md` — Phase 4c, what a team record holds before a proposal
 - Spec: `docs/specs/retro-skill.md`
