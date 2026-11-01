@@ -238,7 +238,8 @@ inventory or asset system, repository docs, runbooks, wiki, ticket system. Use
 the integrations the project names; retro brings none of its own. Start with the
 record that should own the fact, then search the others, read each hit, and
 name the reader's starting point. Result per fact: `found-correct` (no doc write;
-a session finding was B13, a Promote note is drained, an Audit copy is pruned to
+a session finding was B13, a Promote note holding nothing else is drained, an
+Audit copy is pruned to
 a reference), `found-unreachable` (add a link from the starting point, never a
 new page), `found-wrong` (report it with the correction), `searched-absent` or
 `not-searched`.

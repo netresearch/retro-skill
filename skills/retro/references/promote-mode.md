@@ -186,8 +186,8 @@ Source deletion is **last** and **gated on confirmed materialization**, per item
    `<project>/AGENTS.md`, write the team record, or open the `feat/retro-<slug>`
    PR with a signed (`git commit -s`) commit.
 2. **Verify** — for file appends, re-read the target and confirm the rule text
-   is present; for a team record, read it back at its URL and confirm the fact
-   is present; for PRs, confirm `gh`/`glab` returned a URL (PR *exists* =
+   is present; for a team record, read it back at its URL and confirm the
+   approved text, correction or link is present; for PRs, confirm `gh`/`glab` returned a URL (PR *exists* =
    materialized; merge is not required).
 3. **Drain only now** — `scan-memory-inventory.py drain <path> --expect-sha256 <sha>`
    tombstone-**moves** the source into `<slug>/memory/.promoted/` (never `rm`)
