@@ -55,7 +55,7 @@ the starting point?
 
 | State | Meaning | What follows |
 |---|---|---|
-| `found-correct` | It exists, is correct, and the starting point leads to it | No doc write. This was B13: nobody opened it |
+| `found-correct` | It exists, is correct, and the starting point leads to it | No doc write. For a session finding this was B13: nobody opened it. In Promote the note is a duplicate: drain it. In Audit, prune the copy to a reference |
 | `found-unreachable` | It exists and is correct, but nothing leads there from the starting point | Add a link from the starting point. A new page or a second copy is the wrong fix |
 | `found-wrong` | A record says something the session disproved | A finding, also when the fact was not a B21 candidate. Report the record, the wrong statement, the correction and the evidence, and propose the correction. If the starting point does not lead there either, propose the link with it |
 | `searched-absent` | The search ran and found nothing | Propose adding it to the owner; the proposal names the search |
