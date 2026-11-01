@@ -92,7 +92,9 @@ with **no** friction to trigger it. The mechanical pre-pass cannot see them (the
 is no error, retry, or correction to count), so they exist only as LLM-inference
 signals and must be looked for deliberately. The discriminator is *"would a future
 agent re-derive this, and is it already in the owning skill?"* — not *"did
-something go wrong?"* Grade them **at least `important`** (see
+something go wrong?"* B21 is the exception: a skill that already states the fact
+does not end the candidate, because the question is what the team's records say,
+and Phase 4c decides that. Grade them **at least `important`** (see
 `classification-heuristic.md` → Severity) so they are not crowded out under the
 ≤10-proposal cap. The `skill-update` arrows below assume the authority check
 (Axis 0 in `classification-heuristic.md`) has already run: a learning whose
@@ -107,7 +109,7 @@ only a reference plus the agent-specific delta.
 | B18 | Review-issue learning | A generalizable lesson from a code-review comment (given OR received) — a reviewer taught a rule that applies beyond the current diff. → `skill-update` (or `project-rule` if genuinely repo-specific) |
 | B19 | Escaped defect | A finding the session's own checks did not catch before the push: a review thread resolved by a later commit (`resolved` plus `commit_after`), a `CHANGES_REQUESTED` review, a failed quality gate, a ticket sent back from QA (`ticket-transition`). The learning is the missing check, not the fix. Ask which check would have caught it before the push, and route there: the skill that owns that check, a hook, or an eval stub. → `skill-update` (or a gate) |
 | B20 | Maintainer request | A human reviewer, maintainer or ticket owner states how work is done here — "please always link the ticket", "agree on rollouts across projects first". A convention the agent did not know, not a defect. → `project-rule` in the repo's `AGENTS.md` when it is about one repository; `skill-update` when it is a team convention across repositories |
-| B21 | Dug-out knowledge | A fact the session had to find out with effort, or that a person had to supply, and that a reader of the team's documentation should have found there: which host runs a service, why a ticket went the way it did, how a repository is built, how a recurring procedure goes. Ask for each one: **where should this have stood, does it stand there, and is that place correct?** Details and how it differs from B13, B14 and B16: [below](#dug-out-knowledge-b21). → `canonical-source` (team record); a skill keeps only the agent-specific delta |
+| B21 | Dug-out knowledge | A fact the session had to find out with effort, or that a person had to supply, and that a reader of the team's documentation should have found there: which host runs a service, why a ticket went the way it did, how a repository is built, how a recurring procedure goes. Ask for each one: **does a document exist, is it correct, and could a reader reach it from where they start** (asset, ticket, repo README, skill)? Details and how it differs from B13, B14 and B16: [below](#dug-out-knowledge-b21). → `canonical-source` (team record): new text only when no document exists, a link when one exists but was out of reach, a correction when it is wrong. A skill keeps only the agent-specific delta |
 
 ### Dug-out knowledge (B21)
 
@@ -122,7 +124,7 @@ mechanical pre-pass cannot tell a dug-out fact from ordinary reading.
 
 | Not B21 | Because | Signal |
 |---|---|---|
-| The fact stood in the right record and was simply not read | The document is fine; the gap is the path to it | B13 |
+| The fact was documented, correctly, and the reader's starting point led to it; nobody opened it | Nothing needs writing | B13 |
 | Only an agent needs it: a flag, a tool trap, a workflow step | Its owner is a skill | B16 |
 | Library or vendor docs were out of date | The owner is upstream | B14 |
 | A convention a person stated for this repo | It is a rule, not a fact | B20 |
@@ -130,8 +132,8 @@ mechanical pre-pass cannot tell a dug-out fact from ordinary reading.
 
 Whether a candidate is B13 or B21 is settled in Phase 4c
 ([documentation lookup](documentation-lookup.md)), not by assumption: until the
-records were searched, it stays a candidate. A team record found stale on the way
-is a B21 finding too. Credentials are never a B21 item; at most, where they are
+records were searched, it stays a candidate. A wrong team record found on the way
+is a B21 finding too, reported with its correction. Credentials are never a B21 item; at most, where they are
 stored is.
 
 ### Feedback from outside the transcript

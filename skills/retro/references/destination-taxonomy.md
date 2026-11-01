@@ -128,7 +128,9 @@ handbook, or a team record.
 systems and work has its owner outside the agent system too. Axis 0 in
 `classification-heuristic.md` picks the record: inventory or asset system, ticket
 system, repository docs, runbook, wiki last. Phase 4c
-(`documentation-lookup.md`) has already said what it holds. Report it as
+(`documentation-lookup.md`) has already said what it holds, and the state picks
+the write: new text for `searched-absent`, a correction for `found-wrong`, a link
+from the reader's starting point for `found-unreachable`. Report it as
 `canonical-source (team record: <kind>)`.
 
 - Repository docs and runbooks in a repository go by PR as above. Everything else
@@ -221,7 +223,7 @@ Rules, all binding:
   cap.** Splitting it into two proposals allows one half to be approved while
   the other is rejected — a prose rule without its gate reproduces the failure
   the enforceability axis exists to prevent, and a skill cleanup without its
-  upstream PR deletes knowledge before its new home exists.
+  owner's update deletes knowledge before its new home exists.
 - **The approval line names both targets**, because they are usually two
   different repos and one of them is not the repo the user is standing in:
   `harness-artefact → <repo> (lefthook.yml) + skill-update → <skill> (install recipe)`.
@@ -233,7 +235,8 @@ Rules, all binding:
   skill states *where the truth lives* plus the agent-specific delta. If the
   skill text still asserts the fact itself, it is a copy, not a reference.
   Ordering is materialize-then-drain, as in promote mode: the upstream PR must
-  exist before the skill's copy is reduced to a reference.
+  exist, or the edited team record must have been read back at its URL, before
+  the skill's copy is reduced to a reference.
 - **Two parts maximum.** No three-part materializations. If a finding seems to
   need a third, it is more than one finding.
 - **Both parts appear as separate rows in the Phase-10 report**, so a pair that

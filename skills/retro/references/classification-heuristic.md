@@ -58,7 +58,7 @@ Maps friction signals (from `friction-catalog.md`) to one of the seven destinati
 | **B18** review-issue learning | `skill-update` (generalize the review lesson) | `project-rule` (genuinely repo-specific) |
 | **B19** escaped defect | `skill-update` to the skill that owns the check which would have caught it before the push | `harness-artefact` (a hook or CI gate, when prose already exists and did not prevent it — cf. C6) / eval stub for that skill |
 | **B20** maintainer request | `project-rule` (the repository's `AGENTS.md`) | `skill-update` (a convention the team applies across repositories) |
-| **B21** dug-out knowledge | `canonical-source`, team record: the record kind from Axis 0, after Phase 4c searched it | `project-rule` / `skill-update` pointer when Phase 4c says `found-correct` (then it was B13) / `skill-update` for the agent-specific delta only, never the fact |
+| **B21** dug-out knowledge | `canonical-source`, team record: the record kind from Axis 0, after Phase 4c searched it | A link from the reader's starting point when Phase 4c says `found-unreachable` (never a new page) / no doc write when it says `found-correct` (then it was B13) / `skill-update` for the agent-specific delta only, never the fact |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
 | **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`personal-rule` (LLM picks from `current_location` + content) |
@@ -92,7 +92,8 @@ and most facts have a canonical owner *outside* the agent system:
 **Decide a team record by what kind of record it is**, top to bottom, first fit
 wins. The wiki comes last because it accepts anything: a fact filed there
 instead of with its owner goes stale beside the real record. Phase 4c
-(`documentation-lookup.md`) says what the record holds today.
+(`documentation-lookup.md`) says what the records hold today. This order decides
+where a *new* fact goes; a correct document elsewhere stays and gets a link.
 
 **A skill is the canonical source only for facts about agent behaviour or the
 skill's own procedure.** When the canonical owner is outside the agent system,
@@ -116,12 +117,14 @@ Three content grades may live inside a skill, each with its price of entry:
 - a **deliberately stricter org policy** must be labelled as org policy,
   never presented as the upstream standard.
 
-Everything else is removed or turned into a reference. When the canonical
+Everything else is removed or turned into a reference. When an upstream
 owner cannot take the fix (no contribution path, upstream gap), the skill may
 carry the fact *temporarily* — labelled with its authority and the upstream
 issue/PR where one exists — and a later `/retro audit --scope skill`
 reconciliation prunes it once upstream lands (see Instruction pruning, and
-"Audit" in `workflow.md`).
+"Audit" in `workflow.md`). A team record has no such fallback: when it cannot be
+written, file a ticket for its owner or hand the text to the user
+(`destination-taxonomy.md` §7).
 
 ### Axis 1 — enforceability: a gate outranks a sentence
 

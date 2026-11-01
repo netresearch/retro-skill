@@ -113,13 +113,16 @@ or they are lost. A clean session still owes these findings.
   `skill-update` for a cross-repository convention.
 - **Dug-out knowledge (B21):** a fact the session had to find out with effort, or
   that a person had to supply, and that a reader of the team's documentation
-  should have found there. Ask: where should this have stood, does it stand
-  there, is that place correct? Phase 4c settles it. → `canonical-source` (team
-  record); a skill keeps only the agent-specific delta.
+  should have found there. Ask: does a document exist, is it correct, could a
+  reader reach it from where they start (asset, ticket, repo README, skill)?
+  Phase 4c settles it. → `canonical-source` (team record): a link when the
+  document exists but was out of reach, a correction when it is wrong, new text
+  only when none exists. A skill keeps only the agent-specific delta.
 
 For each learning ask: **"Would a future agent re-derive this, and does an
 existing skill already say it?"** If re-derivable and not covered → it is a
-finding.
+finding. For B21 a skill's coverage does not end the candidate: Phase 4c checks
+the team's records.
 
 See `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
@@ -233,12 +236,14 @@ For installed skills' on-disk paths / git remotes when patching, also:
 For every B21 candidate, search the team's records before proposing anything:
 inventory or asset system, repository docs, runbooks, wiki, ticket system. Use
 the integrations the project names; retro brings none of its own. Start with the
-record that should own the fact, then search the others, and read each hit.
-Result per fact and system: `found-correct` (no doc write, this was B13),
-`found-stale`, `found-misplaced`, `searched-absent` or `not-searched`.
+record that should own the fact, then search the others, read each hit, and
+name the reader's starting point. Result per fact: `found-correct` (no doc write,
+this was B13), `found-unreachable` (add a link from the starting point, never a
+new page), `found-wrong` (report it with the correction), `searched-absent` or
+`not-searched`.
 
 State what you searched and with which terms. A system you could not reach is
-`not-searched`: unknown, never absent. A stale record found on the way is a
+`not-searched`: unknown, never absent. A wrong record found on the way is a
 finding. Detail: `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/documentation-lookup.md`.
 
 ## Phase 5: Classification
@@ -320,8 +325,8 @@ Summary table:
 | canonical-source (team record: inventory) | updated | https://inventory.example/assets/17 | ✓ |
 ```
 
-Every B21 item also gets a row in the documentation table: fact, owner, what was
-searched, state, action (`documentation-lookup.md`). Gate 8 of Done mode reads it.
+Every B21 item also gets a row in the documentation table: fact, starting point,
+what was searched, state, action (`documentation-lookup.md`). Gate 8 of Done mode reads it.
 
 ## Spotlight Mode
 
