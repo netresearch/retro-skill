@@ -14,6 +14,50 @@ How `/retro` materializes the repo-patching destinations: `skill-update`,
 
 Cache (`~/.claude/plugins/cache/`) is overwritten on plugin update. Edits there are lost.
 
+## Authorization and scope
+
+Before writing, identify the existing authorization for the target, action and
+audience. Carry out covered changes and report them; do not ask again merely
+because the pipeline reaches materialization. Ask only for an uncovered
+decision, such as a new policy, a different private repository or disclosure
+to a wider audience. Preparation and read-only checks may continue while that
+decision is open. Process criticism creates no new authority. Preserve the
+user's limits on publication, shared resources, access and costs.
+
+For team-visible promotion, name what will become visible and to whom. Use
+existing explicit permission when it covers that content and audience;
+otherwise obtain it before posting. Retro neither invents permission nor adds
+a redundant approval round.
+
+## Learning identity and handoff
+
+Keep the existing `Learning-Id` across the finding, patch, PR and later
+observations. In the proposal or its linked report, retain the statement kind,
+evidence, scope, owning source/decision and expected behavior change from
+`learning-contract.md`. For material measures, add the target and what would
+confirm, refute or leave the expected benefit open. Reference shared run
+provenance rather than duplicating configuration metadata in every finding.
+
+Track these states with evidence; none implies the next:
+
+| State | Evidence |
+|---|---|
+| Justified | Observation, verified fact or valid decision, with uncertainties |
+| Prepared/implemented | Inspectable patch, PR, record or configuration change |
+| Accepted | Responsible owner has adopted it, where required |
+| Available | Intended reader/agent can reach the delivered content or tool through its normal entry point |
+| Applied | A suitable later task actually used it |
+| Effect observed | Outcome supports or refutes the expected benefit within the observed scope |
+
+A PR URL proves preparation. Merge establishes repository acceptance; green
+CI proves its known checks, not acceptance, use or benefit. A skill may still
+await distribution. Unknown
+states stay unknown. Preserve an active handoff reference until availability
+is verified (`promote-mode.md`); rejected, closed or undelivered changes need
+reclassification, not silent retirement of their source. Availability does
+not require waiting for later application or effect, and unmeasured later
+effect does not block completion of the original task.
+
 ## Workspace selection
 
 For each skill-update target, select a working directory in this order:
@@ -178,9 +222,10 @@ GitLab (Netresearch internal):
 glab mr create --draft --title "<title>" --description "<body>"
 ```
 
-Open every PR or MR as a draft. The user approved the change, not its release
-to reviewers; leaving draft summons maintainers and bot reviews, and that step
-is theirs. `materialize-pr.sh finish` opens drafts.
+Open PRs/MRs as drafts unless the existing mandate explicitly includes release
+to reviewers. Leaving draft can summon maintainers and bot reviews, so check
+that action's scope rather than inferring it from permission to edit.
+`materialize-pr.sh finish` opens drafts.
 
 `glab mr create` has no `--hostname` flag. The host comes from `GITLAB_HOST`
 (e.g. `git.netresearch.de`) or from `-R <host>/<group>/<repo>`.
@@ -198,8 +243,8 @@ Opened by a [netresearch/retro-skill](https://github.com/netresearch/retro-skill
 Finding: <friction signal id> — <one-line description>
 Learning-Id: <retro-YYYYMMDD-slug>
 
-- **Symptom:** <what was observed going wrong>
-- **Cause:** <root cause, not the trigger>
+- **Symptom:** <observed problem, successful outcome or explicit valid decision>
+- **Cause:** <verified mechanism/prerequisites; label an unconfirmed explanation as a hypothesis>
 - **Required behavior:** <what the agent must do instead>
 - **Verification:** <eval id (`evals/evals.json` name) or checkpoint id (`checkpoints.yaml` key)>
 
@@ -231,16 +276,19 @@ The Symptom/Cause/Required behavior/Verification fields follow the canonical
 failure-pattern schema defined in `skill-repo-skill`'s
 [skills/skill-repo/references/materialization-contract.md](https://github.com/netresearch/skill-repo-skill/blob/main/skills/skill-repo/references/materialization-contract.md) — do not redefine the schema here.
 
-## Per-private-repo confirmation
+## Private-repository scope
 
-Before pushing to a private host, prompt the user:
+Before pushing to a private host, verify that existing authorization names or
+otherwise clearly covers this repository, action and audience. If not, prompt
+the user after preparing the reviewable change:
 
 ```
 Target: git.netresearch.de/x/y (private)
 This will push to a private host. Proceed? [y/N]
 ```
 
-Decision is remembered for the (session, repo URL) pair.
+Remember the covered scope for the session; do not repeat the question for the
+same repository and action.
 
 ## Harness artefacts — target repo, not skill repo
 
@@ -265,8 +313,9 @@ patch there:
 git -C <repo>/.bare worktree add ../feat-retro-<slug> -b feat/retro-<slug> origin/<default-branch>
 ```
 
-Fall back to the /tmp clone rule above if the repo is not worktree-shaped. Never
-patch a repo the user did not work in during the session without asking.
+Fall back to the /tmp clone rule above if the repo is not worktree-shaped.
+Patching another repository requires authorization covering that target; use
+permission already given or ask only if it is outside the mandate.
 
 ### 2. Verify before bootstrapping
 
@@ -293,16 +342,18 @@ the check cannot run in CI at all, which is rare.
 
 ### 4. Server-side instruments are not a PR
 
-Branch protection and rulesets are the only instruments nobody bypasses, and
-they are an API call, not a file. They cannot be materialized as a patch and
-must never be applied silently. Emit the command for the user to run and mark
-the row `manual` in the Phase-10 report:
+Branch protection and rulesets are shared server-side configuration, applied
+through the owning API rather than a file patch. They require authorization
+covering the exact target and effect. Without it, prepare a command/specification
+for the user and mark the row `manual` in the Phase-10 report:
 
 ```bash
 gh api -X PUT repos/<owner>/<repo>/branches/<branch>/protection --input <spec>.json
 ```
 
-State what the rule would enforce and what it would block. The user runs it.
+State what the rule would enforce and what it would block. If the existing
+mandate covers applying it, use the owning integration and read back the
+result; otherwise the user runs it. Never report an emitted command as applied.
 
 ### 5. Linter and analyzer rules
 
@@ -318,8 +369,8 @@ it. A rule that does not reproduce the failure is not a gate.
 
 For `new-skill` destination:
 
-1. Confirm name with user (kebab-case)
-2. Confirm target org (default: same org as similar existing skills)
+1. Resolve the name (kebab-case) from the agreed scope
+2. Resolve the target org; ask if the mandate leaves ownership unresolved
 3. Invoke `skill-repo-skill` scaffolding (see its [skills/skill-repo/references/materialization-contract.md](https://github.com/netresearch/skill-repo-skill/blob/main/skills/skill-repo/references/materialization-contract.md))
 4. Initial commit includes:
    - Standard scaffolding (plugin.json, composer.json, licenses, README, AGENTS.md)
@@ -327,7 +378,9 @@ For `new-skill` destination:
    - One eval covering the friction (TDD)
    - SKILL.md with initial trigger description and workflow
 
-User confirms before push. Marketplace listing is a separate manual step (out of scope).
+Check authorization before creating the repository or pushing; ask only if
+that action is not already covered. Marketplace listing remains a separate
+action requiring its own scope.
 
 ## Reporting
 
@@ -345,9 +398,13 @@ At end of `/retro`, output a table:
 ```
 
 A paired materialization (`destination-taxonomy.md`, "Paired materialization")
-occupies two rows sharing one number, as `4a`/`4b` above — one approval, two
+occupies two rows sharing one number, as `4a`/`4b` above — one authorization unit, two
 artefacts, each with its own status so a half-failed pair stays visible.
-Server-side instruments are reported `manual`; they are never applied by retro.
+Server-side instruments not authorized for execution are reported `manual`;
+those applied within an explicit mandate need readback evidence like any other
+shared-resource change. Report implementation, acceptance, availability and
+later effect separately; a green check in this table certifies only its named
+action.
 
 ## See also
 

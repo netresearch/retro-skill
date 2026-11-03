@@ -84,7 +84,7 @@ bash ${CLAUDE_SKILL_DIR}/scripts/find-installed-skills.sh
 returns `{name, path, description, repo_url}` for skills under
 `<project>/.claude/skills/`, `~/.claude/skills/`, and the plugin cache.
 
-**Do not content-check against these paths.** The plugin cache keeps every
+**Do not select an arbitrary cached copy for a content check.** The plugin cache keeps every
 version it has ever installed side by side, and this script emits one row per
 copy, so `| head -1` hands you whichever the scan hit first — routinely an old
 one. Reading a stale copy makes the retro report gaps that were closed
@@ -95,24 +95,37 @@ ls ~/.claude/plugins/cache/<marketplace>/<skill>/
 # 1.3.0  1.3.9  1.3.10  1.4.0   → head -1 gave 1.3.0, source was at 1.3.9
 ```
 
-For the Phase 4 content check (and for every patch), read the **source repo** —
+For the current-content check (and for every patch), read the **source repo** —
 an existing local checkout whose `origin` matches `repo_url` (see
 `patch-workflow.md`, "Workspace selection"), or a fresh clone of `repo_url`
-after `git fetch`. Use the cached paths only to learn *that* a skill is
-installed and where its remote points.
+after `git fetch`. For the session's behavior, separately inspect the exact
+loaded path/revision when the transcript or host identifies it. Installed now,
+loaded during that session, and current source are different states.
+
+Record the loaded version or content hash and current source revision where
+available. A read of today's installed file cannot recover a historical load;
+an unavailable old copy is an evidence gap. Cache reads are read-only evidence,
+never patch targets. If the loaded copy lacks guidance already present in
+current source, diagnose distribution/update or selection before proposing a
+content patch. Inspect only any remaining source delta; do not reopen a fix
+that has already landed. See `documentation-lookup.md` for the separate usage
+diagnosis.
 
 ## Match heuristic
 
 Match the friction topic against the **full catalogue** `description` fields
 (installed + available), not just installed skills:
 
-- **1 match, installed** → `skill-update` against that skill (use its `repo_url`)
-- **1 match, available but not installed** → `skill-update` against its
-  `repo_url`, *and* surface that the skill exists org-wide but isn't installed
-  here (recommend installing it — a teammate may simply be missing it)
-- **multiple matches** → ask the user with a disambiguation prompt
-- **no match anywhere in the catalogue** → propose `new-skill` (a confident
-  conclusion now: the whole org catalogue was checked, not just local installs)
+- **1 match, installed** → inspect that owner's loaded/current states before
+  deciding whether a `skill-update` is needed (use its `repo_url`)
+- **1 match, available but not installed** → inspect its source; surface that
+  it is not installed here. A missing installation may be the whole cause;
+  propose a `skill-update` only for a confirmed source gap
+- **multiple matches** → resolve from ownership and the task's scope; ask only
+  when a material ownership ambiguity remains
+- **no match in the inspected catalogue** → consider `new-skill` only after
+  inspecting plausible catalogue-only entries; report coverage limits rather
+  than claiming an incomplete catalogue proves organization-wide absence
 
 Cache the catalogue per session to avoid re-scanning.
 
@@ -157,14 +170,18 @@ Read evals during classification for context. See `references/eval-integration.m
 
 ## Private repo handling
 
-Auto-discover via search paths regardless of host. Before any patch:
+Auto-discover via search paths regardless of host. Apply the authorization
+check in `patch-workflow.md`: reuse explicit permission already covering this
+private repository and action. When that scope is not yet authorized, ask
+before the write or PR:
 
 ```
 Target: git.netresearch.de/x/y (private host)
 This will create a PR on a private host. Proceed? [y/N]
 ```
 
-Decisions are remembered per (session, repo URL) to avoid repeat prompts within a session.
+Remember the authorized action, audience and repository for the session; a
+different target or wider disclosure is a new scope decision.
 
 If discovery fails (no manifest, no git remote, no user input):
 - For `skill-update`: degrade gracefully — propose local-only edit with warning
@@ -176,8 +193,8 @@ If discovery fails (no manifest, no git remote, no user input):
 |---|---|
 | Skill in `~/.claude/skills/<name>/` with no git remote | User-local; ask "edit locally, or scaffold new repo?" |
 | Skill in `<project>/.claude/skills/` | Patch goes to project repo (not skill repo) |
-| Cache diverged from source (manual hack) | Show diff, ask user before proceeding |
-| Several cached versions of one skill | Never content-check the cache — read the source repo (see "Installed-only detail") |
+| Cache diverged from source (manual hack) | Preserve the observed delta as evidence; patch source within mandate, ask only if ownership or intended behavior remains unresolved |
+| Several cached versions of one skill | Identify the copy actually loaded for diagnosis; inspect current source for any patch (see "Installed-only detail") |
 | Private repo unauthenticated | Graceful failure with instruction |
 | Source URL unresolvable | Ask user; offer scaffolding fallback |
 | User's git worktree dirty | Skip worktree, use /tmp clone |

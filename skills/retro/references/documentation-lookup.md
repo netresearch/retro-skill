@@ -24,7 +24,8 @@ fixes neither: the first case needs a link, the second a correction.
 For every B21 candidate from Phase 2 in any mode, in Promote for every note
 holding a fact about the team's own systems, and in Audit for team-record
 reconciliation candidates. It runs before Phase 5, because the result
-decides the route. It only reads: writes happen in Phase 9, after approval.
+decides the route. It only reads: writes happen in Phase 9 within the existing
+mandate or after a genuinely new decision (see `patch-workflow.md`).
 
 ## Which systems
 
@@ -38,8 +39,10 @@ implicit tool, and a key's shape selects nothing.
 ## How to search
 
 1. Start with the record kind that should own the fact (Axis 0 in
-   `classification-heuristic.md`), then search the other kinds: a document often
-   sits where nobody expects it.
+   `classification-heuristic.md`), the task's entry points and plausible owning
+   skills, including sources the session did not use. Expand to other kinds
+   when those searches, repeated failures or contradictions justify it. A
+   whole-organization reconciliation belongs in Audit.
 2. Search by the exact identifier the session used (host, service, error text,
    path) and by the topic. Note the terms; one term with no hit proves little.
 3. Open each hit and read it. A matching title is not a statement about its
@@ -55,7 +58,7 @@ the starting point?
 
 | State | Meaning | What follows |
 |---|---|---|
-| `found-correct` | It exists, is correct, and the starting point leads to it | No doc write. For a session finding this was B13: nobody opened it. In Promote a note that holds nothing else is a duplicate: drain it. A note that holds more stays until the rest is materialized and verified. In Audit, prune the copy to a reference |
+| `found-correct` | It exists, is correct, and the starting point leads to it | No content write. Diagnose session usage separately. In Promote, drain a duplicate only after verifying that the intended reader can use the target; otherwise retain the active bridge. In Audit, prune the copy to a reference after that handoff |
 | `found-unreachable` | It exists and is correct, but nothing leads there from the starting point | Add a link from the starting point. A new page or a second copy is the wrong fix |
 | `found-wrong` | A record says something the session disproved | A finding, also when the fact was not a B21 candidate. Report the record, the wrong statement, the correction and the evidence, and propose the correction. If the starting point does not lead there either, propose the link with it |
 | `searched-absent` | The search ran and found nothing | Propose adding it to the owner; the proposal names the search |
@@ -67,16 +70,38 @@ or a cut-off result list is `not-searched`, as in the feedback contract:
 incomplete coverage is not silence. A `searched-absent` over one system says
 nothing about the others.
 
+## Diagnose session usage separately
+
+Content status describes the inspected document, not what the session knew.
+For each relevant source, record the observed usage state and its evidence:
+
+| Usage state | Next investigation or action |
+|---|---|
+| Unknown to the agent | Improve the appropriate entry point, index or trigger |
+| Known but not loaded | Inspect selection and loading behavior |
+| Read but misunderstood | Inspect ambiguity, structure and missing context |
+| Read but displaced by a conflicting instruction | Resolve authority, priority and applicability before adding links |
+| Older revision loaded | Compare with current source; fix distribution or update when source is already corrected |
+| Relevant content lost during context shortening | Preserve the needed decision or prerequisite at the established handoff |
+| Not applicable | Add no loading rule for this case |
+| Usage unknown | State the evidence gap; infer neither use nor non-use |
+
+A missing citation proves no missed read. A correct document today proves no
+historical availability. Keep the actually loaded revision (when recoverable)
+as behavioral context and current source as the patch baseline. Include scope,
+authority and intended audience when carrying a fact between sources; personal
+preferences do not become team policy without the appropriate decision.
+
 ## What the report must state
 
 Every B21 item gets one row in the Phase-10 report. A report with no B21 item
 states `B21: none` instead. Gate 8 of Done mode reads either form.
 
 ```
-| Fact | Starting point | Searched | State | Action |
+| Fact | Starting point | Searched | Content / usage | Action |
 |---|---|---|---|---|
-| Backup job runs on host A | inventory record | inventory ("backup-job", "host-a"), repo docs (README.md), tickets ("backup-job") | searched-absent; wiki not-searched (no integration here) | written: https://inventory.example/assets/17 |
-| Restore order of the backup job | inventory record | wiki ("restore order") | found-unreachable | link added: https://inventory.example/assets/17 → https://wiki.example/pages/9 |
+| Backup job runs on host A | inventory record | inventory ("backup-job", "host-a"), repo docs (README.md), tickets ("backup-job") | searched-absent; wiki not-searched (no integration here); usage unknown | written: https://inventory.example/assets/17 |
+| Restore order of the backup job | inventory record | wiki ("restore order") | found-unreachable; session did not know the page (transcript evidence) | link added: https://inventory.example/assets/17 → https://wiki.example/pages/9 |
 ```
 
 ## What this phase is not

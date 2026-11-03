@@ -8,6 +8,18 @@ pair shapes below ("Paired materialization"), to two coupled parts approved as
 one proposal. Each destination owns a specific materialization format defined
 by a specialist skill.
 
+Route knowledge by its responsible source before choosing a storage location.
+Preserve evidence, scope, authority and permitted audience from
+`learning-contract.md`. A personal preference cannot become a team norm just
+because a shared destination reaches more readers. Prefer corrections,
+references and consolidation to another copy. Changes to tools or working
+environments use their existing owning repositories/configuration through
+these seven destinations; they require no eighth knowledge store.
+
+The authorization check in `patch-workflow.md` applies throughout: use an
+existing mandate covering the target, action and audience; ask only for
+uncovered decisions.
+
 ## The Seven
 
 | # | Destination | When | Owner Skill (materialization format) | Storage Location |
@@ -64,7 +76,8 @@ Branch: `feat/retro-<slug>`
 Commit: Conventional Commits format; no harness-invented attribution, and the disclosure trailer the user's rules prescribe
 PR body: references the friction, describes the change, opens `## Came from` with the provenance line naming netresearch/retro-skill (template in `references/patch-workflow.md`)
 
-See `references/patch-workflow.md` for full workflow including worktree-vs-clone selection, signing, and per-private-repo confirmation.
+See `references/patch-workflow.md` for the full workflow including workspace
+selection, signing and authorization scope.
 
 ### 4. `new-skill` — Scaffolding
 
@@ -74,7 +87,8 @@ Invokes `skill-repo-skill` scaffolding with:
 - Initial reference doc covering the friction pattern
 - Initial eval covering the friction (TDD)
 
-User confirms before scaffolding. Marketplace listing is a separate manual step (out of scope).
+Scaffold within the agreed mandate; ask if name, ownership or repository
+creation remain uncovered. Marketplace listing is a separate action.
 
 ### 5. `checkpoint` — YAML entry
 
@@ -136,8 +150,9 @@ from the reader's starting point for `found-unreachable`. Report it as
 - Repository docs and runbooks in a repository go by PR as above. Everything else
   is edited through its **owning integration**: retro owns no credentials or tool
   paths for it, and it is not a PR. Read the record back; its URL is the evidence.
-- Phase 8 approval names the exact record and the exact text. Many people read
-  these records, and nothing is written silently.
+- Phase 8 checks authorization for the exact record, intended content and
+  audience. Reuse permission already given; an uncovered disclosure requires
+  the user's decision before writing. Report the resulting change.
 - Check the audience: everyone who can read the record must be allowed to see the
   fact. Internal names stay out of a public README. A credential goes into no
   record; name where it is stored instead.
@@ -154,20 +169,22 @@ from the reader's starting point for `found-unreachable`. Report it as
   (e.g. `typo3-docs`'s `references/upstream-docs-contribution.md`); branch,
   commit, and sign-off mechanics as in `references/patch-workflow.md`.
 - The skill involved keeps at most a **reference + agent-specific delta**. Any
-  duplicate it already carries is pruned in the same proposal — pair the
-  upstream PR with that `skill-update` cleanup ("Paired materialization"
-  below).
+  duplicate it already carries is pruned in the same proposal after confirmed
+  availability — pair the upstream PR with that `skill-update` cleanup
+  ("Paired materialization" below), keeping the active bridge while pending.
 - If the owner cannot take the fix now (no contribution path, upstream gap),
   fall back to a **labelled temporary copy** in the skill: authority class,
   the upstream issue/PR link, and the finding's `Learning-Id`. That triple is
-  the prune trigger: `/retro outcome` detects the merged upstream PR (**D12**)
-  and proposes reducing the copy to a reference; `/retro audit --scope skill`
-  catches whatever outcome mode missed.
+  the reassessment trigger: `/retro outcome` detects the merged upstream PR
+  (**D12**) and checks delivery and reachability before reducing the copy to a
+  reference; `/retro audit --scope skill` catches whatever outcome mode missed.
 - An upstream PR is an **outward-facing artefact in a foreign project**:
-  confirm the exact target and text with the user before posting. Nothing is
-  posted silently.
+  existing authorization must cover the exact target, content and audience.
+  Otherwise prepare it for the user's decision before posting.
 
-Choose the instrument by enforcement strength, not by convenience:
+First check that the rule still serves a valid product, team or quality goal
+(`classification-heuristic.md`). Removing or simplifying a harmful process can
+be the right measure. For a necessary rule, choose support/enforcement by fit:
 `agent-harness-skill/references/enforcement-mechanisms.md` ranks all ten from
 server-side to convention-based, and requires **CI/hook parity** — every fast,
 deterministic check in CI must also run as a pre-commit hook. A proposal that
@@ -189,11 +206,10 @@ half-materialized.
 
 **Three axes, in order: authority, then enforceability, then reach.** Read the
 table top-to-bottom — the first row is the authority axis (who owns the truth),
-the next three rows are the enforceability axis, and they come first on
-purpose. A fact fixed at its owner outranks a local copy; a gate that fails
-the build outranks a sentence that asks for care. Route to
-`checkpoint`/`harness-artefact` whenever the friction is one a check could
-have failed on.
+the next three rows are the enforceability axis. Validate the rule's purpose
+before that axis. A fact fixed at its owner outranks a local copy; for a rule
+that remains necessary, use `checkpoint`/`harness-artefact` when a suitable
+check would prevent the observed problem without disproportionate burden.
 
 For whatever remains prose, bias *upward in reach*: `skill-update`/`new-skill`
 (shared with everyone) › project `AGENTS.md` (shared with the repo) › global
@@ -219,12 +235,12 @@ coupled parts**:
 
 Rules, all binding:
 
-- **A pair is one proposal, approved once, and counts as one against the ≤10
+- **A pair is one authorization unit and counts as one against the ≤10
   cap.** Splitting it into two proposals allows one half to be approved while
   the other is rejected — a prose rule without its gate reproduces the failure
   the enforceability axis exists to prevent, and a skill cleanup without its
   owner's update deletes knowledge before its new home exists.
-- **The approval line names both targets**, because they are usually two
+- **The mandate/proposal names both targets**, because they are usually two
   different repos and one of them is not the repo the user is standing in:
   `harness-artefact → <repo> (lefthook.yml) + skill-update → <skill> (install recipe)`.
 - **The propagation half must not restate the rule.** It carries how to add the
@@ -234,9 +250,11 @@ Rules, all binding:
 - **The cleanup half must not keep the fact.** After a canonical-fix pair, the
   skill states *where the truth lives* plus the agent-specific delta. If the
   skill text still asserts the fact itself, it is a copy, not a reference.
-  Ordering is materialize-then-drain, as in promote mode: the upstream PR must
-  exist, or the edited team record must have been read back at its URL, before
-  the skill's copy is reduced to a reference.
+  Ordering is materialize → verify availability → retire the active copy, as
+  in promote mode. A PR's existence alone is insufficient: verify acceptance,
+  delivery and the intended reader's route to the content. Keep the minimal
+  active handoff reference until then. A team record's readback must likewise
+  establish the content and its accessibility to the intended reader.
 - **Two parts maximum.** No three-part materializations. If a finding seems to
   need a third, it is more than one finding.
 - **Both parts appear as separate rows in the Phase-10 report**, so a pair that
