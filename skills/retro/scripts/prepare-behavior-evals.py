@@ -56,7 +56,10 @@ def snapshot(skill_dir: Path, references: list[str]) -> tuple[str, list[dict]]:
     return "\n\n".join(parts), sources
 
 
-def write_json(path: Path, value: object) -> None:
+def write_json(path: Path, value: object, output_root: Path) -> None:
+    path = path.resolve()
+    if not path.is_relative_to(output_root.resolve()):
+        raise ValueError("JSON output must remain within the new run directory")
     path.write_text(
         json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
@@ -142,6 +145,7 @@ def prepare(args: argparse.Namespace) -> dict:
                 "negative_expected": negative,
                 "source_sha256": digest(path),
             },
+            out,
         )
         # Only prompt reaches the executor in the shared runner. Expectations
         # are read by its separate judge, not appended to either execution arm.
@@ -168,8 +172,10 @@ def prepare(args: argparse.Namespace) -> dict:
                 ],
             }
         )
-    write_json(out / "shared" / "evals.json", {"skill_name": "retro", "evals": shared})
-    write_json(out / "manifest.json", manifest)
+    write_json(
+        out / "shared" / "evals.json", {"skill_name": "retro", "evals": shared}, out
+    )
+    write_json(out / "manifest.json", manifest, out)
     return manifest
 
 

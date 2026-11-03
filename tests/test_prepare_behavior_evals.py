@@ -82,6 +82,19 @@ class PrepareBehaviorEvalsTest(unittest.TestCase):
         self.assertIsNone(result["target"]["resolved_model_version"])
         self.assertEqual(result["target"]["execution_model"], "unresolved-alias")
 
+    def test_json_output_cannot_escape_new_run_directory(self):
+        output = self.root / "run"
+        output.mkdir()
+        external = self.root / "outside.json"
+        with self.assertRaises(ValueError):
+            adapter.write_json(output / ".." / "outside.json", {}, output)
+        self.assertFalse(external.exists())
+        # Canonical containment also rejects an in-directory symlink to outside.
+        (output / "redirect").symlink_to(self.root, target_is_directory=True)
+        with self.assertRaises(ValueError):
+            adapter.write_json(output / "redirect" / "outside.json", {}, output)
+        self.assertFalse(external.exists())
+
     def test_frozen_fixture_is_independent_of_later_source_edits(self):
         result = adapter.prepare(self.args)
         (self.skill / "evals/fixtures/example/source.txt").write_text(
