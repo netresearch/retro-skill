@@ -86,6 +86,48 @@ class MetricsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 2)
             self.assertIn("copied transcript supplied twice", result.stderr)
 
+    def test_counter_reset_across_missing_component_is_unknown(self):
+        rows = [
+            {
+                "type": "event_msg",
+                "payload": {
+                    "type": "token_count",
+                    "info": {"total_token_usage": value},
+                },
+            }
+            for value in ({"total_tokens": 100}, {}, {"total_tokens": 50})
+        ]
+        report = self.metrics.collect(rows)
+        self.assertEqual(report["usage"]["status"], "unknown")
+        self.assertIsNone(report["usage"]["counts"]["total_tokens"])
+
+    def test_embedded_summary_preserves_valid_data_and_rejects_invalid_counters(self):
+        report = self.metrics.collect([{"type": "user"}])
+        self.assertEqual(self.metrics.collect([{"retro_metrics": report}]), report)
+        report["usage"]["counts"]["total_tokens"] = -1
+        with self.assertRaises(ValueError):
+            self.metrics.collect([{"retro_metrics": report}])
+
+    def test_malformed_embedded_summary_is_a_controlled_cli_error(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "invalid.jsonl"
+            path.write_text('{"type":"user","retro_metrics":{}}\n', encoding="utf-8")
+            result = subprocess.run(
+                [sys.executable, str(SCRIPT), "--transcript-file", str(path)],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("invalid embedded metrics", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
+    def test_all_unknown_claude_usage_is_not_actual(self):
+        report = self.metrics.collect(
+            [{"type": "assistant", "message": {"id": "message-1", "usage": {}}}]
+        )
+        self.assertEqual(report["usage"]["status"], "unknown")
+
     def test_claude_message_updates_do_not_duplicate_usage(self):
         rows = [
             {

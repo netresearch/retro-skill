@@ -18,10 +18,11 @@ No pricing lookup, model call or source modification is performed.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
+import math
 from datetime import UTC, datetime
-from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -88,15 +89,16 @@ def _usage(rows: list[dict[str, Any]]) -> dict[str, Any]:
         # A truncated session may start above zero: preserve the recorded total,
         # without claiming it is usage of only the visible excerpt. A reset or
         # missing final component must not silently preserve an earlier value.
-        reset = any(
-            first[key] is not None
-            and second[key] is not None
-            and second[key] < first[key]
-            for first, second in pairwise(snapshots)
-            for key in COUNTS
-        )
-        if reset:
-            return _unknown("cumulative counter decreased; scope/reset unresolved")
+        previous = {}
+        for snapshot in snapshots:
+            for key, value in snapshot.items():
+                if value is None:
+                    continue
+                if key in previous and value < previous[key]:
+                    return _unknown(
+                        "cumulative counter decreased; scope/reset unresolved"
+                    )
+                previous[key] = value
         if all(value is None for value in snapshots[-1].values()):
             return _unknown("no supported values in the final cumulative snapshot")
         return {
@@ -123,6 +125,8 @@ def _usage(rows: list[dict[str, Any]]) -> dict[str, Any]:
         counts["total_tokens"] = (
             sum(parts) if all(v is not None for v in parts) else None
         )
+        if all(value is None for value in counts.values()):
+            return _unknown("no supported values in message usage")
         return {
             "status": "actual",
             "basis": "deduplicated_messages",
@@ -133,17 +137,74 @@ def _usage(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return _unknown("no supported usage records")
 
 
+def _embedded_summary(value: Any) -> dict[str, Any]:
+    """Validate retained adapter data before treating it as normalized metrics."""
+
+    def invalid() -> None:
+        raise ValueError("invalid embedded metrics summary")
+
+    if not isinstance(value, dict) or type(value.get("schema_version")) is not int:
+        invalid()
+    if value["schema_version"] != 1 or any(
+        not isinstance(value.get(field), dict)
+        for field in ("timing", "usage", "provenance", "coverage")
+    ):
+        invalid()
+    usage, timing = value["usage"], value["timing"]
+    counts = usage.get("counts")
+    if (
+        usage.get("status") not in ("actual", "unknown")
+        or not isinstance(counts, dict)
+        or any(key not in counts for key in COUNTS)
+        or any(v is not None and _count(v) is None for v in counts.values())
+        or (
+            usage.get("input_includes_cached") is not None
+            and type(usage["input_includes_cached"]) is not bool
+        )
+    ):
+        invalid()
+    if usage["status"] == "actual" and all(v is None for v in counts.values()):
+        invalid()
+    if usage["status"] == "unknown" and any(v is not None for v in counts.values()):
+        invalid()
+    for field in ("observed_start", "observed_end"):
+        if field not in timing or (
+            timing[field] is not None and _time(timing[field]) is None
+        ):
+            invalid()
+    start, end = (_time(timing[field]) for field in ("observed_start", "observed_end"))
+    if (start is None) != (end is None) or (start is not None and end < start):
+        invalid()
+    for field in (
+        "observed_span_seconds",
+        "active_seconds",
+        "human_wait_seconds",
+        "time_to_accepted_result_seconds",
+    ):
+        duration = timing.get(field)
+        if duration is not None and (
+            type(duration) not in (int, float)
+            or not math.isfinite(duration)
+            or duration < 0
+        ):
+            invalid()
+    if "session_id" not in value["provenance"] or (
+        value["provenance"]["session_id"] is not None
+        and not isinstance(value["provenance"]["session_id"], str)
+    ):
+        invalid()
+    return copy.deepcopy(value)
+
+
 def collect(rows: list[dict[str, Any]]) -> dict[str, Any]:
     """Normalize one transcript; unknown facts stay null, not inferred."""
     rows = [row for row in rows if isinstance(row, dict)]
     # The adapter retains this exact summary on an ordinary message event.
-    embedded = [
-        row["retro_metrics"]
-        for row in rows
-        if isinstance(row.get("retro_metrics"), dict)
-    ]
+    embedded = [row["retro_metrics"] for row in rows if "retro_metrics" in row]
     if embedded:
-        return embedded[0]
+        if len(embedded) != 1:
+            raise ValueError("multiple embedded metrics summaries; scope unresolved")
+        return _embedded_summary(embedded[0])
     stamps = [
         stamp for row in rows if (stamp := _time(row.get("timestamp"))) is not None
     ]
