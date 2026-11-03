@@ -154,6 +154,7 @@ def _embedded_summary(value: Any) -> dict[str, Any]:
     counts = usage.get("counts")
     if (
         usage.get("status") not in ("actual", "unknown")
+        or "input_includes_cached" not in usage
         or not isinstance(counts, dict)
         or any(key not in counts for key in COUNTS)
         or any(v is not None and _count(v) is None for v in counts.values())

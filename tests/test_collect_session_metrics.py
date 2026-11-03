@@ -122,6 +122,37 @@ class MetricsTest(unittest.TestCase):
             self.assertIn("invalid embedded metrics", result.stderr)
             self.assertNotIn("Traceback", result.stderr)
 
+    def test_missing_embedded_cache_semantics_cannot_crash_aggregation(self):
+        report = self.metrics.collect([{"type": "user"}])
+        del report["usage"]["input_includes_cached"]
+        with tempfile.TemporaryDirectory() as directory:
+            parent, child = (
+                Path(directory) / "parent.jsonl",
+                Path(directory) / "child.jsonl",
+            )
+            parent.write_text(
+                json.dumps({"retro_metrics": report}) + "\n", encoding="utf-8"
+            )
+            child.write_text('{"type":"user"}\n', encoding="utf-8")
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--transcript-file",
+                    str(parent),
+                    "--subagent-transcript",
+                    str(child),
+                    "--subagent-usage",
+                    "excluded",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("invalid embedded metrics", result.stderr)
+            self.assertNotIn("Traceback", result.stderr)
+
     def test_all_unknown_claude_usage_is_not_actual(self):
         report = self.metrics.collect(
             [{"type": "assistant", "message": {"id": "message-1", "usage": {}}}]
