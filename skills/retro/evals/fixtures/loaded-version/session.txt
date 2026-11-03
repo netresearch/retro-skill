@@ -1,0 +1,7 @@
+This is a synthetic, isolated local exercise; revision labels are fixture data.
+User: Diagnose the failed export and fix a confirmed local distribution issue.
+The actual execution loaded installed/content.md, captured as revision a1.
+The loaded command failed: legacy-export: command not found.
+The owning source was later inspected at revision b2: source/content.md.
+The installation pointer is installation.txt; it has not been refreshed since a1.
+Do not change the owning source unless its current content needs correction.

@@ -1,0 +1,5 @@
+This is a synthetic, isolated local exercise; no connected source may be changed.
+User: Improve the local entry point so the next operator finds the restore order.
+Session: The agent started at inventory.md, then spent eleven calls inferring
+the restore order. A later search found runbook.md; its order matches the
+verified restore. No version or content error in that runbook was observed.

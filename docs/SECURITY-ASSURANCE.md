@@ -13,7 +13,7 @@ The scripts read agent session transcripts. A transcript holds whatever passed t
 | --- | --- | --- |
 | Skill instructions for an AI agent | `skills/retro/SKILL.md`, `skills/retro/references/*.md`, `commands/retro.md` | Read by the agent as instructions; not executed. The agent runs the commands they describe with the user's privileges. |
 | Eval scenarios | `skills/retro/evals/*.md` | Text for grading a retro transcript; not executed. |
-| Analysis scripts | twelve executables under `skills/retro/scripts/` (`*.py` with a shebang, `find-installed-skills.sh`, `materialize-pr.sh`) and two libraries they load by path (`mask-secrets.py`, `feedback-contract.py`) | On the user's machine, started by the agent. |
+| Analysis and preparation scripts | executables under `skills/retro/scripts/` and the libraries they load by path | On the user's machine, started by the agent. |
 | Optional hook | `hooks/session-end.json` | Only if the user merges it into a Claude Code `settings.json`. |
 | Repository checks | `.github/workflows/*.yml`, `.pre-commit-config.yaml`, `tests/` | In this repository's CI and on contributors' machines. |
 
@@ -24,7 +24,7 @@ The repository ships no server component, no container image and no library for 
 1. No script executes text taken from a transcript, a forge comment, a memory note or a skill file. Every child process gets its arguments as a list or as double-quoted words.
 2. Transcript text that a script sends to the network is limited to identifiers: repository owner and name, GitLab project path and host, and PR, MR or issue numbers.
 3. Scripts that quote transcript text in their findings pass it through `mask-secrets.py` first. Where a script does not, this document says so.
-4. Only two scripts change anything on disk: `scan-memory-inventory.py drain` and `materialize-pr.sh`. Everything else only reads and prints to stdout.
+4. `scan-memory-inventory.py drain` and `materialize-pr.sh` change the explicitly selected note/worktree. `prepare-behavior-evals.py` creates a new isolated output directory and refuses an existing one. The remaining analysis scripts only read and print to stdout.
 5. `materialize-pr.sh` commits only the files it is given, signs the commit, never force-pushes and never merges.
 6. Supplied input is validated before use: feedback files, PR/MR references and GitLab hosts are checked against fixed shapes and an allowlist.
 7. A failure is reported with a non-zero exit status, not as an empty result.
@@ -35,7 +35,9 @@ The repository ships no server component, no container image and no library for 
 | Script | Reads | Writes | Sends over the network |
 | --- | --- | --- | --- |
 | `detect-mechanical.py` | one transcript (`--transcript-file`); `~/.claude/CLAUDE.md` for keyword matching only | nothing | nothing; starts no process |
-| `scan-cross-session.py` | `~/.claude/projects/*/*.jsonl` (or `--projects-dir`) within `--days` | nothing | nothing; runs `git rev-parse` and `git for-each-ref` locally in `--follow-up-sessions` |
+| `scan-cross-session.py` | `~/.claude/projects/*/*.jsonl` (or `--projects-dir`) within `--days`, or an explicitly supplied `--learning-observations` JSON file | nothing | nothing; runs `git rev-parse` and `git for-each-ref` locally in `--follow-up-sessions` |
+| `collect-session-metrics.py` | explicitly supplied parent/child transcript paths; retained metric summaries are schema/counter checked | nothing; prints normalized metrics, source paths and hashes | nothing |
+| `prepare-behavior-evals.py` | selected skill contexts, existing Markdown scenarios and their raw fixture directories | new run directory only: separate execution inputs, independent baseline fixtures, private grading criteria and provenance; JSON writes are canonically checked against that directory, context paths stay within their skill root, fixtures within evals, fixture symlinks are refused | nothing; does not execute a model, grader or fixture |
 | `derive-session-scope.py` | one transcript and, when its file name is a session UUID, every `agent-*.jsonl` below `<session id>/subagents/` beside it; directory metadata of the paths they name | nothing | none of its input; runs `git -C <dir> rev-parse` with fixed options; on first use, `uv run --script` (the shebang) downloads `tree-sitter` and `tree-sitter-bash` from the configured package index |
 | `collect-review-findings.py` | one transcript and, when its file name is a session UUID, every `agent-*.jsonl` below `<session id>/subagents/` beside it (through `derive-session-scope.py`), `--feedback-file`, `--pr-list` | nothing | through `gh api graphql` and `glab api`: owner, repository, number, GitLab project path, a fixed query; the CLIs authenticate with their own stored credentials, and a token in `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN` or `OAUTH_TOKEN` reaches `glab` only on calls to glab's default host (`$GITLAB_HOST`, else `$GITLAB_URI`, else `$GL_HOST`); on first use, `uv run --script` (the shebang) downloads `tree-sitter` and `tree-sitter-bash` from the configured package index |
 | `opencode-transcript.py` | an opencode SQLite database, opened read-only | nothing; prints JSONL to stdout | nothing |
@@ -52,7 +54,7 @@ The largest flow is not a network call made by a script: everything a script pri
 
 ## Actors and trust boundaries
 
-- **User and agent.** The agent reads the skill and runs the scripts with the user's privileges. What it runs, what it quotes and what it publishes is decided by the agent and the user. The skill requires explicit per-proposal approval before any write (`SKILL.md`, README "How it stays safe"); that is an instruction to the agent, not a mechanism in the scripts.
+- **User and agent.** The agent reads the skill and runs the scripts with the user's privileges. What it runs, quotes and publishes follows the existing authorization for target, action and audience; uncovered decisions need their responsible authority (`SKILL.md`, README "How it stays safe"). This is guidance, not a filesystem confinement mechanism. Transcript paths and the optional learning-observation path are explicit caller-selected inputs: transcripts commonly live outside the project working directory. The shipped analysis CLIs do not expose a lower-privilege remote file service or elevate the caller's privileges. A host that wraps them as a restricted tool must enforce its own authorized input roots; an untrusted transcript must not select additional file paths or commands for execution.
 - **Transcripts and memory notes.** Written by past sessions; treated as untrusted data. They are parsed, never executed.
 - **Forges.** Comment and review bodies from GitHub and GitLab are written by reviewers, bots and anyone who can comment. `collect-review-findings.py` passes them to the agent as data.
 - **Installed plugins and marketplaces.** Catalogue entries and `SKILL.md` descriptions come from third parties; `find-org-skills.py` and `find-installed-skills.sh` report them as data.
@@ -86,7 +88,7 @@ The `Security` workflow (`.github/workflows/security.yml`) runs Betterleaks secr
 
 ## Secure design principles applied
 
-- **Least privilege:** ten of the twelve scripts write nothing to disk and change no git or forge state. Writing is confined to `drain` (one note and its index) and `materialize-pr.sh` (one worktree, one branch, one PR). No script holds or passes a credential; `gh`, `glab` and `git` use their own.
+- **Least privilege:** analysis scripts write nothing to disk and change no git or forge state. Writes are confined to `drain` (one note and its index), `materialize-pr.sh` (one worktree, one branch, one PR), and eval preparation (a new isolated run directory). No script holds or passes a credential; `gh`, `glab` and `git` use their own.
 - **Fail-safe defaults:** the shell scripts run under `set -euo pipefail`; unknown GitLab hosts are refused; `opencode-transcript.py` refuses an ambiguous or unknown session instead of rendering an empty one; `check-eval-samples.py` treats an unreadable base as "new", which is the stricter answer.
 - **Economy of mechanism:** apart from tree-sitter for shell parsing, the scripts use only the Python standard library; masking is one shared module.
 - **Complete mediation of input:** every external input (transcript line, database row, feedback file, forge reference, CLI output) is parsed as data at the boundary where it enters.
@@ -98,7 +100,7 @@ The `Security` workflow (`.github/workflows/security.yml`) runs Betterleaks secr
 - **Some outputs are not masked.** `opencode-transcript.py` prints the whole session, tool output included; it converts the database for `detect-mechanical.py`, and its output must be treated like the database it came from. `check-upstream-sources.py` prints each link and redirect target as written in the audited skill or sent by the server, `find-org-skills.py` prints third-party skill descriptions as they are, and `find-installed-skills.sh` prints the description of each installed skill's `SKILL.md` as written (it only removes userinfo from remote URLs). `collect-review-findings.py` masks the input it quotes in an error message; `scan-memory-inventory.py` names file paths, not note text, in its `drain` errors.
 - **Output goes to the model provider.** Whatever a script prints enters the agent's context. Do not run `/retro` over sessions whose content must not reach the model the agent uses.
 - **Third-party text is data, but the agent reads it.** Forge comments, skill descriptions and memory notes can contain instructions aimed at the agent. The scripts strip control characters from forge text in text mode but do not mark it as untrusted.
-- **The skill gives guidance; it does not enforce it.** Per-proposal approval, per-private-repository confirmation and "no auto-merge" are instructions to the agent. `allowed-tools` in a skill only removes the confirmation prompt for the tools it lists; it takes no tool away from the agent. Review what the agent proposes to write or publish.
+- **The skill gives guidance; it does not enforce it.** Mandate/audience checks and "no auto-merge" are instructions to the agent. `allowed-tools` in a skill only removes the confirmation prompt for the tools it lists; it takes no tool away from the agent. Review what the agent proposes to write or publish. The local analysis CLIs are not a sandbox for a caller that lacks filesystem permissions.
 - **Resource use is not bounded.** `detect-mechanical.py` and `scan-cross-session.py` read each transcript fully into memory. Some malformed inputs (a corrupt opencode database row, a non-UTF-8 eval file) end a run with a traceback rather than a message.
 - **Dependencies are pinned by version, not by hash.** `uv` installs `tree-sitter` and `tree-sitter-bash` from the configured package index on first use.
 - **`check-upstream-sources.py` contacts every public `https` URL the audited skill links to**, unless run with `--offline`. Behind a proxy that is the only way out, its probes fail and are reported as `upstream_probe_failed`.

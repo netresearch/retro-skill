@@ -1,0 +1,6 @@
+{
+  "number": 12,
+  "state": "CLOSED",
+  "merged": false,
+  "reason": "Incident workaround belongs in the incident runbook, not deployment policy."
+}

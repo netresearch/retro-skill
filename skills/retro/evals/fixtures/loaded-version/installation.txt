@@ -1,0 +1,4 @@
+Installed revision: a1
+Source revision available: b2
+Installed content: installed/content.md
+Owning content: source/content.md

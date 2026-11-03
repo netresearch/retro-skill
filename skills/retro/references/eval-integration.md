@@ -3,44 +3,41 @@
 
 # Eval Integration
 
-How `/retro` consults skill `evals/` directories to inform classification and propose TDD-style stubs.
+Use existing evals to inform classification and make important behavior changes
+reviewable. Keep fixture validity, actual agent decisions, tool state and later
+practical benefit separate.
 
-## When evals are consulted
+## Contents
 
-After a skill is matched for `skill-update` destination, check if it has `evals/`:
+- [Consult the target's existing evals](#consult-the-targets-existing-evals)
+- [Add or tighten an eval](#add-or-tighten-an-eval)
+- [Prepare bounded behavioral comparisons](#prepare-bounded-behavioral-comparisons)
+- [Reuse the shared text runner](#reuse-the-shared-text-runner)
+- [Run tool-enabled integration cases](#run-tool-enabled-integration-cases)
+- [Choose actual configurations and preserve provenance](#choose-actual-configurations-and-preserve-provenance)
+- [Report evidence at its actual level](#report-evidence-at-its-actual-level)
 
-```
-<skill-root>/evals/
-├── evals.json    # Eval scenarios — the common case by a wide margin
-├── *.md          # Eval scenarios (retro's own layout; rare elsewhere)
-└── results/      # Optional historical results
-```
+## Consult the target's existing evals
 
-Check `skills/<name>/evals/` too — skills that ship under a `skills/` directory
-usually keep their evals beside them rather than at the repo root.
+After matching a `skill-update`, inspect `<skill-root>/evals/` and, if applicable,
+`skills/<name>/evals/`. Read the files before assuming a schema. Other skills may
+use a JSON array, an object containing `evals`, or Markdown scenarios. Retro's
+own fixed Markdown schema does not impose a format on them.
 
-If yes, read evals before generating the proposal.
+Existing coverage can distinguish a **skill bug** (a covered behavior diverged)
+from a **skill gap** (the needed behavior is absent). An absent eval does not
+prove missing capability. Cite a real scenario or run; never invent an A/B
+comparison that did not occur. A normal retrospective analyzes its evidence;
+it does not require re-executing every original task.
 
-## Three uses
+When an actively maintained target has accessible CI eval failures, those can
+inform a requested pre-emptive review. Do not infer failure from an inaccessible
+run or start unrelated investigations from an unverified status.
 
-### 1. Classification context
+## Add or tighten an eval
 
-The LLM reads relevant eval scenarios to validate the friction interpretation:
-
-> "Skill X claims (via eval `evals/handle-bun-projects.md`) to support bun. The friction shows the opposite. This is a skill bug, not a skill gap — different fix."
-
-This distinguishes:
-- **Skill bug** — eval covers the case, behavior diverged → fix the skill or the eval
-- **Skill gap** — eval doesn't cover the case → add capability AND eval
-
-When a skill-update proposal cites eval evidence, it cites evals that **already
-exist** (read) — never a fabricated "without-skill / with-skill" comparison retro
-did not run. retro analyzes one real session in one pass; it does not re-execute
-tasks to score them.
-
-### 2. TDD stub for skill-update
-
-When proposing a `skill-update` and no eval covers the friction area, propose an eval stub alongside the fix. Write it in the layout the target repo already uses — almost always `evals/evals.json`:
+Use the destination's existing layout. For a JSON eval with pattern-bearing
+assertions, write both a valid sample and isolated failing variants:
 
 ```json
 {
@@ -57,201 +54,187 @@ When proposing a `skill-update` and no eval covers the friction area, propose an
 }
 ```
 
-This is TDD style: the eval that would have caught the friction goes in with the fix.
-
-**`samples` is required on every eval retro adds or tightens** (decided in
-[retro-skill#92](https://github.com/netresearch/retro-skill/issues/92), option A).
-`samples.passing` is an answer every pattern-bearing assertion is satisfied by —
-matching it, or for a `must_not` assertion not matching it;
-`samples.failing` holds at least one answer at least one assertion must reject.
-Without them the assertion is documentation of intent and
-`validate-evals.sh` has nothing to compare it against. Measured across the 23
-`evals.json` files installed here, 518 evals: 12 carry `samples.passing`, and
-296 would be rejected by the gate if they were new. The rule is scoped to what
-retro writes: an eval it does not touch is left alone, and existing evals are
-not retrofitted — the same 23 files, compared against themselves, produce 0
-rejections.
-
-**What is enforced is `samples.passing`.** The gate in
-[skill-repo-skill#338](https://github.com/netresearch/skill-repo-skill/pull/338)
-requires that one field and names `samples.failing` in its message as the thing
-to add alongside it. Both directions are what make the sample worth having, so
-write both; only the first is refused for.
-
-When tightening assertions, retain the original valid sample as a regression control; do not rewrite it just to fit the new pattern. Add isolated failing variants that change one required claim while preserving the rest of the valid answer, so an unrelated missing keyword cannot hide a weak assertion. Check valid coordinated wording too: a shared negation such as "does not register a project, save answers or award a badge" covers all three outcomes. Run these controls with the target grader's actual matching semantics (see "What grades an eval, and what does not" below); if its sample schema stores only one passing answer, exercise the other valid controls separately and record their results. This extends the existing sample requirement, without requiring a new runner or changing another skill's eval schema.
-
-Two cases the requirement does not cover:
-
-- An eval whose assertions carry no pattern — `validate-evals.sh` *fails*
-  samples that no assertion pattern backs, so requiring them would make the
-  eval unvalidatable. This covers an `expectations`-only eval, and also the
-  plain-string assertions that 210 of the fleet's evals use: those *are*
-  graded at run time, where `run-ab-evals.sh` falls back to the string itself
-  as the pattern, but this validator's samples machinery reads only assertion
-  *objects*, taking `pattern` or `value` from each — a bare string carries
-  neither key. Bringing them in would change what `samples`
-  means for the evals that already carry them; when
-  [#92](https://github.com/netresearch/retro-skill/issues/92) was settled, they
-  were left out of the requirement.
-- retro's own Markdown fixtures under `evals/` — a different schema with no
-  samples concept (see `evals/README.md`).
-
-`skills/retro/scripts/check-eval-samples.py` enforces this. `materialize-pr.sh
-finish` (promote mode) runs it over the files it is about to stage and refuses to
-commit when a new or tightened eval carries no samples; on the hand-rolled
-skill-update path it is a step in `patch-workflow.md`'s self-review, run before
-the commit:
+`check-eval-samples.py` refuses a new or tightened pattern-based JSON eval
+without `samples.passing`; write `samples.failing` too so both directions are
+checked. `materialize-pr.sh finish` runs that gate; a hand-written patch runs it
+before commit:
 
 ```bash
 uv run ${CLAUDE_SKILL_DIR}/scripts/check-eval-samples.py --repo . <path>/evals.json
 ```
 
-### 3. Pre-emptive findings (CI integration)
+The requirement is scoped to touched JSON evals and assertions supported by the
+sample validator. Plain-string assertions, expectations-only cases and retro's
+Markdown fixtures have different semantics; do not retrofit a fleet or force
+samples that their grader cannot evaluate. The shared JSON validator reads
+assertion objects' `pattern` or `value`, while the runtime runner can also use
+bare strings. Inspect the selected grader rather than assuming equivalence.
 
-If the target skill repo has CI accessible via `gh api`:
+Retain the original correct sample when tightening. Add variants changing one
+required claim at a time, and valid alternate wording, including coordinated
+negation. Run the actual grader's matching semantics. Reach for `must_not` or
+`not_content` where supported; a positive keyword cannot distinguish a wrong
+claim containing the same word. Do not rewrite a valid control merely to satisfy
+a narrower regex. An erroneous oracle can optimize a skill toward worse behavior.
 
-```bash
-gh api repos/<org>/<repo>/actions/runs --jq '.workflow_runs[0]'
-```
+Retro's own `id`, `trigger`, `expected`, `negative_expected` schema is documented
+in `evals/README.md`. `validate-evals.py` checks its structure and inventory,
+not agent behavior. JSON assertion/sample checks establish internal consistency,
+not actual model success. `claude plugin eval` uses another layout; migrating to
+it or introducing another runner is unnecessary for this integration.
 
-Read recent eval failures. These are friction the user hasn't hit yet — pre-emptive `/retro` findings.
+## Prepare bounded behavioral comparisons
 
-Only do this when:
-- The skill is being actively worked on (recent commits)
-- Eval failures exist
-- The user opts in (configurable)
+`scripts/prepare-behavior-evals.py` adapts the existing Markdown corpus and
+writes into a new isolated run directory:
 
-## Eval format (lightweight, no enforced schema)
+- `execution/`: trigger-only prompts, raw fixture copies and explicitly selected
+  skill context snapshots. Expected answers and scenario explanations stay out.
+- `grading/`: the private `expected` and `negative_expected` oracle.
+- `shared/evals.json`: prompts and expectations in the shared runner's schema.
+  Its executor reads `prompt`; its separate judge reads `expectations`.
+- `manifest.json`: preparation status, intended configuration, adapter and input
+  hashes. It is **not a run receipt**.
 
-Different skills may use different eval formats. `/retro` reads them as text and gives the content to the LLM for context.
-
-In practice almost every skill repo uses a single `evals/evals.json`, in one of
-two container shapes. Both hold the same kind of record, so read whichever key is
-present rather than assuming one:
-
-```json
-[ { "name": "…", "prompt": "…", "assertions": [ "…" ] } ]
-```
-
-```json
-{ "skill_name": "…",
-  "evals": [ { "id": 1, "name": "…", "prompt": "…", "expected_output": "…" } ] }
-```
-
-The Markdown-with-frontmatter form below is retro's own layout and is rare
-elsewhere:
-
-```markdown
----
-scenario: <name>
-trigger: <user prompt or condition>
-expected: <expected behavior>
----
-<optional explanation>
-```
-
-`/retro` does not enforce a format — it adapts to what each skill uses. Read the
-file before assuming a shape: a top-level array and an object with an `evals` key
-are both current, and a repo may name the file something other than `evals.json`.
-
-## retro's own evals (dogfooding)
-
-retro ships its **own** `evals/` directory testing its **own** classification
-behaviour — skill-bug vs skill-gap, when to prune, when to propose nothing. These
-are repo-scoped fixtures (see `evals/README.md`), validated for well-formedness by
-`${CLAUDE_SKILL_DIR}/scripts/validate-evals.py` and gated by checkpoints RT-40–RT-42.
-
-This is the one place retro uses a small, fixed local schema
-(`id` / `trigger` / `expected` / `negative_expected`). It applies **only** to
-retro's own evals and does **not** change the rule above: when *reading other
-skills'* evals, retro stays schema-free and tolerant. Running
-`/retro "fix the retro skill"` reads these fixtures as classification context,
-exactly like any other skill's evals.
-
-## Limitations
-
-- Evals are not always present (most skills don't have them yet)
-- Eval coverage varies; absence of eval ≠ absence of capability
-- Eval format heterogeneity makes mechanical analysis hard; LLM reading is the practical approach
-
-### What grades an eval, and what does not
-
-The files read like tests, so it is worth being exact about which half runs.
-
-**The assertions ARE executed — against the file's own samples.**
-`validate-evals.sh` (skill-repo-skill, run by the `eval-validate` workflow)
-applies every assertion carrying a pattern to `samples.passing` and to each
-`samples.failing` entry, honouring the direction of `must_not`, and fails the job
-when a passing sample violates an assertion or a failing sample satisfies all of
-them. That is a real self-consistency gate, and it is worth feeding: measured
-across the 23 `evals.json` files installed here, **12 of 518 evals carry
-`samples.passing`**, so for the rest the gate has nothing to compare and
-validates shape only.
-
-**What does not run is the grading of real answers.** skill-repo-skill has a
-runner that feeds each prompt to the `claude` CLI with and without the skill and
-grades the answers (`scripts/run-ab-evals.sh`, wired as `ab-evals-caller.yml`),
-but its weekly schedule was removed because no `ANTHROPIC_API_KEY` is
-configured, so it runs only when started by hand. `claude plugin eval` expects
-a different layout entirely (`<eval dir>/**/case.yaml`, or `prompt.md` plus
-`graders/*.md`). So a green `eval-validate` says the eval file is internally
-coherent — not that the skill passes it. `/retro` itself reads
-these files as text and hands them to the LLM as context.
-
-**Negation does exist.** The grader handles `must_not` and `not_content`, and the
-same measurement counts `content` 617, `must_not` 58, `content_regex` 43,
-`tool_use` 35, `not_content` 5. What is uneven is adoption: only **2 of the 22
-files** use a negative assertion at all. Where the wrong answer carries the same
-keyword as the right one — `target`, `default branch`, `--onto` have all been in
-that state — a positive assertion cannot separate them, and the type that can is
-already available.
-
-Two consequences for anyone writing or reviewing one:
-
-- **`samples` are mandatory on an eval you add or tighten** (see "TDD stub for
-  skill-update" above, and `check-eval-samples.py`, which refuses the
-  materialization without them). Without samples the assertion is documentation
-  of intent that nothing compares against; with them CI checks it both ways on
-  every push.
-- **Reach for `must_not` / `not_content` before treating an exclusion as
-  inexpressible.** Whether a *regex* could also express it depends on the engine,
-  and the grader's is `grader_matches` in `validate-evals.sh` — read it before
-  relying on a lookahead.
-
-`negative_expected` is separate: it belongs to retro's own fixture schema above,
-which applies to retro's own evals and nothing else.
-
-[retro-skill#92](https://github.com/netresearch/retro-skill/issues/92) settled
-which of those to build: requiring `samples` on new and tightened evals, which
-arms the gate that already exists. Adopting the `claude plugin eval` layout for
-real answer-grading was rejected there — it is a new runner, a second format and
-a migration across 23 files, against one rule and one check.
-
-## See also
-
-- `references/skill-discovery.md` — How evals are located
-- `references/classification-heuristic.md` — Where eval context informs decisions
-- `references/patch-workflow.md` — How eval stubs land alongside skill-update PRs
-
-## Running nested `claude -p` targets: isolate the config dir
-
-Shelling out to `claude -p` inside an active Claude Code session (an A/B "with vs without skill" harness, an optimizer's target) inherits this session's plugins, whose SessionStart hooks inject their banner into the nested context — weak tasks echo it into the output and contaminate any scorer. Verified isolation that keeps auth and removes the leak:
+From the repository root, prepare only relevant cases:
 
 ```bash
-CLEAN=$(mktemp -d)                      # per-run dir — never a fixed /tmp path
-trap 'rm -rf "$CLEAN"' EXIT             # credentials must not outlive the run
-cp ~/.claude/.credentials.json "$CLEAN/" && chmod 600 "$CLEAN/.credentials.json"
-printf '%s\n' '{"hasCompletedOnboarding": true}' > "$CLEAN/settings.json"
-CLAUDE_CONFIG_DIR="$CLEAN" claude -p --output-format json --disable-slash-commands "…" < /dev/null
+uv run skills/retro/scripts/prepare-behavior-evals.py \
+  --case loaded-version-behind-source \
+  --case promotion-pr-rejected \
+  --reference references/skill-discovery.md \
+  --reference references/promote-mode.md \
+  --target-label actual-primary --model ACTUAL_MODEL_ALIAS \
+  --runtime ACTUAL_RUNTIME_VERSION \
+  --output-dir /path/to/new-isolated-run
 ```
 
-What does NOT work (tested): `--bare` drops auth ("Not logged in"); `--settings '{"hooks":{}}'` and an empty `--plugin-dir` do not stop plugin SessionStart hooks. Prefixing `CLAUDE_CONFIG_DIR="$CLEAN"` isolates that one process; `export CLAUDE_CONFIG_DIR="$CLEAN"` before launching a harness isolates every nested `claude` call it spawns — use the export form for multi-call harnesses. Feed stdin from `/dev/null` to skip the CLI's stdin wait.
+Replace the configuration placeholders with actual intended values. `--all`
+prepares the entire corpus when useful; preparation calls no models. Supply
+`--baseline-dir /path/to/old/skills/retro` to freeze a second context for the same
+cases. Each selected reference must exist in both snapshots; a missing file is
+an error. For a newly added reference, use `--candidate-reference` explicitly;
+it is recorded only in the candidate snapshot. This makes a deliberate loading
+change visible rather than inventing baseline content. Snapshots record explicit
+loading, not automatic discovery.
 
-## Eval-oracle design: the eval is the lever, and a wrong eval makes optimization harmful
+With a baseline, candidate cases live at `execution/<id>/` and independent
+baseline copies at `execution/baseline-cases/<id>/`; edits cannot contaminate the
+other arm. The manifest records both paths. Run each target only on its own arm.
 
-From a measured skill-optimization experiment (64 labeled cases):
+Give the tested agent only its frozen context, prompt and copied raw inputs.
+Keep scenario frontmatter, prose explanations and expected answers with the
+independent evaluator. The 26 initial acceptance cases map to maintained
+Markdown fixtures in `evals/README.md`; earlier regressions remain intact.
 
-- **The optimizer loop is commodity; the oracle is everything.** It optimizes whatever the eval rewards — including the eval's mistakes: a benchmark that encoded a wrong idiom had the optimizer "improve" the skill toward it. A wrong eval is worse than none.
-- **No cheap oracle is perfect** — string-match blesses broken output and fails valid variants; render-vs-reference fails correct markup for environment reasons; render-standalone rubber-stamps most wrong output. The measured winner: an intent-judge plus deterministic hard guards (0.89 → 0.97 after targeted disambiguations), with the safety property that guards must NEVER reject valid output (FN 0).
-- **~0.97 is the practical ceiling**: the residuals are LLM non-determinism on semantic boundaries and genuine policy-vs-fact boundaries — not fixable knowledge gaps.
-- **The ground truth is as fallible as the evaluator**: an authoritative renderer exposed errors in the hand-authored gold labels themselves. Validate labels against reality before blaming the judge.
+## Reuse the shared text runner
+
+Use
+[`skill-repo-skill/scripts/run-ab-evals.sh`](https://github.com/netresearch/skill-repo-skill/blob/72f4464a7406a0ed74314bdc81aedaac06e87a76/scripts/run-ab-evals.sh)
+for classification and response comparisons. At that verified revision it
+serves no tools or MCP, fixes executor/judge aliases to `sonnet`/`haiku`, and
+writes into its checkout's `scripts/ab-results`. The adapter's `--model` records
+an intended native configuration; it does not reconfigure this runner. Read
+its actual result provenance before saying which model ran. Unresolved aliases
+are not exact model versions.
+
+For old/new contexts, use separate clean runner checkouts so the fixed output
+path cannot overwrite earlier artifacts. Set these variables to actual absolute
+locations, then invoke the existing runner:
+
+```bash
+bash "$SHARED_BASELINE/scripts/run-ab-evals.sh" \
+  --evals="$RUN_DIR/shared/evals.json" \
+  --skill="$RUN_DIR/execution/baseline-context.md" --samples=3 1
+bash "$SHARED_CANDIDATE/scripts/run-ab-evals.sh" \
+  --evals="$RUN_DIR/shared/evals.json" \
+  --skill="$RUN_DIR/execution/candidate-context.md" --samples=3 1
+```
+
+Each invocation compares no-skill with its selected context. Compare the two
+with-skill results only for matching cases/configurations and disclose separate
+runs rather than a direct randomized old/new experiment. Repeated samples help
+with consequential claims; retain valid controls and inspect uncertain or
+conflicting judgments. A zero observed delta is scoped to the tested cases and
+configuration. It does not prove universal uselessness.
+
+`--no-llm` skips expectations grading, so expectations-only cases yield no
+behavioral verdict. Current workflow and credential state must be checked when
+running; an old schedule or credential observation is not current evidence.
+Nested CLI runs need isolated configuration so host plugins/hooks do not
+contaminate one arm. Use the provider's supported authentication and a fresh
+per-run configuration; preserve the observed isolation in run metadata.
+
+The existing nested-Claude check found that SessionStart plugin hooks leaked
+into target answers. Its measured workaround used a fresh `CLAUDE_CONFIG_DIR`,
+with a restricted copy of the operator's existing credentials, removed on exit:
+
+```bash
+RETRO_EVAL_CONFIG=$(mktemp -d)
+trap 'rm -rf "$RETRO_EVAL_CONFIG"' EXIT
+cp ~/.claude/.credentials.json "$RETRO_EVAL_CONFIG/"
+chmod 600 "$RETRO_EVAL_CONFIG/.credentials.json"
+printf '%s\n' '{"hasCompletedOnboarding": true}' > "$RETRO_EVAL_CONFIG/settings.json"
+export CLAUDE_CONFIG_DIR="$RETRO_EVAL_CONFIG"
+```
+
+Export once around a multi-call runner so every nested call gets that directory;
+feed the CLI stdin from `/dev/null` when needed to avoid its stdin wait. In that
+earlier check, `--bare` lost authentication, and an empty `--plugin-dir` or
+`--settings '{"hooks":{}}'` did not suppress plugin SessionStart hooks. These
+are recorded host/version observations: recheck effective isolation for the
+runtime used, without printing credentials. Keep this CLI-specific setup out of
+native child evaluations that do not launch that CLI.
+
+## Run tool-enabled integration cases
+
+The four synthetic fixtures indexed in `evals/README.md` exercise source lookup,
+loaded-version diagnosis, a rejected promotion and a local setup command. Their
+raw `session.txt` supplies the local task and mandate. The adapter copies each
+fixture into its execution directory; operate only on that disposable copy.
+
+A native target must actually inspect and act on its inputs. Record its tool
+trace, file diff and executed checks, then have an independent evaluator inspect
+the result against the private oracle and original artifacts. Saying a command
+was run is insufficient: verify the exit result or actual file state. A text-only
+runner cannot establish those integration outcomes.
+
+A fresh-context child with only the frozen inputs provides independent forward
+evidence. A reviewer inheriting the implementation chat remains useful for
+review but already knows intended answers; label that boundary. If the host
+cannot supply a fresh target, record the limitation instead of claiming a blind
+test. Its own host instructions still govern the execution agent.
+
+## Choose actual configurations and preserve provenance
+
+Start with the actual primary configuration. Include an actually used cheaper
+or faster path for an important change or observed difference; do not create an
+artificial second configuration or universal model matrix. Instruction removal,
+discovery, tool choice, recovery changes and observed model differences are
+triggers for targeted comparisons. A normal retro needs no extra model round.
+Correction of false content or reliable consolidation needs no broad campaign.
+
+Record effective executor, reviewer and judge roles separately; retain model
+versions when available, unresolved aliases otherwise, reasoning budget, runtime,
+context, tools, actual skill/eval hashes, completed samples, errors and outputs.
+Preparation metadata describes intention until a run proves the effective
+configuration. A strong reviewer's guess about another model is a hypothesis,
+not execution evidence.
+
+## Report evidence at its actual level
+
+| Evidence | Supported claim |
+| --- | --- |
+| Adapter unit tests and frozen fixtures | Technical transformation and oracle separation work for tested inputs. |
+| Markdown validation or assertion/sample checks | Shape or internal consistency; no agent decision observed. |
+| Actual target response judged against held-out oracle | A decision passed under the recorded configuration. |
+| Tool trace and independently checked file/command state | Tested integration behavior occurred in the isolated case. |
+| Later comparable real task applies the available change | Scoped evidence about practical use and effect. |
+
+Missing outputs, timeouts, unavailable runtimes and API limits are incomplete,
+not passes. Unknown costs remain unknown. Total effort includes evaluation,
+implementation, delegation, maintenance and human rework. Passing a behavior
+case does not itself prove sustained benefit or authorize publication.
+
+See also `references/skill-discovery.md`, `references/classification-heuristic.md`
+and `references/patch-workflow.md` for discovery, routing and materialization.
