@@ -342,7 +342,10 @@ def main() -> None:
             if identity in seen:
                 raise ValueError(f"transcript supplied twice: {path}")
             seen.add(identity)
-            content = path.read_bytes()
+            # S8707: explicit caller-selected local transcript, read-only at
+            # caller privilege. Transcripts intentionally live outside cwd;
+            # no content-derived path is opened. See docs/SECURITY-ASSURANCE.md.
+            content = path.read_bytes()  # NOSONAR
             digest = hashlib.sha256(content).hexdigest()
             if digest in digests:
                 raise ValueError(f"copied transcript supplied twice: {path}")
