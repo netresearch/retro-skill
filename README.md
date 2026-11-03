@@ -34,7 +34,7 @@
 
 ## What it does
 
-`/retro` analyzes the current Claude Code session directly from the conversation transcript — no continuous background hooks. It detects friction (tool errors, repeated mistakes, skills that should have triggered but didn't, convention violations), classifies each finding into exactly one of seven destinations — asking first *who should own this truth* — and materializes the approved learnings. Every write is gated behind explicit per-proposal approval.
+`/retro` analyzes the current session from its transcript without continuous background hooks. It classifies useful findings into seven destinations, asking first who owns the truth and whether a rule still serves its purpose. It checks the existing mandate for each target, action and audience, executes covered changes and asks only for uncovered decisions.
 
 A single sweep returns at most ten actionable proposals, grouped by destination, each with a short *why* and a *how-to-apply*.
 
@@ -102,7 +102,7 @@ composer require netresearch/retro-skill
 | `/retro "<problem>"` | **Spotlight** — focus on one described issue; fewer tokens than a full sweep | Mid-session, for a direct fix |
 | `/retro outcome [session-id\|--since N]` | **Outcome** (layer D) — replay a *past* session through what happened to its output afterwards (reverted commits, rejected PRs, CI failures, follow-up fix sessions) | Periodically, e.g. monthly. **Do not run within 24h of the session** — the outcomes have not landed yet |
 | `/retro audit [--scope project\|repo\|skill]` | **Constitutional audit** — cross-session architectural review (design drift, convention erosion) over weeks/months | Monthly or quarterly health check |
-| `/retro promote` | **Promote** — inventory accumulated project-local memory (all slugs) and re-home each note upward (canonical-source › skill-update › project-rule › personal-rule; never project-local memory), draining the source only after the upward write is verified | When local memory has piled up and you want it shared and emptied |
+| `/retro promote` | **Promote** — inventory accumulated local memory and re-home each note upward; retain active access until the accepted target is delivered and reachable, then drain | When local memory has piled up and needs its canonical owner |
 | `/retro done` | **Done** — definition-of-done gate: eight evidence-backed checks (task, findings, retro, cleanup, questions, tickets, time, docs) | As the last command of a session, before calling it finished |
 
 Sweep and Spotlight ask what caused friction, what benefit remains unmet and
@@ -139,7 +139,9 @@ Report
   Files written: 2 (<project>/AGENTS.md, ~/.claude/CLAUDE.md)
 ```
 
-Each finding is one approval decision. Nothing is written, no PR is opened, until you say so.
+The example assumes these changes were not already authorized. Existing
+permission for the same target, action and audience is reused; a new audience,
+product decision or team norm outside that mandate still needs its owner.
 
 ## The seven destinations
 
@@ -169,15 +171,15 @@ The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — la
 5. **Classification** — map each finding to one of the seven destinations, authority first (`skills/retro/references/classification-heuristic.md`), using the catalogue from step 4.
 6. **Eval consultation** — if the matched skill has an `evals/` directory, read it for context and propose an eval stub (TDD style). retro ships its **own** evals under `skills/retro/evals/` testing its classification, validated by `skills/retro/scripts/validate-evals.py`.
 7. **Proposal generation** — per finding: a *Why* paragraph and a *How-to-apply* paragraph, grouped by destination, ≤10 items.
-8. **Per-proposal approval** — approve / edit / reject, one decision per materialization.
-9. **Materialization** — per-destination convention. PRs use Conventional Commits with DCO sign-off (`git commit -s`; without it the PR is **BLOCKED** even when all checks pass), preserve GPG signing, and require per-private-repo confirmation.
+8. **Authorization** — reuse the valid mandate; approve / edit / reject only uncovered decisions.
+9. **Materialization** — per-destination convention. PRs use Conventional Commits with DCO sign-off (`git commit -s`; without it the PR is **BLOCKED** even when all checks pass), preserve signing, and verify private-repo and audience authority.
 10. **Report** — a summary table of created PRs and written files.
 
 The full signal catalog lives in [`skills/retro/references/friction-catalog.md`](skills/retro/references/friction-catalog.md).
 
 ## How it stays safe
 
-- **No silent writes.** Every materialization needs explicit, per-proposal approval.
+- **No silent writes.** Verify existing permission for target, action and audience; report covered changes and ask only for decisions outside that mandate.
 - **Patches target the source repo, never the cache.** `~/.claude/plugins/cache/` is overwritten on every plugin update; edits there would be lost. `/retro` clones the source repo (or uses an existing worktree) and opens a PR via `gh` / `glab`.
 - **The LLM classifies; the pre-pass only saves tokens.** The deterministic layer A never decides a destination.
 - **What the scripts read, write and send** — and where masking of transcript text stops — is set out in the [security assurance case](docs/SECURITY-ASSURANCE.md).

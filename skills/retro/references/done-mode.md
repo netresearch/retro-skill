@@ -12,6 +12,13 @@ It is a **gate**, not a detector: it reuses the pipeline's approval and
 materialization phases (8–10) for the writes it triggers (bookings, ticket
 comments) and chains the Sweep for gate 3 when no retro has run yet.
 
+Phase 8 reuses valid authorization for the target, action and audience; only
+uncovered decisions require a new approval. Do not invent ticket, billing or
+publication obligations beyond the task and owning rules. Completion of the
+original task is separate from later application and benefit of a retro measure:
+name an open effect check and its next suitable opportunity without holding the
+original task open merely because no future opportunity has occurred.
+
 ## The eight gates
 
 A gate is ✅ only with evidence from the system that owns the truth — a status
@@ -40,7 +47,7 @@ structurally absent is N/A with its reason. `done` may be said when every row is
 |---|------|-------------------------|
 | 1 | **Task** — the original request, as the user phrased it, is delivered | Every artefact named with its live state: PR/MR (state, checks, threads, `mergeStateStatus` / `detailed_merge_status`), issue, tag, deploy. "I pushed" is not a state. |
 | 2 | **Findings** — every interim finding is *fixed*, *filed* or *rejected* | One row per finding: fixed (commit SHA) · filed (issue/ticket URL in the row — "filed" without a URL is not filed) · rejected (one-line reason the user has seen). The native and explicitly supplied tracker findings are listed by `collect-review-findings.py --transcript-file <session.jsonl>` — every open thread and every human comment there is a row. Resolve relevant coverage gaps from `complete: false` before passing this gate; see `feedback-contract.md`. |
-| 3 | **Retro** — the Sweep ran for this session | A materialized artefact from it: a memory file written, a skill PR opened, a rule edited — each named with its path or URL. "I ran it" is the same self-report the other gates refuse. No such artefact and no explicit *all rejected* record → Done mode runs the Sweep now (Phases 1–10) before continuing. |
+| 3 | **Retro** — the Sweep ran for this session | Named report with scope, evidence/coverage and disposition: an authorized change with path/URL, explicit rejection, or a reasoned no-op with no useful measure. Missing evidence is an incomplete run, not a no-op. No such record → run the Sweep now (Phases 1–10). A new rule or memory write is not required to pass. |
 | 4 | **Cleanup** — nothing of the session's own making is left running or lying around | The sweep list below, each line with its command output. |
 | 5 | **Questions** — nothing is pending on the user that the task still needs | Either no open question, or exactly one human-gated decision stated once with the exact command, and the loop stopped there. Re-listing a parked decision is a ❌. |
 | 6 | **Tickets** — required outcomes are recorded on the confirmed work items | Print each canonical URL, native state and responsible party where applicable, read back after approved writes. Apply the owning project's QA, hand-back and assignment rules; do not invent status names or transitions. N/A only when no ticket obligation applies. Unresolved relevant references or unavailable required integrations are not a pass. |
@@ -212,9 +219,10 @@ next run; do not silently discard it.
   triggers the Sweep, which then runs in full. The one exception is gate 8: on a
   report that holds neither a B21 table nor `B21: none`, it runs Phase 2 for B21
   alone.
-- Phase 8 (approval) applies to every write Done mode proposes: each booking,
+- Phase 8 (authorization) applies to every write Done mode proposes: each booking,
   each ticket comment, each write to a team record, each worktree removal with
-  anything unpushed.
+  anything unpushed. Reuse authority already granted for the same scope; ask
+  only where a necessary decision remains uncovered.
 - Phase 10 report is the scope line plus the gate table; the word **done**
   appears only when every row is ✅ or N/A.
 

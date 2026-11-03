@@ -5,13 +5,17 @@
 
 | | |
 |---|---|
-| **Status** | Draft (for review) |
+| **Status** | Historical specification, superseded by the active [Promote reference](../../skills/retro/references/promote-mode.md) |
 | **Implementation Repo** | `netresearch/retro-skill` |
 | **Depends on** | Existing `/retro` pipeline (Phases 4–10), `classification-heuristic.md` |
 | **Author** | Sebastian Mendel |
 | **Date** | 2026-06-08 |
 
 ## Objective
+
+This document records the original design. Its approval and PR-exists drain
+criteria are historical, not current instructions. Active guidance verifies the
+existing mandate and keeps knowledge reachable until actual target availability.
 
 Add a `/retro promote` mode that inventories already-written, cwd-scoped memory
 stores (the accumulated **stock**) and re-homes each note upward to its correct

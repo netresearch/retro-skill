@@ -299,12 +299,14 @@ not re-execute tasks). Before listing a skill-update edit, read
 `~/.claude/retro/rejected-edits.md` (if present) and **suppress any edit already
 recorded there** — do not re-propose what the user has already rejected.
 
-## Phase 8: User Approval
+## Phase 8: Authorization
 
-Present grouped proposals. Per item:
-- ✅ Approve → materialize
+Check existing authorization for each target, action and audience. Execute
+covered changes and report them without asking for the same permission again.
+For uncovered decisions, present concrete grouped proposals. Per item:
+- ✅ Approve → materialize within that scope
 - ✏️ Edit → modify before materializing
-- ❌ Reject → skip, and for a skill-update edit append a one-line entry to
+- ❌ Reject → skip, and for a skill-update edit record a one-line entry, if authorized, in
   `~/.claude/retro/rejected-edits.md` (target skill · edit summary · reason ·
   date) so it is not re-proposed in a later session
 
@@ -315,7 +317,7 @@ Per destination, follow `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/patch-wor
 For each created PR / file:
 - Use Conventional Commits format
 - No harness-invented attribution ("Generated with Claude Code", `Co-Authored-By: Claude`); a disclosure the user's own rules prescribe is required, not banned
-- Per-private-repo confirmation before push
+- Verify private-repo target and push authority; reuse existing permission for that scope
 - Preserve commit signing (no `--no-gpg-sign`)
 
 ## Phase 10: Report
@@ -420,16 +422,17 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
 - Skip Phases 1b, 2, 2b, 3, 3b, 3c (no transcript) — announce the skip in one line
 - Phases 4–10 run verbatim; destination skew is **upward** per scope-escalation
   (skill-update › project-rule › personal-rule), **never** project-local memory
-- Phase 8 adds a mandatory default-**N** warning on every `project-rule` /
-  `skill-update` / team-record `canonical-source` proposal: "promoting this
-  makes it team-visible; source is currently private"
-- **Phase 9 gains a post-step:** after the upward write is *verified* (rule text
-  re-read, team record read back at its URL, or PR URL returned), drain the source via
+- Phase 8 verifies whether the existing mandate covers the target and audience
+  change. Make private-to-team/public disclosure visible; ask only if uncovered.
+- **Phase 9 gains a post-step:** after the target is accepted where required,
+  delivered and reachable from the next reader's entry point, drain the source via
   `scan-memory-inventory.py drain <path> --expect-sha256 <sha>` — a tombstone
   move to `.promoted/` plus a `MEMORY.md` prune, **never** `rm`. On verify
-  failure, keep the source. For `skill-update`, drain only after the PR is opened.
+  failure, keep the source and index entry. An open PR is only prepared: retain
+  a minimal active Learning-Id/target/status bridge until availability is proven.
+  Closed/rejected or undelivered changes trigger reclassification, not draining.
 - Phase 10 report gains a **Source drained?** column
-  (`tombstoned` / `kept — verify failed` / `kept — source changed`)
+  (`tombstoned` / `kept — handoff pending` / `kept — verify failed` / `kept — source changed`)
 - The scanner is read-only and scans every slug by default, because the real
   stock often lives under a sibling slug. Narrow with `--project=<slug>`; the
   `=` is required, since every slug starts with `-`.
@@ -450,9 +453,13 @@ rejected (reason the user has seen) — each ✅ / ⏸ / ❌ with its evidence. 
 - Phases 1–3 are skipped (announce it) unless gate 3 finds no Sweep has run —
   then run the Sweep in full first. Gate 8 runs Phase 2 for B21 alone on a report
   that holds neither a B21 table nor `B21: none`
-- Phase 8 applies to every write the gate proposes: time entries in the
+- Phase 8 checks existing authorization for every write the gate proposes: time entries in the
   project's configured system (read before writing to prevent duplicates),
   ticket comments and worktree removals. Apply the owning project's QA and
   billing rules; a missing integration is not evidence that a requirement is N/A.
 - Phase 10 report is the gate table; the word **done** appears only when all
   eight rows are ✅ or justified N/A — a ⏸ (waiting on the user) or ❌ ends with what closes it
+
+A documented justified no-op can close the Retro gate. A measure whose effect
+needs a later suitable task keeps that effect explicitly untested; it does not
+block completion of the original task by itself. See the learning contract.

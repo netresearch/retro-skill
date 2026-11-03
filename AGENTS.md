@@ -42,8 +42,10 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 
 - LLM is primary classifier; mechanical pre-pass reduces token cost but does not classify
 - Patches always go to source repo, never to local cache
-- Per-private-repo confirmation before any PR
-- One approval per materialization (not per candidate)
+- Verify authorization for each target, action and audience, including private repositories; reuse permission already granted for that scope
+- Execute already authorized materializations and report them; ask only for uncovered decisions, without repeating approval requests
+- Rule purpose precedes enforcement: consider removal, simplification and tool/environment changes before adding a gate
+- Original task completion and later benefit are separate; a justified no-op and an untested future effect are valid outcomes
 - No auto-merge; no continuous background hooks (except optional SessionEnd)
 - Tracker-neutral core: no implicit tracker, external CLI discovery or organization billing policy; see `skills/retro/references/feedback-contract.md`
 - A transcript adapter (`*-transcript.py`) is checked against sessions a real CLI wrote, not only hand-built rows: its docstring names the CLI versions measured, and either its tests carry a redacted excerpt of a real session or a `docs/` page records the live check, as [opencode live test](docs/opencode-live-test.md) does. Hand-built rows for one shape left every tool call of the other shapes unconverted in #168
