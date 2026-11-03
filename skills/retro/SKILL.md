@@ -25,8 +25,9 @@ destinations, and follows their availability, later use and observed benefit.
 Read `references/learning-contract.md` for evidence, Mad/Sad/Glad perspectives,
 configuration limits and justified no-op/pruning outcomes.
 
-**Core principle:** No silent writes — every materialization needs
-approval.
+**Core principle:** No silent writes — verify existing authorization for the
+target, action and audience; execute covered changes and ask only for uncovered
+decisions. Process critique grants no new authority.
 
 ## Modes
 
@@ -76,12 +77,14 @@ approval.
    filter false positives. A prior failure is not required for a learning.
 3. Cross-session enrichment (optional) — JSONL scan via `${CLAUDE_SKILL_DIR}/scripts/scan-cross-session.py`.
 4. Discover skills — `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py` — and the repo's harness (`project-harness-inspection.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
-5. Classify (`classification-heuristic.md`) — authority first, then broadest
-   scope; never project-local memory.
+5. Classify (`classification-heuristic.md`) — authority and rule purpose before
+   enforcement and reach; consider simplification, tools or environment changes;
+   never project-local memory.
 6. Evals — read a matched skill's `evals/`; propose a TDD stub.
 7. Proposals — prose Why + How-to-apply, grouped, ≤10; learnings survive the
    trim.
-8. Approval — approve / edit / reject per proposal.
+8. Authorization — reuse the valid mandate; present concrete uncovered decisions
+   for approve / edit / reject. Do not request the same permission again.
 9. Materialize per destination; for Promote, drain the source last (verified).
 10. Report.
 
@@ -93,11 +96,13 @@ policy belong to project/organization rules. No implicit tracker, CLI discovery
 or organization-specific billing defaults in the core.
 
 **Always:** LLM is primary classifier. Patches go to source repos, never the
-cache. Per-private-repo confirmation. Conventional Commits. DCO sign-off
+cache. Verify private-repo and audience authorization. Conventional Commits. DCO sign-off
 (`git commit -s`). Preserve commit signing.
 
-**Ask first:** skill-match ambiguity, auto-mode activation, private-repo targets,
-dirty-worktree fallback, any promotion making a note team-visible.
+**Ask first when not already covered:** material skill-match ambiguity,
+auto-mode activation, private-repo access/push, a dirty-worktree fallback that
+risks existing work, and promotion to a new audience. New product decisions,
+team norms and permissions require the responsible authority.
 
 **Never:** auto-merge, silent writes, harness-invented attribution (a disclosure
 the user's rules prescribe is required), skip hooks (`--no-verify`),
@@ -120,4 +125,5 @@ processes or worktrees.
 | `references/eval-integration.md` | Evals for context + TDD stubs |
 | `references/promote-mode.md` | Promote: materialize-then-drain |
 | `references/done-mode.md` | Done: eight-gate finish check |
+| `references/project-harness-inspection.md` | Rule purpose, environment and session signals |
 | `references/workflow.md` | All modes + phase selection |

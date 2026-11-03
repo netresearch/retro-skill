@@ -29,6 +29,12 @@ gate *visible* as an option.
 
 ## What to inspect
 
+First identify the goal and still-valid need for a rule (`classification-heuristic.md`,
+Axis 1). A redundant approval, conflicting obligation or check with no quality
+benefit may need simplification or removal rather than stronger enforcement.
+Ask what information, tools or decision rights the agent lacked to act correctly
+within its mandate. Changing access or team policy needs its responsible owner.
+
 Read these against what the session actually did. Each row is a question about
 this session, not a checklist to fill in.
 
@@ -40,6 +46,9 @@ this session, not a checklist to fill in.
 | CI workflows | Is the failing check **repo-local and missing**, rather than a skill gap? Does a fast check exist in CI but not as a hook (parity)? |
 | Linter / analyzer config | Would a rule in a tool the repo already runs have failed on this? That is the cheapest gate available. |
 | Dev environment (`.ddev`, containers, `.Build`, lockfiles) | Did the session lose time to environment shape rather than to the problem? |
+| Setup and test prerequisites | Did each agent independently discover a required service or dependency? Can the existing setup or test command expose or prepare it reliably? |
+| Tool inputs, errors and outputs | Could a validated argument, actionable error or structured result avoid repeated attempts and oversized output? |
+| Context retention and entry points | Were decisions lost during compaction, or correct knowledge unreachable from the documented starting point? |
 | Templates (PR/MR, issue) | Did a review round ask for something a template could have prompted? |
 
 ## Two traps
@@ -52,6 +61,15 @@ same PR. State it rather than shipping the half.
 are almost never absent outright — the finding is usually that the existing one
 does not cover *this* check. Extend it; never overwrite a config with a
 template.
+
+## Lightweight signals during work
+
+The owning agent harness can retain material corrections, decisions, recurring
+friction and unexpectedly helpful procedures in its existing session context.
+Keep the conditions and evidence, including Sad signals of an unmet subgoal.
+Do not require introspection after each tool call, a new permanent log or a
+continuous background hook. Resolve acute issues during work; the retrospective
+checks the pattern and durable owner rather than delaying a fix until the end.
 
 ## What this phase is not
 

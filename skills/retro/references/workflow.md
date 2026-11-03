@@ -3,7 +3,30 @@
 
 # Workflow
 
-The modes of `/retro` and how they share the underlying pipeline.
+The modes of `/retro` and how they share the underlying pipeline. Apply
+`learning-contract.md`: required quality and accepted task completion constrain
+time/cost optimization; evidence, decisions and hypotheses remain distinct.
+
+## Mandate and attention
+
+For the task, recover the intended benefit, non-goals, quality bar, valid
+product/team/user decisions and already granted authority. Label inferred intent
+and unresolved conflicts. Ask what the agent lacked to decide correctly within
+its mandate; personal preferences do not automatically become team norms.
+
+Use Mad/Sad/Glad in the same enrichment pass: avoidable friction, unmet benefits,
+and what worked with which prerequisites. Check used sources and plausible
+unused entry points/owning skills within the session's scope. Widen for concrete
+gaps or repeated conflicts; a whole-organization reconciliation belongs to Audit.
+Improve tools, setup and environment or simplify processes where that removes
+the cause. Check rule purpose before adding enforcement.
+
+Phase 8 checks existing authorization for the target, action and audience.
+Execute covered changes and report them; present a concrete decision only where
+authority is missing. This applies across modes, private repos and promotion.
+New team norms, product decisions, permission changes or external effects beyond
+the mandate require their responsible decision. Do not re-ask an already
+answered approval. Critiquing a process does not expand the agent's authority.
 
 ## Modes
 
@@ -49,10 +72,11 @@ Replay a past session through the lens of what happened to its output afterwards
 ```
 Input: past session id (or all sessions within --since window)
 Output: Schicht D findings — failures to learn from (D1–D10: reverted, rejected,
-        CI-broken), durable successes to codify (D11: merged, unreverted,
-        CI-green changes whose approach generalizes → skill-update), and
+        CI-broken), persistent candidates to investigate (D11: merged,
+        unreverted, CI-green is not evidence of actual use or benefit), and
         superseded temporary copies to prune (D12: a tracked canonical-source
-        upstream PR merged → prune the skill's labelled copy to a reference)
+        upstream content accepted, delivered and reachable → prune the labelled
+        temporary copy to a reference; merge alone is insufficient)
 Use case: monthly look-back — both what didn't survive contact with reality and
           what did and should become the default
 ```
@@ -89,7 +113,9 @@ reported as a failed probe, not as dead.
 With `--scope skill`, the audit is also a **reconciliation** pass: classify the
 skill's existing content by authority (upstream / code / org policy / team
 record / agent-evidence — Axis 0 in `classification-heuristic.md`). Content already
-documented by its canonical owner → propose prune-to-reference; content humans
+documented by its canonical owner and reachable from the intended entry point
+→ propose prune-to-reference; preserve an active bridge while delivery is pending.
+Content humans
 need that the owner lacks → propose `canonical-source` (upstream PR, or a
 team-record edit after Phase 4c) paired
 with the skill cleanup. Promote makes ephemeral knowledge durable; reconcile
@@ -110,7 +136,10 @@ Use case: drain accumulated local memory upward; empty the silo
 
 Reads the stock, not the session flow. Reuses the scope-escalation rule
 (skill-update > project-rule > personal-rule; never project-local memory) and
-drains the source LAST, only after the upward write is verified. Full detail:
+drains the source LAST, only after the accepted target is delivered and reachable
+by the intended next reader. Keep the active note and index entry while a PR is
+open or undelivered; add a minimal status/target bridge under the same Learning-Id.
+An opened PR alone does not complete the handoff. Full detail:
 `references/promote-mode.md`.
 
 ### Done — `/retro done`
@@ -124,7 +153,7 @@ knowledge documented.
 Input: live state of the session's artefacts (forge, tracker, configured time service,
        host), plus this session's Sweep result if one exists
 Output: scope line + gate table (✅ / ❌ / ⏸ / N-A + evidence); writes only
-       after approval
+       within the verified mandate
 Use case: the last command of a session; the answer to "alles erledigt?"
 Token cost: moderate — no transcript pass, except gate 8 on a report without a
        B21 statement, but one live-state read per
@@ -319,7 +348,7 @@ re-presented.
 5. Classification → 7 destinations (authority first)
 6. Eval consultation (when present)
 7. Proposal generation (prose Why + How-to-apply)
-8. Approval (grouped presentation, then per-proposal decision)
+8. Authorization (reuse existing mandate; grouped uncovered decisions)
 9. Materialization per destination convention
 10. Report
 ```
@@ -345,26 +374,31 @@ filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
 1b/2/2b/3/3b/3c, runs Phases 4–10 (4c for notes holding a fact about the team's
 own systems), and adds a verified **materialize-then-drain**
 post-step to Phase 9 — drain via `scan-memory-inventory.py drain <path>` only
-after the upward write is confirmed (tombstone move, never `rm`). The Phase-10
-report gains a "Source drained?" column.
+after actual target availability is confirmed (tombstone move, never `rm`).
+The low-level drain verifies the source hash, not target delivery; the agent
+must verify the latter. Keep the active note/index and bridge until then. The
+Phase-10 report gains availability and "Source drained?" columns.
 
 **Done** skips Phases 1–3 (announce it) unless its retro gate finds no Sweep
 for this session; then the Sweep runs in full first. Gate 8 runs Phase 2 for B21
-alone on a report without a B21 statement. Phase 8 approves each write
-Done proposes (a booking, a ticket comment, removing anything unpushed), and the
+alone on a report without a B21 statement. Phase 8 checks authority for each
+write Done proposes (a booking, ticket comment, removing anything unpushed), and the
 Phase-10 report is the scope line plus the eight-gate table. See
 `references/done-mode.md`.
 
 ## Efficiency targets
 
+These are working defaults, never substitutes for required quality or evidence.
+Measure comparable tasks and total effort; a missing measurement is unknown.
+
 | Metric | Target | Why |
 |---|---|---|
-| LLM passes per `/retro` | 1 | No multi-round polling |
+| LLM passes per `/retro` | One enrichment pass by default | Add focused checks only for an evidenced need |
 | `detect-mechanical.py` invocations | 1 | Capture the JSON once, post-process the saved output; never re-run the detector just to reshape/bucket its output (a full second transcript scan for nothing) |
 | Tool calls for skill discovery | ≤5 | Cached per session |
 | Proposals presented | ≤10 | Not 1011 (Coach anti-pattern); reserve slots for top reusable-learnings so friction can't crowd them all out. A gate+propagation pair (`destination-taxonomy.md`, "Paired materialization") counts as **one** |
-| Total token cost vs Coach baseline | Dramatically below | TBD after first measurement |
-| Setup time before first proposal | <30 seconds | Mechanical pre-pass + discovery cache |
+| Time and total cost | Compare observed wall time, available usage and human rework | Include retro, changes, checks, delegation and maintenance; no claimed saving without a comparable baseline |
+| Setup time before first proposal | Reuse available pre-pass/discovery results | First-time dependency setup and unavailable tools can dominate; preserve the reason |
 
 ## Phase transparency
 
@@ -425,10 +459,10 @@ two restarts and re-ran verbatim only because the briefs were SHA-pinned).
 | Subagent reports its report file was blocked | Have it return findings as text; do not re-dispatch |
 | Batch returns counts without evidence | Re-ask for the table; do not enter counts on trust |
 | JSONL scan slow | Limit to current project's sessions, last 30 days |
-| Skill discovery returns no matches | Propose `new-skill` instead |
+| Skill discovery returns no matches | Inspect plausible skills' contents and catalogue coverage (`skill-discovery.md`); propose `new-skill` only for a confirmed uncovered capability, retaining uncertainty when discovery is incomplete |
 | A documentation system is unreachable | Report it `not-searched`; never as absent |
 | Source repo URL unresolvable | Ask user; offer local-edit fallback |
-| Worktree dirty | Use /tmp clone (with notification) |
+| Worktree dirty | Isolate reversible work in a separate clone/worktree; preserve existing changes and ask only if the fallback changes scope or risks them |
 | Private repo not authenticated | Graceful failure with login instruction |
 | All proposals rejected by user | Report empty; no error |
 | Pre-pass script errors | Log + continue with LLM-only |
@@ -474,4 +508,5 @@ PR is seen, an unspoken "the customer hated it" is not). For those, run
 - `references/classification-heuristic.md` — How it's routed
 - `references/project-harness-inspection.md` — What the worked-in repo could gate
 - `references/documentation-lookup.md` — What the team's records already say
+- `references/learning-contract.md` — Purpose, evidence and configuration bounds
 - Spec: `docs/specs/retro-skill.md`

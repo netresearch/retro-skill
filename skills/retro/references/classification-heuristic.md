@@ -127,16 +127,33 @@ Everything else is removed or turned into a reference. When an upstream
 owner cannot take the fix (no contribution path, upstream gap), the skill may
 carry the fact *temporarily* — labelled with its authority and the upstream
 issue/PR where one exists — and a later `/retro audit --scope skill`
-reconciliation prunes it once upstream lands (see Instruction pruning, and
+reconciliation prunes it once the accepted upstream content is delivered and
+reachable by its intended reader, not merely merged (see Instruction pruning, and
 "Audit" in `workflow.md`). A team record has no such fallback: when it cannot be
 written, file a ticket for its owner or hand the text to the user
 (`destination-taxonomy.md` §7).
 
-### Axis 1 — enforceability: a gate outranks a sentence
+### Axis 1 — purpose before enforcement
+
+Before adding a gate, identify the product, team or quality goal it protects.
+Check whether the rule is still valid, available, understandable and applicable;
+whether it creates conflicting duties, delay or rework; and whether removal,
+simplification or a different owner would work better. Repeated approvals under
+an existing mandate, responsibility without decision rights and evidence work
+without quality benefit are mechanisms to investigate, not labels for people.
+A violation alone proves neither a bad rule nor a bad agent. Preserve necessary
+controls and escalate decisions beyond the mandate.
+
+Tools and environment are equal improvement targets: reliable setup/test entry
+points, prepared dependencies, service prerequisites, useful errors, structured
+output and context retention can remove repeated inference instead of adding
+instructions. Use the existing seven destinations and their owning repositories.
+
+For a necessary rule that still needs enforcement, a gate can outrank a sentence.
 
 An instruction depends on the reader following it. A check fails the build when
-they don't. Ask first whether the finding is expressible as a gate, and only
-then where the prose belongs.
+they don't. After the purpose check, ask whether the finding is expressible as a
+gate, and then where the remaining prose belongs.
 
 `agent-harness-skill/references/enforcement-mechanisms.md` grades the ten
 enforcement instruments by strength, server-side down to convention-based. Its
@@ -296,8 +313,9 @@ behavioral benefit is bounded to the cases and executors actually tested (see
 failure: a retro dropped a real learning — the per-release Contributors row is
 driven by `mentions_count` — as "redundant" by conflating it with the *commit-based
 repo contributor graph*, an adjacent mechanism the target skill didn't actually
-document; the user overrode it.) retro proposes the bounded removal, the human approves it
-at the gate, and the source-repo PR review decides. A pruning proposal
+document; the user overrode it.) retro prepares a bounded removal, checks the
+existing mandate and asks only for an uncovered decision; source-repo review
+still applies. A pruning proposal
 materializes as an ordinary `skill-update` PR whose diff happens to be a deletion
 (see `patch-workflow.md`).
 
