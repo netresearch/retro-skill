@@ -900,8 +900,11 @@ def main() -> int:
 
     if args.learning_observations is not None:
         try:
+            # S8707: explicit caller-selected local evidence, not a path from
+            # untrusted session content. No privilege boundary is crossed;
+            # restricted wrappers must enforce their own authorized roots.
             observations = json.loads(
-                args.learning_observations.read_text(encoding="utf-8")
+                args.learning_observations.read_text(encoding="utf-8")  # NOSONAR
             )
             print(
                 json.dumps(
