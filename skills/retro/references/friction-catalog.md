@@ -296,7 +296,7 @@ Not detectable from a single session. Session-file scan across projects.
 | C1 | Same friction again | Same correction across multiple sessions — memory didn't stick | `scan-cross-session.py --user-correction-summary` (`cross_session_corrections`) and `--recurring-failures` |
 | C2 | Cross-project pattern | Same friction class in N≥2 projects | `scan-cross-session.py --user-correction-summary` (`cross_project_corrections`) |
 | C3 | Memory drift | `feedback_*.md` exists but assistant violated it anyway → skill needs it more prominently | JSONL diff against memory files |
-| C4 | Skill update ineffective | Previous PR to skill X, same bug returned afterward | Git log of skill repo + JSONL |
+| C4 | Prior measure needs an application check | Same problem after a prior change is a candidate; verify adoption, availability, loaded version, applicability, actual application and outcome | Evidence-backed Learning-Id/opportunity observations, not git history alone |
 | C6 | Written rule violated repeatedly | A signal fired >=3x while a matching rule already exists in the always-loaded instructions | Prose has demonstrably failed — needs a mechanical gate, unless one is already deployed (see below) |
 | C5 | Follow-up-fix session | A later session exists primarily to fix what an earlier session broke (mentions earlier commits, works on same files within 7 days with reverting edits, or `git revert` of earlier commits) | `scan-cross-session.py --follow-up-sessions`; the "mentions earlier commits" part stays model-read |
 
@@ -328,6 +328,13 @@ False when nothing in the session is attributable to the rule, which is not
 proof that no gate exists — check the configured hooks before proposing one.
 
 ## Schicht D — Outcome (Post-Session, requires latency)
+
+For C4 and material D claims, `session-metrics.md` defines observed time/usage,
+configuration roles and the explicit later-opportunity input accepted by
+`scan-cross-session.py --learning-observations`. Separate applicable opportunities,
+tested applications, successes and unassessed states. Duplicate transcripts are
+not independent evidence. Absent opportunities and missing coverage establish
+neither success nor failure. Green CI or a revert still requires cause analysis.
 
 What happened to the session's output **after** it left the session — good OR
 bad? These signals require waiting (days to weeks) before they become reliable.

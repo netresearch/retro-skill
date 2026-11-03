@@ -88,6 +88,20 @@ def detect(lines: list[str]) -> dict:
 
 
 class RealRolloutTest(unittest.TestCase):
+    def test_metrics_survive_conversion_without_new_message_events(self) -> None:
+        rows = fixture("rollout-0.101.0.jsonl")
+        rows += fixture("usage-0.166.0-alpha.5.1.jsonl")[1:]
+        lines = adapter.render(rows)
+        events = [json.loads(line) for line in lines]
+        self.assertEqual(
+            events[0]["retro_metrics"]["usage"]["counts"]["total_tokens"], 65466
+        )
+        self.assertEqual(
+            events[0]["retro_metrics"]["provenance"]["execution"]["reported_models"],
+            ["gpt-5.3-codex"],
+        )
+        self.assertEqual(len(blocks(lines, "tool_use")), 2)
+
     def test_exec_command_calls_pair_with_their_exit_codes(self) -> None:
         lines = adapter.render(fixture("rollout-0.101.0.jsonl"), "Run the test suite")
         uses = blocks(lines, "tool_use")

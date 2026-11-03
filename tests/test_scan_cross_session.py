@@ -180,6 +180,69 @@ class LoadEventsTest(TempDirCase):
         self.assertEqual(scs.extract_user_texts(path), ["no, not that"])
 
 
+class LearningEffectivenessTest(TempDirCase):
+    def observation(self, opportunity="one", **states):
+        return {
+            "learning_id": "RT-test",
+            "opportunity_id": opportunity,
+            "evidence": "session:task:outcome",
+            "adopted": True,
+            "available": True,
+            "loaded": True,
+            "applicable": True,
+            "applied": True,
+            "success": True,
+            **states,
+        }
+
+    def test_unloaded_and_unused_changes_are_not_failed_interventions(self):
+        report = scs.learning_effectiveness(
+            [
+                self.observation(
+                    "old-copy", loaded=False, applied=False, success=False
+                ),
+                self.observation(
+                    "unused", applicable=False, applied=False, success=None
+                ),
+                self.observation("worked"),
+                self.observation("did-not-help", success=False),
+            ]
+        )
+        [learning] = report["learnings"]
+        self.assertEqual(learning["tested_applications"], 2)
+        self.assertEqual(learning["successful_applications"], 1)
+        self.assertEqual(learning["failed_applications"], 1)
+        self.assertEqual(learning["applicable_opportunities"], 3)
+        self.assertEqual(learning["unassessed"], 2)
+
+    def test_copied_observations_do_not_inflate_the_denominator(self):
+        first = self.observation()
+        report = scs.learning_effectiveness([first, dict(first)])
+        self.assertEqual(report["duplicates_ignored"], 1)
+        self.assertEqual(report["learnings"][0]["tested_applications"], 1)
+        with self.assertRaises(ValueError):
+            scs.learning_effectiveness([first, self.observation(success=False)])
+
+    def test_no_matching_opportunity_keeps_effect_unassessed(self):
+        report = scs.learning_effectiveness([self.observation(applicable=None)])
+        [learning] = report["learnings"]
+        self.assertEqual(learning["tested_applications"], 0)
+        self.assertIsNone(learning["success_rate"])
+        self.assertEqual(report["coverage"], "supplied_observations_only")
+
+    def test_observations_need_evidence_and_boolean_states(self):
+        for fields in ({"evidence": ""}, {"loaded": "yes"}, {"success": 1}):
+            with self.subTest(fields=fields), self.assertRaises(ValueError):
+                scs.learning_effectiveness([self.observation(**fields)])
+
+    def test_observations_cli_needs_no_host_project_directory(self):
+        path = self.root / "observations.json"
+        path.write_text(json.dumps([self.observation()]), encoding="utf-8")
+        report = _run(self.root / "missing", "--learning-observations", str(path))
+        self.assertEqual(report["mode"], "learning-effectiveness")
+        self.assertEqual(report["learnings"][0]["tested_applications"], 1)
+
+
 class CorrectionSummaryTest(TempDirCase):
     def test_counts_sessions_within_one_project(self) -> None:
         for session in ("a", "b"):

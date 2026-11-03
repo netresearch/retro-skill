@@ -144,6 +144,7 @@ def _load_sibling(filename: str):
 #: The patch-header parser and result shape of the opencode adapter: Codex's
 #: patch format is the one opencode 1.x adopted.
 _opencode = _load_sibling("opencode-transcript.py")
+_metrics = _load_sibling("collect-session-metrics.py")
 
 
 def _skip_literal(source: str, index: int) -> int:
@@ -850,6 +851,10 @@ def render(rows: list[dict[str, Any]], token: str | None = None) -> list[str]:
             "have computed arguments and are not rendered",
             file=sys.stderr,
         )
+    # Preserve the source's observed time/usage/model provenance without adding
+    # a synthetic user turn or counting metadata as a tool call. The raw host
+    # summary also survives context-losing conversion for later outcome review.
+    events[0]["retro_metrics"] = _metrics.collect(rows)
     return [json.dumps(event, ensure_ascii=False) for event in events]
 
 
