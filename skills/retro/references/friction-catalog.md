@@ -87,6 +87,11 @@ Requires conversational context understanding. The LLM reads pre-pass output + r
 
 ### Reusable-learning signals (B16–B21) — scan even when nothing went wrong
 
+Use `learning-contract.md` for Mad/Sad/Glad, statement kinds and configuration
+bounds. Include a successful procedure or prerequisite another intended executor
+would have to infer, even if the reviewer finds it obvious. Retain evidence and
+limits; a positive result is not automatically caused by the selected approach.
+
 These are **positive** signals: the session produced knowledge worth propagating,
 with **no** friction to trigger it. The mechanical pre-pass cannot see them (there
 is no error, retry, or correction to count), so they exist only as LLM-inference
@@ -328,13 +333,12 @@ What happened to the session's output **after** it left the session — good OR
 bad? These signals require waiting (days to weeks) before they become reliable.
 Best run periodically via `/retro outcome --since 30d`, not at session end.
 
-D1–D10 are **failure** signals (output that didn't survive). **D11 is the
-positive mirror:** output that *did* survive is a validated statement of "this is
-the way," and its generalizable approach should be codified so future generated
-code follows it. A commit is a hypothesis at commit time; it becomes a reliable
-"new way" only once it is merged, unreverted, and CI-green — which is exactly what
-latency-gated outcome mode confirms. (This mirrors the Schicht B fix: just as the
-sweep was friction-only, outcome was failure-only.)
+D1–D10 are **candidate adverse outcomes**; inspect their causes before
+attributing failure. **D11 is the positive mirror:** persistence nominates a
+generalizable approach for investigation. A merged, unreverted, CI-green change
+demonstrates acceptance, persistence and the checks that ran. Actual use and
+benefit require separate evidence (`learning-contract.md`); an unused change
+can remain green indefinitely. Preserve untested effectiveness explicitly.
 
 | # | Signal | Detection | Hint at |
 |---|---|---|---|
@@ -348,7 +352,7 @@ sweep was friction-only, outcome was failure-only.)
 | D8 | Regression in test suite | Test that passed at session end now fails on a later commit | Output regressed |
 | D9 | Code reverted in same file within 30 days | Diff-based: session's net contribution to file is largely undone | Output not durable |
 | D10 | External tracker mention (out-of-scope marker) | Issue/PR/Slack reference using session commit/PR ID (requires external integration; v0.2+) | Output had external impact |
-| **D11** | **Durable improvement (positive)** | Session's change **survived** the window: merged (`gh pr view --json mergedAt,reviewDecision`), **not** reverted or superseded (inverse of D1/D2/D9), CI green (`gh run list --commit $sha --json conclusion`) — AND its approach generalizes but is not yet in any skill | Output is validated by surviving contact with reality → **codify the approach** so future generated code follows it → `skill-update` |
+| **D11** | **Persistent change (positive candidate)** | Session's change survived the window: merged (`gh pr view --json mergedAt,reviewDecision`), not reverted or superseded (inverse of D1/D2/D9), CI green (`gh run list --commit $sha --json conclusion`), and its approach may generalize | Investigate availability, applicable opportunities, actual application and outcomes before claiming benefit; a bounded procedure may be codified with its evidence and untested limits → `skill-update` |
 | **D12** | **Superseded temporary copy (positive/cleanup)** | A `canonical-source` upstream PR tracked by a labelled temporary copy (authority label + upstream PR/issue link + `Learning-Id`, per `destination-taxonomy.md` §7) **merged** during the window (`gh pr view <url> --json state,mergedAt`), while the skill still carries the copy | The fact now lives with its canonical owner → **prune the copy to a reference** (+ agent-specific delta) → `skill-update` (prune); find the copy via its `Learning-Id` |
 
 ### Stale-open is not an outcome
