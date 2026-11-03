@@ -75,7 +75,8 @@ Output: Schicht D findings — failures to learn from (D1–D10: reverted, rejec
         CI-broken), persistent candidates to investigate (D11: merged,
         unreverted, CI-green is not evidence of actual use or benefit), and
         superseded temporary copies to prune (D12: a tracked canonical-source
-        upstream PR merged → prune the skill's labelled copy to a reference)
+        upstream content accepted, delivered and reachable → prune the labelled
+        temporary copy to a reference; merge alone is insufficient)
 Use case: monthly look-back — both what didn't survive contact with reality and
           what did and should become the default
 ```
@@ -112,7 +113,9 @@ reported as a failed probe, not as dead.
 With `--scope skill`, the audit is also a **reconciliation** pass: classify the
 skill's existing content by authority (upstream / code / org policy / team
 record / agent-evidence — Axis 0 in `classification-heuristic.md`). Content already
-documented by its canonical owner → propose prune-to-reference; content humans
+documented by its canonical owner and reachable from the intended entry point
+→ propose prune-to-reference; preserve an active bridge while delivery is pending.
+Content humans
 need that the owner lacks → propose `canonical-source` (upstream PR, or a
 team-record edit after Phase 4c) paired
 with the skill cleanup. Promote makes ephemeral knowledge durable; reconcile
@@ -456,7 +459,7 @@ two restarts and re-ran verbatim only because the briefs were SHA-pinned).
 | Subagent reports its report file was blocked | Have it return findings as text; do not re-dispatch |
 | Batch returns counts without evidence | Re-ask for the table; do not enter counts on trust |
 | JSONL scan slow | Limit to current project's sessions, last 30 days |
-| Skill discovery returns no matches | Propose `new-skill` instead |
+| Skill discovery returns no matches | Inspect plausible skills' contents and catalogue coverage (`skill-discovery.md`); propose `new-skill` only for a confirmed uncovered capability, retaining uncertainty when discovery is incomplete |
 | A documentation system is unreachable | Report it `not-searched`; never as absent |
 | Source repo URL unresolvable | Ask user; offer local-edit fallback |
 | Worktree dirty | Isolate reversible work in a separate clone/worktree; preserve existing changes and ask only if the fallback changes scope or risks them |

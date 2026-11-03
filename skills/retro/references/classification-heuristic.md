@@ -127,7 +127,8 @@ Everything else is removed or turned into a reference. When an upstream
 owner cannot take the fix (no contribution path, upstream gap), the skill may
 carry the fact *temporarily* — labelled with its authority and the upstream
 issue/PR where one exists — and a later `/retro audit --scope skill`
-reconciliation prunes it once upstream lands (see Instruction pruning, and
+reconciliation prunes it once the accepted upstream content is delivered and
+reachable by its intended reader, not merely merged (see Instruction pruning, and
 "Audit" in `workflow.md`). A team record has no such fallback: when it cannot be
 written, file a ticket for its owner or hand the text to the user
 (`destination-taxonomy.md` §7).
