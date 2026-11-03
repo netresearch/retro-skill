@@ -16,8 +16,12 @@ for BOTH:
    so you must look for it deliberately; a smooth session is **not** an empty
    retro.
 
-Analyze the current session for both, then classify and materialize into the
-correct destination.
+Improve accepted task completion at the required quality within economically
+feasible time and cost. Analyze both classes using the claim kinds,
+Mad/Sad/Glad perspectives and configuration bounds in
+`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/learning-contract.md`, then route
+each useful measure to its owner. A first success needs no preceding failure;
+a reasoned no-op needs no invented rule. Missing evidence remains unknown.
 
 ## Usage
 
@@ -359,11 +363,10 @@ only. It has two jobs, co-equal:
 
 - **Learn from failure** — output that was reverted, rejected, or broke CI
   (D1–D10) → fix the process so it does not recur.
-- **Codify success** — a change that **survived** (merged, unreverted, CI-green;
-  **D11**) is a validated statement of "this is the way." Where its approach
-  generalizes and isn't in a skill, propagate it so future generated code follows
-  it. This is the "every stuck commit is a statement" case: durability, confirmed
-  by latency, is what upgrades a commit from hypothesis to codifiable rule.
+- **Investigate success** — a persistent change (merged, unreverted, CI-green;
+  **D11**) is a candidate, not proof of benefit. Establish whether it was
+  available, applicable, actually used and helpful. Codify a generalizable
+  procedure with its prerequisites and evidence; leave untested benefit open.
 
 Steps:
 

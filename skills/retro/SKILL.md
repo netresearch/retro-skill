@@ -18,9 +18,12 @@ On Codex, resolve script paths from this loaded skill directory and use the
 native discovery reader (`find-org-skills.py --host codex`), not Claude cache
 paths. Host selection and coverage limits: `references/skill-discovery.md`.
 
-One LLM pass over a session or the memory backlog detects **friction and
-reusable learnings**, classifies each into one of seven destinations, and
-materializes approved ones.
+Improve accepted task completion at the required quality within economically
+feasible time and cost, across models, knowledge, tools and environment. One
+LLM pass detects **friction and reusable learnings**, routes them to seven
+destinations, and follows their availability, later use and observed benefit.
+Read `references/learning-contract.md` for evidence, Mad/Sad/Glad perspectives,
+configuration limits and justified no-op/pruning outcomes.
 
 **Core principle:** No silent writes — every materialization needs
 approval.
@@ -68,8 +71,9 @@ approval.
    with `--pr-list`. Resolve relevant opaque
    hints through the owning integration, never by key shape. See
    `references/feedback-contract.md`; incomplete coverage is not silence.
-2. LLM enrichment — inferential signals, both classes (friction + learnings
-   B16–B21); filter false positives.
+2. LLM enrichment — Mad/Sad/Glad perspectives, both classes (friction +
+   learnings B16–B21); distinguish observations, hypotheses and decisions;
+   filter false positives. A prior failure is not required for a learning.
 3. Cross-session enrichment (optional) — JSONL scan via `${CLAUDE_SKILL_DIR}/scripts/scan-cross-session.py`.
 4. Discover skills — `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py` — and the repo's harness (`project-harness-inspection.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
 5. Classify (`classification-heuristic.md`) — authority first, then broadest
@@ -105,6 +109,7 @@ processes or worktrees.
 
 | File | Purpose |
 |---|---|
+| `references/learning-contract.md` | Purpose, evidence, quality and configuration bounds |
 | `references/feedback-contract.md` | Tracker-neutral evidence and reference resolution |
 | `references/friction-catalog.md` | All signals: friction + learnings (A/B/C, B16–B21) |
 | `references/destination-taxonomy.md` | The seven destinations |

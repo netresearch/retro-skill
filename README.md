@@ -1,9 +1,9 @@
 <!-- SPDX-License-Identifier: CC-BY-SA-4.0 -->
 <!-- SPDX-FileCopyrightText: Netresearch DTT GmbH -->
 
-# retro — session retrospectives for Claude Code
+# retro — session retrospectives for agent systems
 
-**LLM-driven session retrospection for Claude Code agents.** After a session, `/retro` reads the conversation transcript, detects friction, and routes each finding to one of seven homes — with per-proposal approval and no silent writes.
+**LLM-driven session retrospection for Claude Code and Codex.** Improve accepted task completion at the required quality within economically feasible time and cost. `/retro` examines friction, unmet goals and reusable successes across instructions, knowledge, tools, environment and collaboration, then routes useful measures to seven destinations.
 
 [![License: MIT AND CC-BY-SA-4.0](https://img.shields.io/badge/License-MIT%20AND%20CC--BY--SA--4.0-blue.svg)](LICENSE-MIT)
 [![lint](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml/badge.svg)](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml)
@@ -37,6 +37,15 @@
 `/retro` analyzes the current Claude Code session directly from the conversation transcript — no continuous background hooks. It detects friction (tool errors, repeated mistakes, skills that should have triggered but didn't, convention violations), classifies each finding into exactly one of seven destinations — asking first *who should own this truth* — and materializes the approved learnings. Every write is gated behind explicit per-proposal approval.
 
 A single sweep returns at most ten actionable proposals, grouped by destination, each with a short *why* and a *how-to-apply*.
+
+The [learning contract](skills/retro/references/learning-contract.md) distinguishes
+observations, facts, decisions, preferences and hypotheses. Mad/Sad/Glad are
+brief evidence-seeking perspectives, not claimed emotions. A first success may
+yield a bounded learning; a justified no-op is equally valid. Written, accepted,
+available, applied and effective remain separate states. Green CI and an
+unreverted merge alone do not prove a better approach. Claims stay bounded to
+tested tasks and agent configurations, including cheaper executors actually
+used. Efficiency includes retro, verification, delegation and human rework.
 
 ## Why
 
@@ -96,7 +105,9 @@ composer require netresearch/retro-skill
 | `/retro promote` | **Promote** — inventory accumulated project-local memory (all slugs) and re-home each note upward (canonical-source › skill-update › project-rule › personal-rule; never project-local memory), draining the source only after the upward write is verified | When local memory has piled up and you want it shared and emptied |
 | `/retro done` | **Done** — definition-of-done gate: eight evidence-backed checks (task, findings, retro, cleanup, questions, tickets, time, docs) | As the last command of a session, before calling it finished |
 
-Sweep and Spotlight answer *"what went wrong this session?"*. Outcome and Audit answer *"did our past decisions survive contact with reality?"* and *"is the system still on track?"* — friction that does not show up inside a single session.
+Sweep and Spotlight ask what caused friction, what benefit remains unmet and
+what worked under which conditions. Outcome and Audit examine availability,
+later application and benefit of previous decisions across suitable tasks.
 
 ## A worked example
 

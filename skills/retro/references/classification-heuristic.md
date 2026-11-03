@@ -3,7 +3,11 @@
 
 # Classification Heuristic
 
-Maps friction signals (from `friction-catalog.md`) to one of the seven destinations (from `destination-taxonomy.md`).
+Maps friction and reusable-learning signals (from `friction-catalog.md`) to
+seven destinations (from `destination-taxonomy.md`). Apply
+`learning-contract.md` first: claim kind, evidence, scope, owner and expected
+behavior. A useful first success or valid explicit decision needs no preceding
+failure; a hypothesis remains a hypothesis. A justified no-op is valid.
 
 ## Primary mapping
 
@@ -113,7 +117,9 @@ Three content grades may live inside a skill, each with its price of entry:
 
 - a **duplicated upstream rule** needs justification and evidence — an
   observed failure that a mere reference did not prevent;
-- an **agent-specific rule** needs an observed agent failure mode;
+- an **agent-specific rule** needs an observed failure mode, an evidenced
+  reusable success procedure, or a valid explicit decision; retain its
+  prerequisites, authority, expected benefit and limits;
 - a **deliberately stricter org policy** must be labelled as org policy,
   never presented as the upstream standard.
 
@@ -281,7 +287,11 @@ gap. The **evidence** for a removal is the covering location you cite (the other
 instruction / reference / checkpoint / rule) — *not* a measured A/B rollout or a
 generated "proof" eval. **Open and read that location before citing it, and
 confirm it covers the *same* mechanism** — a similar-sounding adjacent one is not
-coverage. This applies equally when *dropping a fresh candidate* as
+coverage. The reviewer's own competence or a friction-free run is not evidence
+of redundancy for other intended configurations. Factual corrections and
+verified equivalent coverage need no general model campaign; a claim of no
+behavioral benefit is bounded to the cases and executors actually tested (see
+`learning-contract.md`). This applies equally when *dropping a fresh candidate* as
 "already covered / redundant": read the target skill section first. (Observed
 failure: a retro dropped a real learning — the per-release Contributors row is
 driven by `mentions_count` — as "redundant" by conflating it with the *commit-based
