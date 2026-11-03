@@ -88,6 +88,11 @@ decisions. Process critique grants no new authority.
 9. Materialize per destination; for Promote, drain the source last (verified).
 10. Report.
 
+When a material outcome or cost claim needs host data, use
+`scripts/collect-session-metrics.py`; for evidence-backed later opportunities,
+use `scripts/scan-cross-session.py --learning-observations <file>`. Read
+`references/session-metrics.md` for counter scope, unknowns and provenance.
+
 ## Boundaries
 
 **Scope:** session-end/cross-session analysis, skill-PR routing, done gate.
@@ -115,6 +120,7 @@ processes or worktrees.
 | File | Purpose |
 |---|---|
 | `references/learning-contract.md` | Purpose, evidence, quality and configuration bounds |
+| `references/session-metrics.md` | Observed usage/time and later application evidence |
 | `references/feedback-contract.md` | Tracker-neutral evidence and reference resolution |
 | `references/friction-catalog.md` | All signals: friction + learnings (A/B/C, B16–B21) |
 | `references/destination-taxonomy.md` | The seven destinations |

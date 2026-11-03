@@ -402,6 +402,30 @@ Measure comparable tasks and total effort; a missing measurement is unknown.
 
 ## Phase transparency
 
+### Evidence for cost and later effects
+
+Read `references/session-metrics.md` when making a material time, cost or
+effectiveness claim. `scripts/collect-session-metrics.py --transcript-file <raw
+or normalized JSONL>` preserves recorded usage, observed time and available
+configuration provenance. Costs, active time, human waiting, unmeasured stages
+and unsupported counters stay unknown. A timestamp span is not time to an
+accepted result. Parent/child containment needs evidence; parallel intervals
+are unioned rather than summed. Include human repair and all stages when
+comparing required quality and economic feasibility.
+
+For C4, supply checked later observations via
+`scripts/scan-cross-session.py --learning-observations <observations.json>`.
+The existing Learning-Id links accepted/delivered/loaded state, applicability,
+actual application and the previously stated acceptance outcome. The scanner
+deduplicates opportunity ids and reports unknown states and applicable
+opportunities; it does not infer non-use from absent citations or estimate
+causality. A stale version needs a delivery fix, and an applied but unsuccessful
+measure can refute its hypothesis. No later opportunity leaves effect untested.
+Preserve successful counterexamples, changed requirements and incomplete
+coverage. Original task completion remains separate from this later check.
+
+### Report deviations
+
 The mode table above is the *contract*. When a run deviates — skips a phase,
 or substitutes an ad-hoc step for the prescribed script — **say so in one line**,
 with the reason:

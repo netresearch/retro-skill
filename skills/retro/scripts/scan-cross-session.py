@@ -19,6 +19,7 @@ Usage:
     uv run scan-cross-session.py --user-correction-summary [--days 7]
     uv run scan-cross-session.py --recurring-failures [--days 30] [--limit 20] [--include-refusals]
     uv run scan-cross-session.py --follow-up-sessions [--days 30] [--window-days 7] [--limit 20]
+    uv run scan-cross-session.py --learning-observations observations.json
 
 The last two modes read every tool call of every transcript in the window, so
 they run on demand (an audit), not per event. Each reports only what recurs in
@@ -777,6 +778,83 @@ def cmd_follow_up_sessions(args, files) -> int:
     return 0
 
 
+def learning_effectiveness(observations: Any) -> dict[str, Any]:
+    """C4: summarize explicit later opportunities, not inferred non-use.
+
+    The caller supplies evidence-backed states; this script validates and
+    counts them. It cannot infer causation, complete coverage, or loaded skill
+    versions from an absent citation or a recurring error string.
+    """
+    states = ("adopted", "available", "loaded", "applicable", "applied", "success")
+    if not isinstance(observations, list):
+        raise TypeError("learning observations must be a JSON array")
+    distinct, duplicates = {}, 0
+    for index, item in enumerate(observations):
+        if not isinstance(item, dict):
+            raise TypeError(f"observation {index}: expected object")
+        for field in ("learning_id", "opportunity_id", "evidence"):
+            if not isinstance(item.get(field), str) or not item[field].strip():
+                raise ValueError(f"observation {index}: nonempty {field} required")
+        if any(
+            item.get(field) is not None and type(item[field]) is not bool
+            for field in states
+        ):
+            raise ValueError(f"observation {index}: states must be boolean or null")
+        item = {
+            field: item.get(field)
+            for field in ("learning_id", "opportunity_id", "evidence", *states)
+        }
+        item["evidence"] = mask(item["evidence"])
+        key = (item["learning_id"], item["opportunity_id"])
+        if key in distinct:
+            # More copies are not independent evidence. Contradictory copies
+            # require reconciliation rather than keeping a convenient result.
+            if distinct[key] != item:
+                raise ValueError(f"conflicting observations at index {index}")
+            duplicates += 1
+        else:
+            distinct[key] = item
+    grouped = defaultdict(list)
+    for item in distinct.values():
+        grouped[item["learning_id"]].append(item)
+    learnings = []
+    for identity, items in sorted(grouped.items()):
+        tested = [
+            item
+            for item in items
+            if all(item.get(field) is True for field in states[:-1])
+            and type(item.get("success")) is bool
+        ]
+        successful = sum(item["success"] for item in tested)
+        learnings.append(
+            {
+                "learning_id": identity,
+                "observed_opportunities": len(items),
+                "applicable_opportunities": sum(
+                    item.get("applicable") is True for item in items
+                ),
+                "tested_applications": len(tested),
+                "successful_applications": successful,
+                "failed_applications": len(tested) - successful,
+                "unassessed": len(items) - len(tested),
+                "unknown_states": {
+                    field: sum(item.get(field) is None for item in items)
+                    for field in states
+                },
+                "success_rate": successful / len(tested) if tested else None,
+                "observations": items,
+            }
+        )
+    return {
+        "mode": "learning-effectiveness",
+        "signal": "C4",
+        "coverage": "supplied_observations_only",
+        "duplicates_ignored": duplicates,
+        "learnings": learnings,
+        "interpretation": "Observed application outcomes; no causal or comparative effectiveness claim.",
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--projects-dir", type=Path, default=DEFAULT_PROJECTS_DIR)
@@ -813,7 +891,29 @@ def main() -> int:
         help="With --follow-up-sessions: the most days between the two sessions",
     )
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
+    parser.add_argument(
+        "--learning-observations",
+        type=Path,
+        help="C4: explicit evidence-backed adoption/application/outcome states",
+    )
     args = parser.parse_args()
+
+    if args.learning_observations is not None:
+        try:
+            # S8707: explicit caller-selected local evidence, not a path from
+            # untrusted session content. No privilege boundary is crossed;
+            # restricted wrappers must enforce their own authorized roots.
+            observations = json.loads(
+                args.learning_observations.read_text(encoding="utf-8")  # NOSONAR
+            )
+            print(
+                json.dumps(
+                    learning_effectiveness(observations), indent=2, ensure_ascii=False
+                )
+            )
+        except (OSError, ValueError, TypeError) as error:
+            parser.exit(2, f"scan-cross-session: {error}\n")
+        return 0
 
     if not args.projects_dir.exists():
         print(
