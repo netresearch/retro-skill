@@ -12,7 +12,7 @@ rule from a *going-forward* policy into an action you can run on the backlog.
 
 It is a new **front-end** for the existing pipeline, not a new pipeline: it
 replaces Phases 1–3 (transcript detection) with a filesystem inventory and
-reuses Phases 4–10 (classify → approve → materialize → report) unchanged.
+reuses Phases 4–10 (classify → check mandate → materialize → report).
 
 ## Why this mode exists
 
@@ -66,9 +66,9 @@ can judge it. Three binding rules:
    generalizes beyond this user, AND losing it from always-loaded context is
    safe because the owning skill reliably triggers when the content matters.
 3. **Drain is an agent edit, not the `drain` subcommand.** The subcommand
-   refuses paths outside `<slug>/memory/` by design. After the skill PR is
-   verified to exist, remove the section from the rules file with an ordinary
-   approval-gated edit, re-checking the scan's `content_sha256` against the
+   refuses paths outside `<slug>/memory/` by design. Only after the destination
+   is accepted, available and reliably discoverable when needed, remove the
+   section within the authorized scope, re-checking the scan's `content_sha256` against the
    section text first (same race-check semantics). One section per edit.
    Section-removal is markdown surgery and boundary regexes are FENCE-BLIND: a
    `#`-anchored section-heading boundary also matches `#` comment lines inside code
@@ -105,17 +105,18 @@ target (one skill PR, one AGENTS.md append), absorbing every scanned note that
 classifies to it. Rules:
 
 - The proposal lists every absorbed note by path, with its `content_sha256`.
-  Approval of the proposal approves the set; the user can strike individual
-  notes from the list.
+  Check existing authorization for that set, target, action and audience;
+  request approval only for uncovered decisions. The user can strike
+  individual notes from the list.
 - One proposal counts once against the ≤10 cap regardless of how many notes it
   absorbs.
 - The mechanical halves of a materialization repeat identically per proposal —
   use `${CLAUDE_SKILL_DIR}/scripts/materialize-pr.sh` (`start` = fetch + fresh worktree off the
   default branch; `finish` = stage ONLY named files, signed commit, push, PR
   via `--body-file`) instead of hand-typing the sequence dozens of times.
-- Drain stays per-note: each absorbed note is drained individually (verified
-  materialization first), so a partially-landed proposal leaves the
-  unmaterialized notes in place.
+- Drain stays per-note: each absorbed note is drained individually only after
+  the availability check below, so pending or partially-landed proposals leave
+  their active knowledge and handoff reference in place.
 
 ### Classifying a large backlog
 
@@ -133,7 +134,8 @@ main context does not fit. What worked on a 190-note store:
 3. Build the destination-shaped proposals from the merged verdict tables, and
    keep the tables in a durable file next to the proposals.
 4. Materialize one agent per target repository, again read-only except for its
-   own worktree, and drain each note only after its PR or MR URL is read back.
+   own worktree. Read back its PR or MR URL, record the handoff, and drain each
+   note only after the destination's availability is verified.
 
 The classifier verdicts are claims. Before a correction ("the skill says X,
 which is false") reaches the user, re-check its `file:line` yourself.
@@ -174,22 +176,37 @@ Two checks run at Phase 7, before a note enters a proposal:
   `~/.claude/CLAUDE.md` or the target skill. Read the *target* location and
   compare mechanisms (not titles): if the target already covers the same
   mechanism, the note is proposed for tombstone-only drain with the covering
-  location cited; if the target covers an adjacent mechanism only, promote and
-  say what is genuinely new. This is the same read-the-target rule as
+  location and its availability for intended readers verified; if the target
+  covers an adjacent mechanism only, promote and say what is genuinely new.
+  This is the same read-the-target rule as
   "Instruction pruning" in `classification-heuristic.md`.
 
-## Materialize-then-drain (Phase 9)
+## Materialize, verify availability, then drain (Phase 9)
 
-Source deletion is **last** and **gated on confirmed materialization**, per item:
+Retiring the active source is **last**, per item. Use the existing Learning-Id
+and proposal/PR to track the states in `patch-workflow.md`; do not create a
+competing permanent learning store.
 
 1. **Write/PR first** — append the titled rule to `~/.claude/CLAUDE.md` or
    `<project>/AGENTS.md`, write the team record, or open the `feat/retro-<slug>`
    PR with a signed (`git commit -s`) commit.
-2. **Verify** — for file appends, re-read the target and confirm the rule text
-   is present; for a team record, read it back at its URL and confirm the
-   approved text, correction or link is present; for PRs, confirm `gh`/`glab` returned a URL (PR *exists* =
-   materialized; merge is not required).
-3. **Drain only now** — `scan-memory-inventory.py drain <path> --expect-sha256 <sha>`
+2. **Read back and retain the bridge** — confirm the target text or PR exists.
+   A PR URL proves preparation, not acceptance or availability. While pending,
+   leave the source note and its existing `MEMORY.md` entry active; add a short
+   handoff reference there if authorized: Learning-Id, target URL, pending state
+   and the condition for retiring it. The note still supplies the needed
+   knowledge when the next session reads that entry. A link only inside
+   `.promoted/` is not an active bridge. If changing the note, re-scan and use
+   its new `content_sha256` for any later drain.
+3. **Verify availability** — a file or team record must contain the intended
+   content and be accessible from the intended reader's normal entry point.
+   A PR-based target must be accepted and delivered where those readers get
+   it: for a skill, check the relevant distribution/installed version and
+   discovery route, not only `main`. Unknown delivery remains pending. An
+   open, rejected, closed-unmerged or not-yet-distributed PR never passes this
+   check. Record evidence of availability; later application and benefit are
+   separate checks and do not delay this handoff.
+4. **Drain only now** — `scan-memory-inventory.py drain <path> --expect-sha256 <sha>`
    tombstone-**moves** the source into `<slug>/memory/.promoted/` (never `rm`)
    and prunes its `MEMORY.md` entry: only the link to the note goes, with its
    own hook text and one ` · ` separator. The bullet marker, a leading label,
@@ -197,8 +214,14 @@ Source deletion is **last** and **gated on confirmed materialization**, per item
    nothing but the marker and a label remains. The `--expect-sha256`
    race-check aborts the drain if the file changed since the scan.
 
-On any verification failure, **keep the source** and report it. Rejected
-proposals are never drained.
+On any verification failure, **keep the active source** and report it. For a
+rejected or closed PR, update the handoff state and re-evaluate the learning:
+revise its route or scope, retain a still-valid instruction, or retire a
+disproved/stale note with the reason. Rejected proposals are never drained
+merely because a PR once existed. After confirmed delivery, remove the
+transition reference with the final drain. The low-level `drain` command checks
+path and hash, not remote delivery; the agent performs and records that gate
+before invoking it.
 
 **A memory store that is itself versioned needs a sync after the drain.** When
 the store is backed up in a dotfiles repository, the drained notes still sit in
@@ -216,10 +239,11 @@ installer. Git records each drained note as a rename into `.promoted/`.
 2. **Team-visibility of personal notes.** Two layers: (a) at Phase 5, personal
    content (a `$HOME` path, an "I prefer…" style note) is **not** auto-escalated
    past personal-rule; (b) at Phase 8, every `project-rule` / `skill-update` /
-   team-record `canonical-source` proposal triggers a mandatory, default-**N** warning stating exactly where it
-   becomes team-visible and that the source is currently private. The promotion
-   and its paired drain are one approval unit.
-3. **Deletion timing / data loss.** Strict write → verify → drain ordering;
+   team-record `canonical-source` proposal states exactly where it becomes
+   team-visible and that the source is currently private. Existing explicit
+   authorization must cover this audience and content; otherwise ask before
+   disclosure. Promotion and its paired drain are one authorization unit.
+3. **Deletion timing / data loss.** Strict write → verify availability → drain ordering;
    drain is a reversible tombstone move, never `rm`; no verified success → no
    drain, ever; sha256 race-check guards concurrent edits.
 4. **Not everything should escalate.** Store-class discrimination keeps the
@@ -236,4 +260,5 @@ installer. Git records each drained note as a rename into `.promoted/`.
 - `references/classification-heuristic.md` — the C3/B8 routing and scope-escalation
 - `references/destination-taxonomy.md` — the seven destinations
 - `references/workflow.md` — the other modes
-- `docs/specs/retro-promote-mode.md` — full spec
+- `docs/specs/retro-promote-mode.md` — historical implementation proposal; this
+  reference defines the current availability and authorization gates
