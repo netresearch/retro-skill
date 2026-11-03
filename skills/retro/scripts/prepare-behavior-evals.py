@@ -60,9 +60,10 @@ def write_json(path: Path, value: object, output_root: Path) -> None:
     path = path.resolve()
     if not path.is_relative_to(output_root.resolve()):
         raise ValueError("JSON output must remain within the new run directory")
-    path.write_text(
-        json.dumps(value, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
-    )
+    content = json.dumps(value, indent=2, ensure_ascii=False) + "\n"
+    # S8707: this path is canonically confined above to the newly created,
+    # caller-selected run directory. No existing destination is reused.
+    path.write_text(content, encoding="utf-8")  # NOSONAR
 
 
 def prepare(args: argparse.Namespace) -> dict:
