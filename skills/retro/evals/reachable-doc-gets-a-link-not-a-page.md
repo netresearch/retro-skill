@@ -4,6 +4,7 @@
 id: reachable-doc-gets-a-link-not-a-page
 skill_under_test: retro
 mode: sweep
+fixture: fixtures/source-lookup
 trigger: "`/retro` over a session that re-derived the restore order of a database over eleven tool calls. A wiki page states that order correctly, and the session never opened it. The database's inventory record, where the session started, does not link to the page."
 expected:
   - surface the fact as B21 and search before proposing; the wiki hit is opened and read

@@ -26,6 +26,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/scripts/check-upstream-sources.py` — Drift check against canonical sources
 - `skills/retro/scripts/materialize-pr.sh` — Opens the skill-update PR against the source repo
 - `skills/retro/scripts/validate-evals.py` — Validates retro's own eval scenarios (RT-40..42)
+- `skills/retro/scripts/prepare-behavior-evals.py` — Freezes selected Markdown scenarios for native execution or the shared runner, with private grading inputs and isolated old/new fixtures
 - `skills/retro/scripts/check-eval-samples.py` — Refuses an eval retro adds or tightens without `samples` (called by `materialize-pr.sh finish`)
 - `skills/retro/evals/` — retro's own classification evals (LLM-graded fixtures; see `skills/retro/evals/README.md`)
 - `docs/specs/retro-skill.md` — Original spec, superseded (header says why); kept as a historical record

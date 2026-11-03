@@ -307,6 +307,14 @@ The tests run on the Python 3.11 or later that the commands above select, and ne
 
 Each script under `skills/retro/scripts/` except `feedback-contract.py` has its own test file, named after it (`detect-mechanical.py` → `tests/test_detect_mechanical.py` and `tests/test_detect_mechanical_review.py`); `feedback-contract.py` is exercised through `tests/test_tracker_neutrality.py`, and the two shell scripts are run for real by `tests/test_find_installed_skills.py` and `tests/test_materialize_pr.py`. `check-upstream-sources.py` is tested on its offline paths only. `skills/retro/evals/*.md` are scenarios for grading a retro transcript; `validate-evals.py` checks their structure, it does not run them.
 
+The [behavior evaluation guide](skills/retro/references/eval-integration.md)
+connects selected Markdown cases to the existing shared text runner or an
+isolated native agent. `prepare-behavior-evals.py` separates execution inputs
+from grading criteria and preserves old/new context hashes; preparation alone
+is not an executed test. The [acceptance index](skills/retro/evals/README.md)
+maps the 26 initial scenarios and four tool-enabled fixtures. Actual decisions,
+file states and later real-world benefit are reported separately.
+
 A failing test is reported by `unittest` as `FAIL` (an assertion did not hold) or `ERROR` (the test raised), each with the test's id and a traceback, and the run exits non-zero.
 
 In CI, the `lint` workflow (`.github/workflows/lint.yml`, calling `netresearch/skill-repo-skill`'s `ci-python.yml`) runs these three commands on every pull request to `main` and every push to `main`, on Python 3.11, 3.12, 3.13 and 3.14.

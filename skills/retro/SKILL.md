@@ -81,6 +81,8 @@ decisions. Process critique grants no new authority.
    enforcement and reach; consider simplification, tools or environment changes;
    never project-local memory.
 6. Evals — read a matched skill's `evals/`; propose a TDD stub.
+   For targeted native or shared-runner comparisons, prepare isolated inputs
+   with `scripts/prepare-behavior-evals.py`; follow `references/eval-integration.md`.
 7. Proposals — prose Why + How-to-apply, grouped, ≤10; learnings survive the
    trim.
 8. Authorization — reuse the valid mandate; present concrete uncovered decisions
