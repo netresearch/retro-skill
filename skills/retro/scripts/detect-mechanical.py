@@ -40,6 +40,8 @@ Signals implemented (Schicht A — full catalog):
         enough to be a script)
     A20 Wait loop (wait_loop / wait_loop_terminal_condition — hand-rolled
         polling)
+    A21 Auto-memory write (memory_store_write — a note written into a
+        cwd-scoped ~/.claude/projects/<slug>/memory/ silo)
     C6  Written rule violated repeatedly (written_rule_violated_repeatedly —
         a rule in CLAUDE.md that A11/A13/A14/A15 keep tripping)
 """
@@ -330,6 +332,16 @@ A18_MIN_OCCURRENCES = 3
 A18_BASH_PREFIX_TOKENS = 2  # e.g. "git status", "gh pr"
 
 
+#: Event types that log what the harness sent to the API, not the conversation.
+REQUEST_LOG_TYPES = frozenset({"api-request", "api-request-blob"})
+
+
+def _is_request_log(ev: dict) -> bool:
+    # `type` can be any JSON value; an unhashable one is simply not a log type.
+    kind = ev.get("type")
+    return isinstance(kind, str) and kind in REQUEST_LOG_TYPES
+
+
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8", errors="replace") as fh:
@@ -343,8 +355,17 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
                 continue
             # Every reader below calls `ev.get`; a line holding a JSON array,
             # string or number is as unusable as one that does not parse.
-            if isinstance(ev, dict):
-                events.append(ev)
+            if not isinstance(ev, dict):
+                continue
+            # Claude Code logs each API request it sends (`api-request`,
+            # `api-request-blob`), and a blob replays earlier user and assistant
+            # messages, tool calls included. Read as conversation, every call
+            # in it counts again: one session held 231 tool uses for 161
+            # distinct tool_use ids. Blanked, not dropped, so event indices
+            # (the `turn` numbers) stay those of the file.
+            if _is_request_log(ev):
+                ev = {}
+            events.append(ev)
     return events
 
 
@@ -2314,6 +2335,60 @@ def signal_wait_loop_inefficiency(tool_uses) -> list[dict]:
     return out
 
 
+# A21 — a write into a cwd-scoped auto-memory store. The rule is old
+# (destination-taxonomy.md: never write to ~/.claude/projects/<slug>/memory/),
+# but only /retro promote looked at that directory, and only when someone ran
+# it. A note written during the session therefore left no trace in the normal
+# run. Write-class tools carry the path in their input, so the check is a path
+# match; a write through Bash is not covered here.
+# Either separator: native Windows Claude Code writes `C:\Users\…\.claude\…`.
+# Anchored to a home directory (/home/<u>, /Users/<u>, /root, a Windows or
+# WSL-mounted C:\Users\<u>): a fixture tree such as
+# /tmp/x/.claude/projects/-p/memory/ in retro's own tests is not a store.
+MEMORY_STORE_PATH = re.compile(
+    r"^(?:[A-Za-z]:|/mnt/[A-Za-z])?[/\\](?:(?:home|Users)[/\\][^/\\]+|root)"
+    r"[/\\]\.claude[/\\]projects[/\\](?P<slug>[^/\\]+)[/\\]memory[/\\](?P<rel>.+)$"
+)
+MEMORY_WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+
+
+def signal_memory_store_write(tool_uses) -> list[dict]:
+    """One finding per memory file the session wrote with a write-class tool."""
+    by_file: dict[str, dict] = {}
+    for i, name, inp, _result, is_error in tool_uses:
+        # A rejected write left the note as it was.
+        if is_error or name not in MEMORY_WRITE_TOOLS:
+            continue
+        inp = inp or {}
+        path = inp.get("file_path") or inp.get("notebook_path") or ""
+        m = MEMORY_STORE_PATH.search(str(path))
+        if not m:
+            continue
+        rel = m.group("rel").replace("\\", "/")
+        # A tombstone is what /retro promote leaves behind after draining.
+        if rel.startswith(".promoted/"):
+            continue
+        entry = by_file.setdefault(
+            path,
+            {
+                "signal": "A21",
+                "name": "memory_store_write",
+                "file": mask(path),
+                "slug": mask(m.group("slug")),
+                "index": rel == "MEMORY.md",
+                "turns": [],
+                "hint": (
+                    "Auto-memory is a silo: cwd-scoped and read by nobody else. "
+                    "Route the content to its owner instead — the project's "
+                    "AGENTS.md or docs, or the skill that owns the topic — and "
+                    "drain the note with /retro promote."
+                ),
+            },
+        )
+        entry["turns"].append(i)
+    return list(by_file.values())
+
+
 # How many of a signal's keywords a denial set must hit before it counts as
 # THIS rule's gate. One is not enough: the keywords were written to find a rule
 # in prose, where a generic word like "verification" is surrounded by context,
@@ -2426,6 +2501,7 @@ SIGNAL_FUNCS = {
     "A18": signal_permission_reapproval,
     "A19": signal_repeated_probe,
     "A20": signal_wait_loop_inefficiency,
+    "A21": signal_memory_store_write,
     "C6": signal_rule_exists_but_violated,
 }
 

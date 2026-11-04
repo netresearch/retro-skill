@@ -149,11 +149,27 @@ def load_events(path: Path) -> list[dict[str, Any]] | None:
                     ev = json.loads(line)
                 except json.JSONDecodeError:
                     continue
-                if isinstance(ev, dict):
-                    events.append(ev)
+                if not isinstance(ev, dict):
+                    continue
+                # Claude Code's API request logs replay earlier messages, tool
+                # calls included; read as conversation they repeat every call.
+                # Blanked, not dropped, so event positions stay those of the file.
+                if _is_request_log(ev):
+                    ev = {}
+                events.append(ev)
     except OSError:
         return None
     return events
+
+
+#: Event types that log what the harness sent to the API, not the conversation.
+REQUEST_LOG_TYPES = frozenset({"api-request", "api-request-blob"})
+
+
+def _is_request_log(ev: dict) -> bool:
+    # `type` can be any JSON value; an unhashable one is simply not a log type.
+    kind = ev.get("type")
+    return isinstance(kind, str) and kind in REQUEST_LOG_TYPES
 
 
 # Turns that carry the "user" role but were not typed by a human. A copy of
