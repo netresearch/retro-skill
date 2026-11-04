@@ -383,6 +383,45 @@ def transcript_coverage(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+COMMAND_NAME = re.compile(r"[A-Za-z0-9][\w.-]*")
+
+
+def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
+    """Index of the last event that invoked the slash command /NAME, or None.
+
+    Two shapes count, and only at the very start of a user message, so a
+    message that quotes or mentions the command does not:
+      - Claude Code's expansion, `<command-message>…</command-message>` then
+        `<command-name>/NAME</command-name>`; a plugin command carries its
+        namespace (`/retro:retro`);
+      - the typed command as plain text, `/NAME` followed by whitespace or the
+        end, which is what codex-transcript.py renders a Codex invocation as.
+    NAME must match COMMAND_NAME; the caller checks that.
+    """
+    ns = r"/(?:[\w.-]+:)?" + re.escape(name)
+    expansion = re.compile(
+        r"\A\s*(?:<command-message>[^<]*</command-message>\s*)?"
+        r"<command-name>" + ns + r"</command-name>"
+    )
+    typed = re.compile(r"\A\s*" + ns + r"(?:\s|\Z)")
+    last = None
+    for k, ev in enumerate(events):
+        if ev.get("type") != "user":
+            continue
+        content = _message(ev).get("content")
+        if isinstance(content, list):
+            content = " ".join(
+                b["text"]
+                for b in content
+                if isinstance(b, dict) and isinstance(b.get("text"), str)
+            )
+        if isinstance(content, str) and (
+            expansion.match(content) or typed.match(content)
+        ):
+            last = k
+    return last
+
+
 def _message(ev: dict) -> dict:
     """The event's `message` object, or {} when it is missing, null or not an object."""
     msg = ev.get("message")
@@ -2412,6 +2451,14 @@ def main() -> int:
         default=",".join(SIGNAL_FUNCS.keys()),
         help="Comma-separated signal IDs to run (default: all)",
     )
+    parser.add_argument(
+        "--since-command",
+        metavar="NAME",
+        help="Analyse only the events from the last /NAME slash command on "
+        "(e.g. 'retro' for Phase 11, the self-check of a retro run). Earlier "
+        "events are blanked, not removed, so turn numbers stay those of the "
+        "whole transcript. Exits 2 when /NAME never ran.",
+    )
     args = parser.parse_args()
 
     if not args.transcript_file.exists():
@@ -2437,6 +2484,24 @@ def main() -> int:
             print(f"Transcript: {args.transcript_file}")
             print(f"Analysis not run: {coverage['reason']}")
         return 2
+    since_event = None
+    if args.since_command:
+        if not COMMAND_NAME.fullmatch(args.since_command):
+            print(
+                f"--since-command expects a command name such as 'retro', "
+                f"got {args.since_command!r}",
+                file=sys.stderr,
+            )
+            return 2
+        since_event = last_command_event(events, args.since_command)
+        if since_event is None:
+            # An empty finding list here would read as "the run was clean".
+            print(
+                f"/{args.since_command} was never invoked in {args.transcript_file}",
+                file=sys.stderr,
+            )
+            return 2
+        events = [ev if k >= since_event else {} for k, ev in enumerate(events)]
     user_texts = extract_user_texts(events)
     assistant_texts = extract_assistant_texts(events)
     tool_uses = extract_tool_uses(events)
@@ -2509,6 +2574,8 @@ def main() -> int:
         "findings_total": len(findings),
         "findings": findings,
     }
+    if since_event is not None:
+        summary["since_event"] = since_event
     if args.output_format == "json":
         print(_report_json(summary))
     else:

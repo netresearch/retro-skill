@@ -162,7 +162,7 @@ Token cost: moderate — no transcript pass, except gate 8 on a report without a
 ```
 
 Phases 1–3 skipped, except Phase 2 for B21 when gate 8 meets a report without
-a B21 statement; chains the Sweep for gate 3 when none ran; Phases 8–10
+a B21 statement; chains the Sweep for gate 3 when none ran; Phases 8–11
 for the bookings, comments and removals it proposes. Full detail:
 `references/done-mode.md`.
 
@@ -371,7 +371,7 @@ Differences between modes:
 
 **Promote** substitutes Phase 1 with `${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py` (a
 filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
-1b/2/2b/3/3b/3c, runs Phases 4–10 (4c for notes holding a fact about the team's
+1b/2/2b/3/3b/3c, runs Phases 4–11 (4c for notes holding a fact about the team's
 own systems), and adds a verified **materialize-then-drain**
 post-step to Phase 9 — drain via `scan-memory-inventory.py drain <path>` only
 after actual target availability is confirmed (tombstone move, never `rm`).
@@ -440,6 +440,79 @@ not — which is itself a friction signal a future retro will (correctly) flag.
 Prefer the prescribed scripts (`find-installed-skills.sh`, `scan-cross-session.py`)
 over ad-hoc substitutes; reach for an ad-hoc step only when the script genuinely
 cannot serve, and announce it when you do.
+
+## Phase 11: Self-check
+
+Every run ends by asking what went wrong **in the retro itself**. Without this
+step retro improves only when someone runs a retro on a retro: the four
+findings below surfaced only because the user asked "should the retro also
+review itself?" after two runs in one session (2026-11-04), and none of them
+was in either report.
+
+**Scope.** Retro's own instruments and procedure: its scripts, the output it
+had to read, the phases of this table, and how it read the invocation. A
+failure of the work being materialized in Phase 9 — a push the forge rejected,
+a test that failed in the target repository — belongs to that target, not here.
+
+**Mechanical input.** Re-run the pre-pass over the retro run only:
+
+```bash
+uv run "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" \
+  --transcript-file <same transcript> --signals A1,A2 --since-command retro
+```
+
+The transcript is the session's own, located as in § Shared pipeline. Promote
+and Done skip that location step in Phase 1, so they locate it here; when no
+transcript of this session can be found, Phase 11 is skipped and says so in one
+deviation line, like any other skipped phase.
+
+`--since-command retro` blanks every event before the last `/retro`
+invocation and keeps the turn numbers. An invocation counts only at the start
+of a user message: Claude Code's expansion (plugin namespaces such as
+`/retro:retro` included) or the typed `/retro` a Codex transcript carries; a
+message that quotes or mentions the command does not move the start. Exit 2
+means no list to read — no `/retro` ran, the name was refused, or the
+transcript is unsupported (that one prints `"findings": []` with
+`"findings_total": null`). Read an empty list as "none found" only after exit
+0 and a supported `coverage.status`. Keep only the errors whose call ran a
+retro script or read its output; drop the materialization work.
+
+**Three closed questions**, each answered from the transcript, never from
+recollection:
+
+1. Did a retro script fail, return something incomplete, or need output read
+   by guessing its shape?
+2. Did a phase run differently than this table prescribes? The Report
+   deviations lines are the first source; a deviation not reported there is a
+   second finding.
+3. Did the invocation leave a decision open — an ambiguous argument, a mode
+   that two readings would select — that the run settled without asking?
+
+**Evidence rule.** A self-check finding names its evidence: the turn of a tool
+error, the deviation line, the argument as typed. Without such evidence there
+is no finding, and the phase prints one line:
+
+```
+Phase 11 (self-check): nothing found — 0 script errors, 0 deviations, invocation unambiguous.
+```
+
+**Bounded output.** At most two findings. A finding with a cause retro-skill
+can remove becomes a `skill-update` proposal against retro-skill (the catalogue
+entry that owns `retro`), through Phase 8 like any other proposal. A finding
+without such a cause — a one-off slip the text already forbids — is reported
+in the Phase 11 line with its evidence and no proposal:
+
+```
+Phase 11 (self-check): 1 finding, no proposal — Phase 4 skipped without a deviation line (no find-org-skills.py call); routing re-checked, unchanged.
+```
+
+Read `~/.claude/retro/rejected-edits.md` first; a rejected self-edit is not
+proposed again. The self-check does not check itself.
+
+The four findings that motivated this phase are its evals:
+`self-check-guessed-script-output`, `self-check-unread-feedback-source`,
+`self-check-unreported-skipped-phase` and `self-check-ambiguous-invocation`;
+`self-check-clean-run-stays-silent` guards the other direction.
 
 ## Delegating a phase to subagents
 

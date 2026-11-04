@@ -89,6 +89,10 @@ decisions. Process critique grants no new authority.
    for approve / edit / reject. Do not request the same permission again.
 9. Materialize per destination; for Promote, drain the source last (verified).
 10. Report.
+11. Self-check — the retro's own scripts, phases and reading of the invocation:
+    `detect-mechanical.py --since-command retro`, three closed questions, a
+    finding only with evidence, at most two `skill-update`s against retro-skill,
+    otherwise one "nothing found" line. See `references/workflow.md` § Phase 11.
 
 When a material outcome or cost claim needs host data, use
 `scripts/collect-session-metrics.py`; for evidence-backed later opportunities,

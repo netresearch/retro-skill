@@ -337,6 +337,31 @@ Every B21 item also gets a row in the documentation table: fact, starting point,
 what was searched, state, action (`documentation-lookup.md`). A report with no B21 item
 states `B21: none` instead of the table. Gate 8 of Done mode reads either form.
 
+## Phase 11: Self-check
+
+Close every run by checking the retro itself — its scripts, the output it had
+to read, its phases and how it read the invocation — not the work it
+materialized. Re-run the pre-pass over this run only, on this session's
+transcript (Promote and Done locate it here; none found → skip with a
+deviation line):
+
+```bash
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py \
+  --transcript-file <this session's transcript> --signals A1,A2 --since-command retro
+```
+
+Exit 2 means there is no list to read; an empty list means "none found" only
+after exit 0 and a supported `coverage.status`. Answer three closed questions
+from the transcript: did a retro script fail or need its output guessed; did a
+phase run other than prescribed (reported or not); did the invocation leave a
+decision open that the run settled without asking. A finding names its
+evidence (turn, deviation line, argument as typed); without evidence print
+`Phase 11 (self-check): nothing found — …` and stop. At most two findings: one
+whose cause retro-skill can remove becomes a `skill-update` proposal through
+the normal approval, any other is reported in the Phase 11 line without a
+proposal; `~/.claude/retro/rejected-edits.md` applies. Full rules:
+`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/workflow.md` § Phase 11.
+
 ## Spotlight Mode
 
 When invoked with a `"<problem description>"` argument:
@@ -349,7 +374,7 @@ When invoked with a `"<problem description>"` argument:
 - Run LLM enrichment on those turns only
 - Run Phase 3 (cross-session) in filtered mode (same friction signature)
 - Skip Phases 3b and 3c
-- Proceed with Phases 4–10
+- Proceed with Phases 4–11
 
 Faster and uses fewer tokens than a full sweep.
 
@@ -376,7 +401,7 @@ Steps:
 - Phase 3 runs against the target session(s)
 - **Phase 3b is the primary detection step:** walk forward from session end with `collect-review-findings.py --transcript-file <past session> --since <session end>` (reviews, issue and ticket feedback that arrived later, GitHub and GitLab), `git log`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the failures, the durable successes, and superseded temporary copies (D12: a tracked canonical-source upstream PR merged → propose pruning the skill's labelled copy).
 - Phase 3c may also fire if the window is large
-- Phases 4–10 proceed; destinations skew toward `skill-update` — the skill should learn both what to avoid (D1–D10) and what to codify (D11) — and `personal-rule` for personal patterns
+- Phases 4–11 proceed; destinations skew toward `skill-update` — the skill should learn both what to avoid (D1–D10) and what to codify (D11) — and `personal-rule` for personal patterns
 - Guard D11 with the same generalizability filter as B16–B21: a local, one-off change that merged cleanly is **not** a learning; codifying it is noise
 
 Requires latency. Don't run within 24h of the session — most D signals (including D11's "survived the window") haven't manifested yet.
@@ -420,7 +445,7 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
   otherwise pull other projects' notes into Phases 4–10.
 
 - Skip Phases 1b, 2, 2b, 3, 3b, 3c (no transcript) — announce the skip in one line
-- Phases 4–10 run verbatim; destination skew is **upward** per scope-escalation
+- Phases 4–11 run verbatim; destination skew is **upward** per scope-escalation
   (skill-update › project-rule › personal-rule), **never** project-local memory
 - Phase 8 verifies whether the existing mandate covers the target and audience
   change. Make private-to-team/public disclosure visible; ask only if uncovered.
