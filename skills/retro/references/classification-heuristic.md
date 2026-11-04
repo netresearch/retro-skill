@@ -42,6 +42,7 @@ failure; a hypothesis remains a hypothesis. A justified no-op is valid.
 | **A18** permission re-approval | `personal-rule` + invoke `update-config` skill | — |
 | **A19** repeated command shape | `harness-artefact` / skill **script** that returns the whole answer in one call | `skill-update` only if a script already exists and was not used |
 | **A20** wait-loop inefficiency | `harness-artefact` — a watch that returns on the first actionable event | `personal-rule` (waiting discipline) |
+| **A21** auto-memory write | The note's owner, never the memory store: `project-rule` / project docs (`AGENTS.md`, `docs/`) for a fact about one project, `skill-update` for a topic a skill owns, `personal-rule` only for the user's own preference. Then drain the note (`/retro promote`) | `canonical-source` when the note restates a fact owned outside the agent system |
 | **B1** output quality mismatch | `personal-rule` (preference) OR `skill-update` (output style) | — |
 | **B2** wrong skill choice | `skill-update` (description of unused skill) | — |
 | **B3** skill capability gap | `skill-update` (add guidance) | `new-skill` if gap is large |

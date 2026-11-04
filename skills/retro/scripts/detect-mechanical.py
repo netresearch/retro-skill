@@ -40,6 +40,8 @@ Signals implemented (Schicht A — full catalog):
         enough to be a script)
     A20 Wait loop (wait_loop / wait_loop_terminal_condition — hand-rolled
         polling)
+    A21 Auto-memory write (memory_store_write — a note written into a
+        cwd-scoped ~/.claude/projects/<slug>/memory/ silo)
     C6  Written rule violated repeatedly (written_rule_violated_repeatedly —
         a rule in CLAUDE.md that A11/A13/A14/A15 keep tripping)
 """
@@ -2333,6 +2335,54 @@ def signal_wait_loop_inefficiency(tool_uses) -> list[dict]:
     return out
 
 
+# A21 — a write into a cwd-scoped auto-memory store. The rule is old
+# (destination-taxonomy.md: never write to ~/.claude/projects/<slug>/memory/),
+# but only /retro promote looked at that directory, and only when someone ran
+# it. A note written during the session therefore left no trace in the normal
+# run. Write-class tools carry the path in their input, so the check is a path
+# match; a write through Bash is not covered here.
+MEMORY_STORE_PATH = re.compile(
+    r"/\.claude/projects/(?P<slug>[^/]+)/memory/(?P<rel>.+)$"
+)
+MEMORY_WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
+
+
+def signal_memory_store_write(tool_uses) -> list[dict]:
+    """One finding per memory file the session wrote with a write-class tool."""
+    by_file: dict[str, dict] = {}
+    for i, name, inp, _result, _err in tool_uses:
+        if name not in MEMORY_WRITE_TOOLS:
+            continue
+        inp = inp or {}
+        path = inp.get("file_path") or inp.get("notebook_path") or ""
+        m = MEMORY_STORE_PATH.search(str(path))
+        if not m:
+            continue
+        rel = m.group("rel")
+        # A tombstone is what /retro promote leaves behind after draining.
+        if rel.startswith(".promoted/"):
+            continue
+        entry = by_file.setdefault(
+            path,
+            {
+                "signal": "A21",
+                "name": "memory_store_write",
+                "file": path,
+                "slug": m.group("slug"),
+                "index": rel == "MEMORY.md",
+                "turns": [],
+                "hint": (
+                    "Auto-memory is a silo: cwd-scoped and read by nobody else. "
+                    "Route the content to its owner instead — the project's "
+                    "AGENTS.md or docs, or the skill that owns the topic — and "
+                    "drain the note with /retro promote."
+                ),
+            },
+        )
+        entry["turns"].append(i)
+    return list(by_file.values())
+
+
 # How many of a signal's keywords a denial set must hit before it counts as
 # THIS rule's gate. One is not enough: the keywords were written to find a rule
 # in prose, where a generic word like "verification" is surrounded by context,
@@ -2445,6 +2495,7 @@ SIGNAL_FUNCS = {
     "A18": signal_permission_reapproval,
     "A19": signal_repeated_probe,
     "A20": signal_wait_loop_inefficiency,
+    "A21": signal_memory_store_write,
     "C6": signal_rule_exists_but_violated,
 }
 

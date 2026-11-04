@@ -28,7 +28,7 @@ Ingestion of error trackers, monitoring and chat is out of scope — see "Future
 
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
-| A — Mechanical | 20 | 20 (all of A1–A20) |
+| A — Mechanical | 21 | 21 (all of A1–A21) |
 | B — LLM inference | 21 | LLM-driven; B16–B21 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py` |
 | C — Cross-session | 6 | Partial (script `scan-cross-session.py`: C1, C2, C5) |
 | D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
@@ -62,6 +62,7 @@ Fast, deterministic, regex/count-based, with Bash syntax parsing for A20 polling
 | A18 | Permission re-approval | Same permission prompt approved ≥3× in session | Allowlist needed |
 | A19 | Repeated command shape | One program+subcommand shape invoked >=8x (plumbing excluded, remote calls flagged) | The same derived answer recomputed by hand — script candidate |
 | A20 | Wait-loop inefficiency | Bash `until`/`while` syntax containing a literal `sleep` command; quoted search text, comments and heredoc prose are excluded. The stronger terminal-condition candidate also requires backlog/zero comparison text inside that loop | A syntactic polling candidate to inspect, not execution or reachability proof; waiting for every check may delay an actionable failure |
+| A21 | Auto-memory write | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` on a path under `~/.claude/projects/<slug>/memory/` (any slug; `.promoted/` tombstones excluded), one finding per file with every turn. A write through Bash is not covered | Knowledge parked in a cwd-scoped silo instead of the project docs or the owning skill — the normal run sees it, not only `/retro promote` |
 
 ## Schicht B — LLM Inference
 
