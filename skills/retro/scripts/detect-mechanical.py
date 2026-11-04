@@ -2342,7 +2342,11 @@ def signal_wait_loop_inefficiency(tool_uses) -> list[dict]:
 # run. Write-class tools carry the path in their input, so the check is a path
 # match; a write through Bash is not covered here.
 # Either separator: native Windows Claude Code writes `C:\Users\…\.claude\…`.
+# Anchored to a home directory (/home/<u>, /Users/<u>, /root, a Windows or
+# WSL-mounted C:\Users\<u>): a fixture tree such as
+# /tmp/x/.claude/projects/-p/memory/ in retro's own tests is not a store.
 MEMORY_STORE_PATH = re.compile(
+    r"^(?:[A-Za-z]:|/mnt/[A-Za-z])?[/\\](?:(?:home|Users)[/\\][^/\\]+|root)"
     r"[/\\]\.claude[/\\]projects[/\\](?P<slug>[^/\\]+)[/\\]memory[/\\](?P<rel>.+)$"
 )
 MEMORY_WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
@@ -2351,8 +2355,9 @@ MEMORY_WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 def signal_memory_store_write(tool_uses) -> list[dict]:
     """One finding per memory file the session wrote with a write-class tool."""
     by_file: dict[str, dict] = {}
-    for i, name, inp, _result, _err in tool_uses:
-        if name not in MEMORY_WRITE_TOOLS:
+    for i, name, inp, _result, is_error in tool_uses:
+        # A rejected write left the note as it was.
+        if is_error or name not in MEMORY_WRITE_TOOLS:
             continue
         inp = inp or {}
         path = inp.get("file_path") or inp.get("notebook_path") or ""
@@ -2368,8 +2373,8 @@ def signal_memory_store_write(tool_uses) -> list[dict]:
             {
                 "signal": "A21",
                 "name": "memory_store_write",
-                "file": path,
-                "slug": m.group("slug"),
+                "file": mask(path),
+                "slug": mask(m.group("slug")),
                 "index": rel == "MEMORY.md",
                 "turns": [],
                 "hint": (

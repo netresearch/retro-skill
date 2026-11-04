@@ -88,6 +88,41 @@ class MemoryStoreWriteTest(unittest.TestCase):
             [("F--foo", False), ("F--foo", True)],
         )
 
+    def test_fixture_store_outside_a_home_does_not_fire(self):
+        paths = (
+            "/tmp/tmpab12/.claude/projects/-p/memory/note.md",
+            "/home/u/projects/retro/tests/fixtures/.claude/projects/-p/memory/note.md",
+        )
+        events = []
+        for n, path in enumerate(paths):
+            events += tool_use_pair(f"t{n}", "Write", {"file_path": path}, "ok")
+        self.assertEqual(a21(events), [])
+
+    def test_other_home_layouts_fire(self):
+        paths = (
+            "/Users/u/.claude/projects/-p/memory/a.md",
+            "/root/.claude/projects/-p/memory/b.md",
+            "/mnt/c/Users/live/.claude/projects/F--foo/memory/c.md",
+        )
+        events = []
+        for n, path in enumerate(paths):
+            events += tool_use_pair(f"t{n}", "Write", {"file_path": path}, "ok")
+        self.assertEqual(len(a21(events)), 3)
+
+    def test_rejected_write_does_not_fire(self):
+        out = a21(
+            tool_use_pair("t1", "Edit", REAL_EDIT, "String not found", is_error=True)
+        )
+        self.assertEqual(out, [])
+
+    def test_token_in_path_is_masked(self):
+        token = "ghp_" + "Ab1" * 12
+        path = f"/home/u/.claude/projects/-p-{token}/memory/{token}.md"
+        out = a21(tool_use_pair("t1", "Write", {"file_path": path}, "ok"))
+        self.assertEqual(len(out), 1)
+        self.assertNotIn(token, out[0]["file"])
+        self.assertNotIn(token, out[0]["slug"])
+
     def test_reading_a_note_does_not_fire(self):
         self.assertEqual(
             a21(tool_use_pair("t1", "Read", {"file_path": REAL_EDIT["file_path"]}, "")),
