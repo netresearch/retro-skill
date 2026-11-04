@@ -330,6 +330,16 @@ A18_MIN_OCCURRENCES = 3
 A18_BASH_PREFIX_TOKENS = 2  # e.g. "git status", "gh pr"
 
 
+#: Event types that log what the harness sent to the API, not the conversation.
+REQUEST_LOG_TYPES = frozenset({"api-request", "api-request-blob"})
+
+
+def _is_request_log(ev: dict) -> bool:
+    # `type` can be any JSON value; an unhashable one is simply not a log type.
+    kind = ev.get("type")
+    return isinstance(kind, str) and kind in REQUEST_LOG_TYPES
+
+
 def load_jsonl(path: Path) -> list[dict[str, Any]]:
     events: list[dict[str, Any]] = []
     with path.open("r", encoding="utf-8", errors="replace") as fh:
@@ -343,8 +353,17 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
                 continue
             # Every reader below calls `ev.get`; a line holding a JSON array,
             # string or number is as unusable as one that does not parse.
-            if isinstance(ev, dict):
-                events.append(ev)
+            if not isinstance(ev, dict):
+                continue
+            # Claude Code logs each API request it sends (`api-request`,
+            # `api-request-blob`), and a blob replays earlier user and assistant
+            # messages, tool calls included. Read as conversation, every call
+            # in it counts again: one session held 231 tool uses for 161
+            # distinct tool_use ids. Blanked, not dropped, so event indices
+            # (the `turn` numbers) stay those of the file.
+            if _is_request_log(ev):
+                ev = {}
+            events.append(ev)
     return events
 
 

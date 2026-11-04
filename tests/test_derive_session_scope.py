@@ -92,6 +92,29 @@ class LoneSurrogateTest(unittest.TestCase):
         self.assertIn("artefacts", data)
 
 
+class RequestLogEventsTest(unittest.TestCase):
+    def test_request_logs_are_not_events(self) -> None:
+        # Claude Code's api-request-blob replays the conversation, tool calls
+        # included; the scope must not see each call twice.
+        call = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}
+                ]
+            },
+        }
+        rows = [
+            call,
+            {"type": "api-request-blob", "message": call["message"]},
+            {"type": "api-request", "message": call["message"]},
+        ]
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "session.jsonl"
+            path.write_text("\n".join(json.dumps(r) for r in rows))
+            self.assertEqual(list(dss.iter_events(path)), [call])
+
+
 class BareLayoutTest(unittest.TestCase):
     def setUp(self) -> None:
         root = Path(tempfile.mkdtemp())

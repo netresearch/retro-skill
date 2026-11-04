@@ -163,6 +163,24 @@ class LoadEventsTest(TempDirCase):
         )
         self.assertEqual(scs.load_events(path), [{"type": "user"}])
 
+    def test_request_logs_are_blanked(self) -> None:
+        # Claude Code's api-request-blob replays the conversation; its tool
+        # calls must not be counted a second time.
+        call = {
+            "type": "assistant",
+            "message": {
+                "content": [
+                    {"type": "tool_use", "id": "t1", "name": "Bash", "input": {}}
+                ]
+            },
+        }
+        rows = [call, {"type": "api-request-blob", "message": call["message"]}]
+        path = self.root / "s.jsonl"
+        path.write_text("\n".join(json.dumps(r) for r in rows), encoding="utf-8")
+        events = scs.load_events(path)
+        self.assertEqual(events, [call, {}])
+        self.assertEqual(len(scs.tool_calls(events)), 1)
+
     def test_a_vanished_transcript_is_skipped_not_counted(self) -> None:
         Transcript().user("hello").write(self.root, "-p", "present")
         files = scs.session_files(self.root, None, 3650)

@@ -443,8 +443,23 @@ def iter_events(path: Path):
                 continue
             # A line that is valid JSON but not an object (`[1, 2]`, `null`)
             # is no event; every reader below calls `.get` on one.
-            if isinstance(event, dict):
-                yield event
+            if not isinstance(event, dict):
+                continue
+            # Claude Code's API request logs replay earlier messages, tool
+            # calls included; read as conversation they repeat every call.
+            if _is_request_log(event):
+                continue
+            yield event
+
+
+#: Event types that log what the harness sent to the API, not the conversation.
+REQUEST_LOG_TYPES = frozenset({"api-request", "api-request-blob"})
+
+
+def _is_request_log(ev: dict) -> bool:
+    # `type` can be any JSON value; an unhashable one is simply not a log type.
+    kind = ev.get("type")
+    return isinstance(kind, str) and kind in REQUEST_LOG_TYPES
 
 
 def _message(event: dict[str, Any]) -> dict[str, Any]:
