@@ -461,11 +461,21 @@ uv run "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" \
   --transcript-file <same transcript> --signals A1,A2 --since-command retro
 ```
 
+The transcript is the session's own, located as in § Shared pipeline. Promote
+and Done skip that location step in Phase 1, so they locate it here; when no
+transcript of this session can be found, Phase 11 is skipped and says so in one
+deviation line, like any other skipped phase.
+
 `--since-command retro` blanks every event before the last `/retro`
-invocation (plugin namespaces such as `/retro:retro` included) and keeps the
-turn numbers; it exits 2 when no `/retro` ran, so an empty list always means
-"none found". Keep only the errors whose call ran a retro script or read its
-output; drop the materialization work.
+invocation and keeps the turn numbers. An invocation counts only at the start
+of a user message: Claude Code's expansion (plugin namespaces such as
+`/retro:retro` included) or the typed `/retro` a Codex transcript carries; a
+message that quotes or mentions the command does not move the start. Exit 2
+means no list to read — no `/retro` ran, the name was refused, or the
+transcript is unsupported (that one prints `"findings": []` with
+`"findings_total": null`). Read an empty list as "none found" only after exit
+0 and a supported `coverage.status`. Keep only the errors whose call ran a
+retro script or read its output; drop the materialization work.
 
 **Three closed questions**, each answered from the transcript, never from
 recollection:
@@ -486,10 +496,18 @@ is no finding, and the phase prints one line:
 Phase 11 (self-check): nothing found — 0 script errors, 0 deviations, invocation unambiguous.
 ```
 
-**Bounded output.** At most two findings, as `skill-update` proposals against
-retro-skill (the catalogue entry that owns `retro`), through Phase 8 like any
-other proposal. Read `~/.claude/retro/rejected-edits.md` first; a rejected
-self-edit is not proposed again. The self-check does not check itself.
+**Bounded output.** At most two findings. A finding with a cause retro-skill
+can remove becomes a `skill-update` proposal against retro-skill (the catalogue
+entry that owns `retro`), through Phase 8 like any other proposal. A finding
+without such a cause — a one-off slip the text already forbids — is reported
+in the Phase 11 line with its evidence and no proposal:
+
+```
+Phase 11 (self-check): 1 finding, no proposal — Phase 4 skipped without a deviation line (no find-org-skills.py call); routing re-checked, unchanged.
+```
+
+Read `~/.claude/retro/rejected-edits.md` first; a rejected self-edit is not
+proposed again. The self-check does not check itself.
 
 The four findings that motivated this phase are its evals:
 `self-check-guessed-script-output`, `self-check-unread-feedback-source`,

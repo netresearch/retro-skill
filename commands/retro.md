@@ -341,20 +341,25 @@ states `B21: none` instead of the table. Gate 8 of Done mode reads either form.
 
 Close every run by checking the retro itself — its scripts, the output it had
 to read, its phases and how it read the invocation — not the work it
-materialized. Re-run the pre-pass over this run only:
+materialized. Re-run the pre-pass over this run only, on this session's
+transcript (Promote and Done locate it here; none found → skip with a
+deviation line):
 
 ```bash
 uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py \
-  --transcript-file <same transcript> --signals A1,A2 --since-command retro
+  --transcript-file <this session's transcript> --signals A1,A2 --since-command retro
 ```
 
-Answer three closed questions from the transcript: did a retro script fail or
-need its output guessed; did a phase run other than prescribed (reported or
-not); did the invocation leave a decision open that the run settled without
-asking. A finding names its evidence (turn, deviation line, argument as typed);
-without evidence print `Phase 11 (self-check): nothing found — …` and stop. At
-most two findings, proposed as `skill-update` against retro-skill through the
-normal approval; `~/.claude/retro/rejected-edits.md` applies. Full rules:
+Exit 2 means there is no list to read; an empty list means "none found" only
+after exit 0 and a supported `coverage.status`. Answer three closed questions
+from the transcript: did a retro script fail or need its output guessed; did a
+phase run other than prescribed (reported or not); did the invocation leave a
+decision open that the run settled without asking. A finding names its
+evidence (turn, deviation line, argument as typed); without evidence print
+`Phase 11 (self-check): nothing found — …` and stop. At most two findings: one
+whose cause retro-skill can remove becomes a `skill-update` proposal through
+the normal approval, any other is reported in the Phase 11 line without a
+proposal; `~/.claude/retro/rejected-edits.md` applies. Full rules:
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/workflow.md` § Phase 11.
 
 ## Spotlight Mode

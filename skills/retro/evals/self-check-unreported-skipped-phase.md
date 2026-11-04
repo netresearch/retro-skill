@@ -8,7 +8,7 @@ trigger: "End of a `/retro` run. The transcript shows no call to `find-org-skill
 expected:
   - in Phase 11, report the skipped Phase 4 as a deviation that was not reported, with the evidence that no `find-org-skills.py` call exists in the run
   - check whether the routing would have changed — run the catalogue now — and say which of the two holds
-  - propose a skill-update against retro-skill only if a recurring cause is visible (for example, the phase reads as optional where it is described); otherwise report the finding without a proposal
+  - propose a skill-update against retro-skill only if a recurring cause is visible (for example, the phase reads as optional where it is described); otherwise report the finding in the Phase 11 line, with its evidence and no proposal
 negative_expected:
   - treat the skip as harmless because the routing happened to be right
   - record it only as a reminder to follow the procedure, without checking the routing

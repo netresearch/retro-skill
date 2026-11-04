@@ -39,6 +39,14 @@ def _command(name: str) -> dict:
     }
 
 
+def _user(text: str) -> dict:
+    """A message the human typed, as a text block."""
+    return {
+        "type": "user",
+        "message": {"role": "user", "content": [{"type": "text", "text": text}]},
+    }
+
+
 def _call(tool_id: str, command: str, result: str, is_error: bool) -> list[dict]:
     return [
         {
@@ -135,6 +143,44 @@ class SinceCommand(unittest.TestCase):
         out = _run(_call("w1", "make", "ok", False), "--since-command", "retro")
         self.assertEqual(out.returncode, 2)
         self.assertIn("/retro", out.stderr)
+        self.assertEqual(out.stdout, "")
+
+    def test_a_message_quoting_the_tag_is_not_an_invocation(self):
+        # A later message that quotes the tag must not move the start past the
+        # run's own errors and turn them into "nothing found".
+        quoted = _user("as you can see, <command-name>/retro</command-name> ran twice")
+        report = json.loads(_run(EVENTS + [quoted], "--since-command", "retro").stdout)
+        self.assertEqual(report["since_event"], 5)
+        self.assertEqual(report["findings_total"], 1)
+
+    def test_a_typed_invocation_counts_as_in_a_codex_transcript(self):
+        # codex-transcript.py copies the typed text verbatim: no command tags.
+        events = (
+            _call("w1", "make build", "Error: build failed", True)
+            + [_user("/retro zur retro?")]
+            + _call("r1", "jq .x out.json", "jq: error: Cannot index", True)
+        )
+        report = json.loads(_run(events, "--since-command", "retro").stdout)
+        self.assertEqual(report["since_event"], 2)
+        self.assertEqual(report["findings_total"], 1)
+
+    def test_a_typed_mention_or_a_longer_command_is_not_an_invocation(self):
+        for text in ("please run /retro later", "/retrospective now", "/retro-x"):
+            with self.subTest(text=text):
+                events = [_user(text)] + _call("w1", "make", "ok", False)
+                self.assertEqual(_run(events, "--since-command", "retro").returncode, 2)
+
+    def test_a_null_text_block_is_skipped_not_a_crash(self):
+        odd = {
+            "type": "user",
+            "message": {"role": "user", "content": [{"type": "text", "text": None}]},
+        }
+        out = _run([odd] + EVENTS, "--since-command", "retro")
+        self.assertEqual(out.returncode, 0, out.stderr)
+
+    def test_a_name_that_is_not_a_command_name_is_refused(self):
+        out = _run(EVENTS, "--since-command", "re(t|r)o")
+        self.assertEqual(out.returncode, 2)
         self.assertEqual(out.stdout, "")
 
 

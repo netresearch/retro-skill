@@ -383,15 +383,27 @@ def transcript_coverage(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+COMMAND_NAME = re.compile(r"[A-Za-z0-9][\w.-]*")
+
+
 def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
     """Index of the last event that invoked the slash command /NAME, or None.
 
-    Claude Code records an invocation as `<command-name>/NAME</command-name>`,
-    a plugin command with its namespace: `/retro:retro`. Both match.
+    Two shapes count, and only at the very start of a user message, so a
+    message that quotes or mentions the command does not:
+      - Claude Code's expansion, `<command-message>…</command-message>` then
+        `<command-name>/NAME</command-name>`; a plugin command carries its
+        namespace (`/retro:retro`);
+      - the typed command as plain text, `/NAME` followed by whitespace or the
+        end, which is what codex-transcript.py renders a Codex invocation as.
+    NAME must match COMMAND_NAME; the caller checks that.
     """
-    pattern = re.compile(
-        r"<command-name>/(?:[\w.-]+:)?" + re.escape(name) + r"</command-name>"
+    ns = r"/(?:[\w.-]+:)?" + re.escape(name)
+    expansion = re.compile(
+        r"\A\s*(?:<command-message>[^<]*</command-message>\s*)?"
+        r"<command-name>" + ns + r"</command-name>"
     )
+    typed = re.compile(r"\A\s*" + ns + r"(?:\s|\Z)")
     last = None
     for k, ev in enumerate(events):
         if ev.get("type") != "user":
@@ -399,9 +411,13 @@ def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
         content = _message(ev).get("content")
         if isinstance(content, list):
             content = " ".join(
-                b.get("text", "") for b in content if isinstance(b, dict)
+                b["text"]
+                for b in content
+                if isinstance(b, dict) and isinstance(b.get("text"), str)
             )
-        if isinstance(content, str) and pattern.search(content):
+        if isinstance(content, str) and (
+            expansion.match(content) or typed.match(content)
+        ):
             last = k
     return last
 
@@ -2470,6 +2486,13 @@ def main() -> int:
         return 2
     since_event = None
     if args.since_command:
+        if not COMMAND_NAME.fullmatch(args.since_command):
+            print(
+                f"--since-command expects a command name such as 'retro', "
+                f"got {args.since_command!r}",
+                file=sys.stderr,
+            )
+            return 2
         since_event = last_command_event(events, args.since_command)
         if since_event is None:
             # An empty finding list here would read as "the run was clean".
