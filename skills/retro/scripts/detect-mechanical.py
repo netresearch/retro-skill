@@ -383,6 +383,29 @@ def transcript_coverage(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
+    """Index of the last event that invoked the slash command /NAME, or None.
+
+    Claude Code records an invocation as `<command-name>/NAME</command-name>`,
+    a plugin command with its namespace: `/retro:retro`. Both match.
+    """
+    pattern = re.compile(
+        r"<command-name>/(?:[\w.-]+:)?" + re.escape(name) + r"</command-name>"
+    )
+    last = None
+    for k, ev in enumerate(events):
+        if ev.get("type") != "user":
+            continue
+        content = _message(ev).get("content")
+        if isinstance(content, list):
+            content = " ".join(
+                b.get("text", "") for b in content if isinstance(b, dict)
+            )
+        if isinstance(content, str) and pattern.search(content):
+            last = k
+    return last
+
+
 def _message(ev: dict) -> dict:
     """The event's `message` object, or {} when it is missing, null or not an object."""
     msg = ev.get("message")
@@ -2412,6 +2435,14 @@ def main() -> int:
         default=",".join(SIGNAL_FUNCS.keys()),
         help="Comma-separated signal IDs to run (default: all)",
     )
+    parser.add_argument(
+        "--since-command",
+        metavar="NAME",
+        help="Analyse only the events from the last /NAME slash command on "
+        "(e.g. 'retro' for Phase 11, the self-check of a retro run). Earlier "
+        "events are blanked, not removed, so turn numbers stay those of the "
+        "whole transcript. Exits 2 when /NAME never ran.",
+    )
     args = parser.parse_args()
 
     if not args.transcript_file.exists():
@@ -2437,6 +2468,17 @@ def main() -> int:
             print(f"Transcript: {args.transcript_file}")
             print(f"Analysis not run: {coverage['reason']}")
         return 2
+    since_event = None
+    if args.since_command:
+        since_event = last_command_event(events, args.since_command)
+        if since_event is None:
+            # An empty finding list here would read as "the run was clean".
+            print(
+                f"/{args.since_command} was never invoked in {args.transcript_file}",
+                file=sys.stderr,
+            )
+            return 2
+        events = [ev if k >= since_event else {} for k, ev in enumerate(events)]
     user_texts = extract_user_texts(events)
     assistant_texts = extract_assistant_texts(events)
     tool_uses = extract_tool_uses(events)
@@ -2509,6 +2551,8 @@ def main() -> int:
         "findings_total": len(findings),
         "findings": findings,
     }
+    if since_event is not None:
+        summary["since_event"] = since_event
     if args.output_format == "json":
         print(_report_json(summary))
     else:
