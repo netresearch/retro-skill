@@ -2341,8 +2341,9 @@ def signal_wait_loop_inefficiency(tool_uses) -> list[dict]:
 # it. A note written during the session therefore left no trace in the normal
 # run. Write-class tools carry the path in their input, so the check is a path
 # match; a write through Bash is not covered here.
+# Either separator: native Windows Claude Code writes `C:\Users\…\.claude\…`.
 MEMORY_STORE_PATH = re.compile(
-    r"/\.claude/projects/(?P<slug>[^/]+)/memory/(?P<rel>.+)$"
+    r"[/\\]\.claude[/\\]projects[/\\](?P<slug>[^/\\]+)[/\\]memory[/\\](?P<rel>.+)$"
 )
 MEMORY_WRITE_TOOLS = {"Write", "Edit", "MultiEdit", "NotebookEdit"}
 
@@ -2358,7 +2359,7 @@ def signal_memory_store_write(tool_uses) -> list[dict]:
         m = MEMORY_STORE_PATH.search(str(path))
         if not m:
             continue
-        rel = m.group("rel")
+        rel = m.group("rel").replace("\\", "/")
         # A tombstone is what /retro promote leaves behind after draining.
         if rel.startswith(".promoted/"):
             continue

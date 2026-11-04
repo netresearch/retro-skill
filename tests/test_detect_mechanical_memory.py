@@ -74,6 +74,20 @@ class MemoryStoreWriteTest(unittest.TestCase):
         events += tool_use_pair("t3", "Edit", {"file_path": "/repo/AGENTS.md"}, "ok")
         self.assertEqual(a21(events), [])
 
+    def test_windows_paths_fire(self):
+        # Paths as native Windows Claude Code wrote them (2026-07).
+        note = "C:\\Users\\live\\.claude\\projects\\F--foo\\memory\\wsl-mcp-oom-2026-07-01.md"
+        index = "C:\\Users\\live\\.claude\\projects\\F--foo\\memory\\MEMORY.md"
+        tomb = "C:\\Users\\live\\.claude\\projects\\F--foo\\memory\\.promoted\\x.md"
+        events = tool_use_pair("t1", "Write", {"file_path": note}, "ok")
+        events += tool_use_pair("t2", "Edit", {"file_path": index}, "ok")
+        events += tool_use_pair("t3", "Write", {"file_path": tomb}, "ok")
+        out = a21(events)
+        self.assertEqual(
+            [(f["slug"], f["index"]) for f in out],
+            [("F--foo", False), ("F--foo", True)],
+        )
+
     def test_reading_a_note_does_not_fire(self):
         self.assertEqual(
             a21(tool_use_pair("t1", "Read", {"file_path": REAL_EDIT["file_path"]}, "")),
