@@ -140,9 +140,9 @@ main context does not fit. What worked on a 190-note store:
 The classifier verdicts are claims. Before a correction ("the skill says X,
 which is false") reaches the user, re-check its `file:line` yourself.
 
-## Verify before promoting — stale facts and paraphrase duplicates
+## Verify before promoting — stale facts, paraphrase duplicates, generalization
 
-Two checks run at Phase 7, before a note enters a proposal:
+Three checks run at Phase 7, before a note enters a proposal:
 
 - **Stale-check.** Every note records what was true when written — not only
   `reference` notes. Verify its load-bearing claim against reality before it
@@ -180,6 +180,32 @@ Two checks run at Phase 7, before a note enters a proposal:
   covers an adjacent mechanism only, promote and say what is genuinely new.
   This is the same read-the-target rule as
   "Instruction pruning" in `classification-heuristic.md`.
+- **Generalization check.** A note records a command that ran once, in one
+  context, for the person who wrote it. Promoted, the same lines become a
+  recipe for every reader of the target, and the context that made them safe
+  or sufficient is gone. Before a command block or a step list enters a
+  proposal, read it as a reader who has only the target text and ask three
+  questions:
+  - **Does it complete the action?** A block that ends at `--dry-run`, a
+    `--check`, a preview or a "then do the same for real" leaves the reader
+    with nothing done. Write out the step that changes state.
+  - **Are its defaults safe for anyone who copies it?** Host-key handling
+    (`StrictHostKeyChecking=accept-new`, an unchecked `known_hosts`), a
+    forwarded SSH agent or a mounted credential, a disabled TLS check, a
+    secret on the command line: each was the writer's own trade-off on their
+    own machine. Replace it with the safe form, or state the condition under
+    which the shortcut is acceptable.
+  - **Which condition of the original context is missing?** The version, the
+    host, the setting that was already in place, the reason a step could be
+    skipped. Name it in the text, or narrow the claim to where it holds.
+
+  The 2026-11-04 promote run of 136 notes opened 31 documentation PRs. Their
+  bot reviews raised 48 threads, nine of them graded major. Neither the
+  stale-check nor the author's own review had caught them. Among them: an
+  accept-new host key and a forwarded SSH agent in one deploy recipe, a block
+  that ended at `--dry-run`, and an HTTP-only setup that kept the backend's
+  `lockSSL`. Every one was a statement that had been true for the writer and
+  was incomplete for the reader.
 
 ## Materialize, verify availability, then drain (Phase 9)
 
