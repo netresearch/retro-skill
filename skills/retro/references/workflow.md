@@ -374,7 +374,8 @@ filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
 1b/2/2b/3/3b/3c, runs Phases 4–11 (4c for notes holding a fact about the team's
 own systems), and adds a verified **materialize-then-drain**
 post-step to Phase 9 — drain via `scan-memory-inventory.py drain <path>` only
-after actual target availability is confirmed (tombstone move, never `rm`).
+after actual target availability is confirmed (tombstone move, never `rm`; an
+inline unit of `MEMORY.md` drains by its `content_sha256`).
 The low-level drain verifies the source hash, not target delivery; the agent
 must verify the latter. Keep the active note/index and bridge until then. The
 Phase-10 report gains availability and "Source drained?" columns.

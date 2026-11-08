@@ -452,7 +452,9 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
 - **Phase 9 gains a post-step:** after the target is accepted where required,
   delivered and reachable from the next reader's entry point, drain the source via
   `scan-memory-inventory.py drain <path> --expect-sha256 <sha>` — a tombstone
-  move to `.promoted/` plus a `MEMORY.md` prune, **never** `rm`. On verify
+  move to `.promoted/` plus a `MEMORY.md` prune, **never** `rm`. An inline
+  unit of `MEMORY.md` drains with `drain <slug>/memory/MEMORY.md
+  --expect-sha256 <its content_sha256>`, which moves only that unit. On verify
   failure, keep the source and index entry. An open PR is only prepared: retain
   a minimal active Learning-Id/target/status bridge until availability is proven.
   Closed/rejected or undelivered changes trigger reclassification, not draining.

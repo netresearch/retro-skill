@@ -36,7 +36,7 @@ same envelope shape as `detect-mechanical.py`, so Phases 4–10 consume it as-is
 | Scanned | Signal | Note |
 |---|---|---|
 | `<slug>/memory/*.md` (feedback notes) | `C3` memory_drift | The canonical promotable stock |
-| `<slug>/memory/MEMORY.md` | — | Read as the index; pruned on drain, never itself a finding |
+| `<slug>/memory/MEMORY.md`, one finding per inline unit | `C3` memory_drift, `current_location: project-local-memory-inline` | Read twice: as the index of the note files (pruned on a note drain) and for knowledge written into it directly — see "Inline units in `MEMORY.md`" |
 | `<slug>/memory/.promoted/*.md` | — | Tombstones (already drained) — skipped, never re-emitted |
 | `<project>/CLAUDE.md`, `docs/feedback/*.md` | `B8` wrong_destination | **Opt-in** via `--include-flagged-locations` |
 | `~/.claude/CLAUDE.md`, one finding per `##` section | `C2` cross_project_pattern | **Opt-in** via `--include-global-rules` — see "Draining the global rules file" |
@@ -81,6 +81,40 @@ Each finding carries the source note's verbatim `**Why:**` / `**How to apply:**`
 prose, its `origin_session_id`, a `current_location` tag (the load-bearing
 evidence the LLM reads at Phase 5), and a `content_sha256` used as both an
 idempotency key and a drain race-check.
+
+### Inline units in `MEMORY.md`
+
+Older stores hold their knowledge as text inside `MEMORY.md` itself — `##`
+sections with bullets and code fences — and have no note files. Reading
+`MEMORY.md` only as an index reported those stores as empty, so their content
+was never re-homed. The scanner therefore also splits `MEMORY.md` into units:
+
+- each `##` section (a later `#` heading opens one too; a `###` stays inside its
+  section), and the text before the first heading other than a leading `#`
+  title, reported as `preamble`. Headings are found fence-aware: a `#` line
+  inside a ``` or `~~~` fence is a comment, not a boundary;
+- a line that links to a note file **present in the store** — at its start or
+  mid-sentence, as in "See [x](x.md) for … · Handoff …" — is that note's index
+  entry: it is left out of the unit, so an inline drain never takes the only
+  pointer to a live note or its pending handoff. Only a note drain prunes it,
+  and the prose it keeps becomes unit content on the next scan. A link to a
+  note that no longer exists is content — its hook text is the last copy of
+  what the note said. A `[text](name.md)` or `[text](./name.md)` link outside a
+  code fence counts, in the body or in the heading (a heading that links a live
+  note stays when its section is drained); `name.md#part`, a titled or
+  reference-style link reads as content, and a code fence left open to the end
+  of the file swallows every later heading. Check such a store by hand before
+  draining it;
+- a unit with nothing left once index entries are removed is not emitted.
+
+An inline finding carries `content` (the unit's text: heading plus its other
+lines), `inline_unit` (the heading line or `preamble`), `inline_ordinal`, and a
+`content_sha256` over the unit's heading and its non-index lines as they stand
+in the file. `content` is that text
+with secrets masked, so the two differ only where something was masked; the
+drain hashes the file, not the scan output. Since the text sits in the file
+every session loads, any pending-state phrase in it sets
+`pending_state_in_index`.
 
 ### Scope
 
@@ -241,6 +275,32 @@ competing permanent learning store.
    sibling links and rule text outside the link stay; the line goes only when
    nothing but the marker and a label remains. The `--expect-sha256`
    race-check aborts the drain if the file changed since the scan.
+
+   An inline unit drains with `scan-memory-inventory.py drain
+   <slug>/memory/MEMORY.md --expect-sha256 <its content_sha256>`. The hash is
+   required and selects the unit; when no unit has it any more, the text
+   changed and nothing moves. The unit is appended to
+   `.promoted/MEMORY-inline-<YYYY-MM-DD>.md` under a
+   `<!-- retro promote drain: sha256=… -->` line, then removed from
+   `MEMORY.md`; index entries inside it stay, with their heading. Everything
+   else in `MEMORY.md` is left byte-identical. The tombstone is written before
+   `MEMORY.md` is replaced, so a failure in between leaves the text in both
+   places, and a retry that finds the complete block already in a tombstone
+   does not append it twice (a hash line in front of a partial copy does not
+   count). The unchanged-check sits directly before the replace, so a memory
+   another session saves during the drain is kept: the drain re-reads and
+   retries. A save that lands between that check and the rename itself is
+   still lost; a lock taken only by this script cannot exclude the session
+   that writes `MEMORY.md`, so drain while no other session is saving memory. A note drain can change an
+   inline unit's hash (the prose its pruned index line keeps joins the unit),
+   so re-scan before an inline drain that follows a note drain; a stale hash
+   is refused, not misapplied. When a section holds both a live note's index
+   entry and inline text, drain the note first, re-scan, then the inline unit:
+   in the other order the note drain leaves an empty heading behind, which no
+   later scan reports. A bare `drain MEMORY.md`
+   without a hash is refused: it would tombstone the whole index. Do not leave
+   a pointer sentence ("moved to `.promoted/`") in `MEMORY.md` — the scanner
+   reads such a sentence as a preamble unit on every later run.
 
 On any verification failure, **keep the active source** and report it. For a
 rejected or closed PR, update the handoff state and re-evaluate the learning:
