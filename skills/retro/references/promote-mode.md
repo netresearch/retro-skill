@@ -186,9 +186,11 @@ Three checks run at Phase 7, before a note enters a proposal:
   or sufficient is gone. Before a command block or a step list enters a
   proposal, read it as a reader who has only the target text and ask three
   questions:
-  - **Does it complete the action?** A block that ends at `--dry-run`, a
-    `--check`, a preview or a "then do the same for real" leaves the reader
-    with nothing done. Write out the step that changes state.
+  - **Does it complete the action?** Where the note's purpose is a change, a
+    block that ends at `--dry-run`, a `--check`, a preview or a "then do the
+    same for real" leaves the reader with nothing done. Write out the step
+    that changes state. A note whose purpose is the preview itself stays a
+    preview.
   - **Are its defaults safe for anyone who copies it?** Host-key handling
     (`StrictHostKeyChecking=accept-new`, an unchecked `known_hosts`), a
     forwarded SSH agent or a mounted credential, a disabled TLS check, a
