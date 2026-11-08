@@ -99,12 +99,16 @@ was never re-homed. The scanner therefore also splits `MEMORY.md` into units:
   pointer to a live note or its pending handoff. Only a note drain prunes it,
   and the prose it keeps becomes unit content on the next scan. A link to a
   note that no longer exists is content — its hook text is the last copy of
-  what the note said;
+  what the note said. Only a plain `[text](name.md)` link outside a code fence
+  counts: `./name.md`, `name.md#part`, a titled or reference-style link reads
+  as content, and a code fence left open to the end of the file swallows every
+  later heading. Check such a store by hand before draining it;
 - a unit with nothing left once index entries are removed is not emitted.
 
 An inline finding carries `content` (the unit's text: heading plus its other
 lines), `inline_unit` (the heading line or `preamble`), `inline_ordinal`, and a
-`content_sha256` over the unit's raw text in the file. `content` is that text
+`content_sha256` over the unit's heading and its non-index lines as they stand
+in the file. `content` is that text
 with secrets masked, so the two differ only where something was masked; the
 drain hashes the file, not the scan output. Since the text sits in the file
 every session loads, any pending-state phrase in it sets
@@ -281,10 +285,15 @@ competing permanent learning store.
    `MEMORY.md` is replaced, so a failure in between leaves the text in both
    places, and a retry that finds the complete block already in a tombstone
    does not append it twice (a hash line in front of a partial copy does not
-   count). A note drain can change an
+   count). The unchanged-check sits directly before the replace, so a memory
+   another session saves during the drain is kept: the drain re-reads and
+   retries. A note drain can change an
    inline unit's hash (the prose its pruned index line keeps joins the unit),
    so re-scan before an inline drain that follows a note drain; a stale hash
-   is refused, not misapplied. A bare `drain MEMORY.md`
+   is refused, not misapplied. When a section holds both a live note's index
+   entry and inline text, drain the note first, re-scan, then the inline unit:
+   in the other order the note drain leaves an empty heading behind, which no
+   later scan reports. A bare `drain MEMORY.md`
    without a hash is refused: it would tombstone the whole index. Do not leave
    a pointer sentence ("moved to `.promoted/`") in `MEMORY.md` — the scanner
    reads such a sentence as a preamble unit on every later run.

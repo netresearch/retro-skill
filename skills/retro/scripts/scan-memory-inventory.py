@@ -840,6 +840,7 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
             file=sys.stderr,
         )
         return 2
+    expect_sha256 = expect_sha256.lower()
     memory_dir = index_path.parent
     for _attempt in range(5):
         before = index_path.read_bytes()
@@ -858,10 +859,13 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
                 handle.flush()
                 os.fsync(handle.fileno())
             os.chmod(tmp, index_path.stat().st_mode & 0o7777)
-            if index_path.read_bytes() != before:
-                continue
             if not written:
                 _append_tombstone(tombstone, block)
+            # Checked directly before the replace, after the tombstone fsync:
+            # a memory another session saved meanwhile is re-read on the next
+            # attempt, which finds the block already copied.
+            if index_path.read_bytes() != before:
+                continue
             os.replace(tmp, index_path)
         except OSError as exc:
             print(

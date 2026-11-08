@@ -1138,6 +1138,35 @@ class InlineMemoryDrainTest(unittest.TestCase):
         )
         self.assertNotIn("## Technical Notes", self.index.read_text(encoding="utf-8"))
 
+    def test_a_write_to_memory_md_during_the_tombstone_write_survives(self):
+        """Another session saving a memory while the tombstone is written must
+        not lose its line: the unchanged-check sits directly before the
+        replace, and the retry finds the block already in the tombstone."""
+        unit = self._unit("Technical Notes")
+        real_append = smi._append_tombstone
+
+        def concurrent_save(tombstone, block):
+            real_append(tombstone, block)
+            with open(self.index, "a", encoding="utf-8") as handle:
+                handle.write("- saved by another session\n")
+
+        with mock.patch.object(smi, "_append_tombstone", concurrent_save):
+            res = _run_drain(self.index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        text = self.index.read_text(encoding="utf-8")
+        self.assertIn("- saved by another session", text)
+        self.assertNotIn("## Technical Notes", text)
+        [tomb] = self._tombstones()
+        self.assertEqual(
+            tomb.read_text(encoding="utf-8").count(unit["content_sha256"]), 1
+        )
+
+    def test_an_uppercase_hash_selects_the_unit(self):
+        unit = self._unit("Technical Notes")
+        res = _run_drain(self.index, self.root, unit["content_sha256"].upper())
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        self.assertNotIn("## Technical Notes", self.index.read_text(encoding="utf-8"))
+
     def test_a_hash_line_before_a_partial_copy_is_not_a_copy(self):
         """A tombstone write cut short leaves the hash line and half the unit;
         the retry must still append the whole unit before taking it out."""
