@@ -339,14 +339,12 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
     fence = ""  # the open ``` / ~~~ run; a `# ` line inside is a comment
     for line in lines:
         fence, outside = _fence_step(line, fence)
-        if not outside:
-            pass
-        elif line.startswith("## "):
+        if outside and line.startswith("## "):
             if section_start is not None:
                 spans.append((title, section_start, offset))
             section_start = offset
             title = line[3:].strip()
-        elif line.startswith("# ") and section_start is not None:
+        elif outside and line.startswith("# ") and section_start is not None:
             spans.append((title, section_start, offset))
             section_start = None
         offset += len(line)
@@ -414,42 +412,22 @@ def _inline_units(text: str, memory_dir: Path) -> list[dict[str, Any]]:
     Each unit's `content` is its heading plus its other lines, verbatim; that
     is the text a drain moves and the text `content_sha256` covers."""
     lines = text.splitlines(keepends=True)
-    spans: list[tuple[int | None, list[int]]] = []  # (heading line, its lines)
-    heading: int | None = None
-    members: list[int] = []
-    text_lines: set[int] = set()  # outside any fence
-    fence = ""
-    for number, line in enumerate(lines):
-        fence, outside = _fence_step(line, fence)
-        if outside:
-            text_lines.add(number)
-        if outside and number == 0 and line.startswith("# "):
-            continue  # the file's title: neither a unit nor the preamble
-        if outside and line.startswith(("## ", "# ")):
-            spans.append((heading, members))
-            heading, members = number, []
-            continue
-        members.append(number)
-    spans.append((heading, members))
-
+    spans, text_lines = _heading_spans(lines)
     result: list[dict[str, Any]] = []
     for heading, members in spans:
-        content_lines, index_lines = [], []
-        for number in members:
-            if number in text_lines and _is_index_entry(lines[number], memory_dir):
-                index_lines.append(number)
-            else:
-                content_lines.append(number)
-        body = "".join(lines[n] for n in content_lines)
+        index_lines = [
+            n
+            for n in members
+            if n in text_lines and _is_index_entry(lines[n], memory_dir)
+        ]
+        body = "".join(lines[n] for n in members if n not in index_lines)
         if not body.strip():
             continue
         head = lines[heading] if heading is not None else ""
         result.append(
             {
                 "unit": head.rstrip("\n") if heading is not None else "preamble",
-                "title": head.lstrip("#").strip()
-                if heading is not None
-                else "preamble",
+                "title": head.lstrip("#").strip() if head else "preamble",
                 "heading_line": heading,
                 "lines": members,
                 "index_lines": index_lines,
@@ -458,6 +436,36 @@ def _inline_units(text: str, memory_dir: Path) -> list[dict[str, Any]]:
             }
         )
     return result
+
+
+def _heading_spans(
+    lines: list[str],
+) -> tuple[list[tuple[int | None, list[int]]], set[int]]:
+    """Group line numbers under the `#`/`## ` heading above them, fence-aware.
+
+    Returns [(heading line or None for the preamble, member lines)] and the
+    set of lines outside any fence. A `# ` on the first line is the file's
+    title: neither a unit nor part of the preamble."""
+    spans: list[tuple[int | None, list[int]]] = []
+    heading: int | None = None
+    members: list[int] = []
+    text_lines: set[int] = set()
+    fence = ""
+    for number, line in enumerate(lines):
+        fence, outside = _fence_step(line, fence)
+        if not outside:
+            members.append(number)
+            continue
+        text_lines.add(number)
+        if number == 0 and line.startswith("# "):
+            continue
+        if line.startswith(("## ", "# ")):
+            spans.append((heading, members))
+            heading, members = number, []
+        else:
+            members.append(number)
+    spans.append((heading, members))
+    return spans, text_lines
 
 
 def _inline_findings(index_path: Path, slug: str) -> list[dict[str, Any]]:
@@ -756,6 +764,58 @@ def _rewrite_index(index_path: Path, name: str) -> None:
     )
 
 
+def _without_unit(lines: list[str], unit: dict[str, Any]) -> str:
+    """MEMORY.md with the unit's content lines taken out, all else verbatim.
+
+    Index entries of live notes stay, and so does the heading when any are
+    left, with the blank line that separated the section from the next one."""
+    removed = set(unit["lines"]) - set(unit["index_lines"])
+    if unit["index_lines"]:
+        last = unit["lines"][-1]
+        if not lines[last].strip():
+            removed.discard(last)
+    elif unit["heading_line"] is not None:
+        removed.add(unit["heading_line"])
+    return "".join(line for n, line in enumerate(lines) if n not in removed)
+
+
+def _inline_tombstone(tombstone_dir: Path, stamp: str) -> tuple[Path, bool]:
+    """The tombstone file for an inline unit, and whether it already holds it.
+
+    A retry after a failed replace finds its hash in an earlier tombstone and
+    must not append the unit a second time."""
+    for path in sorted(tombstone_dir.glob("MEMORY-inline-*.md")):
+        if stamp in path.read_text(encoding="utf-8", errors="replace"):
+            return path, True
+    return tombstone_dir / f"MEMORY-inline-{date.today().isoformat()}.md", False
+
+
+def _append_tombstone(tombstone: Path, stamp: str, content: str) -> None:
+    """Append one unit under its hash line, and put it on disk."""
+    if not content.endswith("\n"):
+        content += "\n"
+    lead = "\n" if tombstone.is_file() and tombstone.stat().st_size else ""
+    with open(tombstone, "a", encoding="utf-8") as handle:
+        handle.write(f"{lead}<!-- retro promote drain: {stamp} -->\n{content}")
+        handle.flush()
+        os.fsync(handle.fileno())
+
+
+def _find_inline_unit(
+    raw: bytes, memory_dir: Path, sha: str
+) -> tuple[dict[str, Any] | None, str]:
+    """The inline unit of MEMORY.md whose content has hash `sha`, or None and
+    the reason. No unit with that hash means the text changed since the scan."""
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None, "not valid UTF-8"
+    for unit in _inline_units(text, memory_dir):
+        if hashlib.sha256(unit["content"].encode("utf-8")).hexdigest() == sha:
+            return unit, ""
+    return None, f"source changed since scan (no inline unit has sha256 {sha[:12]})"
+
+
 def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
     """Move one inline unit out of MEMORY.md into `.promoted/`.
 
@@ -775,54 +835,16 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
         )
         return 2
     memory_dir = index_path.parent
-    tombstone_dir = memory_dir / TOMBSTONE_DIR
     stamp = f"sha256={expect_sha256}"
     for _attempt in range(5):
         before = index_path.read_bytes()
-        try:
-            text = before.decode("utf-8")
-        except UnicodeDecodeError:
-            print(f"drain refused: {index_path} is not valid UTF-8", file=sys.stderr)
-            return 2
-        unit = next(
-            (
-                u
-                for u in _inline_units(text, memory_dir)
-                if hashlib.sha256(u["content"].encode("utf-8")).hexdigest()
-                == expect_sha256
-            ),
-            None,
-        )
+        unit, refusal = _find_inline_unit(before, memory_dir, expect_sha256)
         if unit is None:
-            print(
-                "drain refused: source changed since scan (no inline unit "
-                f"has sha256 {expect_sha256[:12]})",
-                file=sys.stderr,
-            )
+            print(f"drain refused: {index_path}: {refusal}", file=sys.stderr)
             return 2
-        lines = text.splitlines(keepends=True)
-        removed = set(unit["lines"]) - set(unit["index_lines"])
-        if unit["index_lines"]:
-            # The heading stays to hold its index entries, and so does the
-            # blank line that separated the section from the next one.
-            last = unit["lines"][-1]
-            if not lines[last].strip():
-                removed.discard(last)
-        elif unit["heading_line"] is not None:
-            removed.add(unit["heading_line"])
-        kept = "".join(line for n, line in enumerate(lines) if n not in removed)
-
-        tombstone_dir.mkdir(exist_ok=True)
-        written = [
-            p
-            for p in sorted(tombstone_dir.glob("MEMORY-inline-*.md"))
-            if stamp in p.read_text(encoding="utf-8", errors="replace")
-        ]
-        tombstone = (
-            written[0]
-            if written
-            else tombstone_dir / f"MEMORY-inline-{date.today().isoformat()}.md"
-        )
+        kept = _without_unit(before.decode("utf-8").splitlines(keepends=True), unit)
+        (memory_dir / TOMBSTONE_DIR).mkdir(exist_ok=True)
+        tombstone, written = _inline_tombstone(memory_dir / TOMBSTONE_DIR, stamp)
         fd, tmp = tempfile.mkstemp(prefix=f".{INDEX_FILE}.", dir=memory_dir)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -833,25 +855,16 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
             if index_path.read_bytes() != before:
                 continue
             if not written:
-                block = unit["content"]
-                if not block.endswith("\n"):
-                    block += "\n"
-                lead = "\n" if tombstone.is_file() and tombstone.stat().st_size else ""
-                with open(tombstone, "a", encoding="utf-8") as handle:
-                    handle.write(
-                        f"{lead}<!-- retro promote drain: {stamp} -->\n{block}"
-                    )
-                    handle.flush()
-                    os.fsync(handle.fileno())
-            try:
-                os.replace(tmp, index_path)
-            except OSError as exc:
-                print(
-                    f"drain: the unit is in {tombstone}, but {index_path} could "
-                    f"not be replaced ({exc}); run the drain again",
-                    file=sys.stderr,
-                )
-                return 1
+                _append_tombstone(tombstone, stamp, unit["content"])
+            os.replace(tmp, index_path)
+        except OSError as exc:
+            print(
+                f"drain: {index_path} was not replaced ({exc}) and is "
+                "unchanged; run the drain again - a unit already copied to "
+                f"{tombstone} is not appended twice",
+                file=sys.stderr,
+            )
+            return 1
         finally:
             if os.path.exists(tmp):
                 os.unlink(tmp)
