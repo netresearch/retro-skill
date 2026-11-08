@@ -828,5 +828,323 @@ class GlobalRulesSourceTest(unittest.TestCase):
         self.assertTrue(self.rules.is_file())
 
 
+# The go-cron store's MEMORY.md as it stood before a peer session drained it by
+# hand on 2026-11-08: `##` sections, `###` subsections, links and bullets, and no
+# note files at all. Copied byte for byte from that drain's tombstone.
+GO_CRON_MEMORY = (
+    REPO_ROOT / "tests" / "fixtures" / "memory" / "go-cron-MEMORY.txt"
+).read_text(encoding="utf-8")
+
+SHELL_SECTION = (
+    "## Shell recipe\n"
+    "\n"
+    "```bash\n"
+    "# not a heading, a shell comment\n"
+    "## not a heading either\n"
+    "make test\n"
+    "```\n"
+    "\n"
+    "**Why:** fenced comments must stay inside the section.\n"
+    "\n"
+)
+
+NOTES_SECTION = (
+    "## Notes\n"
+    "- [Kept note](feedback_x.md) — the index entry of a live note\n"
+    "- Release from a signed tag only.\n"
+    "- [Gone note](gone.md) — dangling link: this hook is the last copy\n"
+    "\n"
+)
+
+INDEX_ONLY_SECTION = "## Index only\n- [Kept note](feedback_x.md) — a second entry\n\n"
+
+INLINE_STORE = (
+    GO_CRON_MEMORY + "\n" + SHELL_SECTION + NOTES_SECTION + INDEX_ONLY_SECTION
+)
+
+GO_CRON_TITLES = [
+    "Current State (2026-03-08)",
+    "v0.13.1 (2026-03-08)",
+    "v0.11.0 Features (2026-02-12)",
+    "v0.10.0 Features (2026-02-08)",
+    "Dependents Analysis (2026-02-08, updated 2026-02-12)",
+    "Technical Notes",
+]
+
+
+def _inline(findings: list[dict]) -> list[dict]:
+    return [
+        f for f in findings if f["current_location"] == "project-local-memory-inline"
+    ]
+
+
+def _span(text: str, heading: str, next_heading: str | None) -> tuple[int, int]:
+    start = text.index(heading)
+    end = text.index(next_heading, start) if next_heading else len(text)
+    return start, end
+
+
+class InlineMemoryScanTest(unittest.TestCase):
+    def setUp(self):
+        self.root, self.memory = _make_root()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        _write(self.memory, "feedback_x.md", FEEDBACK)
+        self.index = _write(self.memory, "MEMORY.md", INLINE_STORE)
+
+    def _units(self) -> list[dict]:
+        return _inline(_run_scan(memory_root=self.root)["json"]["findings"])
+
+    def test_go_cron_sections_are_found_with_their_text(self):
+        units = self._units()
+        self.assertEqual(
+            [u["title"] for u in units],
+            GO_CRON_TITLES + ["Shell recipe", "Notes"],
+        )
+        by_title = {u["title"]: u for u in units}
+        start, end = _span(INLINE_STORE, "## v0.11.0 Features", "## v0.10.0 Features")
+        self.assertEqual(
+            by_title["v0.11.0 Features (2026-02-12)"]["content"],
+            INLINE_STORE[start:end],
+        )
+        # `###` subsections stay inside their `##` unit.
+        dependents = by_title["Dependents Analysis (2026-02-08, updated 2026-02-12)"][
+            "content"
+        ]
+        self.assertIn("### Intra-Fork PRs (all on v0.11.0)", dependents)
+        self.assertIn("[CybotTM/zwfm-aerontoolbox PR #1]", dependents)
+        for u in units:
+            self.assertEqual(u["signal"], "C3")
+            self.assertEqual(u["name"], "memory_drift")
+            self.assertEqual(u["source_path"], str(self.index))
+            self.assertEqual(u["source_slug"], "-home-sme")
+            self.assertTrue(u["inline_unit"].startswith("## "))
+
+    def test_index_entries_of_live_notes_are_not_content(self):
+        notes = {u["title"]: u for u in self._units()}["Notes"]
+        self.assertNotIn("Kept note", notes["content"])
+        self.assertIn("Release from a signed tag only.", notes["content"])
+        self.assertNotIn("Index only", [u["title"] for u in self._units()])
+
+    def test_a_dangling_link_is_content(self):
+        notes = {u["title"]: u for u in self._units()}["Notes"]
+        self.assertIn("dangling link: this hook is the last copy", notes["content"])
+
+    def test_hash_lines_inside_a_fence_are_not_headings(self):
+        units = {u["title"]: u for u in self._units()}
+        shell = units["Shell recipe"]["content"]
+        self.assertIn("# not a heading, a shell comment\n", shell)
+        self.assertIn("## not a heading either\n", shell)
+        self.assertIn("fenced comments must stay inside", units["Shell recipe"]["why"])
+        self.assertNotIn("not a heading either", units)
+
+    def test_sha_covers_the_unit_text_and_only_it(self):
+        first = {u["title"]: u["content_sha256"] for u in self._units()}
+        for u in self._units():
+            self.assertEqual(
+                u["content_sha256"],
+                hashlib.sha256(u["content"].encode("utf-8")).hexdigest(),
+            )
+        self.assertEqual(
+            first, {u["title"]: u["content_sha256"] for u in self._units()}
+        )
+        # One byte changed in one section changes that sha and no other.
+        self.index.write_text(
+            INLINE_STORE.replace("Coverage**: ~97%+", "Coverage**: ~98%+"),
+            encoding="utf-8",
+        )
+        second = {u["title"]: u["content_sha256"] for u in self._units()}
+        changed = sorted(t for t in first if first[t] != second[t])
+        self.assertEqual(changed, ["Current State (2026-03-08)"])
+
+    def test_notes_and_inline_units_are_both_emitted(self):
+        res = _run_scan(memory_root=self.root)["json"]
+        locations = [f["current_location"] for f in res["findings"]]
+        self.assertEqual(locations.count("project-local-memory"), 1)
+        self.assertEqual(locations.count("project-local-memory-inline"), 8)
+        slug = res["slugs_scanned"][0]
+        self.assertEqual(slug["items"], 9)
+        self.assertEqual(slug["inline_units"], 8)
+
+    def test_preamble_is_a_unit_without_the_title(self):
+        self.index.write_text(
+            "# Memory\n\nLoose rule before any section.\n\n## A\n- a\n",
+            encoding="utf-8",
+        )
+        units = self._units()
+        self.assertEqual([u["inline_unit"] for u in units], ["preamble", "## A"])
+        self.assertEqual(units[0]["content"], "\nLoose rule before any section.\n\n")
+
+    def test_empty_and_index_only_units_emit_nothing(self):
+        self.index.write_text(
+            "# Memory Index\n\n## Empty\n\n## Index\n- [k](feedback_x.md) — hook\n",
+            encoding="utf-8",
+        )
+        self.assertEqual(self._units(), [])
+
+    def test_pending_state_in_an_inline_unit_is_in_the_index(self):
+        self.index.write_text(
+            "## Release\n- v2.0 still open, waiting on review\n", encoding="utf-8"
+        )
+        unit = self._units()[0]
+        self.assertIn("still open", unit["pending_state"])
+        self.assertTrue(unit["pending_state_in_index"])
+
+
+class InlineMemoryDrainTest(unittest.TestCase):
+    def setUp(self):
+        self.root, self.memory = _make_root()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        _write(self.memory, "feedback_x.md", FEEDBACK)
+        self.index = _write(self.memory, "MEMORY.md", INLINE_STORE)
+
+    def _unit(self, title: str) -> dict:
+        res = _run_scan(memory_root=self.root)["json"]
+        return {u["title"]: u for u in _inline(res["findings"])}[title]
+
+    def _tombstones(self) -> list[Path]:
+        return sorted((self.memory / ".promoted").glob("MEMORY-inline-*.md"))
+
+    def test_drain_moves_exactly_one_section(self):
+        unit = self._unit("v0.11.0 Features (2026-02-12)")
+        others = {
+            u["title"]: u["content_sha256"]
+            for u in _inline(_run_scan(memory_root=self.root)["json"]["findings"])
+            if u["title"] != unit["title"]
+        }
+        res = _run_drain(self.index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        start, end = _span(INLINE_STORE, "## v0.11.0 Features", "## v0.10.0 Features")
+        self.assertEqual(
+            self.index.read_text(encoding="utf-8"),
+            INLINE_STORE[:start] + INLINE_STORE[end:],
+        )
+        [tomb] = self._tombstones()
+        self.assertIn(INLINE_STORE[start:end], tomb.read_text(encoding="utf-8"))
+        self.assertIn(unit["content_sha256"], tomb.read_text(encoding="utf-8"))
+        after = {
+            u["title"]: u["content_sha256"]
+            for u in _inline(_run_scan(memory_root=self.root)["json"]["findings"])
+        }
+        self.assertEqual(after, others)
+        self.assertEqual(json.loads(res["stdout"])["tombstone"], str(tomb))
+
+    def test_drain_keeps_the_heading_and_index_entries_of_a_section(self):
+        unit = self._unit("Notes")
+        res = _run_drain(self.index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        start, end = _span(INLINE_STORE, "## Notes", "## Index only")
+        kept = "## Notes\n- [Kept note](feedback_x.md) — the index entry of a live note\n\n"
+        self.assertEqual(
+            self.index.read_text(encoding="utf-8"),
+            INLINE_STORE[:start] + kept + INLINE_STORE[end:],
+        )
+        self.assertTrue((self.memory / "feedback_x.md").is_file())
+
+    def test_drain_keeps_a_mid_line_pointer_to_a_live_note(self):
+        """The shape of a real render-guides line: the link sits mid-line and a
+        pending handoff follows it. Draining the unit must not take the only
+        pointer to the live note, nor the handoff bridge."""
+        pointer = (
+            "See [composer-workflows.md](feedback_x.md) for composer update "
+            "strategies. · Handoff retro-1: https://github.com/o/r/pull/1 (draft, "
+            "pending; retire the note once merged and released)\n"
+        )
+        self.index.write_text(
+            "## Composer\n- Prefer `composer bump`.\n" + pointer + "\n## B\n- b\n",
+            encoding="utf-8",
+        )
+        unit = self._unit("Composer")
+        self.assertEqual(unit["content"], "## Composer\n- Prefer `composer bump`.\n\n")
+        res = _run_drain(self.index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        self.assertEqual(
+            self.index.read_text(encoding="utf-8"),
+            "## Composer\n" + pointer + "\n## B\n- b\n",
+        )
+
+    def test_drain_of_the_preamble(self):
+        text = "# Memory\n\nLoose rule.\n\n## A\n- a\n"
+        self.index.write_text(text, encoding="utf-8")
+        units = _inline(_run_scan(memory_root=self.root)["json"]["findings"])
+        res = _run_drain(self.index, self.root, units[0]["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        self.assertEqual(
+            self.index.read_text(encoding="utf-8"), "# Memory\n## A\n- a\n"
+        )
+
+    def test_drain_refuses_on_sha_mismatch(self):
+        before = self.index.read_bytes()
+        res = _run_drain(self.index, self.root, "0" * 64)
+        self.assertEqual(res["rc"], 2)
+        self.assertIn("changed since scan", res["stderr"])
+        self.assertEqual(self.index.read_bytes(), before)
+        self.assertEqual(self._tombstones(), [])
+
+    def test_drain_without_a_sha_refuses_and_keeps_the_index(self):
+        """A bare `drain MEMORY.md` used to tombstone the whole index."""
+        before = self.index.read_bytes()
+        res = _run_drain(self.index, self.root, None)
+        self.assertEqual(res["rc"], 2)
+        self.assertIn("--expect-sha256", res["stderr"])
+        self.assertEqual(self.index.read_bytes(), before)
+        self.assertFalse((self.memory / ".promoted").exists())
+
+    def test_drain_refuses_a_memory_md_outside_a_store(self):
+        unit = self._unit("Notes")
+        other = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, other, ignore_errors=True)
+        rogue = other / "slug" / "memory"
+        rogue.mkdir(parents=True)
+        stray = rogue / "MEMORY.md"
+        stray.write_text(INLINE_STORE, encoding="utf-8")
+        res = _run_drain(stray, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 2)
+        self.assertIn("is not inside", res["stderr"])
+        self.assertEqual(stray.read_text(encoding="utf-8"), INLINE_STORE)
+
+    def test_a_second_drain_of_the_same_unit_refuses(self):
+        unit = self._unit("Technical Notes")
+        self.assertEqual(
+            _run_drain(self.index, self.root, unit["content_sha256"])["rc"], 0
+        )
+        res = _run_drain(self.index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 2)
+        self.assertIn("changed since scan", res["stderr"])
+
+    def test_retry_after_a_failed_replace_appends_once(self):
+        """The tombstone is written before MEMORY.md is replaced: a failure in
+        between leaves the text in both places, and the retry does not append
+        it a second time."""
+        unit = self._unit("Technical Notes")
+        real_replace = smi.os.replace
+        calls = {"n": 0}
+
+        def failing_once(src, dst):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OSError("simulated")
+            return real_replace(src, dst)
+
+        before = self.index.read_bytes()
+        with mock.patch.object(smi.os, "replace", failing_once):
+            res = _run_drain(self.index, self.root, unit["content_sha256"])
+        self.assertNotEqual(res["rc"], 0)
+        self.assertEqual(self.index.read_bytes(), before)
+        res = _run_drain(self.index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        [tomb] = self._tombstones()
+        self.assertEqual(
+            tomb.read_text(encoding="utf-8").count(unit["content_sha256"]), 1
+        )
+        self.assertNotIn("## Technical Notes", self.index.read_text(encoding="utf-8"))
+
+    def test_note_drain_still_works_beside_inline_units(self):
+        note = self.memory / "feedback_x.md"
+        res = _run_drain(note, self.root)
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        self.assertFalse(note.is_file())
+        self.assertNotIn("feedback_x.md", self.index.read_text(encoding="utf-8"))
+
+
 if __name__ == "__main__":
     unittest.main()

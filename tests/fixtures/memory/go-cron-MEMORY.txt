@@ -1,0 +1,80 @@
+# go-cron Project Memory
+
+## Current State (2026-03-08)
+- **Latest release**: [v0.13.1](https://github.com/netresearch/go-cron/releases/tag/v0.13.1)
+- **Coverage**: ~97%+
+- **Fork**: netresearch/go-cron ← robfig/cron (230+ commits ahead, 0 behind)
+- **Branch**: only `main` remains, all feature branches cleaned up
+- **Docs**: README + API_REFERENCE fully updated for v0.11.0 ([PR #321](https://github.com/netresearch/go-cron/pull/321))
+
+## v0.13.1 (2026-03-08)
+- **Fix**: Race condition in Entry/EntryByName and ScheduleJob ([PR #336](https://github.com/netresearch/go-cron/pull/336))
+- Entry/EntryByName/Entries return struct copies with cloned Tags slices
+
+## v0.11.0 Features (2026-02-12)
+- **`UpdateEntry`/`UpdateEntryByName`** (#314) - atomic schedule+job replacement
+- **Per-entry context** (#315) - each entry gets own context, canceled on Remove/replacement
+- **`UpdateEntryJob`/`UpdateEntryJobByName`** (#315) - parse spec + replace in one call
+- **Context-propagating chain wrappers** (#316) - concurrency wrappers implement JobWithContext
+- **`UpsertJob`** (#316) - atomic create-or-update named entries
+- **`WaitForJob`/`WaitForJobByName`** (#318) - block until running invocations complete
+- **`IsJobRunning`/`IsJobRunningByName`** (#319) - non-blocking per-entry running status
+
+## v0.10.0 Features (2026-02-08)
+1. `WithCapacity(n)` - pre-allocate internals (#287)
+2. `WithMissedPolicy()` - catch-up for missed jobs (#303)
+3. `RetryOnError()` - error-based retry middleware (#306)
+4. `UpdateSchedule()`/`UpdateJob()` - atomic runtime updates (#307/#309)
+5. `ValidateSpecWith()`/`Cron.ValidateSpec()` - rich validation (#308)
+
+## Dependents Analysis (2026-02-08, updated 2026-02-12)
+
+### Key Dependents
+- **weaviate/weaviate** (15.5k stars) - [CybotTM/weaviate PR #1](https://github.com/CybotTM/weaviate/pull/1) using v0.11.0 (squashed, single commit)
+- **Seagate/cloudfuse** (39 stars) - goroutine leak bug, needs Stop() fix
+- **cloudfoundry-community/ocf-scheduler** - needs error checking, graceful shutdown
+- **oszuidwest/zwfm-aerontoolbox** - textbook clean usage, minor improvements
+- **netresearch/ofelia** (our own) - v0.8.0 (outdated!), richest feature source
+
+### Upstream Done
+- Reschedule → UpdateSchedule/UpdateJob (weaviate demand)
+- Error-based retry → RetryOnError (ofelia pattern)
+- ValidateSpec → ValidateSpecWith (ocf-scheduler + cloudfuse pattern)
+- UpsertJob → atomic create-or-update named entries (weaviate demand)
+- WaitForJob → graceful job replacement (weaviate demand)
+- Per-entry context → auto-canceled on replacement (weaviate demand)
+- Context-propagating chain wrappers → concurrency wrappers pass ctx through
+- IsJobRunning → non-blocking per-entry status query (monitoring)
+- CircuitBreaker state monitoring → CircuitBreakerWithHandle + WithStateChangeCallback (#185)
+- RetryWithBackoff attempt callback → WithRetryCallback + RetryAttempt (#186)
+
+### Open Feature Requests from Dependents
+1. ~~Job Enable/Disable pause/resume (#203)~~ - Done ([PR #323](https://github.com/netresearch/go-cron/pull/323))
+2. ~~Triggered-only jobs @triggered/@manual (#311)~~ - Done ([PR #325](https://github.com/netresearch/go-cron/pull/325))
+3. Workflow/DAG dependencies (#312) - from ofelia
+4. ~~Circuit breaker state monitoring (#185)~~ - Done ([PR #326](https://github.com/netresearch/go-cron/pull/326))
+5. ~~Rate limiting middleware (#167)~~ - Done ([PR #327](https://github.com/netresearch/go-cron/pull/327))
+6. ~~RetryWithBackoff attempt count (#186)~~ - Done ([PR #326](https://github.com/netresearch/go-cron/pull/326))
+7. ~~PrevN schedule introspection (#297)~~ - Done ([PR #328](https://github.com/netresearch/go-cron/pull/328), [PR #329](https://github.com/netresearch/go-cron/pull/329))
+
+### Upstream PRs (all on v0.11.0)
+- **weaviate**: [weaviate/weaviate #10477](https://github.com/weaviate/weaviate/pull/10477)
+- **cloudfuse**: [Seagate/cloudfuse #831](https://github.com/Seagate/cloudfuse/pull/831)
+- **ocf-scheduler**: [cloudfoundry-community/ocf-scheduler #12](https://github.com/cloudfoundry-community/ocf-scheduler/pull/12)
+- **zwfm-aerontoolbox**: [oszuidwest/zwfm-aerontoolbox #57](https://github.com/oszuidwest/zwfm-aerontoolbox/pull/57)
+
+### Intra-Fork PRs (all on v0.11.0)
+- **weaviate**: [CybotTM/weaviate PR #1](https://github.com/CybotTM/weaviate/pull/1) - squashed
+- **cloudfuse**: [CybotTM/cloudfuse PR #1](https://github.com/CybotTM/cloudfuse/pull/1)
+- **ocf-scheduler**: [CybotTM/ocf-scheduler PR #1](https://github.com/CybotTM/ocf-scheduler/pull/1)
+- **zwfm-aerontoolbox**: [CybotTM/zwfm-aerontoolbox PR #1](https://github.com/CybotTM/zwfm-aerontoolbox/pull/1)
+
+## Technical Notes
+- **Context propagation**: Concurrency wrappers (Recover, SkipIfStillRunning, DelayIfStillRunning, Timeout, TimeoutWithContext, Jitter, JitterWithLogger) implement JobWithContext. Resilience wrappers (RetryWithBackoff, RetryOnError, CircuitBreaker) return FuncJob and do NOT forward context.
+- **jobTracker pattern**: Custom mutex+counter+channel type replaces sync.WaitGroup for per-entry tracking. WaitGroup has documented race when Add(positive) called concurrent with Wait() at counter=0. jobTracker: start()/finish()/wait()/isRunning() all mutex-protected.
+- **sync.Once in tests**: When using `@every` + `WithRunImmediately()`, guard channel closes with `sync.Once` to prevent panics on repeated executions. `WithRunOnce()` removes entry before job finishes, making WaitForJob return immediately - don't use it for WaitForJob tests.
+- **Protected main branch**: Can't push directly to main — must use PRs. For releases: create release branch, PR, merge, then `git tag -s` locally and push tag, then `gh release create`.
+- **WithContext semantics**: `cron.New(WithContext(ctx))` derives a child context via `context.WithCancel(ctx)`. `Stop()` cancels the derived child, not the caller's ctx.
+- **CI annotations lesson**: CI checks can PASS while emitting warning annotations (actionlint/reviewdog, CodeQL deprecation). Always check job annotations before declaring a PR clean. Configure reviewdog actions with `fail_level: error` (not deprecated `fail_on_error` + `level`).
+- **Go versions in CI**: Matrix tests Go 1.25.x + 1.26.x. Coverage artifacts include Go version in name to avoid collisions.
+- **Auto-approve race condition**: The PR Quality Gates auto-approve job can race with Copilot reviewer. If auto-approve runs while Copilot is still reviewing, it sees Copilot as pending and skips approval. Stale review dismissal then clears previous approvals on new pushes. Fix: re-run the workflow via `gh api repos/OWNER/REPO/actions/runs/RUN_ID/rerun -X POST` after Copilot finishes.

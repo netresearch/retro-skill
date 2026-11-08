@@ -19,6 +19,15 @@ correct destination (skill-update > project-rule > personal-rule; never
 project-local memory). A separate `drain` subcommand tombstones a source file
 AFTER its upward write has been confirmed — it never deletes.
 
+MEMORY.md is read twice: as the index of the note files, and for the knowledge
+written into it directly. Older stores keep their notes as `## ` sections of
+MEMORY.md with no note files at all, so each such section (and the text before
+the first one, the "preamble") is emitted as its own C3 finding with
+current_location "project-local-memory-inline". Lines that link to a note file
+present in the store are that note's index entries and stay out of the unit.
+`drain MEMORY.md --expect-sha256 <unit sha>` moves one unit into
+.promoted/MEMORY-inline-<date>.md; MEMORY.md itself is never tombstoned whole.
+
 The output envelope mirrors detect-mechanical.py so pipeline stages 4-10 consume
 it unchanged. Each finding carries an existing classification-heuristic signal
 (C3 memory_drift for memory-store files, B8 wrong_destination for opt-in flagged
@@ -42,6 +51,8 @@ Usage:
         [--include-global-rules] [--global-rules-file PATH] \
         [--output-format json|text]
     uv run scan-memory-inventory.py drain PATH [--memory-root PATH] [--expect-sha256 HEX]
+        (PATH = MEMORY.md drains the one inline unit whose content_sha256 is HEX;
+        --expect-sha256 is then required)
 """
 
 from __future__ import annotations
@@ -54,6 +65,7 @@ import os
 import re
 import sys
 import tempfile
+from datetime import date
 from pathlib import Path
 from typing import Any
 
@@ -277,6 +289,29 @@ def _flagged_findings(cwd: Path) -> list[dict[str, Any]]:
 _FENCE = re.compile(r" {0,3}(`{3,}|~{3,})")
 
 
+def _fence_step(line: str, fence: str) -> tuple[str, bool]:
+    """Advance the code-fence state by one line.
+
+    Returns the new open fence ("" when none) and whether `line` is ordinary
+    text outside any fence, the only place a `#` line is a heading."""
+    marker = _FENCE.match(line)
+    if fence:
+        # Closed by a bare run of the same character, at least as long.
+        if (
+            marker
+            and marker.group(1)[0] == fence[0]
+            and len(marker.group(1)) >= len(fence)
+            and not line[marker.end() :].strip()
+        ):
+            return "", False
+        return fence, False
+    if marker and not (marker.group(1)[0] == "`" and "`" in line[marker.end() :]):
+        # A backtick fence's info string cannot hold a backtick
+        # (CommonMark); ```python`x is text, not a fence.
+        return marker.group(1), False
+    return "", True
+
+
 def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
     """Opt-in C2 findings: one per `## ` section of the global rules file.
 
@@ -303,20 +338,9 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
     spans: list[tuple[str, int, int]] = []
     fence = ""  # the open ``` / ~~~ run; a `# ` line inside is a comment
     for line in lines:
-        marker = _FENCE.match(line)
-        if fence:
-            # Closed by a bare run of the same character, at least as long.
-            if (
-                marker
-                and marker.group(1)[0] == fence[0]
-                and len(marker.group(1)) >= len(fence)
-                and not line[marker.end() :].strip()
-            ):
-                fence = ""
-        elif marker and not (marker.group(1)[0] == "`" and "`" in line[marker.end() :]):
-            # A backtick fence's info string cannot hold a backtick
-            # (CommonMark); ```python`x is text, not a fence.
-            fence = marker.group(1)
+        fence, outside = _fence_step(line, fence)
+        if not outside:
+            pass
         elif line.startswith("## "):
             if section_start is not None:
                 spans.append((title, section_start, offset))
@@ -357,6 +381,127 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
     return findings
 
 
+# A link to a file beside MEMORY.md; when that file is a note in the store, the
+# line holding the link is the note's index entry, wherever the link sits.
+NOTE_LINK = re.compile(r"\]\(([^)\s/\\]+\.md)\)")
+
+
+def _is_index_entry(line: str, memory_dir: Path) -> bool:
+    """Whether `line` links to a note file present in the store.
+
+    Such a line is the note's pointer in MEMORY.md, often with a pending
+    handoff after it ("See [x](x.md) for ... · Handoff ...: <PR>"). It stays
+    with the note: an inline drain must not take the only pointer to a live
+    note. Its prose is not lost - a note drain prunes the link and keeps the
+    text, which the next scan reads as unit content."""
+    return any(
+        name != INDEX_FILE and (memory_dir / name).is_file()
+        for name in NOTE_LINK.findall(line)
+    )
+
+
+def _inline_units(text: str, memory_dir: Path) -> list[dict[str, Any]]:
+    """Split MEMORY.md into the units of knowledge written into it directly.
+
+    A unit is each `## ` section (a later `# ` heading also opens one), plus
+    the text before the first heading other than a leading `# ` title, the
+    "preamble". Headings are found fence-aware. A line outside a fence that
+    links to a note file present in the store is that note's index entry: it
+    belongs to the note, not to the unit, and a drain of the unit leaves it in
+    place. A link to a note that no longer exists is content - its hook text
+    is the last copy of what the note said.
+
+    Each unit's `content` is its heading plus its other lines, verbatim; that
+    is the text a drain moves and the text `content_sha256` covers."""
+    lines = text.splitlines(keepends=True)
+    spans: list[tuple[int | None, list[int]]] = []  # (heading line, its lines)
+    heading: int | None = None
+    members: list[int] = []
+    text_lines: set[int] = set()  # outside any fence
+    fence = ""
+    for number, line in enumerate(lines):
+        fence, outside = _fence_step(line, fence)
+        if outside:
+            text_lines.add(number)
+        if outside and number == 0 and line.startswith("# "):
+            continue  # the file's title: neither a unit nor the preamble
+        if outside and line.startswith(("## ", "# ")):
+            spans.append((heading, members))
+            heading, members = number, []
+            continue
+        members.append(number)
+    spans.append((heading, members))
+
+    result: list[dict[str, Any]] = []
+    for heading, members in spans:
+        content_lines, index_lines = [], []
+        for number in members:
+            if number in text_lines and _is_index_entry(lines[number], memory_dir):
+                index_lines.append(number)
+            else:
+                content_lines.append(number)
+        body = "".join(lines[n] for n in content_lines)
+        if not body.strip():
+            continue
+        head = lines[heading] if heading is not None else ""
+        result.append(
+            {
+                "unit": head.rstrip("\n") if heading is not None else "preamble",
+                "title": head.lstrip("#").strip()
+                if heading is not None
+                else "preamble",
+                "heading_line": heading,
+                "lines": members,
+                "index_lines": index_lines,
+                "content": head + body,
+                "body": body,
+            }
+        )
+    return result
+
+
+def _inline_findings(index_path: Path, slug: str) -> list[dict[str, Any]]:
+    """One C3 finding per inline unit of a store's MEMORY.md."""
+    try:
+        text = index_path.read_bytes().decode("utf-8", errors="replace")
+    except OSError:
+        return []
+    findings: list[dict[str, Any]] = []
+    for ordinal, unit in enumerate(_inline_units(text, index_path.parent)):
+        body = unit["body"].strip()
+        first = next((ln for ln in body.splitlines() if ln.strip()), "")
+        pending = _pending_state_phrases(body)
+        findings.append(
+            {
+                "signal": "C3",
+                "name": "memory_drift",
+                "source_path": str(index_path),
+                "source_slug": slug,
+                "index_path": str(index_path),
+                # Drain selects the unit by this hash: a title is masked in
+                # the output and an ordinal moves after each drain.
+                "content_sha256": hashlib.sha256(
+                    unit["content"].encode("utf-8")
+                ).hexdigest(),
+                "title": unit["title"],
+                "inline_unit": unit["unit"],
+                "inline_ordinal": ordinal,
+                "content": unit["content"],
+                # Masked before it is cut, like the global-rules description.
+                "description": _masking.mask(first)[:200],
+                "why": _extract_section(body, WHY_MARKER) or "",
+                "how_to_apply": _extract_section(body, HOWTO_MARKER) or "",
+                "origin_session_id": "",
+                "current_location": "project-local-memory-inline",
+                # Inline text IS the index every session loads, so any
+                # pending-state phrase in it is an index-line claim.
+                "pending_state": pending,
+                "pending_state_in_index": bool(pending),
+            }
+        )
+    return findings
+
+
 def cmd_scan(args) -> int:
     memory_root: Path = args.memory_root
     slug_dirs = _iter_slug_dirs(memory_root, args.project)
@@ -366,6 +511,7 @@ def cmd_scan(args) -> int:
     for slug, memory_dir in slug_dirs:
         present = memory_dir.is_dir()
         items = 0
+        inline: list[dict[str, Any]] = []
         if present:
             index_path = memory_dir / INDEX_FILE
             index = index_path if index_path.is_file() else None
@@ -376,8 +522,18 @@ def cmd_scan(args) -> int:
                 if finding:
                     findings.append(finding)
                     items += 1
+            if index:
+                inline = _inline_findings(index, slug)
+                findings.extend(inline)
+                items += len(inline)
         slugs_scanned.append(
-            {"slug": slug, "path": str(memory_dir), "present": present, "items": items}
+            {
+                "slug": slug,
+                "path": str(memory_dir),
+                "present": present,
+                "items": items,
+                "inline_units": len(inline),
+            }
         )
 
     if args.include_flagged_locations:
@@ -600,6 +756,123 @@ def _rewrite_index(index_path: Path, name: str) -> None:
     )
 
 
+def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
+    """Move one inline unit out of MEMORY.md into `.promoted/`.
+
+    The unit is selected by its `content_sha256` from the scan, which doubles
+    as the race-check: if no unit has that hash any more, the text changed and
+    nothing moves. The unit's heading and content lines go; index entries of
+    live notes inside it stay, and so does the heading when any are left. The
+    text is appended to `.promoted/MEMORY-inline-<date>.md` and written to disk
+    before MEMORY.md is replaced, so a failure in between leaves the text in
+    both places rather than in neither; a retry finds its hash in a tombstone
+    and does not append it twice."""
+    if not expect_sha256:
+        print(
+            f"drain refused: {index_path} is the index; drain one inline unit "
+            "with --expect-sha256 <content_sha256 from the scan>",
+            file=sys.stderr,
+        )
+        return 2
+    memory_dir = index_path.parent
+    tombstone_dir = memory_dir / TOMBSTONE_DIR
+    stamp = f"sha256={expect_sha256}"
+    for _attempt in range(5):
+        before = index_path.read_bytes()
+        try:
+            text = before.decode("utf-8")
+        except UnicodeDecodeError:
+            print(f"drain refused: {index_path} is not valid UTF-8", file=sys.stderr)
+            return 2
+        unit = next(
+            (
+                u
+                for u in _inline_units(text, memory_dir)
+                if hashlib.sha256(u["content"].encode("utf-8")).hexdigest()
+                == expect_sha256
+            ),
+            None,
+        )
+        if unit is None:
+            print(
+                "drain refused: source changed since scan (no inline unit "
+                f"has sha256 {expect_sha256[:12]})",
+                file=sys.stderr,
+            )
+            return 2
+        lines = text.splitlines(keepends=True)
+        removed = set(unit["lines"]) - set(unit["index_lines"])
+        if unit["index_lines"]:
+            # The heading stays to hold its index entries, and so does the
+            # blank line that separated the section from the next one.
+            last = unit["lines"][-1]
+            if not lines[last].strip():
+                removed.discard(last)
+        elif unit["heading_line"] is not None:
+            removed.add(unit["heading_line"])
+        kept = "".join(line for n, line in enumerate(lines) if n not in removed)
+
+        tombstone_dir.mkdir(exist_ok=True)
+        written = [
+            p
+            for p in sorted(tombstone_dir.glob("MEMORY-inline-*.md"))
+            if stamp in p.read_text(encoding="utf-8", errors="replace")
+        ]
+        tombstone = (
+            written[0]
+            if written
+            else tombstone_dir / f"MEMORY-inline-{date.today().isoformat()}.md"
+        )
+        fd, tmp = tempfile.mkstemp(prefix=f".{INDEX_FILE}.", dir=memory_dir)
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                handle.write(kept)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.chmod(tmp, index_path.stat().st_mode & 0o7777)
+            if index_path.read_bytes() != before:
+                continue
+            if not written:
+                block = unit["content"]
+                if not block.endswith("\n"):
+                    block += "\n"
+                lead = "\n" if tombstone.is_file() and tombstone.stat().st_size else ""
+                with open(tombstone, "a", encoding="utf-8") as handle:
+                    handle.write(
+                        f"{lead}<!-- retro promote drain: {stamp} -->\n{block}"
+                    )
+                    handle.flush()
+                    os.fsync(handle.fileno())
+            try:
+                os.replace(tmp, index_path)
+            except OSError as exc:
+                print(
+                    f"drain: the unit is in {tombstone}, but {index_path} could "
+                    f"not be replaced ({exc}); run the drain again",
+                    file=sys.stderr,
+                )
+                return 1
+        finally:
+            if os.path.exists(tmp):
+                os.unlink(tmp)
+        print(
+            json.dumps(
+                {
+                    "drained": True,
+                    "source": str(index_path),
+                    "inline_unit": unit["unit"],
+                    "content_sha256": expect_sha256,
+                    "tombstone": str(tombstone),
+                },
+                indent=2,
+                ensure_ascii=False,
+            )
+        )
+        return 0
+    print(f"drain: {index_path} kept changing; nothing was moved", file=sys.stderr)
+    return 1
+
+
 def cmd_drain(args) -> int:
     path: Path = args.path
     try:
@@ -620,6 +893,8 @@ def cmd_drain(args) -> int:
             file=sys.stderr,
         )
         return 2
+    if resolved.name == INDEX_FILE:
+        return _drain_inline(resolved, args.expect_sha256)
     try:
         raw = resolved.read_bytes()
     except OSError:
@@ -724,7 +999,10 @@ def main() -> int:
     drain.add_argument("path", type=Path)
     drain.add_argument("--memory-root", type=Path, default=DEFAULT_PROJECTS_DIR)
     drain.add_argument(
-        "--expect-sha256", default=None, help="Abort if source bytes differ"
+        "--expect-sha256",
+        default=None,
+        help="Abort if source bytes differ; for MEMORY.md, required, and it "
+        "selects the inline unit to drain",
     )
 
     args = parser.parse_args()
