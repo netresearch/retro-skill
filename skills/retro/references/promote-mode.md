@@ -102,10 +102,13 @@ was never re-homed. The scanner therefore also splits `MEMORY.md` into units:
   what the note said;
 - a unit with nothing left once index entries are removed is not emitted.
 
-An inline finding carries `content` (the unit verbatim: heading plus its other
+An inline finding carries `content` (the unit's text: heading plus its other
 lines), `inline_unit` (the heading line or `preamble`), `inline_ordinal`, and a
-`content_sha256` over exactly `content`. Since the text sits in the file every
-session loads, any pending-state phrase in it sets `pending_state_in_index`.
+`content_sha256` over the unit's raw text in the file. `content` is that text
+with secrets masked, so the two differ only where something was masked; the
+drain hashes the file, not the scan output. Since the text sits in the file
+every session loads, any pending-state phrase in it sets
+`pending_state_in_index`.
 
 ### Scope
 
@@ -276,7 +279,9 @@ competing permanent learning store.
    `MEMORY.md`; index entries inside it stay, with their heading. Everything
    else in `MEMORY.md` is left byte-identical. The tombstone is written before
    `MEMORY.md` is replaced, so a failure in between leaves the text in both
-   places, and a retry does not append it twice. A note drain can change an
+   places, and a retry that finds the complete block already in a tombstone
+   does not append it twice (a hash line in front of a partial copy does not
+   count). A note drain can change an
    inline unit's hash (the prose its pruned index line keeps joins the unit),
    so re-scan before an inline drain that follows a note drain; a stale hash
    is refused, not misapplied. A bare `drain MEMORY.md`

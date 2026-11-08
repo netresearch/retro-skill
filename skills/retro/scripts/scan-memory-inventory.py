@@ -779,24 +779,30 @@ def _without_unit(lines: list[str], unit: dict[str, Any]) -> str:
     return "".join(line for n, line in enumerate(lines) if n not in removed)
 
 
-def _inline_tombstone(tombstone_dir: Path, stamp: str) -> tuple[Path, bool]:
+def _tombstone_block(sha: str, content: str) -> str:
+    """One drained unit as it is appended: its hash line, then its text."""
+    if not content.endswith("\n"):
+        content += "\n"
+    return f"<!-- retro promote drain: sha256={sha} -->\n{content}"
+
+
+def _inline_tombstone(tombstone_dir: Path, block: str) -> tuple[Path, bool]:
     """The tombstone file for an inline unit, and whether it already holds it.
 
-    A retry after a failed replace finds its hash in an earlier tombstone and
-    must not append the unit a second time."""
+    A retry after a failed replace finds the whole block in an earlier
+    tombstone and must not append it a second time. The hash line alone does
+    not count: a write cut short leaves it in front of a partial copy."""
     for path in sorted(tombstone_dir.glob("MEMORY-inline-*.md")):
-        if stamp in path.read_text(encoding="utf-8", errors="replace"):
+        if block in path.read_text(encoding="utf-8", errors="replace"):
             return path, True
     return tombstone_dir / f"MEMORY-inline-{date.today().isoformat()}.md", False
 
 
-def _append_tombstone(tombstone: Path, stamp: str, content: str) -> None:
-    """Append one unit under its hash line, and put it on disk."""
-    if not content.endswith("\n"):
-        content += "\n"
+def _append_tombstone(tombstone: Path, block: str) -> None:
+    """Append one unit's block, and put it on disk."""
     lead = "\n" if tombstone.is_file() and tombstone.stat().st_size else ""
     with open(tombstone, "a", encoding="utf-8") as handle:
-        handle.write(f"{lead}<!-- retro promote drain: {stamp} -->\n{content}")
+        handle.write(lead + block)
         handle.flush()
         os.fsync(handle.fileno())
 
@@ -825,8 +831,8 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
     live notes inside it stay, and so does the heading when any are left. The
     text is appended to `.promoted/MEMORY-inline-<date>.md` and written to disk
     before MEMORY.md is replaced, so a failure in between leaves the text in
-    both places rather than in neither; a retry finds its hash in a tombstone
-    and does not append it twice."""
+    both places rather than in neither; a retry that finds the complete block
+    in a tombstone does not append it twice."""
     if not expect_sha256:
         print(
             f"drain refused: {index_path} is the index; drain one inline unit "
@@ -835,7 +841,6 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
         )
         return 2
     memory_dir = index_path.parent
-    stamp = f"sha256={expect_sha256}"
     for _attempt in range(5):
         before = index_path.read_bytes()
         unit, refusal = _find_inline_unit(before, memory_dir, expect_sha256)
@@ -844,7 +849,8 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
             return 2
         kept = _without_unit(before.decode("utf-8").splitlines(keepends=True), unit)
         (memory_dir / TOMBSTONE_DIR).mkdir(exist_ok=True)
-        tombstone, written = _inline_tombstone(memory_dir / TOMBSTONE_DIR, stamp)
+        block = _tombstone_block(expect_sha256, unit["content"])
+        tombstone, written = _inline_tombstone(memory_dir / TOMBSTONE_DIR, block)
         fd, tmp = tempfile.mkstemp(prefix=f".{INDEX_FILE}.", dir=memory_dir)
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -855,7 +861,7 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
             if index_path.read_bytes() != before:
                 continue
             if not written:
-                _append_tombstone(tombstone, stamp, unit["content"])
+                _append_tombstone(tombstone, block)
             os.replace(tmp, index_path)
         except OSError as exc:
             print(

@@ -1138,6 +1138,26 @@ class InlineMemoryDrainTest(unittest.TestCase):
         )
         self.assertNotIn("## Technical Notes", self.index.read_text(encoding="utf-8"))
 
+    def test_a_hash_line_before_a_partial_copy_is_not_a_copy(self):
+        """A tombstone write cut short leaves the hash line and half the unit;
+        the retry must still append the whole unit before taking it out."""
+        unit = self._unit("Technical Notes")
+        promoted = self.memory / ".promoted"
+        promoted.mkdir()
+        partial = (
+            f"<!-- retro promote drain: sha256={unit['content_sha256']} -->\n"
+            + unit["content"][: len(unit["content"]) // 2]
+        )
+        (promoted / "MEMORY-inline-2000-01-01.md").write_text(partial, encoding="utf-8")
+        res = _run_drain(self.index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        copies = "".join(p.read_text(encoding="utf-8") for p in self._tombstones())
+        self.assertIn(
+            f"<!-- retro promote drain: sha256={unit['content_sha256']} -->\n"
+            + unit["content"],
+            copies,
+        )
+
     def test_note_drain_still_works_beside_inline_units(self):
         note = self.memory / "feedback_x.md"
         res = _run_drain(note, self.root)
