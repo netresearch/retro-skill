@@ -289,7 +289,9 @@ competing permanent learning store.
    does not append it twice (a hash line in front of a partial copy does not
    count). The unchanged-check sits directly before the replace, so a memory
    another session saves during the drain is kept: the drain re-reads and
-   retries. A note drain can change an
+   retries. A save that lands between that check and the rename itself is
+   still lost; a lock taken only by this script cannot exclude the session
+   that writes `MEMORY.md`, so drain while no other session is saving memory. A note drain can change an
    inline unit's hash (the prose its pruned index line keeps joins the unit),
    so re-scan before an inline drain that follows a note drain; a stale hash
    is refused, not misapplied. When a section holds both a live note's index
