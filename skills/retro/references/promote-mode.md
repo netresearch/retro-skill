@@ -99,10 +99,12 @@ was never re-homed. The scanner therefore also splits `MEMORY.md` into units:
   pointer to a live note or its pending handoff. Only a note drain prunes it,
   and the prose it keeps becomes unit content on the next scan. A link to a
   note that no longer exists is content — its hook text is the last copy of
-  what the note said. Only a plain `[text](name.md)` link outside a code fence
-  counts: `./name.md`, `name.md#part`, a titled or reference-style link reads
-  as content, and a code fence left open to the end of the file swallows every
-  later heading. Check such a store by hand before draining it;
+  what the note said. A `[text](name.md)` or `[text](./name.md)` link outside a
+  code fence counts, in the body or in the heading (a heading that links a live
+  note stays when its section is drained); `name.md#part`, a titled or
+  reference-style link reads as content, and a code fence left open to the end
+  of the file swallows every later heading. Check such a store by hand before
+  draining it;
 - a unit with nothing left once index entries are removed is not emitted.
 
 An inline finding carries `content` (the unit's text: heading plus its other

@@ -381,7 +381,7 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
 
 # A link to a file beside MEMORY.md; when that file is a note in the store, the
 # line holding the link is the note's index entry, wherever the link sits.
-NOTE_LINK = re.compile(r"\]\(([^)\s/\\]+\.md)\)")
+NOTE_LINK = re.compile(r"\]\((?:\./)?([^)\s/\\]+\.md)\)")
 
 
 def _is_index_entry(line: str, memory_dir: Path) -> bool:
@@ -426,9 +426,13 @@ def _inline_units(text: str, memory_dir: Path) -> list[dict[str, Any]]:
         head = lines[heading] if heading is not None else ""
         result.append(
             {
-                "unit": head.rstrip("\n") if heading is not None else "preamble",
+                "unit": head.rstrip("\r\n") if heading is not None else "preamble",
                 "title": head.lstrip("#").strip() if head else "preamble",
                 "heading_line": heading,
+                # A heading that links to a live note is that note's pointer
+                # too: a drain keeps it, like an index entry in the body.
+                "heading_is_index": heading is not None
+                and _is_index_entry(head, memory_dir),
                 "lines": members,
                 "index_lines": index_lines,
                 "content": head + body,
@@ -478,7 +482,7 @@ def _inline_findings(index_path: Path, slug: str) -> list[dict[str, Any]]:
     for ordinal, unit in enumerate(_inline_units(text, index_path.parent)):
         body = unit["body"].strip()
         first = next((ln for ln in body.splitlines() if ln.strip()), "")
-        pending = _pending_state_phrases(body)
+        pending = _pending_state_phrases(unit["content"])
         findings.append(
             {
                 "signal": "C3",
@@ -747,7 +751,7 @@ def _rewrite_index(index_path: Path, name: str) -> None:
                 kept.append(pruned)
         fd, tmp = tempfile.mkstemp(prefix=f".{INDEX_FILE}.", dir=index_path.parent)
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
                 handle.write("".join(kept))
                 handle.flush()
                 os.fsync(handle.fileno())
@@ -774,7 +778,7 @@ def _without_unit(lines: list[str], unit: dict[str, Any]) -> str:
         last = unit["lines"][-1]
         if not lines[last].strip():
             removed.discard(last)
-    elif unit["heading_line"] is not None:
+    elif unit["heading_line"] is not None and not unit["heading_is_index"]:
         removed.add(unit["heading_line"])
     return "".join(line for n, line in enumerate(lines) if n not in removed)
 
@@ -793,15 +797,22 @@ def _inline_tombstone(tombstone_dir: Path, block: str) -> tuple[Path, bool]:
     tombstone and must not append it a second time. The hash line alone does
     not count: a write cut short leaves it in front of a partial copy."""
     for path in sorted(tombstone_dir.glob("MEMORY-inline-*.md")):
-        if block in path.read_text(encoding="utf-8", errors="replace"):
-            return path, True
+        # newline="": a CRLF block must be found as written, not translated.
+        with open(path, encoding="utf-8", errors="replace", newline="") as handle:
+            if block in handle.read():
+                return path, True
     return tombstone_dir / f"MEMORY-inline-{date.today().isoformat()}.md", False
 
 
-def _append_tombstone(tombstone: Path, block: str) -> None:
-    """Append one unit's block, and put it on disk."""
+def _append_tombstone(tombstone: Path, block: str, mode: int = 0o600) -> None:
+    """Append one unit's block, and put it on disk.
+
+    The tombstone holds MEMORY.md text verbatim, so it is never more readable
+    than MEMORY.md (`mode`): created with it, and narrowed when it exists."""
     lead = "\n" if tombstone.is_file() and tombstone.stat().st_size else ""
-    with open(tombstone, "a", encoding="utf-8") as handle:
+    fd = os.open(tombstone, os.O_WRONLY | os.O_APPEND | os.O_CREAT, mode & 0o666)
+    os.fchmod(fd, os.fstat(fd).st_mode & mode & 0o7777)
+    with os.fdopen(fd, "a", encoding="utf-8", newline="") as handle:
         handle.write(lead + block)
         handle.flush()
         os.fsync(handle.fileno())
@@ -854,13 +865,15 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
         tombstone, written = _inline_tombstone(memory_dir / TOMBSTONE_DIR, block)
         fd, tmp = tempfile.mkstemp(prefix=f".{INDEX_FILE}.", dir=memory_dir)
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            # newline="": the kept lines go back byte for byte, on any OS.
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
                 handle.write(kept)
                 handle.flush()
                 os.fsync(handle.fileno())
-            os.chmod(tmp, index_path.stat().st_mode & 0o7777)
+            index_mode = index_path.stat().st_mode & 0o7777
+            os.chmod(tmp, index_mode)
             if not written:
-                _append_tombstone(tombstone, block)
+                _append_tombstone(tombstone, block, index_mode)
             # Checked directly before the replace, after the tombstone fsync:
             # a memory another session saved meanwhile is re-read on the next
             # attempt, which finds the block already copied.
@@ -883,7 +896,9 @@ def _drain_inline(index_path: Path, expect_sha256: str | None) -> int:
                 {
                     "drained": True,
                     "source": str(index_path),
-                    "inline_unit": unit["unit"],
+                    # Masked like the scan's title: drain output enters the
+                    # agent's context too.
+                    "inline_unit": _masking.mask(unit["unit"]),
                     "content_sha256": expect_sha256,
                     "tombstone": str(tombstone),
                 },

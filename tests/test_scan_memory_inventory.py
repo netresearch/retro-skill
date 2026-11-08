@@ -990,6 +990,91 @@ class InlineMemoryScanTest(unittest.TestCase):
         self.assertTrue(unit["pending_state_in_index"])
 
 
+class InlineDrainShapesTest(unittest.TestCase):
+    """Store shapes from review round two: dot-slash links, a heading that
+    links a live note, CRLF, file modes, a secret in a heading."""
+
+    def setUp(self):
+        self.root, self.memory = _make_root()
+        self.addCleanup(shutil.rmtree, self.root, ignore_errors=True)
+        _write(self.memory, "feedback_x.md", FEEDBACK)
+
+    def _store(self, text: str, newline: str = "\n") -> Path:
+        path = self.memory / "MEMORY.md"
+        path.write_bytes(text.replace("\n", newline).encode("utf-8"))
+        return path
+
+    def _unit(self, title: str) -> dict:
+        res = _run_scan(memory_root=self.root)["json"]
+        return {u["title"]: u for u in _inline(res["findings"])}[title]
+
+    def test_a_dot_slash_link_to_a_live_note_stays(self):
+        index = self._store(
+            "# M\n\n## Tools\n- [X](./feedback_x.md) — hook\n- inline rule\n"
+        )
+        res = _run_drain(index, self.root, self._unit("Tools")["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        text = index.read_text(encoding="utf-8")
+        self.assertIn("[X](./feedback_x.md)", text)
+        self.assertNotIn("inline rule", text)
+
+    def test_a_heading_that_links_a_live_note_stays(self):
+        index = self._store(
+            "# M\n\n## See [X](feedback_x.md)\n- inline rule\n\n## Other\n- keep\n"
+        )
+        unit = self._unit("See [X](feedback_x.md)")
+        res = _run_drain(index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        text = index.read_text(encoding="utf-8")
+        self.assertIn("## See [X](feedback_x.md)", text)
+        self.assertNotIn("inline rule", text)
+
+    def test_a_pending_phrase_in_the_heading_is_reported(self):
+        self._store("# M\n\n## Release still open\n- the tag is cut by hand\n")
+        unit = self._unit("Release still open")
+        self.assertTrue(unit["pending_state_in_index"], unit["pending_state"])
+
+    def test_a_crlf_retry_appends_once_and_keeps_line_endings(self):
+        index = self._store("# M\n\n## A\n- one\n\n## B\n- two\n", newline="\r\n")
+        unit = self._unit("A")
+        real_replace = smi.os.replace
+        calls = {"n": 0}
+
+        def failing_once(src, dst):
+            calls["n"] += 1
+            if calls["n"] == 1:
+                raise OSError("simulated")
+            return real_replace(src, dst)
+
+        with mock.patch.object(smi.os, "replace", failing_once):
+            self.assertNotEqual(
+                _run_drain(index, self.root, unit["content_sha256"])["rc"], 0
+            )
+        res = _run_drain(index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        [tomb] = sorted((self.memory / ".promoted").glob("MEMORY-inline-*.md"))
+        self.assertEqual(tomb.read_bytes().count(unit["content_sha256"].encode()), 1)
+        self.assertEqual(index.read_bytes(), b"# M\r\n\r\n## B\r\n- two\r\n")
+
+    def test_the_tombstone_is_no_more_readable_than_memory_md(self):
+        index = self._store("# M\n\n## A\n- one\n")
+        index.chmod(0o600)
+        res = _run_drain(index, self.root, self._unit("A")["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        [tomb] = sorted((self.memory / ".promoted").glob("MEMORY-inline-*.md"))
+        self.assertEqual(tomb.stat().st_mode & 0o077, 0)
+
+    def test_drain_output_masks_a_secret_in_the_heading(self):
+        secret = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"
+        index = self._store(f"# M\n\n## token {secret}\n- rotate it\n")
+        unit = next(
+            u for u in _inline(_run_scan(memory_root=self.root)["json"]["findings"])
+        )
+        res = _run_drain(index, self.root, unit["content_sha256"])
+        self.assertEqual(res["rc"], 0, res["stderr"])
+        self.assertNotIn(secret, res["stdout"])
+
+
 class InlineMemoryDrainTest(unittest.TestCase):
     def setUp(self):
         self.root, self.memory = _make_root()
@@ -1145,8 +1230,8 @@ class InlineMemoryDrainTest(unittest.TestCase):
         unit = self._unit("Technical Notes")
         real_append = smi._append_tombstone
 
-        def concurrent_save(tombstone, block):
-            real_append(tombstone, block)
+        def concurrent_save(tombstone, block, *args):
+            real_append(tombstone, block, *args)
             with open(self.index, "a", encoding="utf-8") as handle:
                 handle.write("- saved by another session\n")
 
