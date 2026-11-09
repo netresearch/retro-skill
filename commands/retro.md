@@ -382,12 +382,6 @@ When invoked with a `"<problem description>"` argument:
 /retro "the assistant kept using npm instead of bun"
 ```
 
-A short or question-shaped argument that names retro itself (`/retro zur
-retro?`) has two readings: a Spotlight on the work since the last retro, or a
-retro of that retro run. Ask one question naming both before Phase 1, then run
-the one chosen. A described problem that mentions retro in passing is a
-Spotlight as usual; do not ask before every run.
-
 - Skip Phase 1 full-transcript mechanical pre-pass; instead extract argument-matching turns
 - Run LLM enrichment on those turns only
 - Run Phase 3 (cross-session) in filtered mode (same friction signature)
@@ -395,6 +389,12 @@ Spotlight as usual; do not ask before every run.
 - Proceed with Phases 4–11
 
 Faster and uses fewer tokens than a full sweep.
+
+A short or question-shaped argument that names retro itself (`/retro zur
+retro?`) has two readings: a Spotlight on the work since the last retro, or a
+retro of that retro run. Ask one question naming both before Phase 1, then run
+the one chosen. A described problem that mentions retro in passing is a
+Spotlight as usual; do not ask before every run.
 
 ## Outcome Mode
 

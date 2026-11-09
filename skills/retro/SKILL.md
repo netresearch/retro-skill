@@ -66,7 +66,8 @@ decisions. Process critique grants no new authority.
    `uv run`. Invocation and adapter limits are in `references/workflow.md`.
    Its JSON holds `coverage.status`, `findings_total` and `findings[]`, each
    with `signal` and `name` and further fields per signal (field list:
-   `references/workflow.md` § Shared pipeline). Then `uv run ${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py` on the
+   `references/workflow.md` § Shared pipeline).
+   Then `uv run ${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py` on the
    same transcript (its header also declares the tree-sitter parser; plain
    `python3` stops with a message): review threads, bot reviews,
    and comments on the session's PRs/MRs, their linked issues, plus normalized tracker feedback supplied via
