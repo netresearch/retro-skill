@@ -36,6 +36,7 @@ decisions. Process critique grants no new authority.
   question-shaped argument naming retro itself (`/retro zur retro?`) reads
   two ways — the work since the last retro, or that retro run: ask one
   question with both before Phase 1 (`references/workflow.md` § Spotlight).
+  A described problem that mentions retro in passing is a Spotlight as usual.
 - **`/retro outcome [session-id|--since N]`** — replay a past session by its
   outcomes.
 - **`/retro audit [--scope project|repo|skill]`** — cross-session architectural

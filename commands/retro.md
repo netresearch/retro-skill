@@ -393,7 +393,9 @@ Faster and uses fewer tokens than a full sweep.
 A short or question-shaped argument that names retro itself (`/retro zur
 retro?`) has two readings: a Spotlight on the work since the last retro, or a
 retro of that retro run. Ask one question naming both before Phase 1, then run
-the one chosen. A described problem that mentions retro in passing is a
+the one chosen; the first covers every turn between the previous retro run
+and this invocation, not only argument-matching ones. With no earlier retro in the session, run a Sweep
+without asking. A described problem that mentions retro in passing is a
 Spotlight as usual; do not ask before every run.
 
 ## Outcome Mode

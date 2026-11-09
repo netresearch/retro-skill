@@ -68,9 +68,14 @@ A short or question-shaped argument that names retro itself (`/retro zur
 retro?`, `/retro "and the retro?"`) is not a problem description: it can mean
 a Spotlight on the work done since the last retro, or a retro of that retro
 run — its scripts, phases and report, as Phase 11 checks them. Before Phase 1,
-ask one question that names both readings, then run the one chosen. This
-applies only to such an argument; a described problem, even one that mentions
-retro in passing, is a Spotlight as usual.
+ask one question that names both readings, then run the one chosen. The first
+reading covers every turn between the end of the previous retro run and this
+invocation, not only the turns that match the argument (`--since-command
+retro` does not give that range: it starts at this, the last, invocation); the
+second covers the previous retro run itself. When no
+retro ran earlier in the session, neither reading exists: run a Sweep of the
+session instead of asking. This applies only to such an argument; a described
+problem, even one that mentions retro in passing, is a Spotlight as usual.
 
 ### Outcome — `/retro outcome [session-id|--since N]`
 
