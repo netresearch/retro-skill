@@ -59,14 +59,20 @@ ALTERNATIVES: dict[str, str] = {
     # a program's identifier (`{"PRIVATE-TOKEN": token}`) readable.
     "private_token_header": r"(?P<private_token_header_keep>(?i:\bprivate-token"
     r"[\"']?\s*:\s*[\"']?))(?=[A-Za-z0-9_.-]*\d)[A-Za-z0-9_.-]{20,}",
-    "api_key_header": r"(?P<api_key_header_keep>(?i:\bx-api-key[\"']?\s*:\s*[\"']?))"
-    r"(?!\$)[^\s'\"]+",
+    # `X-API-Key`, a vendor's `X-<Vendor>-API-Key` (`X-Redmine-API-Key`), the
+    # bare `Api-Key` and `X-Auth-Token`. The colon after the name is required,
+    # so the words "API key" or "auth token" in prose stay readable.
+    "api_key_header": r"(?P<api_key_header_keep>(?i:\b(?:x-(?:[a-z0-9]+-)*api-?key"
+    r"|api-key|x-auth-token)[\"']?\s*:\s*[\"']?))(?!\$)[^\s'\"]+",
     # The whole cookie list: `Cookie: a=1; b=2` masks both values.
     "cookie_header": r"(?P<cookie_header_keep>(?i:\b(?:set-)?cookie[\"']?\s*:\s*[\"']?))"
     r"(?!\$)[^\s'\";]+(?:;\s*[^\s'\";]+)*",
-    # A credential passed in a query string.
-    "query_credential": r"(?P<query_credential_keep>[?&](?i:access_token|private_token"
-    r"|api_key|apikey|token|password|client_secret)=)(?!\$)[^\s&#'\"]+",
+    # A credential passed in a query string; `key=` is Redmine's and Google's
+    # name for the API key (`/issues.json?key=…`). Only after `?` or `&`, so
+    # `monkey=` or a `key=value` pair in prose stays readable. An HTML page in
+    # a tool result escapes the separator as `&amp;`.
+    "query_credential": r"(?P<query_credential_keep>[?&](?:amp;)?(?i:access_token|private_token"
+    r"|api_key|apikey|token|password|client_secret|key)=)(?!\$)[^\s&#'\"]+",
     "jwt": r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*",
     # `https://user:token@host` — the userinfo is masked, scheme and host stay.
     # The user may be empty (`redis://:password@host`), and the password may

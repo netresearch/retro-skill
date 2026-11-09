@@ -114,6 +114,11 @@ NEGATIVES = [
     "X-API-Key header missing, Cookie header missing",
     "curl -H 'X-API-Key: $KEY' -H 'Cookie: $C' https://example.org/?token=$T",
     "https://example.org/search?q=token&page=2",
+    # Look-alikes of the API-key header and `key=` query forms.
+    "Api-Key header missing; set the API key and the X-Auth-Token header",
+    "an api key: ask the admin, the auth token: see Vault",
+    "curl -H 'X-Redmine-API-Key: $KEY' -H 'X-Auth-Token: $T' https://x/?key=$K",
+    "https://example.org/?keyword=a&monkey=b and the key=value pair",
 ]
 
 
@@ -225,6 +230,41 @@ class AlternativesTest(unittest.TestCase):
         self.assertEqual(
             ms.mask("https://user:p@" + "ss9x@host/"), "https://[REDACTED]@host/"
         )
+
+    def test_vendor_api_key_headers_and_key_query_are_masked(self):
+        # Header names other than `X-API-Key`, and Redmine's `?key=`, shipped
+        # in clear. The sample table holds one sample per alternative.
+        value = "rk7" + "Q" * 21
+        for text, expected in (
+            (
+                "curl -H 'X-Redmine-" + "API-Key: {v}' https://r",
+                "curl -H 'X-Redmine-API-Key: [REDACTED]' https://r",
+            ),
+            ("x-api" + "key: {v}", "x-apikey: [REDACTED]"),
+            ("Api-" + "Key: {v}", "Api-Key: [REDACTED]"),
+            ("X-Auth-" + "Token: {v}", "X-Auth-Token: [REDACTED]"),
+            ('{{"X-Auth-' + 'Token": "{v}"}}', '{"X-Auth-Token": "[REDACTED]"}'),
+            (
+                "https://r.example.org/issues.json?" + "key={v}&limit=5",
+                "https://r.example.org/issues.json?key=[REDACTED]&limit=5",
+            ),
+            (
+                "curl 'https://x/a?page=1&" + "KEY={v}'",
+                "curl 'https://x/a?page=1&KEY=[REDACTED]'",
+            ),
+            # An HTML page in a tool result escapes the separator.
+            (
+                '<a href="/issues?page=1&amp;' + 'key={v}">',
+                '<a href="/issues?page=1&amp;key=[REDACTED]">',
+            ),
+            (
+                "/x?a=1&amp;" + "access_token={v}&amp;b=2",
+                "/x?a=1&amp;access_token=[REDACTED]&amp;b=2",
+            ),
+        ):
+            with self.subTest(text):
+                self.assertEqual(ms.mask(text.format(v=value)), expected)
+                self.assertNotIn(value, ms.squeeze(text.format(v=value), 1000))
 
     def test_curl_user_password_is_masked(self):
         """Not an alternative (see mask-secrets.py): its own pass, its own test."""
