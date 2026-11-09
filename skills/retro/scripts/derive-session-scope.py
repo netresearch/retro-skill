@@ -1315,51 +1315,71 @@ HTTP_WRITE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]", "0.0.0.0"})
 
 
-def _curl_write(words: list[str]) -> tuple[str, str] | None:
-    """The method and URL of one curl command's arguments when it writes.
-
-    The URL is the `--url` value, else the first argument with a scheme,
-    else the first one that is no option; query string and userinfo are
-    dropped, since a tracker key often travels in either."""
-    method, body, upload, read, url, positional = "", False, False, False, "", []
-    i = 0
-    while i < len(words):
-        word = words[i]
-        value = words[i + 1] if i + 1 < len(words) else ""
+def _curl_options(words: list[str]) -> dict[str, Any]:
+    """What one curl command's arguments say: the explicit method, whether
+    it sends a body, an upload or only reads, the `--url` value and the
+    words that are no option and no option's value."""
+    seen: dict[str, Any] = {"method": "", "flags": set(), "url": "", "positional": []}
+    words = iter(words)
+    for word in words:
+        value = next(words, "") if word in CURL_VALUE_OPTIONS else ""
         if word in ("-X", "--request"):
-            method = value.upper()
-        elif word.startswith("-X") and len(word) > 2:
-            method = word[2:].upper()
+            seen["method"] = value.upper()
+        elif word.startswith("-X"):
+            seen["method"] = word[2:].upper()
         elif word == "--url":
-            url = url or value
-        elif word in CURL_BODY_OPTIONS or (word[:2] in ("-d", "-F") and len(word) > 2):
-            body = True
+            seen["url"] = seen["url"] or value
+        elif word in CURL_BODY_OPTIONS or word[:2] in ("-d", "-F"):
+            seen["flags"].add("body")
         elif word in CURL_UPLOAD_OPTIONS:
-            upload = True
+            seen["flags"].add("upload")
         elif word in CURL_READ_OPTIONS:
-            read = True
+            seen["flags"].add("read")
         elif not word.startswith("-"):
-            positional.append(word)
-        if word in CURL_VALUE_OPTIONS:
-            i += 1
-        i += 1
-    if not method:
-        method = "PUT" if upload else "POST" if body and not read else ""
-    if method not in HTTP_WRITE_METHODS:
-        return None
-    url = url or next((w for w in positional if "://" in w), "")
-    url = url or (positional[0] if positional else "")
-    if not url:
-        return method, "(no URL in the command)"
+            seen["positional"].append(word)
+    return seen
+
+
+def _implied_method(flags: set[str]) -> str:
+    """The method curl picks without `-X`: PUT for an upload, POST for a
+    body unless `-G`/`-I` reads, otherwise none that writes."""
+    if "upload" in flags:
+        return "PUT"
+    if "body" in flags and "read" not in flags:
+        return "POST"
+    return ""
+
+
+def _outward_url(url: str) -> str | None:
+    """`url` without query string, fragment and userinfo, since a tracker key
+    often travels there; None for a loopback host, which is not outward."""
     if "://" not in url:
-        return method, url.split("?", 1)[0]
+        return url.split("?", 1)[0]
     scheme, rest = url.split("://", 1)
     location = rest.split("?", 1)[0].split("#", 1)[0]
     netloc, _, path = location.partition("/")
     host = netloc.rsplit("@", 1)[-1]
     if host.rsplit(":", 1)[0] in LOOPBACK_HOSTS or host in LOOPBACK_HOSTS:
         return None
-    return method, f"{scheme}://{host}/{path}"
+    return f"{scheme}://{host}/{path}"
+
+
+def _curl_write(words: list[str]) -> tuple[str, str] | None:
+    """The method and URL of one curl command's arguments when it writes.
+
+    The URL is the `--url` value, else the first argument with a scheme,
+    else the first one that is no option."""
+    seen = _curl_options(words)
+    method = seen["method"] or _implied_method(seen["flags"])
+    if method not in HTTP_WRITE_METHODS:
+        return None
+    positional = seen["positional"]
+    url = seen["url"] or next((w for w in positional if "://" in w), "")
+    url = url or (positional[0] if positional else "")
+    if not url:
+        return method, "(no URL in the command)"
+    outward = _outward_url(url)
+    return (method, outward) if outward is not None else None
 
 
 def _http_writes(command: str) -> list[tuple[str, str]]:
@@ -1908,6 +1928,16 @@ class _ArtefactScan:
     def mention(self, text: str) -> None:
         self.keep(_with_origin(artefacts_in_text(text), "mentioned"))
 
+    def http_writes(self, command: str, result: str, is_error: bool) -> None:
+        """A curl write's target is not a native artefact: unknown, never
+        silence. A refused call ran nothing."""
+        if refused(result, is_error):
+            return
+        self.unresolved += [
+            squeeze(f"curl -X {method} {url}", 200)
+            for method, url in _http_writes(_joined(command))
+        ]
+
     def tool_use(self, block: dict[str, Any]) -> None:
         payload = block.get("input") or {}
         if not isinstance(payload, dict):
@@ -1935,12 +1965,7 @@ class _ArtefactScan:
                         "only_review_threads": not lost,
                     }
                 )
-            if not refused(result, bool(block.get("is_error"))):
-                # Its target is not a native artefact: unknown, never silence.
-                self.unresolved += [
-                    squeeze(f"curl -X {method} {url}", 200)
-                    for method, url in _http_writes(_joined(command))
-                ]
+            self.http_writes(command, result, bool(block.get("is_error")))
         elif MCP_WRITE_RE.search(name):
             self.keep(
                 _mcp_write_artefacts(payload, result, bool(block.get("is_error")))
