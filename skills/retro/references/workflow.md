@@ -593,8 +593,9 @@ MR a script opened inside one call, unless its list is passed with `--pr-list`
 (a fleet release driver's `opened.jsonl` is such a list); what a documentation
 system holds when no integration reaches it (`not-searched`); an opaque
 reference whose tracker, instance and artifact identity remain unresolved; a write whose output and words name no target in a shape the scope script can prove (listed as an
-unresolved forge command instead); a write through `curl` or another tool
-than `gh`, `glab`, the GitHub MCP tools and `pr-merge.sh`; slow constitutional drift
+unresolved forge command instead); the target of a `curl` write (listed as
+unresolved with its method and URL, never attributed); a write through another tool
+than `gh`, `glab`, `curl`, the GitHub MCP tools and `pr-merge.sh`; slow constitutional drift
 without `audit`; or outcomes the agent never saw (a reverted commit or rejected
 PR is seen, an unspoken "the customer hated it" is not). For those, run
 `/retro outcome` (post-hoc) or `/retro audit` (cross-session).

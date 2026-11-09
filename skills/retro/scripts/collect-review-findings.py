@@ -55,6 +55,12 @@ Usage:
     collect-review-findings.py --ref <artifact URL or unresolved short reference> [--ref …]
     collect-review-findings.py --transcript-file <session.jsonl> --pr-list <opened.jsonl>
 
+An outward HTTP write through `curl` (a method of POST, PUT, PATCH or DELETE,
+or a body) is never attributed to an artefact: it is listed in
+`unresolved_forge_commands` as `curl -X <METHOD> <URL>`, without query string
+or userinfo, so a ticket created in a tracker this script does not read shows
+as a gap, to be filled with `--feedback-file`.
+
 A PR/MR a script opened inside one call never shows in the transcript. Its
 list — one URL, or one JSON object with `url`, per line — goes in with
 `--pr-list`; those PRs are read like the session's own, with origin `listed`.
