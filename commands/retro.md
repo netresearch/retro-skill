@@ -50,7 +50,12 @@ verbatim phrase from **this** conversation before analysing it — the selection
 procedure, its guards and the reasons behind them are in
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/workflow.md` § Shared pipeline.
 
-Output is a structured list of candidate findings. Read this before scanning the transcript yourself — it saves tokens.
+Output is one JSON object: `coverage.status`, `findings_total` and
+`findings[]`, each finding with `signal` (`A1`, …) and `name` and further
+fields that differ per signal. The field list is in
+`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/workflow.md` § Shared pipeline;
+read it, or a signal's `keys`, before filtering. Read this output before
+scanning the transcript yourself — it saves tokens.
 
 ## Phase 1b: Review and Ticket Feedback
 
@@ -203,7 +208,9 @@ For an audit, three modes read the whole window (see the Schicht C section of
 ## Phase 4: Skill Discovery
 
 Run up front, for **every** candidate learning (not only once a destination is
-chosen) — discover the full catalogue:
+chosen), and also when the owning skill seems obvious — discover the full
+catalogue. Opening the skills you expect by path is not this phase; if you do
+that instead, say so in a deviation line (Phase 10):
 
 ```bash
 uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-org-skills.py
@@ -337,6 +344,11 @@ Every B21 item also gets a row in the documentation table: fact, starting point,
 what was searched, state, action (`documentation-lookup.md`). A report with no B21 item
 states `B21: none` instead of the table. Gate 8 of Done mode reads either form.
 
+Go through the phases of this mode before writing the report: each one ran as
+prescribed or gets one deviation line with its reason, e.g.
+`Phase 4 (skill discovery): skipped — <reason>`
+(`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/workflow.md` § Report deviations).
+
 ## Phase 11: Self-check
 
 Close every run by checking the retro itself — its scripts, the output it had
@@ -369,6 +381,12 @@ When invoked with a `"<problem description>"` argument:
 ```
 /retro "the assistant kept using npm instead of bun"
 ```
+
+A short or question-shaped argument that names retro itself (`/retro zur
+retro?`) has two readings: a Spotlight on the work since the last retro, or a
+retro of that retro run. Ask one question naming both before Phase 1, then run
+the one chosen. A described problem that mentions retro in passing is a
+Spotlight as usual; do not ask before every run.
 
 - Skip Phase 1 full-transcript mechanical pre-pass; instead extract argument-matching turns
 - Run LLM enrichment on those turns only
