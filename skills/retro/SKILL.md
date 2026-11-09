@@ -32,7 +32,11 @@ decisions. Process critique grants no new authority.
 ## Modes
 
 - **`/retro`** — Sweep: the whole current session.
-- **`/retro "<problem>"`** — Spotlight: one described issue.
+- **`/retro "<problem>"`** — Spotlight: one described issue. A short or
+  question-shaped argument naming retro itself (`/retro zur retro?`) reads
+  two ways — the work since the last retro, or that retro run: ask one
+  question with both before Phase 1 (`references/workflow.md` § Spotlight).
+  A described problem that mentions retro in passing is a Spotlight as usual.
 - **`/retro outcome [session-id|--since N]`** — replay a past session by its
   outcomes.
 - **`/retro audit [--scope project|repo|skill]`** — cross-session architectural
@@ -61,6 +65,9 @@ decisions. Process critique grants no new authority.
    regularly somebody else's. Codex rollout JSONL must first be converted with
    `scripts/codex-transcript.py`; on Windows set `PYTHONUTF8=1` before
    `uv run`. Invocation and adapter limits are in `references/workflow.md`.
+   Its JSON holds `coverage.status`, `findings_total` and `findings[]`, each
+   with `signal` and `name` and further fields per signal (field list:
+   `references/workflow.md` § Shared pipeline).
    Then `uv run ${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py` on the
    same transcript (its header also declares the tree-sitter parser; plain
    `python3` stops with a message): review threads, bot reviews,
@@ -76,7 +83,7 @@ decisions. Process critique grants no new authority.
    learnings B16–B21); distinguish observations, hypotheses and decisions;
    filter false positives. A prior failure is not required for a learning.
 3. Cross-session enrichment (optional) — JSONL scan via `${CLAUDE_SKILL_DIR}/scripts/scan-cross-session.py`.
-4. Discover skills — `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py` — and the repo's harness (`project-harness-inspection.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
+4. Discover skills — always run `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py`, also when the owning skill seems obvious (opening it by path is a skip that needs a deviation line) — and the repo's harness (`project-harness-inspection.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
 5. Classify (`classification-heuristic.md`) — authority and rule purpose before
    enforcement and reach; consider simplification, tools or environment changes;
    never project-local memory.
@@ -88,7 +95,8 @@ decisions. Process critique grants no new authority.
 8. Authorization — reuse the valid mandate; present concrete uncovered decisions
    for approve / edit / reject. Do not request the same permission again.
 9. Materialize per destination; for Promote, drain the source last (verified).
-10. Report.
+10. Report — with one deviation line per phase of the mode table that did not
+    run as prescribed (`references/workflow.md` § Report deviations).
 11. Self-check — the retro's own scripts, phases and reading of the invocation:
     `detect-mechanical.py --since-command retro`, three closed questions, a
     finding only with evidence, at most two `skill-update`s against retro-skill,

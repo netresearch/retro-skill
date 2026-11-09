@@ -64,6 +64,19 @@ Examples:
 /retro "git push failed because we missed phpstan"
 ```
 
+A short or question-shaped argument that names retro itself (`/retro zur
+retro?`, `/retro "and the retro?"`) is not a problem description: it can mean
+a Spotlight on the work done since the last retro, or a retro of that retro
+run — its scripts, phases and report, as Phase 11 checks them. Before Phase 1,
+ask one question that names both readings, then run the one chosen. The first
+reading covers every turn between the end of the previous retro run and this
+invocation, not only the turns that match the argument (`--since-command
+retro` does not give that range: it starts at this, the last, invocation); the
+second covers the previous retro run itself. When no
+retro ran earlier in the session, neither reading exists: run a Sweep of the
+session instead of asking. This applies only to such an argument; a described
+problem, even one that mentions retro in passing, is a Spotlight as usual.
+
 ### Outcome — `/retro outcome [session-id|--since N]`
 
 Replay a past session through the lens of what happened to its output afterwards
@@ -224,6 +237,18 @@ pre-pass. `supported` recognizes the message envelope; it does not promise that
 all content blocks or pending tool results were measured. The loader still
 ignores malformed and non-object JSON lines; `empty` means no object records
 were loaded, not that the original file contained no bytes.
+
+The JSON is one object. Its top-level keys are `transcript`, `coverage`
+(read `coverage.status`), `events_total`, `user_messages`, `tool_uses`,
+`findings_total` and `findings`. Every entry of `findings` carries `signal`
+(`A1`, `C6`, …) and `name` (`tool_error`, `wait_loop`, …); where a finding has
+a location it is `turn`, `turns`, or `first_turn` and `last_turn`; the
+aggregate signals (A4, A5, A9, A18, C6) have none. Every other field depends on
+the signal: the text is in `snippet` for many (A1, A6, A13), in `command` for
+others (A14, A17), and the aggregate ones carry counts and ratios instead.
+There is no `id`, `summary` or `message` field. Read the keys of a signal
+before filtering on them, e.g.
+`jq '[.findings[] | select(.signal == "A4")][0] | keys'`.
 
 Four things in that snippet are load-bearing:
 
@@ -433,14 +458,22 @@ with the reason:
 
 ```
 Phase 3 (cross-session): skipped — single-project session, no cross-session pattern found.
-Phase 4 (skill discovery): used `find … SKILL.md | grep` instead of find-installed-skills.sh because <reason>.
+Phase 4 (skill discovery): used `find … SKILL.md | grep` instead of find-org-skills.py because <reason>.
 ```
 
 Silent skips make the Phase-10 report read as "all phases ran" when they did
 not — which is itself a friction signal a future retro will (correctly) flag.
-Prefer the prescribed scripts (`find-installed-skills.sh`, `scan-cross-session.py`)
+Before writing the report, go through the mode table row by row: each phase
+either ran as prescribed or has its deviation line.
+Prefer the prescribed scripts (`find-org-skills.py`, `scan-cross-session.py`)
 over ad-hoc substitutes; reach for an ad-hoc step only when the script genuinely
 cannot serve, and announce it when you do.
+
+Phase 4 is not optional in any mode that runs it, and least of all when the
+owning skill seems obvious: opening the skills you expect by path is a
+substitute for `find-org-skills.py`, not the phase, and needs its deviation
+line. The catalogue is what shows a second owner or a better-fitting skill;
+the routing being right afterwards does not make the skip harmless.
 
 ## Phase 11: Self-check
 
