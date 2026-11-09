@@ -2294,6 +2294,110 @@ class UnresolvedSurfacedTest(unittest.TestCase):
         )
 
 
+class HttpWriteUnresolvedTest(unittest.TestCase):
+    """An outward HTTP write through curl is listed as unresolved with its
+    method and URL (#214): it may have created a ticket in a tracker the
+    collector does not read, so silence there is not "no feedback"."""
+
+    # Built from parts so the repository's own secret scanner does not
+    # report the made-up value.
+    PLANTED = "a1b2c3" + "d4e5f6" * 3 + "a1b2c3"
+
+    def unresolved(self, cmd, result="", error=False):
+        payload = {"command": cmd}
+        if error:
+            payload["__error"] = True
+        data = dss.collect_artefacts(_transcript([(payload, result)]))
+        return data["unresolved_forge_commands"]
+
+    def test_a_tracker_post_is_listed_with_its_url_and_no_secret(self):
+        # The shape that went unseen: an issue created with a POST that
+        # printed its id, the key in a header and in the query string.
+        body = json.dumps({"issue": {"subject": "x" * 400, "project_id": 3}})
+        cmd = (
+            f"curl -s -X POST -H 'Content-Type: application/json' "
+            f"-H 'X-Tracker-API-Key: {self.PLANTED}' -d '{body}' "
+            f"'https://tracker.example.org/issues.json?key={self.PLANTED}'"
+        )
+        result = '{"issue":{"id":111323}}'
+        transcript = _transcript([({"command": cmd}, result)])
+        line = "curl -X POST https://tracker.example.org/issues.json"
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = crf.main(["x", "--transcript-file", str(transcript)])
+        self.assertEqual(code, 0)
+        self.assertIn(f"UNRESOLVED {line}", out.getvalue())
+        self.assertNotIn(self.PLANTED, out.getvalue())
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            crf.main(
+                ["x", "--transcript-file", str(transcript), "--output-format", "json"]
+            )
+        self.assertNotIn(self.PLANTED, out.getvalue())
+        data = json.loads(out.getvalue())
+        self.assertEqual(data["unresolved_forge_commands"], [line])
+        self.assertFalse(data["complete"])
+
+    def test_each_write_form_names_method_and_url(self):
+        cases = {
+            "curl -d a=1 https://t.example.org/x": "POST https://t.example.org/x",
+            "curl -dx https://t.example.org/x": "POST https://t.example.org/x",
+            "curl --json '{}' https://t.example.org/x": "POST https://t.example.org/x",
+            "curl -F f=@a.txt https://t.example.org/x": "POST https://t.example.org/x",
+            "curl -XPUT https://t.example.org/x": "PUT https://t.example.org/x",
+            "curl -T a.txt https://t.example.org/x": "PUT https://t.example.org/x",
+            "curl --request patch https://t.example.org/x": (
+                "PATCH https://t.example.org/x"
+            ),
+            'curl -X DELETE "$API/issues/5"': "DELETE $API/issues/5",
+            "curl -X POST --url https://t.example.org/x": "POST https://t.example.org/x",
+            "/usr/bin/curl -X POST https://u:pw@t.example.org:8443/x#a": (
+                "POST https://t.example.org:8443/x"
+            ),
+            "curl -sf -X POST https://t.example.org/x | jq .id": (
+                "POST https://t.example.org/x"
+            ),
+            "curl -X POST \\\n  -d a=1 \\\n  https://t.example.org/x": (
+                "POST https://t.example.org/x"
+            ),
+        }
+        for cmd, want in cases.items():
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.unresolved(cmd), [f"curl -X {want}"])
+
+    def test_reads_and_texts_are_not_writes(self):
+        for cmd in (
+            "curl -s https://t.example.org/issues.json",
+            "curl -G -d q=1 https://t.example.org/search",
+            "curl -X GET -d q=1 https://t.example.org/search",
+            "curl -I https://t.example.org/x",
+            "curl -X POST http://localhost:8080/hook",
+            "curl -d a=1 http://127.0.0.1:9000/x",
+            "cat > n.md <<'E'\ncurl -X POST https://t.example.org/x\nE",
+            'echo "curl -X POST https://t.example.org/x"',
+            "grep -n 'curl -X POST' notes.md",
+        ):
+            with self.subTest(cmd=cmd):
+                self.assertEqual(self.unresolved(cmd), [])
+
+    def test_a_forge_cli_write_is_not_an_http_write(self):
+        # `gh api -X POST` names its target in the endpoint; only curl is
+        # listed by method and URL.
+        cmd = "gh api -X POST repos/o/r/issues/5/comments -f body=x"
+        result = '{"html_url": "https://github.com/o/r/issues/5#issuecomment-1"}'
+        self.assertEqual(self.unresolved(cmd, result), [])
+
+    def test_a_refused_call_ran_nothing(self):
+        cmd = "curl -X POST https://t.example.org/x"
+        refusal = "PreToolUse:Bash hook error: denied"
+        self.assertEqual(self.unresolved(cmd, refusal, error=True), [])
+        # Control: a curl that ran and failed may still have written.
+        self.assertEqual(
+            self.unresolved(cmd, "Exit code 22\ncurl: (22) 500", error=True),
+            ["curl -X POST https://t.example.org/x"],
+        )
+
+
 class ArtifactTabTest(unittest.TestCase):
     """A link to a tab of a PR or MR names that PR or MR (adversarial review)."""
 

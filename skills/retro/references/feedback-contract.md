@@ -151,7 +151,12 @@ its own words name in a shape the scope script can prove (`gh pr edit 5 -R
 o/r` names its own; see the friction catalog for when its words count).
 `gh pr create … && gh pr ready <branch> …` is not one of them, since the
 create printed its URL; a create whose output was discarded or that reported
-a failure is. Never translate incomplete coverage into "no feedback" or a green
+a failure is. The list also holds every outward HTTP write through `curl`
+(`-X POST|PUT|PATCH|DELETE`, or a body or upload without `-G`) to a host other
+than loopback, as `curl -X <METHOD> <URL>` with query string and userinfo
+dropped: such a write may have created a ticket or a comment in a tracker the
+core does not read, so its feedback has to come in through `--feedback-file`.
+Never translate incomplete coverage into "no feedback" or a green
 Done gate. A human may explicitly reject an irrelevant candidate with a reason;
 Done mode records that as a *rejected* row in gate 2, and the collector reports
 the candidate again on the next run.

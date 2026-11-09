@@ -235,9 +235,16 @@ line start or after a colon, a line starting with `x`/`X`/`✗`, `gh:`,
 printed B and not A. MCP writes count by their input. A `-R` with a scheme and a
 host this run does not know (`-R https://x.org/g/p`), or naming `gitlab.com`,
 `bitbucket.org` or `codeberg.org`, leaves the write unresolved; any other
-dotted first segment is a GitLab group. Writes through other tools — `curl`
-against a forge API, a script run in a later call, a script file the call did
-not write itself — are not seen at all; pass their PRs/MRs with `--pr-list`
+dotted first segment is a GitLab group. A `curl` that writes (`-X
+POST|PUT|PATCH|DELETE`, or a body or upload without `-G`) to a host other
+than loopback is never attributed, not even against a forge API: it is listed
+as unresolved as `curl -X <METHOD> <URL>`, query string and userinfo dropped,
+so a ticket created in a tracker the core does not read shows up as a gap to
+fill with `--feedback-file`. Only a curl the call runs as its own command
+counts; one inside `bash -c '…'`, a heredoc or a script file is not seen.
+Writes through other tools — a script run in a
+later call, a script file the call did not write itself, `wget` or another
+HTTP client — are not seen at all; pass their PRs/MRs with `--pr-list`
 (a fleet driver's `opened.jsonl` works unchanged). A call that holds
 a write in text (a heredoc, a quoted string, or a list-form call such as
 `["gh", "pr", …]`) and also runs a program it carries is unresolved, whether

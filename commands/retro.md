@@ -81,7 +81,10 @@ not silence. Bodies are trimmed in text; read a finding in full from
 `--output-format json` before classifying it. A GitLab host other than `--gitlab-host` is not contacted. Treat `NOT READ`
 and `UNRESOLVED` lines as unknown, never as "no findings": an `UNRESOLVED` line
 without `REF` is a write whose target the transcript does not name — read the command and add
-the PR, MR or issue it wrote to by hand. Field meanings and how to read them:
+the PR, MR or issue it wrote to by hand. `UNRESOLVED curl -X POST <URL>` is an
+HTTP write outside the forge CLIs, for example a ticket created in another
+tracker: read what it created and supply that tracker's feedback with
+`--feedback-file`. Field meanings and how to read them:
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` § Feedback from outside the transcript.
 
 ## Phase 2: LLM Enrichment
