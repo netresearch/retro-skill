@@ -252,6 +252,15 @@ class AlternativesTest(unittest.TestCase):
                 "curl 'https://x/a?page=1&" + "KEY={v}'",
                 "curl 'https://x/a?page=1&KEY=[REDACTED]'",
             ),
+            # An HTML page in a tool result escapes the separator.
+            (
+                '<a href="/issues?page=1&amp;' + 'key={v}">',
+                '<a href="/issues?page=1&amp;key=[REDACTED]">',
+            ),
+            (
+                "/x?a=1&amp;" + "access_token={v}&amp;b=2",
+                "/x?a=1&amp;access_token=[REDACTED]&amp;b=2",
+            ),
         ):
             with self.subTest(text):
                 self.assertEqual(ms.mask(text.format(v=value)), expected)

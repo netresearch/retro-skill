@@ -69,8 +69,9 @@ ALTERNATIVES: dict[str, str] = {
     r"(?!\$)[^\s'\";]+(?:;\s*[^\s'\";]+)*",
     # A credential passed in a query string; `key=` is Redmine's and Google's
     # name for the API key (`/issues.json?key=…`). Only after `?` or `&`, so
-    # `monkey=` or a `key=value` pair in prose stays readable.
-    "query_credential": r"(?P<query_credential_keep>[?&](?i:access_token|private_token"
+    # `monkey=` or a `key=value` pair in prose stays readable. An HTML page in
+    # a tool result escapes the separator as `&amp;`.
+    "query_credential": r"(?P<query_credential_keep>[?&](?:amp;)?(?i:access_token|private_token"
     r"|api_key|apikey|token|password|client_secret|key)=)(?!\$)[^\s&#'\"]+",
     "jwt": r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*",
     # `https://user:token@host` — the userinfo is masked, scheme and host stay.
