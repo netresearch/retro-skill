@@ -16,7 +16,7 @@ known_marketplaces.json) and each one's locally-cloned catalogue
 entries are actually installed (~/.claude/plugins/installed_plugins.json, with
 the plugin cache as fallback).
 
-On Codex, reads `codex plugin list --json` plus standalone skills in
+On Codex, reads `codex plugin list --available --json` plus standalone skills in
 `<codex-home>/skills` and `~/.agents/skills`. Uses the CLI's recorded enabled
 plugin version; a CLI that cannot be read is reported as standalone-only, and a
 CLI answer with a warning on stderr as partial-cli, not a complete catalogue.
@@ -526,24 +526,37 @@ def collect_codex(
     return sorted(out, key=lambda s: (not s["installed"], s["marketplace"], s["name"]))
 
 
-def codex_catalogue(codex_home: Path, user_home: Path) -> list[dict[str, Any]]:
+def _parse_codex_catalogue(raw: str) -> dict[str, Any]:
+    plugins = json.loads(raw)
+    if not isinstance(plugins, dict):
+        raise TypeError("catalogue must be an object")
+    if any(
+        not isinstance(plugins.get(key, []), list)
+        for key in ("installed", "available")
+    ):
+        raise TypeError("catalogue groups must be arrays")
+    return plugins
+
+
+def codex_catalogue(
+    codex_home: Path,
+    user_home: Path,
+    catalog_file: Path | None = None,
+) -> list[dict[str, Any]]:
+    result = None
     try:
-        result = subprocess.run(
-            ["codex", "plugin", "list", "--json"],
-            capture_output=True,
-            text=True,
-            check=True,
-            timeout=30,
-            env={**os.environ, "CODEX_HOME": str(codex_home)},
-        )
-        plugins = json.loads(result.stdout)
-        if not isinstance(plugins, dict):
-            raise TypeError("catalogue must be an object")
-        if any(
-            not isinstance(plugins.get(key, []), list)
-            for key in ("installed", "available")
-        ):
-            raise TypeError("catalogue groups must be arrays")
+        if catalog_file is not None:
+            plugins = _parse_codex_catalogue(catalog_file.read_text(encoding="utf-8"))
+        else:
+            result = subprocess.run(
+                ["codex", "plugin", "list", "--available", "--json"],
+                capture_output=True,
+                text=True,
+                check=True,
+                timeout=30,
+                env={**os.environ, "CODEX_HOME": str(codex_home)},
+            )
+            plugins = _parse_codex_catalogue(result.stdout)
     except (OSError, subprocess.SubprocessError, ValueError, TypeError) as exc:
         detail = getattr(exc, "stderr", None) or ""
         # TimeoutExpired carries bytes even with text=True.
@@ -556,6 +569,10 @@ def codex_catalogue(codex_home: Path, user_home: Path) -> list[dict[str, Any]]:
             file=sys.stderr,
         )
         return collect_codex(codex_home, {}, user_home, "standalone-only")
+    if catalog_file is not None:
+        return collect_codex(
+            codex_home, plugins, user_home, "host-catalogue-and-local-skills"
+        )
     # The CLI exits 0 with an empty remote list when a marketplace cannot be
     # read (a 401, for example) and says so only on stderr; that answer is
     # partial, so it is forwarded and labelled as such.
@@ -571,6 +588,12 @@ def main() -> int:
     parser.add_argument("--host", choices=("auto", "claude", "codex"), default="auto")
     parser.add_argument("--claude-home", type=Path)
     parser.add_argument("--codex-home", type=Path)
+    parser.add_argument(
+        "--catalog-file",
+        type=Path,
+        help="Host-fetched `codex plugin list --available --json` snapshot. "
+        "Bypasses the sandboxed Codex CLI catalogue call.",
+    )
     parser.add_argument("--output-format", choices=["json", "text"], default="json")
     args = parser.parse_args()
 
@@ -582,14 +605,17 @@ def main() -> int:
             "claude"
             if args.claude_home
             else "codex"
-            if args.codex_home or os.environ.get("CODEX_THREAD_ID")
+            if args.codex_home or args.catalog_file or os.environ.get("CODEX_THREAD_ID")
             else "claude"
         )
+    if args.catalog_file and host != "codex":
+        parser.error("--catalog-file is available only with --host codex")
     skills = (
         codex_catalogue(
             args.codex_home
             or Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))),
             Path.home(),
+            args.catalog_file,
         )
         if host == "codex"
         else collect(args.claude_home or Path.home() / ".claude")

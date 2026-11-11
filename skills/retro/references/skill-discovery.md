@@ -13,7 +13,21 @@ exported on a host running Claude Code. An explicit `--claude-home` keeps the
 original Claude reader. `--codex-home` overrides the Codex filesystem root without
 changing environment variables.
 
-The reader combines `codex plugin list --json` with standalone skills in
+When the sandboxed native CLI reports that its remote marketplace request was
+blocked, obtain the same `codex plugin list --available --json` payload through
+the host's approved plugin-inventory path and pass the snapshot explicitly:
+
+```bash
+uv run <skill-dir>/scripts/find-org-skills.py --host codex \
+  --catalog-file <host-fetched-catalog.json>
+```
+
+This path never retries the private service from inside the script. It merges
+the host snapshot with standalone local skills and marks every row
+`coverage: host-catalogue-and-local-skills`. Without a snapshot, the native CLI
+remains the fallback and its warning is preserved as `partial-cli`.
+
+The reader combines `codex plugin list --available --json` with standalone skills in
 `<codex-home>/skills/*/SKILL.md`, `<codex-home>/skills/.system/*/SKILL.md` and
 `~/.agents/skills/*/SKILL.md`. It reads one level deep, so a `SKILL.md` template
 inside a skill's assets is not reported as a skill. A plugin's skill directories
@@ -25,7 +39,9 @@ not installed. Native entries include `path` where readable, so this inventory
 also supplies the installed-only paths on Codex; the Claude-only shell scanner
 below is not needed there.
 
-`coverage: standalone-only` and a stderr warning mean the native CLI could not
+`coverage: host-catalogue-and-local-skills` means the host supplied the
+installed and available plugin inventory. `coverage: standalone-only` and a
+stderr warning mean the native CLI could not
 be read. `coverage: partial-cli` means the CLI answered but wrote a warning to
 stderr, for example a remote marketplace that answered 401; the reader forwards
 that warning. `native-cli-and-local-skills` means the local native catalogue was read,

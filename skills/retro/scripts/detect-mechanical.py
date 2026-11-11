@@ -408,15 +408,17 @@ COMMAND_NAME = re.compile(r"[A-Za-z0-9][\w.-]*")
 
 
 def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
-    """Index of the last event that invoked the slash command /NAME, or None.
+    """Index of the last event that invoked the skill NAME, or None.
 
-    Two shapes count, and only at the very start of a user message, so a
+    Three shapes count, and only at the very start of a user message, so a
     message that quotes or mentions the command does not:
       - Claude Code's expansion, `<command-message>…</command-message>` then
         `<command-name>/NAME</command-name>`; a plugin command carries its
         namespace (`/retro:retro`);
       - the typed command as plain text, `/NAME` followed by whitespace or the
         end, which is what codex-transcript.py renders a Codex invocation as.
+      - Codex desktop's Markdown skill link, `[$NAME](.../NAME/SKILL.md)`,
+        followed by whitespace or the end.
     NAME must match COMMAND_NAME; the caller checks that.
     """
     ns = r"/(?:[\w.-]+:)?" + re.escape(name)
@@ -425,6 +427,11 @@ def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
         r"<command-name>" + ns + r"</command-name>"
     )
     typed = re.compile(r"\A\s*" + ns + r"(?:\s|\Z)")
+    markdown = re.compile(
+        r"\A\s*\[\$(?:[\w.-]+:)?" + re.escape(name) + r"\]\(<?"
+        r"[^)\r\n>]*[\\/]" + re.escape(name) + r"[\\/]SKILL\.md>?\)"
+        r"(?:\s|\Z)"
+    )
     last = None
     for k, ev in enumerate(events):
         if ev.get("type") != "user":
@@ -437,7 +444,7 @@ def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
                 if isinstance(b, dict) and isinstance(b.get("text"), str)
             )
         if isinstance(content, str) and (
-            expansion.match(content) or typed.match(content)
+            expansion.match(content) or typed.match(content) or markdown.match(content)
         ):
             last = k
     return last
@@ -2527,13 +2534,30 @@ def main() -> int:
         default=",".join(SIGNAL_FUNCS.keys()),
         help="Comma-separated signal IDs to run (default: all)",
     )
-    parser.add_argument(
+    scope = parser.add_mutually_exclusive_group()
+    scope.add_argument(
         "--since-command",
         metavar="NAME",
         help="Analyse only the events from the last /NAME slash command on "
         "(e.g. 'retro' for Phase 11, the self-check of a retro run). Earlier "
         "events are blanked, not removed, so turn numbers stay those of the "
         "whole transcript. Exits 2 when /NAME never ran.",
+    )
+    scope.add_argument(
+        "--spotlight-command",
+        metavar="NAME",
+        help="Analyse the bounded context immediately before the last NAME "
+        "invocation through that invocation. Use --spotlight-turns to choose "
+        "how many preceding human messages to include. Exits 2 when NAME "
+        "never ran.",
+    )
+    parser.add_argument(
+        "--spotlight-turns",
+        type=int,
+        default=12,
+        metavar="N",
+        help="Number of preceding human messages included by "
+        "--spotlight-command (default: 12).",
     )
     args = parser.parse_args()
 
@@ -2561,6 +2585,8 @@ def main() -> int:
             print(f"Analysis not run: {coverage['reason']}")
         return 2
     since_event = None
+    spotlight_event = None
+    spotlight_from_event = None
     if args.since_command:
         if not COMMAND_NAME.fullmatch(args.since_command):
             print(
@@ -2578,6 +2604,38 @@ def main() -> int:
             )
             return 2
         events = [ev if k >= since_event else {} for k, ev in enumerate(events)]
+    elif args.spotlight_command:
+        if not COMMAND_NAME.fullmatch(args.spotlight_command):
+            print(
+                f"--spotlight-command expects a command name such as 'retro', "
+                f"got {args.spotlight_command!r}",
+                file=sys.stderr,
+            )
+            return 2
+        if args.spotlight_turns < 1:
+            print("--spotlight-turns must be at least 1", file=sys.stderr)
+            return 2
+        spotlight_event = last_command_event(events, args.spotlight_command)
+        if spotlight_event is None:
+            print(
+                f"/{args.spotlight_command} was never invoked in "
+                f"{args.transcript_file}",
+                file=sys.stderr,
+            )
+            return 2
+        prior_human_events = [
+            event_index
+            for event_index, _text in extract_user_texts(events)
+            if event_index < spotlight_event
+        ]
+        if len(prior_human_events) >= args.spotlight_turns:
+            spotlight_from_event = prior_human_events[-args.spotlight_turns]
+        else:
+            spotlight_from_event = 0
+        events = [
+            ev if spotlight_from_event <= k <= spotlight_event else {}
+            for k, ev in enumerate(events)
+        ]
     user_texts = extract_user_texts(events)
     assistant_texts = extract_assistant_texts(events)
     tool_uses = extract_tool_uses(events)
@@ -2652,6 +2710,9 @@ def main() -> int:
     }
     if since_event is not None:
         summary["since_event"] = since_event
+    if spotlight_event is not None:
+        summary["spotlight_event"] = spotlight_event
+        summary["spotlight_from_event"] = spotlight_from_event
     if args.output_format == "json":
         print(_report_json(summary))
     else:

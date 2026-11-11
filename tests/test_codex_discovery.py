@@ -156,8 +156,51 @@ class CodexDiscoveryTest(unittest.TestCase):
         )
         with patch.object(discovery.subprocess, "run", return_value=result) as run:
             discovery.codex_catalogue(self.home, self.home.parent)
-        self.assertEqual(run.call_args.args[0], ["codex", "plugin", "list", "--json"])
+        self.assertEqual(
+            run.call_args.args[0],
+            ["codex", "plugin", "list", "--available", "--json"],
+        )
         self.assertEqual(run.call_args.kwargs["env"]["CODEX_HOME"], str(self.home))
+
+    def test_host_catalogue_file_bypasses_the_sandboxed_cli(self):
+        catalog = self.home.parent / "catalog.json"
+        catalog.write_text(
+            json.dumps(
+                {
+                    "installed": [],
+                    "available": [
+                        {
+                            "name": "remote-option",
+                            "description": "Fetched by the host",
+                            "marketplaceName": "remote",
+                            "source": {"source": "remote"},
+                        }
+                    ],
+                }
+            ),
+            encoding="utf-8",
+        )
+        with patch.object(
+            discovery.subprocess,
+            "run",
+            side_effect=AssertionError("the sandboxed CLI must not run"),
+        ):
+            rows = discovery.codex_catalogue(
+                self.home, self.home.parent, catalog_file=catalog
+            )
+        self.assertEqual(rows[0]["name"], "remote-option")
+        self.assertEqual(rows[0]["coverage"], "host-catalogue-and-local-skills")
+
+    def test_invalid_host_catalogue_file_reports_reduced_coverage(self):
+        self.skill(self.home / "skills/local/SKILL.md", "local", "Local")
+        catalog = self.home.parent / "catalog.json"
+        catalog.write_text("[]", encoding="utf-8")
+        with patch("sys.stderr") as stderr:
+            rows = discovery.codex_catalogue(
+                self.home, self.home.parent, catalog_file=catalog
+            )
+        self.assertEqual(rows[0]["coverage"], "standalone-only")
+        self.assertTrue(stderr.write.called)
 
     def test_malformed_cli_payload_falls_back_without_claiming_full_coverage(self):
         self.skill(self.home / "skills/local/SKILL.md", "local", "Local")

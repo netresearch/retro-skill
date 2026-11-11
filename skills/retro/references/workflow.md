@@ -57,6 +57,21 @@ Use case: "fix this specific thing now"
 Token cost: low (targeted, narrow context)
 ```
 
+Bound the mechanical pre-pass at the source:
+
+```bash
+uv run "${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py" \
+  --transcript-file <current transcript> \
+  --spotlight-command retro --spotlight-turns <N>
+```
+
+This keeps the last N human messages before the invocation, all intervening
+events, and the invocation itself. It excludes earlier work and events after
+the invocation while retaining whole-transcript event numbers. A Codex
+Markdown skill link at the start of a user message counts as the invocation;
+a quoted or later mention does not. Use the described problem as the semantic
+filter over this bounded mechanical evidence.
+
 Examples:
 ```
 /retro "the assistant kept forgetting we use bun not npm"
@@ -500,12 +515,13 @@ and Done skip that location step in Phase 1, so they locate it here; when no
 transcript of this session can be found, Phase 11 is skipped and says so in one
 deviation line, like any other skipped phase.
 
-`--since-command retro` blanks every event before the last `/retro`
+`--since-command retro` blanks every event before the last retro
 invocation and keeps the turn numbers. An invocation counts only at the start
 of a user message: Claude Code's expansion (plugin namespaces such as
-`/retro:retro` included) or the typed `/retro` a Codex transcript carries; a
-message that quotes or mentions the command does not move the start. Exit 2
-means no list to read — no `/retro` ran, the name was refused, or the
+`/retro:retro` included), the typed `/retro` a Codex transcript carries, or
+Codex desktop's `[$retro](.../retro/SKILL.md)` skill link; a message that
+quotes or mentions the command does not move the start. Exit 2 means no list
+to read — no retro invocation ran, the name was refused, or the
 transcript is unsupported (that one prints `"findings": []` with
 `"findings_total": null`). Read an empty list as "none found" only after exit
 0 and a supported `coverage.status`. Keep only the errors whose call ran a

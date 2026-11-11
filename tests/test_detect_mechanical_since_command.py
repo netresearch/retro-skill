@@ -164,6 +164,33 @@ class SinceCommand(unittest.TestCase):
         self.assertEqual(report["since_event"], 2)
         self.assertEqual(report["findings_total"], 1)
 
+    def test_a_codex_markdown_skill_invocation_counts(self):
+        events = (
+            _call("w1", "make build", "Error: build failed", True)
+            + [
+                _user(
+                    "[$retro](/Users/me/.codex/skills/retro/SKILL.md) "
+                    "修复自检边界"
+                )
+            ]
+            + _call("r1", "jq .x out.json", "jq: error: Cannot index", True)
+        )
+        report = json.loads(_run(events, "--since-command", "retro").stdout)
+        self.assertEqual(report["since_event"], 2)
+        self.assertEqual(report["findings_total"], 1)
+
+    def test_a_codex_markdown_skill_mention_is_not_an_invocation(self):
+        for text in (
+            "please use [$retro](/Users/me/.codex/skills/retro/SKILL.md) later",
+            "[$retro](https://example.test/retro)",
+            "[$retro](/Users/me/.codex/skills/other/SKILL.md)",
+            "`[$retro](/Users/me/.codex/skills/retro/SKILL.md)`",
+            "> [$retro](/Users/me/.codex/skills/retro/SKILL.md)",
+        ):
+            with self.subTest(text=text):
+                events = [_user(text)] + _call("w1", "make", "ok", False)
+                self.assertEqual(_run(events, "--since-command", "retro").returncode, 2)
+
     def test_a_typed_mention_or_a_longer_command_is_not_an_invocation(self):
         for text in ("please run /retro later", "/retrospective now", "/retro-x"):
             with self.subTest(text=text):
@@ -182,6 +209,49 @@ class SinceCommand(unittest.TestCase):
         out = _run(EVENTS, "--since-command", "re(t|r)o")
         self.assertEqual(out.returncode, 2)
         self.assertEqual(out.stdout, "")
+
+    def test_spotlight_scans_only_the_bounded_context_before_invocation(self):
+        events = (
+            _call("old", "make old", "Error: old failure", True)
+            + [_user("unrelated earlier task")]
+            + _call("recent", "make recent", "Error: recent failure", True)
+            + [_user("[$retro](/Users/me/.codex/skills/retro/SKILL.md) recent issue")]
+            + _call("after", "make after", "Error: retro implementation failure", True)
+        )
+        out = _run(
+            events,
+            "--spotlight-command",
+            "retro",
+            "--spotlight-turns",
+            "1",
+        )
+        self.assertEqual(out.returncode, 0, out.stderr)
+        report = json.loads(out.stdout)
+        self.assertEqual(report["spotlight_event"], 5)
+        self.assertEqual(report["spotlight_from_event"], 2)
+        self.assertEqual(report["findings_total"], 1)
+        self.assertIn("recent failure", report["findings"][0]["snippet"])
+
+    def test_spotlight_requires_a_real_invocation(self):
+        events = [_user("please run /retro later")] + _call("w1", "make", "ok", False)
+        out = _run(events, "--spotlight-command", "retro")
+        self.assertEqual(out.returncode, 2)
+        self.assertIn("/retro", out.stderr)
+
+    def test_spotlight_turn_count_must_be_positive(self):
+        out = _run([_user("/retro issue")], "--spotlight-command", "retro", "--spotlight-turns", "0")
+        self.assertEqual(out.returncode, 2)
+        self.assertIn("at least 1", out.stderr)
+
+    def test_spotlight_and_since_command_are_mutually_exclusive(self):
+        out = _run(
+            [_user("/retro issue")],
+            "--since-command",
+            "retro",
+            "--spotlight-command",
+            "retro",
+        )
+        self.assertEqual(out.returncode, 2)
 
 
 if __name__ == "__main__":
