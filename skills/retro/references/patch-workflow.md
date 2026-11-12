@@ -204,9 +204,11 @@ diff and check:
   "Observed" paragraph carries their names: project or group paths on a
   private forge, private ticket keys, internal hostnames, customer names.
   Before pushing to a public skill repository, check the visibility of the
-  target (`gh api repos/<owner>/<repo> --jq .visibility`), grep the diff, the
-  commit message and the PR body for those names, and describe the case by its
-  role ("a downstream project image", "an internal PHP base image"). The
+  target (`gh api repos/<owner>/<repo> --jq .visibility`), grep every commit
+  the push publishes, with its message (`git log -p origin/main..HEAD`, not
+  only the net diff, which hides a name a later commit removed), and the PR
+  body for those names, and describe the case by its role ("a downstream
+  project image", "an internal PHP base image"). The
   mechanism, the commands and the measured numbers stay; only the names go.
   Strip them before the first push, because amending later still leaves the
   pushed commit fetchable until the forge collects it.
