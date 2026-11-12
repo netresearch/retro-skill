@@ -127,6 +127,12 @@ Keep scenario frontmatter, prose explanations and expected answers with the
 independent evaluator. The 26 initial acceptance cases map to maintained
 Markdown fixtures in `evals/README.md`; earlier regressions remain intact.
 
+The B22 cases in `evals/` state the whole session in one trigger, later outcome
+included, and the adapter does not stage inputs. To test for hindsight, run a
+native case in two turns by hand: give the transcript up to the decision point
+and ask which check that information calls for, then give the later turns. A
+verdict that changes only because of the second turn was fitted to the outcome.
+
 ## Reuse the shared text runner
 
 Use

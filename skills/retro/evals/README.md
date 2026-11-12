@@ -98,6 +98,17 @@ The full corpus also retains earlier routing and completion regressions.
 No-op, authorized variants and valid alternative wording are controls, not
 failures to make the test discriminating.
 
+Seven cases cover the missed situational check (B22) of
+[`../references/friction-catalog.md`](../references/friction-catalog.md): one
+omitted check ([situational-check-omitted](situational-check-omitted.md)), its
+mirror ([situational-check-overgeneralization](situational-check-overgeneralization.md)),
+a claim without the check
+([situational-check-claimed-not-performed](situational-check-claimed-not-performed.md)),
+and four controls that must not produce a finding: independent causes in one
+file, a justified small fix, information that appeared only later, and evidence
+retro cannot read (`situational-check-independent-causes`,
+`-justified-small-fix`, `-later-information`, `-not-assessable`).
+
 ## Tool-enabled integration inputs
 
 Four cases carry a `fixture` directory with synthetic raw artifacts. The adapter

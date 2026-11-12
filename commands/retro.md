@@ -102,6 +102,14 @@ inferential findings the pre-pass cannot catch — in **both** classes below.
 - Repeated mistakes within same session
 - Assumption-without-asking patterns
 - Doc drift
+- **Missed situational check (B22):** a warning sign was visible at the time — an
+  observation contradicting the working explanation, a failure class returning
+  after its fix, special handling spreading across layers, exceptions piling up,
+  or a large rebuild from one isolated case — and the proportionate check did
+  not run. Judge only by what was knowable then; a paragraph claiming the check
+  is no evidence. Outcomes: performed, not needed, omitted (the only finding),
+  not assessable (one report line). Look for it in smooth sessions too. A
+  pattern another signal already holds (A13, B5, B9, B12, B19) stays there.
 
 ### Reusable-learning findings (scan even when nothing went wrong)
 
@@ -346,6 +354,9 @@ Summary table:
 Every B21 item also gets a row in the documentation table: fact, starting point,
 what was searched, state, action (`documentation-lookup.md`). A report with no B21 item
 states `B21: none` instead of the table. Gate 8 of Done mode reads either form.
+
+A B22 decision point that could not be assessed gets one line:
+`B22 not assessable: <decision point> — <missing evidence>`.
 
 Go through the phases of this mode before writing the report: each one ran as
 prescribed or gets one deviation line with its reason, e.g.
