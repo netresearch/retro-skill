@@ -18,12 +18,14 @@ blocked, obtain the same `codex plugin list --available --json` payload through
 the host's approved plugin-inventory path and pass the snapshot explicitly:
 
 ```bash
-uv run <skill-dir>/scripts/find-org-skills.py --host codex \
-  --catalog-file <host-fetched-catalog.json>
+codex plugin list --available --json | \
+  uv run <skill-dir>/scripts/find-org-skills.py --host codex --catalog-stdin
 ```
 
-This path never retries the private service from inside the script. It merges
-the host snapshot with standalone local skills and marks every row
+Run the inventory side of that pipeline through the host's approved path. The
+reader accepts the bounded JSON stream directly instead of opening an
+LLM-supplied path, and never retries the private service from inside the
+script. It merges the host snapshot with standalone local skills and marks every row
 `coverage: host-catalogue-and-local-skills`. Without a snapshot, the native CLI
 remains the fallback and its warning is preserved as `partial-cli`.
 

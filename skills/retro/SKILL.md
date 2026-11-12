@@ -16,7 +16,7 @@ allowed-tools: Bash(bash ${CLAUDE_SKILL_DIR}/scripts/*) Bash(${CLAUDE_SKILL_DIR}
 
 On Codex, resolve script paths from this loaded skill directory and use the
 native discovery reader (`find-org-skills.py --host codex`), not Claude cache
-paths. Pass a host-fetched inventory with `--catalog-file` when the sandboxed
+paths. Stream a host-fetched inventory with `--catalog-stdin` when the sandboxed
 CLI reports partial coverage. Host selection and coverage limits:
 `references/skill-discovery.md`.
 

@@ -39,7 +39,8 @@ whatever marketplaces are configured, never a hardcoded org.
 
 Usage:
     uv run find-org-skills.py [--host auto|claude|codex] \
-        [--claude-home PATH | --codex-home PATH] [--output-format json|text]
+        [--claude-home PATH | --codex-home PATH] [--catalog-stdin] \
+        [--output-format json|text]
 """
 
 from __future__ import annotations
@@ -52,6 +53,8 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import Any
+
+MAX_CATALOG_CHARS = 16 * 1024 * 1024
 
 
 def _load_json(path: Path) -> Any | None:
@@ -531,8 +534,7 @@ def _parse_codex_catalogue(raw: str) -> dict[str, Any]:
     if not isinstance(plugins, dict):
         raise TypeError("catalogue must be an object")
     if any(
-        not isinstance(plugins.get(key, []), list)
-        for key in ("installed", "available")
+        not isinstance(plugins.get(key, []), list) for key in ("installed", "available")
     ):
         raise TypeError("catalogue groups must be arrays")
     return plugins
@@ -541,12 +543,12 @@ def _parse_codex_catalogue(raw: str) -> dict[str, Any]:
 def codex_catalogue(
     codex_home: Path,
     user_home: Path,
-    catalog_file: Path | None = None,
+    catalogue_json: str | None = None,
 ) -> list[dict[str, Any]]:
     result = None
     try:
-        if catalog_file is not None:
-            plugins = _parse_codex_catalogue(catalog_file.read_text(encoding="utf-8"))
+        if catalogue_json is not None:
+            plugins = _parse_codex_catalogue(catalogue_json)
         else:
             result = subprocess.run(
                 ["codex", "plugin", "list", "--available", "--json"],
@@ -569,7 +571,7 @@ def codex_catalogue(
             file=sys.stderr,
         )
         return collect_codex(codex_home, {}, user_home, "standalone-only")
-    if catalog_file is not None:
+    if catalogue_json is not None:
         return collect_codex(
             codex_home, plugins, user_home, "host-catalogue-and-local-skills"
         )
@@ -589,10 +591,10 @@ def main() -> int:
     parser.add_argument("--claude-home", type=Path)
     parser.add_argument("--codex-home", type=Path)
     parser.add_argument(
-        "--catalog-file",
-        type=Path,
-        help="Host-fetched `codex plugin list --available --json` snapshot. "
-        "Bypasses the sandboxed Codex CLI catalogue call.",
+        "--catalog-stdin",
+        action="store_true",
+        help="Read a host-fetched `codex plugin list --available --json` snapshot "
+        "from stdin. Bypasses the sandboxed Codex CLI catalogue call.",
     )
     parser.add_argument("--output-format", choices=["json", "text"], default="json")
     args = parser.parse_args()
@@ -605,17 +607,24 @@ def main() -> int:
             "claude"
             if args.claude_home
             else "codex"
-            if args.codex_home or args.catalog_file or os.environ.get("CODEX_THREAD_ID")
+            if args.codex_home
+            or args.catalog_stdin
+            or os.environ.get("CODEX_THREAD_ID")
             else "claude"
         )
-    if args.catalog_file and host != "codex":
-        parser.error("--catalog-file is available only with --host codex")
+    if args.catalog_stdin and host != "codex":
+        parser.error("--catalog-stdin is available only with --host codex")
+    catalogue_json = None
+    if args.catalog_stdin:
+        catalogue_json = sys.stdin.read(MAX_CATALOG_CHARS + 1)
+        if len(catalogue_json) > MAX_CATALOG_CHARS:
+            parser.error("stdin catalogue exceeds the 16 MiB limit")
     skills = (
         codex_catalogue(
             args.codex_home
             or Path(os.environ.get("CODEX_HOME", str(Path.home() / ".codex"))),
             Path.home(),
-            args.catalog_file,
+            catalogue_json,
         )
         if host == "codex"
         else collect(args.claude_home or Path.home() / ".claude")

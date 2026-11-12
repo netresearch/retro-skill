@@ -162,43 +162,33 @@ class CodexDiscoveryTest(unittest.TestCase):
         )
         self.assertEqual(run.call_args.kwargs["env"]["CODEX_HOME"], str(self.home))
 
-    def test_host_catalogue_file_bypasses_the_sandboxed_cli(self):
-        catalog = self.home.parent / "catalog.json"
-        catalog.write_text(
-            json.dumps(
-                {
-                    "installed": [],
-                    "available": [
-                        {
-                            "name": "remote-option",
-                            "description": "Fetched by the host",
-                            "marketplaceName": "remote",
-                            "source": {"source": "remote"},
-                        }
-                    ],
-                }
-            ),
-            encoding="utf-8",
+    def test_host_catalogue_stdin_bypasses_the_sandboxed_cli(self):
+        catalog = json.dumps(
+            {
+                "installed": [],
+                "available": [
+                    {
+                        "name": "remote-option",
+                        "description": "Fetched by the host",
+                        "marketplaceName": "remote",
+                        "source": {"source": "remote"},
+                    }
+                ],
+            }
         )
         with patch.object(
             discovery.subprocess,
             "run",
             side_effect=AssertionError("the sandboxed CLI must not run"),
         ):
-            rows = discovery.codex_catalogue(
-                self.home, self.home.parent, catalog_file=catalog
-            )
+            rows = discovery.codex_catalogue(self.home, self.home.parent, catalog)
         self.assertEqual(rows[0]["name"], "remote-option")
         self.assertEqual(rows[0]["coverage"], "host-catalogue-and-local-skills")
 
-    def test_invalid_host_catalogue_file_reports_reduced_coverage(self):
+    def test_invalid_host_catalogue_stdin_reports_reduced_coverage(self):
         self.skill(self.home / "skills/local/SKILL.md", "local", "Local")
-        catalog = self.home.parent / "catalog.json"
-        catalog.write_text("[]", encoding="utf-8")
         with patch("sys.stderr") as stderr:
-            rows = discovery.codex_catalogue(
-                self.home, self.home.parent, catalog_file=catalog
-            )
+            rows = discovery.codex_catalogue(self.home, self.home.parent, "[]")
         self.assertEqual(rows[0]["coverage"], "standalone-only")
         self.assertTrue(stderr.write.called)
 
