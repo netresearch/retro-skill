@@ -199,6 +199,17 @@ diff and check:
   script header/output), grep the term and update all of them together, then
   confirm no file still states the old rule. Reactive one-spot edits leave the
   skill contradicting itself.
+- **Strip identifiers of private work before pushing to a public repository.**
+  A learning usually comes from work on internal or customer systems, and its
+  "Observed" paragraph carries their names: project or group paths on a
+  private forge, private ticket keys, internal hostnames, customer names.
+  Before pushing to a public skill repository, check the visibility of the
+  target (`gh api repos/<owner>/<repo> --jq .visibility`), grep the diff, the
+  commit message and the PR body for those names, and describe the case by its
+  role ("a downstream project image", "an internal PHP base image"). The
+  mechanism, the commands and the measured numbers stay; only the names go.
+  Strip them before the first push, because amending later still leaves the
+  pushed commit fetchable until the forge collects it.
 
 Observed failures: a retro shipped a self-contradictory `--force-with-lease`
 recipe and a contradictory escaping example, both caught only by an external
@@ -206,7 +217,10 @@ reviewer, plus a wrong "main lags origin" root cause that only the user caught. 
 later retro broke the target's Skill Validation CI (the SKILL.md edit went over
 the SKILL.md size cap, invisible to a diff read), and a policy change patched one spot
 at a time, leaving a SKILL.md step contradicting its own reference across several
-review rounds until the user demanded it be done in one coherent pass. A
+review rounds until the user demanded it be done in one coherent pass. Another
+retro pushed a customer's project path and an internal forge reference into a
+public skill repository; the author's own review before the merge caught it,
+after the commit had already been pushed. A
 30-second self-review plus running the target's validator would have caught all
 of these.
 
