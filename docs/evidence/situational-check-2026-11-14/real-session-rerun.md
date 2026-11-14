@@ -51,9 +51,11 @@ fixes for them.
 
 ## Conclusion and limits
 
-- Being able to run the tests and a probe decided the outcome; the B22 text
-  version did not. The revision showed no gain over the original text and was
-  withdrawn.
+- Read-only, both B22 versions found the defect in 3 of 5 runs and `main` in
+  0 of 5; with tests and probes allowed, every arm found it in 3 of 3. The
+  samples are too small to separate the effect of the skill text from that of
+  execution. The revision found the defect no more often than the original
+  text and was withdrawn.
 - Samples are small: one session and one model; one run per cell without
   code (two cells), five read-only, three with execution, two in the control.
 - The read-only finding needed only one link: a code comment already admitted
