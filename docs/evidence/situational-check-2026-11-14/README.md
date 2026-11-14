@@ -112,7 +112,8 @@ behavior-rerun. Their file hashes are distinguished from the tested snapshot
 in the manifest. The seven revised classification scenarios were structurally
 validated, not executed in this native experiment. Final validation also
 normalized the description's required `Use when` prefix and formatted three
-original fixture files. The manifest preserves their tested hashes/content.
+original fixture files. The manifest preserves tested hashes/content for every
+fixture changed after execution, including the CI follow-up below.
 
 The blind grader detected that the first grading-pack anonymizer had replaced
 legitimate synthetic job names inside embedded test code. Before grading, the
@@ -131,7 +132,26 @@ Check file was verified against the observer's hashes. Criteria were unchanged;
 
 Hook installation needed task-local npm 11.21.1 for the upstream `allow-git=root`
 fix and Go 1.27.4 because the host's `go` executable was not the Go compiler.
-The repository hook configuration and its protections were unchanged.
+The pre-commit hook configuration was unchanged.
+
+### CI follow-up
+
+The first published revision triggered seven Betterleaks findings for the
+manifest's `mask-secrets.py` and `api.json` digests. Each value was independently
+recomputed from the recorded file bytes and confirmed to be a public content
+hash. The exception is limited to `generic-api-key`, this exact manifest path
+and the two complete JSON field/value lines, with an AND condition. The full
+history scan remains enabled and passes. A disposable Git-repository control
+confirms that an altered digest at the same path and the same digest at an
+unrelated path are still detected.
+
+SonarCloud also flagged the three fixture commands' arbitrary argument-to-file
+reads. Their mains now read only the bundled `api.json` or `content.json` next
+to the fixture; `collect` and `render` are unchanged. All six synthetic commands
+were rerun and their records regenerated, and all five fixture invariant tests
+passed. These are post-experiment wrapper changes, not new native agent trials.
+The manifest retains the exact original input bytes for reconstructing the
+reported experiment.
 
 ## Evidence still needed for an efficacy claim
 

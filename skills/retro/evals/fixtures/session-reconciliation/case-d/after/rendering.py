@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
 
 import json
-import sys
 from pathlib import Path
 
 
@@ -13,7 +12,8 @@ def render(cache, page, language, content):
 
 
 if __name__ == "__main__":
-    content = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+    fixture = Path(__file__).resolve().parents[1] / "content.json"
+    content = json.loads(fixture.read_text(encoding="utf-8"))
     cache = {}
     print(
         json.dumps(

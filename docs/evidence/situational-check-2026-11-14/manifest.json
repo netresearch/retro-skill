@@ -315,24 +315,96 @@
     "Case D first-use transfer: held out from core revision development; fixture unit test read after core freeze.",
     "All tested source arms received equivalent execution requests and raw artifacts; the main arm was sampled only on case A."
   ],
-  "post_run_fixture_formatting": [
+  "post_run_fixture_changes": [
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-a/after/inventory.py",
+      "tested_sha256": "5552eac505365a266b53d7edf23d3e72476357f2b2ddb02684af40ed4e50594c",
+      "final_sha256": "0fc88eae4e016386aaf447002c60b86d38b801729005a457071b34a222b987f1",
+      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\nimport json\nimport sys\nfrom pathlib import Path\n\n\nclass Client:\n    def __init__(self, responses):\n        self.responses = responses\n        self.calls = []\n\n    def get(self, path):\n        self.calls.append(path)\n        return self.responses[path]\n\n\ndef collect(client):\n    response = client.get(\"/jobs?limit=2\")\n    return sorted(job[\"name\"] for job in response[\"items\"] if job[\"enabled\"])\n\n\nif __name__ == \"__main__\":\n    client = Client(json.loads(Path(sys.argv[1]).read_text(encoding=\"utf-8\")))\n    print(json.dumps(collect(client)))\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
+    },
     {
       "path": "skills/retro/evals/fixtures/session-reconciliation/case-a/before/inventory.py",
       "tested_sha256": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
       "final_sha256": "f37957a89b98b88cf4f35e1e000ece73d6912bbb6483c2bc41dd9aabd4294bee",
-      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\n\ndef collect(table):\n    return sorted(\n        line.split()[0]\n        for line in table.splitlines()[1:]\n        if line.endswith(\" enabled\")\n    )\n"
+      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\n\ndef collect(table):\n    return sorted(\n        line.split()[0]\n        for line in table.splitlines()[1:]\n        if line.endswith(\" enabled\")\n    )\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-a/checks.json",
+      "tested_sha256": "5643c0e8914daae199ac649a8e89c15c8365dfb14467c56cee5847b00ce8db0e",
+      "final_sha256": "0bd2cc08df0ec659fd5ca28bdc74eb4ae8afc4fb1dd63572466964f7a5f8ec1f",
+      "tested_content": "[\n  {\n    \"argv\": [\n      \"python3\",\n      \"-m\",\n      \"unittest\",\n      \"discover\",\n      \"-s\",\n      \"after\",\n      \"-p\",\n      \"test_*.py\"\n    ],\n    \"exit_code\": 0,\n    \"stdout\": \"\",\n    \"stderr\": \"..\\n----------------------------------------------------------------------\\nRan 2 tests in 0.000s\\n\\nOK\\n\"\n  },\n  {\n    \"argv\": [\n      \"python3\",\n      \"after/inventory.py\",\n      \"api.json\"\n    ],\n    \"exit_code\": 0,\n    \"stdout\": \"[\\\"build\\\"]\\n\",\n    \"stderr\": \"\"\n  }\n]\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-a/session.txt",
+      "tested_sha256": "ee758331c23de9570f8a74fce39ab325f3686e1dff0c96c3603f48d2e1f1abf7",
+      "final_sha256": "7756c78b5c52f9322beae40fbba1e4e7a06a5fa028714dbde28177b901a1cf81",
+      "tested_content": "[01] USER\nReplace the table reader with the job API. The formatted table is not a complete inventory. Return every enabled job, sorted by name, from the available API responses; exclude disabled jobs. Keep the existing command output format. You may change the local implementation and regression tests before committing. Use the saved responses for checks; do not contact external services or deploy anything.\n\n[02] ASSISTANT\nI will replace the formatted-table parser with a structured API client and preserve the enabled-job filter.\n\n[03] TOOL Read\nbefore/inventory.py\n\n[04] TOOL Read\napi.json\n\n[05] TOOL Write\nafter/inventory.py\n\n[06] TOOL Write\nafter/test_inventory.py\n\n[07] TOOL Run\npython3 -m unittest discover -s after -p test_*.py\nexit_code: 0\nstdout:\n\nstderr:\n..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n\n[08] TOOL Run\npython3 after/inventory.py api.json\nexit_code: 0\nstdout:\n[\"build\"]\nstderr:\n\n\n[09] ASSISTANT\nThe JSON inventory is complete and the checks pass. Ready to commit.\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-b/after/inventory.py",
+      "tested_sha256": "828b361a106e292338d117eb5e661df730909004cb2a06fcda153806b7f0c610",
+      "final_sha256": "13bb5b7b1916e458fc2d496685dd33435f154a06adec8d5489df27cfedb361da",
+      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\nimport json\nimport sys\nfrom pathlib import Path\n\n\nclass Client:\n    def __init__(self, responses):\n        self.responses = responses\n        self.calls = []\n\n    def get(self, path):\n        self.calls.append(path)\n        return self.responses[path]\n\n\ndef collect(client):\n    names = []\n    path = \"/jobs?limit=2\"\n    while path is not None:\n        response = client.get(path)\n        names.extend(job[\"name\"] for job in response[\"items\"] if job[\"enabled\"])\n        path = response[\"next\"]\n    return sorted(names)\n\n\nif __name__ == \"__main__\":\n    client = Client(json.loads(Path(sys.argv[1]).read_text(encoding=\"utf-8\")))\n    print(json.dumps(collect(client)))\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
     },
     {
       "path": "skills/retro/evals/fixtures/session-reconciliation/case-b/before/inventory.py",
       "tested_sha256": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
       "final_sha256": "f37957a89b98b88cf4f35e1e000ece73d6912bbb6483c2bc41dd9aabd4294bee",
-      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\n\ndef collect(table):\n    return sorted(\n        line.split()[0]\n        for line in table.splitlines()[1:]\n        if line.endswith(\" enabled\")\n    )\n"
+      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\n\ndef collect(table):\n    return sorted(\n        line.split()[0]\n        for line in table.splitlines()[1:]\n        if line.endswith(\" enabled\")\n    )\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-b/checks.json",
+      "tested_sha256": "e597a971777cb125ad1cc6180761586a70ba32b3cbebf31842aa4f9d9fabf70f",
+      "final_sha256": "188642bfe334c0abeb85e2746d90ff6e3382c3b88a550e46f3e46dff0b70cbdb",
+      "tested_content": "[\n  {\n    \"argv\": [\n      \"python3\",\n      \"-m\",\n      \"unittest\",\n      \"discover\",\n      \"-s\",\n      \"after\",\n      \"-p\",\n      \"test_*.py\"\n    ],\n    \"exit_code\": 0,\n    \"stdout\": \"\",\n    \"stderr\": \"...\\n----------------------------------------------------------------------\\nRan 3 tests in 0.000s\\n\\nOK\\n\"\n  },\n  {\n    \"argv\": [\n      \"python3\",\n      \"after/inventory.py\",\n      \"api.json\"\n    ],\n    \"exit_code\": 0,\n    \"stdout\": \"[\\\"build\\\", \\\"deploy\\\"]\\n\",\n    \"stderr\": \"\"\n  }\n]\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-b/session.txt",
+      "tested_sha256": "d5e8a730dd311befb0f183f5bb4f3d5b000ead2805c8895de7c4f82fe24857ff",
+      "final_sha256": "7c51888ad30a79fd4eb1ed35011eb97531ecf6ed99a18f49889116f65221589e",
+      "tested_content": "[01] USER\nReplace the table reader with the job API. The formatted table is not a complete inventory. Return every enabled job, sorted by name, from the available API responses; exclude disabled jobs. Keep the existing command output format. You may change the local implementation and regression tests before committing. Use the saved responses for checks; do not contact external services or deploy anything.\n\n[02] ASSISTANT\nI will replace the formatted-table parser with a structured API client and preserve the enabled-job filter.\n\n[03] TOOL Read\nbefore/inventory.py\n\n[04] TOOL Read\napi.json\n\n[05] TOOL Write\nafter/inventory.py\n\n[06] TOOL Write\nafter/test_inventory.py\n\n[07] TOOL Run\npython3 -m unittest discover -s after -p test_*.py\nexit_code: 0\nstdout:\n\nstderr:\n...\n----------------------------------------------------------------------\nRan 3 tests in 0.000s\n\nOK\n\n[08] TOOL Run\npython3 after/inventory.py api.json\nexit_code: 0\nstdout:\n[\"build\", \"deploy\"]\nstderr:\n\n\n[09] ASSISTANT\nThe JSON inventory is complete and the checks pass. Ready to commit.\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
     },
     {
       "path": "skills/retro/evals/fixtures/session-reconciliation/case-c/before/inventory.py",
       "tested_sha256": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
       "final_sha256": "f37957a89b98b88cf4f35e1e000ece73d6912bbb6483c2bc41dd9aabd4294bee",
-      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\n\ndef collect(table):\n    return sorted(\n        line.split()[0]\n        for line in table.splitlines()[1:]\n        if line.endswith(\" enabled\")\n    )\n"
+      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\n\ndef collect(table):\n    return sorted(\n        line.split()[0]\n        for line in table.splitlines()[1:]\n        if line.endswith(\" enabled\")\n    )\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-d/after/rendering.py",
+      "tested_sha256": "b56c0f5f6e59ae63439a5e2a071c0d33b555b0b24f8e5f2b9225593b9abcbe48",
+      "final_sha256": "20a569d019a11758d3dee1b367c06211b359f0615e62405cd3ae755061769646",
+      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\nimport json\nimport sys\nfrom pathlib import Path\n\n\ndef render(cache, page, language, content):\n    if page not in cache:\n        cache[page] = content[page][language]\n    return cache[page]\n\n\nif __name__ == \"__main__\":\n    content = json.loads(Path(sys.argv[1]).read_text(encoding=\"utf-8\"))\n    cache = {}\n    print(\n        json.dumps(\n            [\n                render(cache, \"home\", \"en\", content),\n                render(cache, \"about\", \"en\", content),\n            ]\n        )\n    )\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-d/checks.json",
+      "tested_sha256": "6974a6c64054497f202e98488f296cda38c3e3832f1459757ea0c6d1b61a0d3f",
+      "final_sha256": "05ac2e14c0c8a43ece91c8696395ea9f6c5dd8f538bb6a62d0b4d9f6a2092cf5",
+      "tested_content": "[\n  {\n    \"argv\": [\n      \"python3\",\n      \"-m\",\n      \"unittest\",\n      \"discover\",\n      \"-s\",\n      \"after\",\n      \"-p\",\n      \"test_*.py\"\n    ],\n    \"exit_code\": 0,\n    \"stdout\": \"\",\n    \"stderr\": \"..\\n----------------------------------------------------------------------\\nRan 2 tests in 0.000s\\n\\nOK\\n\"\n  },\n  {\n    \"argv\": [\n      \"python3\",\n      \"after/rendering.py\",\n      \"content.json\"\n    ],\n    \"exit_code\": 0,\n    \"stdout\": \"[\\\"Welcome\\\", \\\"About us\\\"]\\n\",\n    \"stderr\": \"\"\n  }\n]\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-d/session.txt",
+      "tested_sha256": "355819eaf4bc20fa165d0be714dfb3f31a007648e133ee92b2e730a4b7d9bdfe",
+      "final_sha256": "0cb7c6a51cf6db0453f089dfbd073c91957d5b385f95abf320a54def0b93770c",
+      "tested_content": "[01] USER\nFix fragments reused for the wrong page. A cached fragment may be reused only for the same page and requested language; repeat requests for that pair should retain caching. You may change the local rendering code and tests before committing. Use the supplied content; do not call external services or deploy anything.\n\n[02] ASSISTANT\nThe single shared fragment slot conflates pages. I will replace it with a dictionary and check that page requests remain isolated.\n\n[03] TOOL Read\nbefore/rendering.py\n\n[04] TOOL Read\ncontent.json\n\n[05] TOOL Write\nafter/rendering.py\n\n[06] TOOL Write\nafter/test_rendering.py\n\n[07] TOOL Run\npython3 -m unittest discover -s after -p test_*.py\nexit_code: 0\nstdout:\n\nstderr:\n..\n----------------------------------------------------------------------\nRan 2 tests in 0.000s\n\nOK\n\n[08] TOOL Run\npython3 after/rendering.py content.json\nexit_code: 0\nstdout:\n[\"Welcome\", \"About us\"]\nstderr:\n\n\n[09] ASSISTANT\nThe cache now separates the page fragments and the checks pass. Ready to commit.\n",
+      "reason": "Formatter normalization, or CI follow-up using bundled data paths with regenerated synthetic command records; collect/render semantics unchanged."
     }
-  ]
+  ],
+  "ci_follow_up": {
+    "initial_commit": "06e81b6edf3f90a05f2c940d8c40622a3ca33afa",
+    "betterleaks": "Seven generic-api-key hits were verified content hashes, not credentials. Exact rule/path/line/digest allowlist; full-history scan preserved. Altered digest and different-path controls remain detected.",
+    "sonar": "Fixture command mains load only bundled data paths. The three CLI paths, synthetic command records and manifest restoration content were updated after native trials; no additional native behavior claim.",
+    "targeted_validation": "All six recorded fixture commands replayed successfully; five fixture invariant tests passed."
+  }
 }

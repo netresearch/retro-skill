@@ -2,7 +2,6 @@
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
 
 import json
-import sys
 from pathlib import Path
 
 
@@ -22,5 +21,6 @@ def collect(client):
 
 
 if __name__ == "__main__":
-    client = Client(json.loads(Path(sys.argv[1]).read_text(encoding="utf-8")))
+    fixture = Path(__file__).resolve().parents[1] / "api.json"
+    client = Client(json.loads(fixture.read_text(encoding="utf-8")))
     print(json.dumps(collect(client)))

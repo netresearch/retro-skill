@@ -17,8 +17,7 @@
   {
     "argv": [
       "python3",
-      "after/inventory.py",
-      "api.json"
+      "after/inventory.py"
     ],
     "exit_code": 0,
     "stdout": "[\"build\", \"deploy\"]\n",

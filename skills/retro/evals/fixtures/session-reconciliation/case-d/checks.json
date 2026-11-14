@@ -17,8 +17,7 @@
   {
     "argv": [
       "python3",
-      "after/rendering.py",
-      "content.json"
+      "after/rendering.py"
     ],
     "exit_code": 0,
     "stdout": "[\"Welcome\", \"About us\"]\n",
