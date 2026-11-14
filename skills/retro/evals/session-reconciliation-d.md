@@ -18,9 +18,8 @@ negative_expected:
 
 # Scenario: rendering session D
 
-This synthetic executable case is a transfer candidate in a different domain.
-Freeze it before changing the skill, keep it out of development runs, and record
-its first behavioral use. Once inspected during tuning, it is no longer held out.
-Its command results come from the supplied files; no later complaint is present.
+This synthetic executable case tests transfer to a different domain. Its first
+behavioral use was the 2026-11-14 comparison, so it is an exposed regression
+case, not an unseen holdout. Its command results come from the supplied files; no later complaint is present.
 The original goal already distinguishes page and language. The replacement and
 tests cover only one of those dimensions.

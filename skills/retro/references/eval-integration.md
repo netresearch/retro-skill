@@ -146,6 +146,8 @@ changes the outcome: in one real-session comparison (2026-11-14), read-only
 arms found a quiet defect in 0 of 5 runs without B22 and in 3 of 5 with each of
 two B22 versions, while
 every arm that could run tests and a probe found it (3 of 3 per version).
+The repository records this run in
+`docs/evidence/situational-check-2026-11-14/real-session-rerun.md`.
 
 Freeze the cases and criteria before comparing, and keep development cases
 separate from a first-use transfer case. Once its result informed a revision,

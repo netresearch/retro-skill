@@ -3,6 +3,13 @@
 
 # Situational-check discovery experiment
 
+> **Status, 2026-11-14 (later the same day):** the revision this page compares,
+> including `/retro check`, was withdrawn in commit `6e4ce44`; the instruction
+> files went back to `8c2d3ed` plus one instruction to run the tests and a
+> bounded probe. The real session was rerun with code access; see
+> [real-session-rerun.md](real-session-rerun.md). The text below is the record
+> of the synthetic experiment as it stood and is not updated.
+
 **Decision: keep PR #232 in draft. No additional detection or repair success
 was observed in this experiment.** The revised procedure is executable, but
 these results do not establish that it improves the existing skill.

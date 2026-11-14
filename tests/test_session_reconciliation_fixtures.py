@@ -5,6 +5,7 @@
 
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import unittest
@@ -14,6 +15,7 @@ FIXTURES = (
     Path(__file__).resolve().parents[1]
     / "skills/retro/evals/fixtures/session-reconciliation"
 )
+RAN = re.compile(r"^Ran \d+ tests?", re.MULTILINE)
 
 
 def load_module(case, name):
@@ -29,6 +31,7 @@ class SessionReconciliationFixturesTest(unittest.TestCase):
         for case in ("case-a", "case-b", "case-d"):
             root = FIXTURES / case
             records = json.loads((root / "checks.json").read_text(encoding="utf-8"))
+            session = (root / "session.txt").read_text(encoding="utf-8")
             for record in records:
                 with self.subTest(case=case, command=record["argv"]):
                     result = subprocess.run(
@@ -44,6 +47,17 @@ class SessionReconciliationFixturesTest(unittest.TestCase):
                         self.assertEqual(
                             json.loads(result.stdout), json.loads(record["stdout"])
                         )
+                        quoted = record["stdout"].strip()
+                    else:
+                        # unittest reports on stderr; Python 3.11 exits 0 with
+                        # no tests, so the exit code alone misses a lost test.
+                        recorded = RAN.search(record["stderr"])
+                        actual = RAN.search(result.stderr)
+                        self.assertIsNotNone(recorded, record["stderr"])
+                        self.assertIsNotNone(actual, result.stderr)
+                        self.assertEqual(actual.group(), recorded.group())
+                        quoted = recorded.group()
+                    self.assertIn(quoted, session)
 
     def test_inventory_a_leaves_an_enabled_job_out_despite_passing_checks(self):
         module = load_module("case-a", "inventory")

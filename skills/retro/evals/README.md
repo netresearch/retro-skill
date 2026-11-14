@@ -122,7 +122,7 @@ captures of the earlier real-session experiment reported in PR #232.
 | [A](session-reconciliation-a.md) | Find an unmet requirement from the original request, implementation and green recorded checks, without a later defect report. |
 | [B](session-reconciliation-b.md) | Accept the correct bounded change and its relevant verification. |
 | [C](session-reconciliation-c.md) | Preserve uncertainty when delegated implementation and execution evidence are missing. |
-| [D](session-reconciliation-d.md) | Transfer the procedure to a distinct requirement; reserve its first run until the instruction revision is frozen. |
+| [D](session-reconciliation-d.md) | Transfer the procedure to a distinct requirement. Its first use is spent; it is now a regression case. |
 
 The functional oracles do not require B22 vocabulary. A correct older-version
 answer receives equal credit. The trigger supplies no diagnosis. Keep the
