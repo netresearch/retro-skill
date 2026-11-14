@@ -19,7 +19,7 @@ negative_expected:
 # Scenario: rendering session D
 
 This synthetic executable case tests transfer to a different domain. Its first
-behavioral use was the 2026-11-14 comparison, so it is an exposed regression
+behavioral use was the synthetic 2026-11-14 comparison, so it is an exposed regression
 case, not an unseen holdout. Its command results come from the supplied files; no later complaint is present.
 The original goal already distinguishes page and language. The replacement and
 tests cover only one of those dimensions.

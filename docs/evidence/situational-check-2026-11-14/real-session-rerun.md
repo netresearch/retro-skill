@@ -25,8 +25,8 @@ session contains private ticket content. Only setup and counts are recorded here
 - **Runtime:** `claude -p` with model `claude-fable-5-2`, Claude Code 2.1.325, a
   fresh configuration directory, and a working directory that loaded no user
   instructions. A control prompt per batch confirmed the isolation.
-- **Grading:** blind grader agents against a frozen oracle, with the arm labels
-  mapped separately.
+- **Grading:** blind grader agents against one oracle per question, written
+  before grading, with the arm labels mapped separately.
 
 ## Results
 
@@ -36,6 +36,8 @@ session contains private ticket content. Only setup and counts are recorded here
 | Code readable, no execution (5 runs each) | 0 found, 1 partial, 4 missed | 3 found, 1 partial, 1 missed | 3 found, 2 partial |
 | Code readable, tests and probes allowed in a sandbox (3 runs each) | 3 found | 3 found | 3 found |
 
+The grader marked two results as borderline: one partial of the revised B22 in
+the read-only batch, and one find of the original B22 in the execution batch.
 In the execution batch every arm ran the test suite and built its own probe
 against a fake Jira. Three `main` runs of the read-only batch called the
 post-check a working backstop, which the code rules out.
@@ -43,15 +45,17 @@ post-check a working backstop, which the code rules out.
 A correct-fix control used a later part of the same session and the code at
 `1da6832` (merge of #330), with the same sandbox. All six runs (two per skill
 version) were graded clean: 22 code-defect claims, none of them false. The
-claims that held included two real defects, which
-[jira-skill#334](https://github.com/netresearch/jira-skill/pull/334) fixes.
+claims that held included two real defects;
+[jira-skill#334](https://github.com/netresearch/jira-skill/pull/334) proposes
+fixes for them.
 
 ## Conclusion and limits
 
 - Being able to run the tests and a probe decided the outcome; the B22 text
   version did not. The revision showed no gain over the original text and was
   withdrawn.
-- Samples are small: five or three runs per cell, one session, one model.
+- Samples are small: one session and one model; one run per cell without
+  code, five read-only, three with execution, two in the control.
 - The read-only finding needed only one link: a code comment already admitted
   that equal status sets pass the pre-check.
 - The instruction added afterwards (run the tests and one bounded probe in a

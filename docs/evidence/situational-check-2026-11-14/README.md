@@ -4,9 +4,11 @@
 # Situational-check discovery experiment
 
 > **Status, 2026-11-14 (later the same day):** the revision this page compares,
-> including `/retro check`, was withdrawn in commit `6e4ce44`; the instruction
-> files went back to `8c2d3ed` plus one instruction to run the tests and a
-> bounded probe. The real session was rerun with code access; see
+> including `/retro check`, was withdrawn in commit `6e4ce44`. `SKILL.md`, the
+> command and the friction catalog went back to `8c2d3ed` plus one instruction
+> to run the tests and a bounded probe; `eval-integration.md` keeps the eval
+> method from the revision (discovery comparisons, equal tool permissions,
+> frozen cases, the hindsight protocol). The real session was rerun with code access; see
 > [real-session-rerun.md](real-session-rerun.md). The text below is the record
 > of the synthetic experiment as it stood and is not updated.
 
