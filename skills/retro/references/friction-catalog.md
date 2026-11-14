@@ -18,7 +18,7 @@ propagating.
 This catalog covers what retro-skill **can** detect from session transcripts, post-session git/PR history, cross-session JSONL data, and the feedback written on the session's PRs, MRs, linked issues and supplied tracker evidence (`collect-review-findings.py`, see [Feedback from outside the transcript](#feedback-from-outside-the-transcript)).
 
 **It does NOT detect:**
-- Architectural choices that are wrong but "work" (no friction signal)
+- Architectural choices that are wrong but "work", when the session showed no warning sign at the time. A warning sign that was visible and went unanswered is [B22](#missed-situational-check-b22)
 - External feedback outside forge and tracker (production alerts, customer complaints, Slack/Matrix mentions)
 - Slow constitutional drift unless `/retro audit` mode is run with sufficient history
 
@@ -29,7 +29,7 @@ Ingestion of error trackers, monitoring and chat is out of scope — see "Future
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
 | A — Mechanical | 21 | 21 (all of A1–A21) |
-| B — LLM inference | 21 | LLM-driven; B16–B21 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py` |
+| B — LLM inference | 22 | LLM-driven; B16–B21 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py`, B22 judges one decision point |
 | C — Cross-session | 6 | Partial (script `scan-cross-session.py`: C1, C2, C5) |
 | D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
 | E — Constitutional (audit) | 6 | Planned for v0.1.x |
@@ -85,6 +85,99 @@ Requires conversational context understanding. The LLM reads pre-pass output + r
 | B13 | Context re-discovery | Assistant re-explored repo structure already documented in AGENTS.md |
 | B14 | Doc drift | Assistant used outdated API/library version when context7 would have helped |
 | B15 | Skill trigger-coverage gap | A **systematic** pass (not opportunistic): load *every* installed skill's `description` via `${CLAUDE_SKILL_DIR}/scripts/find-installed-skills.sh`, then judge — given what this session actually did — which skills *should* have triggered but were never invoked. Each miss whose root cause is weak/missing trigger words → `skill-update` to that skill's `description`. (B2/B4 are the opportunistic, single-skill version; B15 is the exhaustive sweep across the whole inventory. See the trigger-coverage step in `SKILL.md`.) |
+| B22 | Missed situational check | A warning sign was visible at the time — an observation contradicting the working explanation, a failure class returning after its fix, special handling spreading across layers, exceptions piling up, or a large rebuild started from one isolated case — and the check it called for did not run. Details: [below](#missed-situational-check-b22) |
+
+### Missed situational check (B22)
+
+A chain of local fixes can stay green while the assumption under it is already
+refuted, so B22 often carries no visible friction and must be looked for
+deliberately. It asks one question about one decision point: **was a warning
+sign visible at that moment, and did the agent answer it with a proportionate
+check?** That a better design was conceivable is no finding.
+
+| Warning sign at the time | Proportionate check |
+|---|---|
+| An observation contradicts the working explanation | Test the explanation against that observation and drop it if it fails. One clear counter-observation is enough; no failure count is needed |
+| The same failure class returns after a fix, in a variant the fix did not cover | Name the property the cases share, and check whether the fix handles that property or only the first example |
+| Special handling for one format, state or contract spreads to several layers | Check which layer owns that responsibility and whether the shared abstraction still carries it |
+| Each new case needs another exception, an ordering dependency or a workaround | Compare the local approach with one concrete alternative |
+| A large restructuring starts from one isolated case | Check the need, the effect and a bounded alternative |
+
+A shared location is no shared cause: three defects in one file can have three
+causes, and only a shared cause makes the second sign fire.
+
+Judge the delivered artifact, not only the transcript. When the changed code is
+still reachable (a worktree, the merge commit), read the change against the
+property it was meant to establish, run the project's tests, and run one
+bounded probe that could refute that property — for example a small fake of
+the external system the guard depends on. Run it in a copy; never write to a
+shared tree, a remote or a live system. Record what was run. Where the code is
+not reachable, say so; the transcript alone often hides a quiet defect. In one
+real session (2026-11-14), retros that could only read the code found such a
+defect in 3 of 5 runs, and every retro that could run the tests and a probe
+found it.
+
+Each B22 finding states:
+
+- the warning sign and the turn where it was visible;
+- the check that sign called for;
+- what the agent did instead;
+- the evidence — diffs, tool results, tests run, call sites read;
+- what speaks against the finding — independent causes, a compatibility promise,
+  a check already done, a limited mandate;
+- the consequence shown (a variant still fails), or `effect untested`.
+
+Every decision point ends in one of four outcomes. Only the third is a finding:
+
+| Outcome | Report |
+|---|---|
+| Performed — the agent ran the check | Nothing; a notable check can be a Glad line |
+| Not needed — the information at that point justified the narrow step, including a result a person supplied or a limit they set | Nothing |
+| Omitted — the check was proportionate and did not run. Missing means to run it are a cause to route, not another outcome | A finding with the record above |
+| Not assessable — the check may have run in a part of the session retro did not read (a subagent's transcript that is missing, a converted transcript read alone, a truncated transcript) | One line in the Phase-10 report: `B22 not assessable: <decision point> — <missing evidence>`; neither a finding nor a pass. It is a stated coverage limit and does not hold gate 3 of Done mode (`done-mode.md`) |
+
+Three rules keep B22 from becoming hindsight:
+
+- **Judge by what was knowable then.** A case that appeared only later does not
+  condemn the earlier fix; it may be a D signal in Outcome mode.
+- **Judge the work, not the prose.** A paragraph headed "architecture check"
+  without the check is no evidence. A correct root-cause fix without such a
+  paragraph is a performed check. Evidence is a contract read, a test run, a call
+  site inspected, an assumption confirmed or refuted.
+- **The diff size says nothing.** A local fix, a targeted contract change and
+  keeping separate handling can each be the correct result of the check. A
+  change outside the agreed scope remains a decision for its owner
+  (`learning-contract.md`).
+
+| Not B22 | Signal |
+|---|---|
+| Success claimed without any check | A13 |
+| The agent repeats its own mistake: the same command, the same wrong step | A2 / B9 |
+| A claim later refuted by verification or by the user | B5 |
+| An assumption made instead of asking | B12 |
+| A defect that review, CI or QA found after the push, also when the checks that ran did not cover the requirement | B19 |
+| A better approach found during the work, with no warning sign | B17 |
+| Guidance that existed and was not used | A10 / B13 / C3 |
+| An agreed goal dropped for a side problem | Sad (`learning-contract.md`) |
+
+B9 is about the agent's own action repeated. B22's second sign is about the
+system under work: its failure returns in a new variant after a change that was
+a real fix for the first one. Where one of the signals above already holds the
+whole pattern, attach the decision-point record to it and do not file B22 as
+well.
+
+Before routing, find the cause in the agent system; another instruction is
+rarely it. Candidates: a rule asking for the smallest change, read too
+narrowly; a decision record the agent could not reach; no way to run a
+counter-probe; a test command that does not cover the affected area; a refuted
+assumption lost in a compaction; a check instruction too vague or loaded too
+late; a configuration that cannot do the task reliably. Route to that cause
+(`classification-heuristic.md`). A `skill-update` names the concrete warning
+sign and its check, never a general "consider the architecture", and carries an
+eval stub: related variants fed one at a time, further variants held out, and a
+control in which a small fix stays correct. Its effect on later work stays
+untested until such a case has run (`learning-contract.md` § Claims about
+later benefit).
 
 ### Reusable-learning signals (B16–B21) — scan even when nothing went wrong
 

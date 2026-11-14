@@ -127,6 +127,38 @@ Keep scenario frontmatter, prose explanations and expected answers with the
 independent evaluator. The 26 initial acceptance cases map to maintained
 Markdown fixtures in `evals/README.md`; earlier regressions remain intact.
 
+The `situational-check-*` cases classify described situations; they do not
+demonstrate discovery from raw session material. Grade the supported behavior,
+not the signal ID, outcome vocabulary or report format. An equally supported
+finding from an older catalog receives equal credit.
+
+For discovery comparisons, use the raw `session-reconciliation-*` cases. Give
+both arms identical inputs and tools, with no later defect report or expected
+diagnosis in their prompts. Require the original property, the implementation
+evidence and the inadequacy of the recorded check to support the finding.
+Accept code inspection as well as execution evidence. Correct implementations
+and missing historical coverage are controls, not invitations to invent a
+finding.
+
+Give both arms the same tool permissions and state them in the report. Whether
+an arm may only read the artifacts or may also run their tests and a probe
+changes the outcome: in one real-session comparison (2026-11-14), read-only
+arms found a quiet defect in 0 of 5 runs without B22 and in 3 of 5 with each of
+two B22 versions, while
+every arm that could run tests and a probe found it (3 of 3 per version).
+
+Freeze the cases and criteria before comparing, and keep development cases
+separate from a first-use transfer case. Once its result informed a revision,
+that case is no longer held out. Report all arms and failures, including a zero
+delta. A synthetic case does not replace a rerun on the real session it
+imitates.
+
+The adapter does not stage inputs. For hindsight, give the target only the
+session prefix at the decision point and preserve its response before exposing
+later evidence in a separate turn. Later information may legitimately change
+the artifact assessment; it must not be treated as knowledge the earlier agent
+already had. Do not infer hindsight merely because the later verdict changes.
+
 ## Reuse the shared text runner
 
 Use

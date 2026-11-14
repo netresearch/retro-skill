@@ -80,7 +80,9 @@ decisions. Process critique grants no new authority.
    hints through the owning integration, never by key shape. See
    `references/feedback-contract.md`; incomplete coverage is not silence.
 2. LLM enrichment — Mad/Sad/Glad perspectives, both classes (friction +
-   learnings B16–B21); distinguish observations, hypotheses and decisions;
+   learnings B16–B21); check each visible warning sign for the check it called
+   for (B22), with the changed code's tests and one bounded probe run in a copy
+   when that code is reachable; distinguish observations, hypotheses and decisions;
    filter false positives. A prior failure is not required for a learning.
 3. Cross-session enrichment (optional) — JSONL scan via `${CLAUDE_SKILL_DIR}/scripts/scan-cross-session.py`.
 4. Discover skills — always run `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py`, also when the owning skill seems obvious (opening it by path is a skip that needs a deviation line) — and the repo's harness (`project-harness-inspection.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.

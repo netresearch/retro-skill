@@ -64,6 +64,7 @@ failure; a hypothesis remains a hypothesis. A justified no-op is valid.
 | **B19** escaped defect | `skill-update` to the skill that owns the check which would have caught it before the push | `harness-artefact` (a hook or CI gate, when prose already exists and did not prevent it — cf. C6) / eval stub for that skill |
 | **B20** maintainer request | `project-rule` (the repository's `AGENTS.md`) | `skill-update` (a convention the team applies across repositories) |
 | **B21** dug-out knowledge | `canonical-source`, team record: the record kind from Axis 0, after Phase 4c searched it | A link from the reader's starting point when Phase 4c says `found-unreachable` (never a new page) / no doc write when it says `found-correct` (then it was B13) / `skill-update` for the agent-specific delta only, never the fact |
+| **B22** missed situational check | The cause in the agent system, found first: `skill-update` to the skill that owned the work (discovered, not assumed), naming the warning sign and its check, with an eval stub of held-out variants and a small-fix control | `harness-artefact` (the counter-probe or covering test could not be run) / `project-rule` (the decision record was not reachable from the repo) / a clarification of the smallest-change rule that was read too narrowly, in the file that states it (`skill-update`, `project-rule` or `personal-rule`); never a general "consider the architecture" line |
 | **C1** same friction again | `skill-update` (existing memory not enough) | `harness-artefact` (enforcement) |
 | **C2** cross-project pattern | `skill-update` (promote from feedback files) | `new-skill` |
 | **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`personal-rule` (LLM picks from `current_location` + content) |
@@ -346,6 +347,10 @@ Severity is set during classification, not during detection:
 - `critical` — Recurring (C-layer match) OR caused upstream failure (A17) OR user-visible bug
 - `important` — User correction phrase present (A6) OR known rule violated (A15) OR a **reusable-learning finding** (B16–B21, or D11 durable-improvement in outcome mode): knowledge a future agent will otherwise re-derive is *important* by definition — never auto-grade a genuine learning `nice-to-have`
 - `nice-to-have` — Efficiency / style / convention (most other cases)
+
+A missed situational check (B22) is graded by its shown consequence: a variant
+that still fails for the user is a user-visible bug (`critical`), rework inside
+the session is `important`, and `effect untested` stays `nice-to-have`.
 
 Use severity to rank proposals in the output. Higher severity first.
 

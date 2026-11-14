@@ -1,0 +1,246 @@
+{
+  "run": "alpha-c",
+  "source": "original",
+  "case": "c",
+  "report": "# Retrospective: delegated API inventory replacement\n\n## Conclusion and scope\n\n**The implementation outcome is unknown.** The record contains seven turns, the original parser, and saved API responses. It contains no returned implementation, regression tests, worker commands, or test results. A worker’s completion summary is an attributed claim, not independent verification. The parent explicitly preserves that distinction at [07]. This review uses the supplied retro skill, version 3.3.0, and assesses the recorded work only.\n\n## Mandate and evidence\n\nThe user authorized local implementation and regression-test changes: replace the incomplete formatted-table source with the job API, return every enabled job from available responses, sort by name, preserve command presentation, and use saved responses without external calls or deployment (`inputs/session.txt`, [01]).\n\nThe original `collect(table)` filters and sorts names extracted from table lines (`inputs/before/inventory.py`). Its existence does not establish what the replacement does. The supplied fixture has `/jobs?limit=2` pointing to `/jobs?cursor=2`; the enabled jobs are `build` and `deploy`, while `nightly` is disabled (`inputs/api.json`). Therefore the fixture-level expected names are **`[\"build\", \"deploy\"]`**. This is an acceptance oracle derived from supplied data, not a test of the missing implementation. The full command’s presentation is also unavailable.\n\nAt [05], the worker receives the original request and saved responses. At [06], it reports completion and passing tests, but both `workspace_export` and `tool_trace` are null. At [07], the parent states that the workspace and command log are absent from this export.\n\n## Findings and perspectives\n\n**B22 not assessable: pagination/completeness validation at the API replacement decision — the worker workspace and tool trace are missing ([06]–[07]).** The user’s completeness requirement and the fixture’s continuation link call for checking the entire response chain, enabled filtering, global sorting, and output compatibility. Those checks may have occurred inside the worker. There is neither a supported omission finding nor a supported pass (`skill/references/friction-catalog.md`, “Missed situational check”).\n\nNo implementation defect, skipped-test finding (A13), false-success finding (B5), or external-service violation is established. Missing exported evidence does not demonstrate missing execution, and the record contains no later refutation of the worker’s claim.\n\n- **Mad:** The export cannot substantiate the worker’s verification. Its cause, avoidability, and any resulting rework are unknown.\n- **Sad:** The intended complete, compatible inventory remains unverified in this review; this does not establish that the user’s goal went unmet.\n- **Glad:** Delegation carries the request and saved-response context, and the parent accurately attributes the worker’s claim while disclosing the evidence gap ([05]–[07]). Successful delivery or efficiency benefits are unproven.\n\n**B21: none established.** The fixture contract is directly readable; no documentation gap or newly discovered operational fact is demonstrated. No reusable success procedure or justified skill change can be inferred from the worker summary alone.\n\n## Proportionate follow-up\n\nFor a later review, recover the worker’s patch, regression tests, exact commands, exit status, and relevant output. Check the supplied two-page fixture against the expected names, and inspect the command integration for presentation compatibility. The current fixture already arrives in alphabetical order, so passing it alone would not prove that sorting is implemented; inspect the sort operation or a suitable local test. This is a verification recommendation, not a claim that these checks were omitted. No new policy, skill patch, or harness gate is justified by this export.\n\n## Coverage and phase deviations\n\n- Phase 1: manual transcript review substituted for the JSONL mechanical pipeline; supplied input is plain text, with no dependency setup authorized.\n- Phase 1b: review collection skipped; no review or worker trace supplied, and external access prohibited.\n- Phase 2b: trigger coverage unassessed; the recorded executor’s skill inventory is unavailable.\n- Phase 3: cross-session enrichment skipped; only this run is in scope.\n- Phase 4: bounded file inventory substituted for host-wide skill discovery; other directories are forbidden.\n- Phase 4b: only supplied baseline inspected; project harness state is unknown.\n- Phase 4c: no established B21 item; external team records were not searched.\n- Phase 6: no matched owner or supplied eval artifacts; no behavioral eval executed.\n- Phase 9: no remediation materialized; only the requested report and access log written.\n- Phase 11: retrospective self-scan skipped; this request excludes reviewing current tool use and supplies no recorded retro invocation.\n\nModels, loaded executor instructions, elapsed time, costs, commit state, and later outcomes are unknown. Findings are bounded to this export.\n",
+  "agent_recorded_actions": {
+    "schema_version": 1,
+    "scope": {
+      "root": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+      "subject": "Recorded work in inputs/session.txt; not the reviewer's current session",
+      "offline": true,
+      "external_services_contacted": false,
+      "dependencies_installed": false,
+      "other_directories_inspected": false,
+      "subagents_invoked": false
+    },
+    "content_paths_read": [
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/SKILL.md",
+        "coverage": "Full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/inputs/session.txt",
+        "coverage": "Full content; line and byte counts also read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/learning-contract.md",
+        "coverage": "Full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/workflow.md",
+        "coverage": "Full-file cat requested; combined tool output truncated a middle section; lines 175-280 subsequently read explicitly. Workflow sections relevant to this bounded review were observed."
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/inputs/before/inventory.py",
+        "coverage": "Full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/inputs/api.json",
+        "coverage": "Full content; later parsed for a fixture oracle only"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/classification-heuristic.md",
+        "coverage": "Full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/friction-catalog.md",
+        "coverage": "Pattern search over file, then lines 67-226"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/skill-discovery.md",
+        "coverage": "Full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/project-harness-inspection.md",
+        "coverage": "Full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/documentation-lookup.md",
+        "coverage": "Full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/report.md",
+        "coverage": "Full content read by local validation script"
+      }
+    ],
+    "directory_inventories": [
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "command": "rg --files /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "note": "Filename inventory only; enumerated files were not all read."
+      }
+    ],
+    "commands": [
+      {
+        "submission_index": 1,
+        "batch": 1,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/SKILL.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 2,
+        "batch": 1,
+        "tool": "exec_command",
+        "command": "wc -l -c /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/inputs/session.txt",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 3,
+        "batch": 2,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/inputs/session.txt",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 4,
+        "batch": 2,
+        "tool": "exec_command",
+        "command": "rg --files /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 5,
+        "batch": 2,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/learning-contract.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 6,
+        "batch": 2,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/workflow.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 7,
+        "batch": 3,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/inputs/before/inventory.py",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 8,
+        "batch": 3,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/inputs/api.json",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 9,
+        "batch": 3,
+        "tool": "exec_command",
+        "command": "sed -n '175,280p' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/workflow.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 10,
+        "batch": 3,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/classification-heuristic.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 11,
+        "batch": 3,
+        "tool": "exec_command",
+        "command": "rg -n '^(##|###)|B22|incomplete|delegat|evidence|unverified' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/friction-catalog.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 12,
+        "batch": 4,
+        "tool": "exec_command",
+        "command": "sed -n '67,226p' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/friction-catalog.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 13,
+        "batch": 4,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/skill-discovery.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 14,
+        "batch": 4,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/project-harness-inspection.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 15,
+        "batch": 4,
+        "tool": "exec_command",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/skill/references/documentation-lookup.md",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      },
+      {
+        "submission_index": 16,
+        "batch": 5,
+        "tool": "exec_command",
+        "command": "python3 - <<'PY'\nimport json\nfrom pathlib import Path\nroot = Path('/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c')\nreport = (root / 'report.md').read_text()\nresponses = json.loads((root / 'inputs/api.json').read_text())\nendpoint = '/jobs?limit=2'\nvisited = []\nnames = []\nwhile endpoint is not None:\n    assert endpoint not in visited, 'fixture cycle'\n    visited.append(endpoint)\n    response = responses[endpoint]\n    names.extend(job['name'] for job in response['items'] if job['enabled'] is True)\n    endpoint = response['next']\nwords = len(report.split())\nassert words <= 800, words\nassert sorted(names) == ['build', 'deploy']\nassert 'B22 not assessable:' in report\nprint(json.dumps({'report_words': words, 'fixture_pages': visited, 'fixture_expected_names': sorted(names), 'implementation_executed': False}))\nPY",
+        "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c",
+        "exit_code": 0
+      }
+    ],
+    "write_operations": [
+      {
+        "tool": "apply_patch",
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/report.md",
+        "result": "Failed before writing",
+        "detail": "Patch terminator was malformed; tool returned: apply_patch verification failed: invalid patch: The last line of the patch must be '*** End Patch'"
+      },
+      {
+        "tool": "apply_patch",
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/report.md",
+        "result": "Created; subsequently read and validated"
+      },
+      {
+        "tool": "apply_patch",
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-c/actions.json",
+        "result": "Created from this JSON record"
+      }
+    ],
+    "validation": {
+      "report_word_count": 706,
+      "report_word_limit": 800,
+      "fixture_expected_names": [
+        "build",
+        "deploy"
+      ],
+      "fixture_pages": [
+        "/jobs?limit=2",
+        "/jobs?cursor=2"
+      ],
+      "missing_implementation_executed": false,
+      "regression_tests_run": false,
+      "skill_scripts_run": false
+    },
+    "coverage_limits": [
+      "Worker workspace, final implementation, tests and tool trace are not supplied.",
+      "No original command entry point or complete output-format artifact is supplied.",
+      "No external review, team documentation, host skill inventory, cross-session records or repository harness inspected.",
+      "No original-executor model, timing, cost, commit or later-outcome evidence supplied.",
+      "The fixture traversal checks only the acceptance oracle; it does not verify the missing replacement."
+    ]
+  },
+  "action_log_provenance": "Written by executor; not an independently captured full native tool transcript."
+}

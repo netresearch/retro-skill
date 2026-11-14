@@ -36,7 +36,8 @@ Full session analysis. Use at end of session — whether or not friction
 accumulated. The sweep captures **both** classes: friction *and* reusable
 learnings (hard-won techniques, proactive improvements, code-review lessons;
 Schicht B, B16–B21). A session that went smoothly is not exempt — it still owes
-its learnings.
+its learnings, and a chain of fixes that stayed green can still hold a missed
+situational check (B22).
 
 ```
 Input: entire current session transcript
@@ -619,7 +620,8 @@ improvement it named) or was written on the session's PRs, MRs, linked issues
 and tracker evidence supplied by the owning integration, which Phase 1b reads
 (`collect-review-findings.py --feedback-file`); retro does
 **not** detect: silent badness (architecturally wrong but friction-free choices
-the agent never recognized as a learning); external signals outside forge and
+the agent never recognized as a learning, where the session showed no warning
+sign at the time; a visible one that went unanswered is B22); external signals outside forge and
 tracker (customer complaints, prod alerts, Slack / Matrix / Sentry); feedback on
 an external ticket for which no owning integration supplied evidence; a PR or
 MR a script opened inside one call, unless its list is passed with `--pr-list`
