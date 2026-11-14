@@ -111,8 +111,9 @@ inferential findings the pre-pass cannot catch — in **both** classes below.
   not assessable (one report line). Look for it in smooth sessions too. A
   pattern another signal already holds (A13, B5, B9, B12, B19) stays there.
   When the changed code is reachable, run the project's tests and one bounded
-  probe against the property the change was meant to establish, in a copy
-  (`friction-catalog.md` § Missed situational check).
+  probe against the property the change was meant to establish, in a copy and
+  without network access or credentials (`friction-catalog.md` § Missed
+  situational check).
 
 ### Reusable-learning findings (scan even when nothing went wrong)
 

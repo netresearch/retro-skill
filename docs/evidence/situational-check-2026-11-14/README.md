@@ -9,8 +9,10 @@
 > to run the tests and a bounded probe; `eval-integration.md` keeps the eval
 > method from the revision (discovery comparisons, equal tool permissions,
 > frozen cases, the hindsight protocol). The real session was rerun with code access; see
-> [real-session-rerun.md](real-session-rerun.md). The text below is the record
-> of the synthetic experiment as it stood and is not updated.
+> [real-session-rerun.md](real-session-rerun.md). The text below and the JSON
+> records in this directory are the record of the synthetic experiment as it
+> stood and are not updated; the `final_sha256` values in
+> [manifest.json](manifest.json) describe the files at `c3cd1be`.
 
 **Decision: keep PR #232 in draft. No additional detection or repair success
 was observed in this experiment.** The revised procedure is executable, but

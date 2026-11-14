@@ -142,7 +142,7 @@ finding.
 
 Give both arms the same tool permissions and state them in the report. Whether
 an arm may only read the artifacts or may also run their tests and a probe
-changes the outcome: in one real-session comparison (2026-11-14), read-only
+can change the outcome: in one real-session comparison (2026-11-14), read-only
 arms found a quiet defect in 0 of 5 runs without B22 and in 3 of 5 with each of
 two B22 versions, while
 every arm that could run tests and a probe found it (3 of 3 per version).
