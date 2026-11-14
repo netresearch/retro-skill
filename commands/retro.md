@@ -27,17 +27,12 @@ a reasoned no-op needs no invented rule. Missing evidence remains unknown.
 
 ```
 /retro                                Sweep — full current session
-/retro check [<decision>]             Check — test the current approach before the next change
 /retro "<problem description>"        Spotlight — focus on one issue
 /retro outcome [session-id|--since N] Outcome — post-hoc review of past session(s)
 /retro audit [--scope X]              Audit — cross-session architectural review
 /retro promote [--project=<slug>]     Promote — re-home accumulated local memory upward
 /retro done                           Done — eight-gate finish check; "done" only when all hold
 ```
-
-For `/retro check`, use
-`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/decision-review.md` and resume
-the authorized task. Do not run the full retrospective phases for this mode.
 
 ## Phase 1: Mechanical Pre-Pass
 
@@ -94,15 +89,7 @@ tracker: read what it created and supply that tracker's feedback with
 
 ## Phase 2: LLM Enrichment
 
-First read
-`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/decision-review.md`. From the
-original task and session statements, connect material improvement claims to
-the actual changes and checks of those same properties. This candidate search
-is independent of the pre-pass and review findings. Resolve a concrete gap by
-reading the relevant artifact or running a bounded counter-probe; classify and
-deduplicate only afterwards. Green checks do not exclude a candidate.
-
-Then validate each pre-pass candidate against the conversational context. Add
+For each pre-pass candidate, validate against the conversational context. Add
 inferential findings the pre-pass cannot catch — in **both** classes below.
 
 ### Friction findings
@@ -123,6 +110,9 @@ inferential findings the pre-pass cannot catch — in **both** classes below.
   is no evidence. Outcomes: performed, not needed, omitted (the only finding),
   not assessable (one report line). Look for it in smooth sessions too. A
   pattern another signal already holds (A13, B5, B9, B12, B19) stays there.
+  When the changed code is reachable, run the project's tests and one bounded
+  probe against the property the change was meant to establish, in a copy
+  (`friction-catalog.md` § Missed situational check).
 
 ### Reusable-learning findings (scan even when nothing went wrong)
 
@@ -378,7 +368,7 @@ prescribed or gets one deviation line with its reason, e.g.
 
 ## Phase 11: Self-check
 
-Close every retrospective run by checking the retro itself — its scripts, the output it had
+Close every run by checking the retro itself — its scripts, the output it had
 to read, its phases and how it read the invocation — not the work it
 materialized. Re-run the pre-pass over this run only, on this session's
 transcript (Promote and Done locate it here; none found → skip with a

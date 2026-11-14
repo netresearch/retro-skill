@@ -17,7 +17,7 @@
 - [Why](#why)
 - [Requirements](#requirements)
 - [Install](#install)
-- [Usage — the seven modes](#usage--the-seven-modes)
+- [Usage — the six modes](#usage--the-six-modes)
 - [A worked example](#a-worked-example)
 - [The seven destinations](#the-seven-destinations)
 - [How it works](#how-it-works)
@@ -94,12 +94,11 @@ Alternatively, install via Composer (the skill-repo convention):
 composer require netresearch/retro-skill
 ```
 
-## Usage — the seven modes
+## Usage — the six modes
 
 | Command | Mode | When to use |
 |---|---|---|
 | `/retro` | **Sweep** — analyze the entire current session; returns ≤10 proposals grouped by destination | At session end, or when friction has accumulated |
-| `/retro check [<decision>]` | **Check** — compare the required property, current approach and actual verification; run a bounded counter-probe and resume authorized work | Before another patch when a fix recurs or the explanation no longer fits |
 | `/retro "<problem>"` | **Spotlight** — focus on one described issue; fewer tokens than a full sweep | Mid-session, for a direct fix |
 | `/retro outcome [session-id\|--since N]` | **Outcome** (layer D) — replay a *past* session through what happened to its output afterwards (reverted commits, rejected PRs, CI failures, follow-up fix sessions) | Periodically, e.g. monthly. **Do not run within 24h of the session** — the outcomes have not landed yet |
 | `/retro audit [--scope project\|repo\|skill]` | **Constitutional audit** — cross-session architectural review (design drift, convention erosion) over weeks/months | Monthly or quarterly health check |
@@ -166,7 +165,7 @@ The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — la
 
 1. **Mechanical pre-pass (layer A)** — `skills/retro/scripts/detect-mechanical.py` parses the transcript for exactly **21** deterministic signals (A1–A21): tool errors, retry clusters, output verbosity, tool-call inefficiency, sequential-vs-parallel, user-correction phrases, prompt/prompt-sequence/tool-sequence repetition, skill-reminder-vs-invoke, wrong-tool choice, re-read-same-file, skipped verification, work on `main`/`master`, bot attribution in commits, outdated-tool warnings, upstream failure, permission re-approval, repeated command shapes, wait-loop polling, and notes written into an auto-memory store. Claude Code's API request logs (`api-request`, `api-request-blob`), which replay earlier messages, are not read as conversation. Deterministic; it does **not** classify.
    Then `skills/retro/scripts/collect-review-findings.py` reads native PR/MR review threads and linked issue feedback, including issues a GitHub PR names as `GH-N` in its title or description (GitHub's own reference syntax). Other tracker integrations supply normalized local evidence with `--feedback-file`. Short branch/title/tool references remain contextual hints until explicitly resolved; they never select a tracker. See [the feedback contract](skills/retro/references/feedback-contract.md) for delegation, coverage states and migration from the removed Jira CLI flags.
-2. **LLM enrichment (layer B)** — first compares material improvement claims with the changed artifacts and checks of those properties ([decision review](skills/retro/references/decision-review.md)); a concrete gap prompts a bounded inspection or counter-probe. Then applies **22** inferential signals, B16–B21 of them reusable-learning signals, and filters layer-A false positives. Includes a trigger-coverage sweep over every installed skill's description. Signal IDs classify findings after discovery; they are not evidence of detection.
+2. **LLM enrichment (layer B)** — adds **22** inferential signals, B16–B21 of them reusable-learning signals (wrong skill choice, skill capability gap, hallucination, convention violation, missing skill, repeated mistake, assumption-without-asking, doc drift, dug-out knowledge, missed situational check, …) and filters layer-A false positives. Includes a trigger-coverage sweep over every installed skill's description.
 3. **Cross-session enrichment (layer C, optional)** — scans `~/.claude/projects/<slug>/*.jsonl` across projects via `skills/retro/scripts/scan-cross-session.py`. **6** signals: same-friction-again, cross-project pattern, memory drift, ineffective skill update, follow-up-fix session, written rule violated repeatedly.
 4. **Skill discovery (runtime)** — `skills/retro/scripts/find-org-skills.py` lists every skill in every configured marketplace, installed or not, to match the friction topic against its description and resolve the source-repo URL; `skills/retro/scripts/find-installed-skills.sh` adds on-disk paths and git remotes of installed skills.
 5. **Classification** — map each finding to one of the seven destinations, authority first (`skills/retro/references/classification-heuristic.md`), using the catalogue from step 4.

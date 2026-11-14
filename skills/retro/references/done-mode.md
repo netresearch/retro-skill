@@ -3,15 +3,14 @@
 
 # Done Mode — `/retro done`
 
-The retrospective modes ask *what did we learn*. Done mode asks *are we actually
+Every other retro mode asks *what did we learn*. Done mode asks *are we actually
 finished* — and refuses to say so until eight gates hold with evidence. It
 exists because "done" was being declared with the retro not run and the time
 not booked: the original task was complete, the session was not.
 
 It is a **gate**, not a detector: it reuses the pipeline's approval and
 materialization phases (8–10) for the writes it triggers (bookings, ticket
-comments) and chains the Sweep for gate 3 when no completed Sweep covers the
-session. A Check is not a Sweep and does not supply gate-3 evidence.
+comments) and chains the Sweep for gate 3 when no retro has run yet.
 
 Phase 8 reuses valid authorization for the target, action and audience; only
 uncovered decisions require a new approval. Do not invent ticket, billing or

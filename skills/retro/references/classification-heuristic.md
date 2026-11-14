@@ -348,13 +348,9 @@ Severity is set during classification, not during detection:
 - `important` — User correction phrase present (A6) OR known rule violated (A15) OR a **reusable-learning finding** (B16–B21, or D11 durable-improvement in outcome mode): knowledge a future agent will otherwise re-derive is *important* by definition — never auto-grade a genuine learning `nice-to-have`
 - `nice-to-have` — Efficiency / style / convention (most other cases)
 
-A missed situational check (B22) is graded by the affected requirement and
-supported consequence. A user-visible defect can be `critical` when established
-by a reproducible case or direct code inspection; rework inside the session is
-`important`. Record the evidence basis separately (reproduced, established by
-inspection, inferred, unknown). Missing execution alone does not lower severity.
-An unsupported possibility remains a hypothesis, not a proved defect. The
-future benefit of the proposed remedy may remain untested at any severity.
+A missed situational check (B22) is graded by its shown consequence: a variant
+that still fails for the user is a user-visible bug (`critical`), rework inside
+the session is `important`, and `effect untested` stays `nice-to-have`.
 
 Use severity to rank proposals in the output. Higher severity first.
 

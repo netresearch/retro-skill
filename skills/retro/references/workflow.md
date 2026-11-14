@@ -30,16 +30,6 @@ answered approval. Critiquing a process does not expand the agent's authority.
 
 ## Modes
 
-### Check — `/retro check [<decision>]`
-
-During work, inspect the current approach before the next change using
-[`decision-review.md`](decision-review.md). Match the intended property to the
-actual implementation and its verification, inspect a concrete gap, then resume
-the authorized task. A recurring fix or a contradicted explanation can trigger
-this mode without waiting for session end. It does not run Phases 1–11, discover
-trackers or skills, write durable rules, or claim that the session is done.
-Those skipped retrospective phases are intentional mode scope, not deviations.
-
 ### Sweep — `/retro` (no arguments)
 
 Full session analysis. Use at end of session — whether or not friction
@@ -48,10 +38,6 @@ learnings (hard-won techniques, proactive improvements, code-review lessons;
 Schicht B, B16–B21). A session that went smoothly is not exempt — it still owes
 its learnings, and a chain of fixes that stayed green can still hold a missed
 situational check (B22).
-
-Phase 2 uses `decision-review.md` to find candidate gaps from the task and
-the actual changes before assigning signal IDs. It does not depend on a
-pre-pass error or a later reviewer having already named the defect.
 
 ```
 Input: entire current session transcript
@@ -208,9 +194,6 @@ Use case: developers who want a nudge after long sessions
 Currently the hook only prints a reminder; invoking slash commands from hooks varies by client.
 
 ## Shared pipeline
-
-This pipeline covers the retrospective modes. Check mode uses only
-`decision-review.md` and the original task's authorization.
 
 All six modes use the same underlying flow (with mode-specific Schicht selection):
 
@@ -370,10 +353,9 @@ incomplete coverage, read the original rollout for context, and pass created
 PRs/MRs with `--pr-list` when the review collector cannot recover them. A
 rollout whose tool calls all fail to render is refused with exit 2.
 
-On a repeat Sweep, do not re-present findings already assessed in a completed
-retrospective. Limit chronological filtering to scope actually covered by a
-prior Sweep. Spotlight and Check do not reset the session-wide boundary;
-material outside their inspected scope still needs the Sweep.
+On a repeat `/retro` within one session, filter findings to turns after the
+previous retro — earlier signals were already proposed and must not be
+re-presented.
 
 ```
 1. Mechanical pre-pass (Schicht A)
@@ -496,7 +478,7 @@ the routing being right afterwards does not make the skip harmless.
 
 ## Phase 11: Self-check
 
-Every retrospective run ends by asking what went wrong **in the retro itself**. Without this
+Every run ends by asking what went wrong **in the retro itself**. Without this
 step retro improves only when someone runs a retro on a retro: the four
 findings below surfaced only because the user asked "should the retro also
 review itself?" after two runs in one session (2026-11-04), and none of them

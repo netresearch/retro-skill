@@ -27,7 +27,7 @@ propose anything at all. retro ships them as regression targets, so that
 ---
 id: <slug — must equal the filename without .md>
 skill_under_test: retro
-mode: check | sweep | spotlight | outcome | audit | promote | done
+mode: sweep | spotlight | outcome | audit | promote | done
 trigger: <one-line friction or user statement that starts the scenario>
 expected:
   - <behaviour retro should exhibit — classification + bounded action>
@@ -123,7 +123,6 @@ captures of the earlier real-session experiment reported in PR #232.
 | [B](session-reconciliation-b.md) | Accept the correct bounded change and its relevant verification. |
 | [C](session-reconciliation-c.md) | Preserve uncertainty when delegated implementation and execution evidence are missing. |
 | [D](session-reconciliation-d.md) | Transfer the procedure to a distinct requirement; reserve its first run until the instruction revision is frozen. |
-| [Check](session-reconciliation-check.md) | Invoke the in-work entry, perform a concrete probe and verify the authorized correction in the disposable copy. |
 
 The functional oracles do not require B22 vocabulary. A correct older-version
 answer receives equal credit. The trigger supplies no diagnosis. Keep the
@@ -133,7 +132,9 @@ revision informed by a case makes it development data, not an untouched test.
 The [2026-11-14 native comparison](../../../docs/evidence/situational-check-2026-11-14/README.md)
 records eleven executions and their limits. Original and revised instructions
 gave the same functional outcomes; no detection or repair gain was observed.
-Case D's first-use status was consumed by that run.
+Case D's first-use status was consumed by that run. The revision it compared,
+including a separate in-work check mode, was later withdrawn; its records stay
+as provenance.
 
 ## Tool-enabled integration inputs
 
