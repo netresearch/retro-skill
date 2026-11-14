@@ -1,0 +1,15 @@
+{
+  "/jobs?limit=2": {
+    "items": [
+      {"name": "build", "enabled": true},
+      {"name": "nightly", "enabled": false}
+    ],
+    "next": "/jobs?cursor=2"
+  },
+  "/jobs?cursor=2": {
+    "items": [
+      {"name": "deploy", "enabled": true}
+    ],
+    "next": null
+  }
+}

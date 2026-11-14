@@ -9,3 +9,14 @@ useDefault = true
 [[allowlists]]
 description = "Fixtures of the secret-masking tests: made-up credentials that the tests expect to be redacted"
 paths = ['''tests/test_mask_secrets\.py''']
+
+[[allowlists]]
+description = "Verified SHA-256 content digests in the dated experiment manifest; not API credentials"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''^docs/evidence/situational-check-2026-11-14/manifest\.json$''']
+regexTarget = "line"
+regexes = [
+  '''^\s*"scripts/mask-secrets\.py": "760d0f1a24bfdff897c96ff12f9c663ac94212c9d2b88ac8af4635b2401291b6",?\s*$''',
+  '''^\s*"api\.json": "44fefd433d0d017df0ff6b320a968bd6486673c5c1b435359ab31d58a3915b89",?\s*$''',
+]

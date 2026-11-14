@@ -1,0 +1,167 @@
+{
+  "run": "beta-c",
+  "source": "revised",
+  "case": "c",
+  "report": "# Retrospective — beta-c\n\n## Assessment\n\n**The replacement’s correctness and its verification are unassessable from this export.** No confirmed implementation defect or skipped verification is established.\n\n**B22 not assessable: the worker’s inventory-completeness decision — the changed workspace, regression tests, and worker tool trace are missing.** This is a coverage limit, neither a finding nor a pass, as required by `skill/references/friction-catalog.md:126–133`.\n\n## Requirement, implementation, and check\n\nThe recorded user required every enabled job from the available API responses, sorted by name, with disabled jobs excluded and the existing command format preserved. Local implementation and regression-test changes were authorized; external requests and deployment were prohibited (`inputs/session.txt:1–2`).\n\nThe only implementation supplied is the **before** version. Its `collect(table)` extracts the first token of table rows ending in “ enabled” and sorts those names (`inputs/before/inventory.py:5–10`). It cannot establish anything about the replacement, and the command’s rendering layer is not supplied.\n\nThe saved API fixture has two linked pages. The first contains enabled `build` and disabled `nightly`; its `next` points to a second page containing enabled `deploy`, followed by `next: null`. Therefore the expected enabled names are **[`build`, `deploy`]** (`inputs/api.json:2–13`). Including `deploy` distinguishes following pagination from reading only the first page. This is fixture inspection, not execution of the replacement. Because fixture order is already alphabetical, the expected list alone would not prove sorting is implemented.\n\nThe worker received the request and saved responses, then reported a complete inventory and passing tests. Its result explicitly has `workspace_export: null` and `tool_trace: null`; the parent acknowledges both omissions (`inputs/session.txt:13–20`). A check may have run in the unavailable workspace. Consequently, neither B22 “omitted” nor A13 “skipped verification” is justified. Pagination, filtering, sorting, format preservation, and compliance inside the worker remain unverified. No commit or deployment is evidenced.\n\n## Mad / Sad / Glad and disposition\n\n- **Mad:** No error, retry, or correction is visible in the supplied parent transcript. The worker’s internal friction is unknown.\n- **Sad:** The intended completeness benefit cannot be independently substantiated. That does not establish that the implementation failed.\n- **Glad:** The delegation passed the requirements and fixture; the parent attributed the success claim to the worker and explicitly disclosed the missing evidence. These observations support honest reporting, not a claim of successful delivery or efficient delegation.\n\n**No durable rule, skill patch, or implementation fix is justified by the available evidence.** No B16–B21 learning is established; team documentation was not searched and is not presumed deficient.\n\nThe next useful action belongs to whoever supplies the session export: provide the replacement or revision-scoped patch, regression tests, exact test command/results, and worker transcript. Once available, the implementation reviewer can reconcile the two-page result, disabled filtering, sorting behavior, and output compatibility against actual code and checks. This is evidence recovery, not a new requirement or a finding that those checks were absent. Any proposed handoff improvement remains a hypothesis until the export’s cause and owner are known.\n\n## Coverage and procedural deviations\n\nThis is an offline, manual Sweep of the recorded session only.\n\n- **Phase 1:** Manual inspection replaced the mechanical pre-pass. The supplied text lacks supported message envelopes; the detector’s loader and coverage logic were inspected (`skill/scripts/detect-mechanical.py:345–404`).\n- **Phase 1b:** Review collection skipped: no review artifacts supplied; external services prohibited.\n- **Phase 2b:** Exhaustive skill-trigger review skipped: original installed-skill inventory unavailable.\n- **Phase 3:** Cross-session enrichment skipped: other directories excluded.\n- **Phase 4:** Discovery script skipped: only the supplied skill and run-local inventory were inspected.\n- **Phase 4b:** Harness inspection limited to the run’s file listing; no project harness was supplied there.\n- **Phase 4c:** Team-record lookup skipped: no grounded B21 candidate; external coverage unavailable.\n- **Phase 6:** No supplied eval files were listed; no eval was executed or change proposed.\n- **Phase 9:** No remediation materialized; authority covers only this report and action log.\n- **Phase 11:** Review of the current retrospective’s tool use skipped as explicitly outside the requested scope.\n\nWorker execution, final implementation, test results, project history, model configuration, cost, and later outcomes remain unknown.\n\n",
+  "agent_recorded_actions": {
+    "scope": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c",
+    "subject": "Recorded session in inputs/session.txt; not the current review session",
+    "mode": "Offline read-only retrospective; only report.md and actions.json written",
+    "paths_inspected": [
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c",
+        "method": "run-local file inventory with rg --files; no other directories inspected"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/skill/SKILL.md",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/inputs/session.txt",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/inputs/before/inventory.py",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/inputs/api.json",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/skill/references/learning-contract.md",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/skill/references/decision-review.md",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/skill/references/workflow.md",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/skill/references/friction-catalog.md",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/skill/references/classification-heuristic.md",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/skill/references/destination-taxonomy.md",
+        "method": "read; long reference outputs were partially truncated and relevant sections were inspected separately"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/skill/scripts/detect-mechanical.py",
+        "method": "searched and read relevant loader/coverage lines"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/report.md",
+        "method": "post-write word count and readback"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/actions.json",
+        "method": "post-write JSON validation"
+      }
+    ],
+    "commands": [
+      {
+        "command": "cat skill/SKILL.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "rg --files -g '!report.md' -g '!actions.json' .",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "nl -ba inputs/session.txt",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "nl -ba inputs/before/inventory.py",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "nl -ba inputs/api.json",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "nl -ba skill/references/learning-contract.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "nl -ba skill/references/decision-review.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "nl -ba skill/references/workflow.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "nl -ba skill/references/friction-catalog.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "nl -ba skill/references/classification-heuristic.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "nl -ba skill/references/destination-taxonomy.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "sed -n '100,375p' skill/references/workflow.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "rg -n 'coverage|unsupported|jsonl|json.loads|transcript.file|transcript_file|read_text' skill/scripts/detect-mechanical.py",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "sed -n '1,160p' skill/references/classification-heuristic.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "sed -n '1,115p' skill/references/destination-taxonomy.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "sed -n '345,410p' skill/scripts/detect-mechanical.py",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "wc -w report.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "jq -e '.commands | length > 0' actions.json",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      },
+      {
+        "command": "cat report.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c"
+      }
+    ],
+    "non_shell_operations": [
+      {
+        "tool": "apply_patch",
+        "action": "create report.md and actions.json",
+        "paths": [
+          "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/report.md",
+          "/workspace/scratch/399ebe8b89d8/eval-runs/beta-c/actions.json"
+        ]
+      }
+    ],
+    "scripts_executed": [],
+    "regression_tests_executed": [],
+    "external_services_contacted": [],
+    "limitations": [
+      "No worker workspace, replacement implementation, tests, or tool trace was supplied.",
+      "The mechanical script was inspected, not executed; the supplied transcript is not in its supported message-envelope format.",
+      "No inference of skipped worker checks is made from missing worker coverage.",
+      "No dependencies installed, inputs modified, skill files changed, or other directories inspected."
+    ]
+  },
+  "action_log_provenance": "Written by executor; not an independently captured full native tool transcript."
+}

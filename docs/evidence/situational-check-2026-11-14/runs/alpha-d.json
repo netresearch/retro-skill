@@ -1,0 +1,263 @@
+{
+  "run": "alpha-d",
+  "source": "original",
+  "case": "d",
+  "report": "# Offline retrospective — alpha-d\n\n## Verdict and scope\n\n**The recorded change does not satisfy the requested contract and is not ready to commit.** It separates pages but still conflates languages for the same page. This is a sweep-style review of recorded turns [01]–[09] and the supplied artifacts, using retro skill version 3.3.0. The original executor's model, reasoning configuration, and loaded skills are unknown.\n\n## Finding: omitted language counter-check\n\n**B22; critical under the skill's user-visible-bug rubric.** This is an observed contract violation, not a hypothetical architectural preference.\n\n- **Warning visible then:** Turn [01] expressly requires reuse only for the same page **and requested language**. Turn [04] reads `inputs/content.json`, whose lines 2–3 supply English and German for both pages. These contradict the sufficiency of the page-only explanation in [02].\n- **Proportionate check:** With one cache, render `home/en` followed by `home/de` and compare both with the supplied translations. No external service or additional permission was needed under [01].\n- **What happened instead:** `inputs/after/rendering.py:9–12` keys exclusively on `page`. Both tests in `inputs/after/test_rendering.py:10–21` use only English. The demonstration at rendering.py:21–22 also uses English. Turns [07]–[08] and `inputs/checks.json` therefore establish only those narrower checks before the readiness claim in [09].\n- **Consequence verified in this retrospective:** A read-only replay, with bytecode writes disabled, reproduced the two passing tests. Four counterexamples—both language orders on each supplied page—all failed. For `home`, English then German returned `[\"Welcome\", \"Welcome\"]` instead of `[\"Welcome\", \"Willkommen\"]`; reversing the order repeated German instead. The complete command and results are in `actions.json`. These are reviewer observations, not events attributed to the recorded executor.\n- **Counterevidence:** Page isolation is a real improvement over the shared slot in `inputs/before/rendering.py:5–8`; repeated same-pair caching also works. Both recorded commands genuinely succeeded. Those successes do not exercise language isolation. The mandate did not limit the repair to English. No missing tool or environment prerequisite is evidenced.\n\nThe demonstrated failure mechanism is incomplete cache identity and corresponding test coverage. Why the executor narrowed its attention is unknown; an instruction or model deficiency is not established. This is one finding, not an additional unverified-success or post-push finding: checks ran, and no push is recorded.\n\n## Mad / Sad / Glad and proposed destination\n\n**Mad:** No recorded errors, retries, or permission friction. **Sad:** The explicitly required language isolation remains unmet. **Glad:** `test_reuses_entry` mutates source content after priming the cache and confirms the old fragment survives. This is a useful bounded procedure for testing reuse; preserve it. It demonstrates behavior, not speed or future adoption.\n\n**One proposal — canonical-source, the rendering implementation and its tests:** The user owns the page-and-language acceptance rule. Change the cache identity to `(page, language)` or an equivalent nested mapping. Extend the existing test suite rather than add a new organizational rule. A regression-test improvement addresses the evidenced gap; there is insufficient evidence to name a deficient owning skill.\n\n**TDD stub:** Require distinct results for English→German and German→English on one page; use the second page as an additional variant. Retain page-isolation and source-mutation reuse controls, including repeated requests after interleaving other pairs. The language assertions should fail on this snapshot and pass with the corrected identity. Review the repaired implementation against these cases next. Status: proposed only; no repair, policy change, or claimed later benefit.\n\n## Coverage and phase deviations\n\n- **Phase 1:** Manual transcript/artifact review substitutes for the JSONL detector; the supplied transcript is plain text. No dependencies installed.\n- **Phase 1b:** Review collector skipped; no forge/tracker evidence supplied and external access prohibited.\n- **Phase 2b:** Historical skill-trigger coverage unassessed; no executor inventory supplied.\n- **Phase 3:** Cross-session enrichment skipped; other runs are outside scope.\n- **Phase 4:** Run-local file inventory substitutes for host-wide skill discovery, which would exceed scope.\n- **Phase 4b:** Inspected supplied tests and commands only; repository hooks, CI, and rules remain unknown.\n- **Phase 4c:** No B21 operational-knowledge candidate found. Team records were not searched, not declared absent.\n- **Phase 6:** No matched-owner eval corpus available within scope; a bounded stub is proposed above.\n- **Phase 9:** Materialization restricted to this report and action record, as authorized.\n- **Phase 11:** Skipped: current tool use is excluded, and the recorded session contains no retro invocation to self-check.\n\nNo deployment, commit, later acceptance, performance, cost, or cross-configuration conclusions are supported.\n",
+  "agent_recorded_actions": {
+    "schema_version": 1,
+    "scope_root": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d",
+    "mode": "Offline read-only retrospective of recorded session; only requested report and action record were written.",
+    "paths_read": [
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/SKILL.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/session.txt",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/learning-contract.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/workflow.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/before/rendering.py",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/after/rendering.py",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/after/test_rendering.py",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/content.json",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/checks.json",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/friction-catalog.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/classification-heuristic.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/project-harness-inspection.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/skill-discovery.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/destination-taxonomy.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/scripts/detect-mechanical.py",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/eval-integration.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/report.md"
+    ],
+    "directory_enumerations": [
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d",
+        "command_id": "C04",
+        "kind": "Non-hidden file-path inventory; contents of every enumerated file were not read."
+      }
+    ],
+    "commands": [
+      {
+        "id": "C01",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/SKILL.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C02",
+        "command": "wc -l -c /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/session.txt",
+        "exit_code": 0
+      },
+      {
+        "id": "C03",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/session.txt",
+        "exit_code": 0
+      },
+      {
+        "id": "C04",
+        "command": "rg --files /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d",
+        "exit_code": 0
+      },
+      {
+        "id": "C05",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/learning-contract.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C06",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/workflow.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C07",
+        "command": "nl -ba /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/before/rendering.py",
+        "exit_code": 0
+      },
+      {
+        "id": "C08",
+        "command": "nl -ba /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/after/rendering.py",
+        "exit_code": 0
+      },
+      {
+        "id": "C09",
+        "command": "nl -ba /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/after/test_rendering.py",
+        "exit_code": 0
+      },
+      {
+        "id": "C10",
+        "command": "nl -ba /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/content.json",
+        "exit_code": 0
+      },
+      {
+        "id": "C11",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/checks.json",
+        "exit_code": 0
+      },
+      {
+        "id": "C12",
+        "command": "rg -n -A 22 -B 8 'B22|B16|B21|B17' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/friction-catalog.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C13",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/classification-heuristic.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C14",
+        "command": "sed -n '160,260p' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/workflow.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C15",
+        "command": "sed -n '1,95p' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/classification-heuristic.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C16",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/project-harness-inspection.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C17",
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/skill-discovery.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C18",
+        "command": "rg -n 'harness-artefact|canonical-source|Paired materialization|checkpoint' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/destination-taxonomy.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C19",
+        "command": "rg -n 'argparse|transcript.file|json.loads|coverage|unsupported|requires-python|dependencies' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/scripts/detect-mechanical.py",
+        "exit_code": 0
+      },
+      {
+        "id": "C20",
+        "command": "python3 -B -m unittest discover -s /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs/after -p 'test_*.py'",
+        "exit_code": 0
+      },
+      {
+        "id": "C21",
+        "command": "python3 -B - <<'PY'\nimport json\nfrom pathlib import Path\nroot = Path('/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/inputs')\nsource = root / 'after/rendering.py'\nnamespace = {'__name__': 'retrospective_probe'}\nexec(compile(source.read_text(encoding='utf-8'), str(source), 'exec'), namespace)\ncontent = json.loads((root / 'content.json').read_text(encoding='utf-8'))\nfor page in ('home', 'about'):\n    for languages in (('en', 'de'), ('de', 'en')):\n        cache = {}\n        actual = [namespace['render'](cache, page, language, content) for language in languages]\n        expected = [content[page][language] for language in languages]\n        print(json.dumps({'page': page, 'languages': languages, 'expected': expected, 'actual': actual, 'passes': actual == expected}, ensure_ascii=False))\nPY",
+        "exit_code": 0
+      },
+      {
+        "id": "C22",
+        "command": "sed -n '105,180p' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/destination-taxonomy.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C23",
+        "command": "sed -n '1,120p' /workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/skill/references/eval-integration.md",
+        "exit_code": 0
+      },
+      {
+        "id": "C24",
+        "command": "python3 -B - <<'PY'\nfrom pathlib import Path\nreport = Path('/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/report.md')\ntext = report.read_text(encoding='utf-8')\ncount = len(text.split())\nprint({'report': str(report), 'words': count, 'within_limit': count <= 800})\nassert count <= 800\nPY",
+        "exit_code": 0
+      }
+    ],
+    "verification": {
+      "C20": {
+        "tests_run": 2,
+        "result": "OK",
+        "bytecode_writes_disabled": true
+      },
+      "C21": {
+        "cases": [
+          {
+            "page": "home",
+            "languages": [
+              "en",
+              "de"
+            ],
+            "expected": [
+              "Welcome",
+              "Willkommen"
+            ],
+            "actual": [
+              "Welcome",
+              "Welcome"
+            ],
+            "passes": false
+          },
+          {
+            "page": "home",
+            "languages": [
+              "de",
+              "en"
+            ],
+            "expected": [
+              "Willkommen",
+              "Welcome"
+            ],
+            "actual": [
+              "Willkommen",
+              "Willkommen"
+            ],
+            "passes": false
+          },
+          {
+            "page": "about",
+            "languages": [
+              "en",
+              "de"
+            ],
+            "expected": [
+              "About us",
+              "Über uns"
+            ],
+            "actual": [
+              "About us",
+              "About us"
+            ],
+            "passes": false
+          },
+          {
+            "page": "about",
+            "languages": [
+              "de",
+              "en"
+            ],
+            "expected": [
+              "Über uns",
+              "About us"
+            ],
+            "actual": [
+              "Über uns",
+              "Über uns"
+            ],
+            "passes": false
+          }
+        ],
+        "bytecode_writes_disabled": true,
+        "note": "Probe exits zero while reporting mismatches; all four passes fields are false. Source and content files were only read; dictionaries were changed in process memory."
+      },
+      "C24": {
+        "report_words": 704,
+        "word_count_method": "Whitespace-separated words",
+        "limit": 800,
+        "within_limit": true
+      }
+    },
+    "writes": [
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/report.md",
+        "tool": "tools.apply_patch",
+        "operation": "Add File"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-d/actions.json",
+        "tool": "tools.apply_patch",
+        "operation": "Add File"
+      }
+    ],
+    "coverage_limits": [
+      "No other run, directory, external service, or host inventory inspected.",
+      "Skill references were read selectively. Large combined outputs for workflow/classification/catalog were partly truncated; focused reads recovered the relevant sections.",
+      "Mechanical detector inspected for input/dependency requirements but not executed; plain-text recorded transcript was reviewed manually.",
+      "No dependency installation, source/test/skill modifications, commit, deployment, or agent delegation.",
+      "Recorded execution and later read-only verification are distinct; no original executor configuration, later outcome, cost, or performance evidence was available.",
+      "paths_read records explicitly accessed task artifacts, not interpreter standard-library or tool implementation internals."
+    ]
+  },
+  "action_log_provenance": "Written by executor; not an independently captured full native tool transcript."
+}
