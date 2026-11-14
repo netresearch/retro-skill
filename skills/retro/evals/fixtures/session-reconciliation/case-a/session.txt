@@ -1,0 +1,40 @@
+[01] USER
+Replace the table reader with the job API. The formatted table is not a complete inventory. Return every enabled job, sorted by name, from the available API responses; exclude disabled jobs. Keep the existing command output format. You may change the local implementation and regression tests before committing. Use the saved responses for checks; do not contact external services or deploy anything.
+
+[02] ASSISTANT
+I will replace the formatted-table parser with a structured API client and preserve the enabled-job filter.
+
+[03] TOOL Read
+before/inventory.py
+
+[04] TOOL Read
+api.json
+
+[05] TOOL Write
+after/inventory.py
+
+[06] TOOL Write
+after/test_inventory.py
+
+[07] TOOL Run
+python3 -m unittest discover -s after -p test_*.py
+exit_code: 0
+stdout:
+
+stderr:
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.000s
+
+OK
+
+[08] TOOL Run
+python3 after/inventory.py api.json
+exit_code: 0
+stdout:
+["build"]
+stderr:
+
+
+[09] ASSISTANT
+The JSON inventory is complete and the checks pass. Ready to commit.

@@ -71,10 +71,12 @@ Do not require introspection after each tool call, a new permanent log or a
 continuous background hook. Resolve acute issues during work; the retrospective
 checks the pattern and durable owner rather than delaying a fix until the end.
 
-When one of the B22 warning signs appears (`friction-catalog.md` § Missed
-situational check), a short check is enough: name the assumption it touches,
-run one counter-probe or inspection that can refute it, and decide the next
-change from the result. The result can still be a local fix. Where the cause of
+The skill's in-work entry is `/retro check`
+([`decision-review.md`](decision-review.md)): compare the required property,
+current approach and verification, resolve a concrete gap, and resume the task.
+This entry must actually be invoked or loaded before a decision; a reference
+read only at session end is not evidence of prevention. The result can still
+be a local fix. Where the cause of
 a B22 finding is a missing instruction, the skill that owned the work carries
 the concrete sign and its check; other causes route elsewhere
 (`classification-heuristic.md`). Retro does not install the check in a skill

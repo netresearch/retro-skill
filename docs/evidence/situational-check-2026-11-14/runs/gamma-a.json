@@ -1,0 +1,247 @@
+{
+  "run": "gamma-a",
+  "source": "main",
+  "case": "a",
+  "report": "# Retrospective: job inventory migration\n\n## Verdict\n\n**The recorded work did not meet its central requirement and was not ready to be called complete.** The user required every enabled job from the available API responses, sorted by name, with the existing output format preserved (session [01]). The implementation returns only `[\"build\"]`; the supplied responses require `[\"build\", \"deploy\"]`.\n\n## Evidence and findings\n\n### 1. High priority: pagination was omitted\n\n**Verified observation.** `inputs/after/inventory.py:19–21` fetches only `/jobs?limit=2` and never follows `next`. The first response explicitly points to `/jobs?cursor=2`, whose enabled job is `deploy` (`inputs/api.json:2–13`). The recorded CLI output already demonstrates the omission (session [08]; `inputs/checks.json:17–25`).\n\nAn independent, offline replay returned `[\"build\"]` and recorded exactly one client call, `[\"/jobs?limit=2\"]`. An assertion against the required `[\"build\", \"deploy\"]` failed. This confirms a defect in the supplied implementation; it does not establish any production incident.\n\n**Proposal — canonical-source, implementation owner.** Follow each supplied continuation URL until `next` is null, collect enabled names across all pages, then sort the complete result and retain JSON-list output. The original user authorized local implementation changes; this retrospective authorizes only the report, so no repair was applied.\n\n### 2. High priority: checks did not exercise completeness\n\n**Verified observation.** Both regression cases explicitly terminate after one page: one mixes enabled and disabled jobs, and one is empty (`inputs/after/test_inventory.py:10–26`). They therefore pass despite the defect. The session read `api.json` ([04]), but replaced its multipage shape with single-page test fixtures. The reason for that choice is unknown.\n\nThe two tests passed again during review. Their success establishes their narrow assertions, not inventory completeness. Session [09] nevertheless declares the inventory complete. The separate `checks.json` repeats the recorded results; it is corroboration, not another independent failure.\n\n**Proposal — harness-artefact, regression-suite owner.** Add a test loading the supplied responses and asserting exactly `[\"build\", \"deploy\"]`, both expected request URLs, and termination. Add an unsorted cross-page case with a disabled job on a later page to exercise global sorting and filtering. Extend the existing test entry point; the supplied bundle does not establish the repository’s CI or hook configuration.\n\n**Regression stub:** saved two-page responses → collect → expected complete list and both calls. Current code must fail; repaired traversal must pass. Preserve the existing empty and single-page cases as negative controls. This measure is proposed, unavailable, and its future benefit remains untested; review it with the next inventory change.\n\n## Mad / Sad / Glad and reusable learning\n\n- **Mad:** successful command execution was treated as proof of the broader acceptance requirement.\n- **Sad:** the migration retains the exact incompleteness the user wanted removed.\n- **Glad:** the implementation uses structured fields, filters disabled jobs on the fetched page, and supports deterministic checks without external services. The recorded work includes no deployment.\n- **Reusable learning:** keep supplied continuation data intact in acceptance tests and compare command output with an independently derived expected inventory. This is a recommendation supported by this case, not a demonstrated cross-project improvement.\n\n**B21: none.** No newly established operational fact requiring a team-record write appears in the recorded session.\n\n## Coverage and phase deviations\n\nThis is a bounded retrospective of the supplied nine-entry record and six input artifacts, using retro 3.3.0; executor configuration, later outcomes, costs, and elapsed work time are unknown. The prior artifact exposes only `collect(table)`, so preservation of a historical CLI format cannot be verified.\n\n- **Phase 1:** manual review substituted for the JSONL detector; the supplied transcript is plain text.\n- **Phase 1b:** reviewed local check evidence; external reviews and trackers were not searched under the offline restriction.\n- **Phase 2b:** trigger coverage is unknown; original skill-loading evidence is absent.\n- **Phase 3:** no cross-session evidence was supplied.\n- **Phase 4:** confined discovery to the run inventory; host discovery would exceed scope.\n- **Phase 4b:** inspected supplied code/tests only; full project harness is unavailable.\n- **Phase 4c:** no B21 candidate; team documentation was not searched.\n- **Phase 6:** no eval suite was supplied; proposed the concrete regression above.\n- **Phase 9:** materialized only the authorized report and action log.\n- **Phase 11:** omitted because the request explicitly excludes reviewing current tool use.\n\n",
+  "agent_recorded_actions": {
+    "scope": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+    "review_target": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/inputs/session.txt",
+    "skill": {
+      "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/SKILL.md",
+      "version": "3.3.0"
+    },
+    "constraints": [
+      "Offline retrospective of recorded work only",
+      "No external services contacted",
+      "No dependency installation",
+      "No input or skill modification",
+      "No inspection outside the supplied run directory"
+    ],
+    "paths_inspected": [
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "kind": "directory inventory only"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/SKILL.md",
+        "kind": "full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/inputs/session.txt",
+        "kind": "full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/inputs/before/inventory.py",
+        "kind": "full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/inputs/after/inventory.py",
+        "kind": "full content and read-only execution"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/inputs/after/test_inventory.py",
+        "kind": "full content and read-only execution"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/inputs/api.json",
+        "kind": "full content and local fixture replay"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/inputs/checks.json",
+        "kind": "full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/references/learning-contract.md",
+        "kind": "full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/references/workflow.md",
+        "kind": "content read; combined tool output partially truncated; shared pipeline subsequently read at lines 184–300"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/references/classification-heuristic.md",
+        "kind": "content read; combined tool output partially truncated; lines 200–390 subsequently read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/references/destination-taxonomy.md",
+        "kind": "content read; combined tool output partially truncated; applicable lines 1–215 subsequently read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/references/project-harness-inspection.md",
+        "kind": "lines 1–180"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/references/documentation-lookup.md",
+        "kind": "full content"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/scripts/detect-mechanical.py",
+        "kind": "lines 1–190 and 340–410, plus targeted text search"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/scripts/find-org-skills.py",
+        "kind": "targeted text search only"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/scripts/collect-review-findings.py",
+        "kind": "targeted text search only"
+      }
+    ],
+    "commands": [
+      {
+        "id": 1,
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/SKILL.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Read supplied retro skill"
+      },
+      {
+        "id": 2,
+        "command": "rg --files -g '!report.md' -g '!actions.json' /workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Inventory supplied run files"
+      },
+      {
+        "id": 3,
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/inputs/session.txt",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Read recorded session"
+      },
+      {
+        "id": 4,
+        "command": "cat /workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/references/learning-contract.md /workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/skill/references/workflow.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Read evidence and workflow guidance"
+      },
+      {
+        "id": 5,
+        "command": "nl -ba inputs/before/inventory.py; nl -ba inputs/after/inventory.py; nl -ba inputs/after/test_inventory.py; nl -ba inputs/api.json; nl -ba inputs/checks.json",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Inspect implementation, tests, saved responses, and recorded checks with line numbers"
+      },
+      {
+        "id": 6,
+        "command": "cat skill/references/classification-heuristic.md skill/references/destination-taxonomy.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Read classification and destination guidance"
+      },
+      {
+        "id": 7,
+        "command": "sed -n '1,190p' skill/scripts/detect-mechanical.py; sed -n '1,180p' skill/references/project-harness-inspection.md; cat skill/references/documentation-lookup.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Inspect detector prerequisites and harness/documentation guidance"
+      },
+      {
+        "id": 8,
+        "command": "python3 -B -m unittest discover -s inputs/after -p 'test_*.py'",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Replay supplied tests without creating bytecode"
+      },
+      {
+        "id": 9,
+        "command": "python3 -B inputs/after/inventory.py inputs/api.json",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Replay supplied CLI with saved responses"
+      },
+      {
+        "id": 10,
+        "command": "rg -n 'def load|json.loads|transcript-file|unsupported|coverage|\\.jsonl|rglob|glob\\(' skill/scripts/detect-mechanical.py skill/scripts/find-org-skills.py skill/scripts/collect-review-findings.py",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Inspect script input and discovery scope without executing discovery or network operations"
+      },
+      {
+        "id": 11,
+        "command": "sed -n '184,300p' skill/references/workflow.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Read shared-pipeline guidance omitted by earlier combined output truncation"
+      },
+      {
+        "id": 12,
+        "command": "sed -n '200,390p' skill/references/classification-heuristic.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Read remaining applicable classification guidance"
+      },
+      {
+        "id": 13,
+        "command": "python3 -B - <<'PY'\nimport importlib.util\nimport json\nfrom pathlib import Path\n\nmodule_spec = importlib.util.spec_from_file_location('recorded_inventory', 'inputs/after/inventory.py')\nmodule = importlib.util.module_from_spec(module_spec)\nmodule_spec.loader.exec_module(module)\nresponses = json.loads(Path('inputs/api.json').read_text(encoding='utf-8'))\nclient = module.Client(responses)\nactual = module.collect(client)\nexpected = ['build', 'deploy']\nprint(json.dumps({'expected': expected, 'actual': actual, 'calls': client.calls}))\nassert actual == expected, 'Incomplete inventory: enabled deploy job on the next page is omitted'\nPY",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 1,
+        "purpose": "Check required complete inventory and observe fetched URLs; intentional requirement assertion exposed defect"
+      },
+      {
+        "id": 14,
+        "command": "sed -n '1,215p' skill/references/destination-taxonomy.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Read applicable destination guidance in bounded output"
+      },
+      {
+        "id": 15,
+        "command": "sed -n '340,410p' skill/scripts/detect-mechanical.py",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Confirm detector expects JSONL message envelopes"
+      },
+      {
+        "id": 16,
+        "command": "rg --files --hidden -g '!report.md' -g '!actions.json' .",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a",
+        "exit_code": 0,
+        "purpose": "Confirm complete supplied run inventory, including configuration filenames"
+      }
+    ],
+    "verification": {
+      "supplied_tests": {
+        "exit_code": 0,
+        "result": "2 tests passed"
+      },
+      "supplied_cli": {
+        "exit_code": 0,
+        "stdout": "[\"build\"]\n"
+      },
+      "independent_completeness_assertion": {
+        "exit_code": 1,
+        "expected": [
+          "build",
+          "deploy"
+        ],
+        "actual": [
+          "build"
+        ],
+        "calls": [
+          "/jobs?limit=2"
+        ],
+        "result": "AssertionError: enabled deploy job on next page is omitted"
+      }
+    },
+    "coverage_limits": [
+      "Supplied plain-text session cannot be treated as supported JSONL by the mechanical detector.",
+      "Native skill discovery, external review collection, cross-session scans and current-retro self-review were not run under the requested scope.",
+      "Directory inventory does not establish the contents of the original repository, its CI/hooks, team records, or any external skill catalogue.",
+      "Some combined reference output was truncated; bounded supplemental reads covered the guidance used in the report.",
+      "No claim about production effects, historical CLI format, elapsed work time, cost, model configuration, adoption, or future benefit is established."
+    ],
+    "artifacts_created": [
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/report.md",
+        "tool": "apply_patch"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/gamma-a/actions.json",
+        "tool": "apply_patch"
+      }
+    ]
+  },
+  "action_log_provenance": "Written by executor; not an independently captured full native tool transcript."
+}

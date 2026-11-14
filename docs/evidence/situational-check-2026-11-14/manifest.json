@@ -1,0 +1,338 @@
+{
+  "date": "2026-11-14",
+  "runtime": "collaboration fresh thread; fork_turns=none",
+  "model": "inherited parent model; resolved provider version not independently exposed",
+  "samples_per_cell": 1,
+  "isolation": "No implementation conversation or scoring criteria passed to executors; shared host developer instructions still applied. File access limited by instruction, not OS sandbox.",
+  "sources": {
+    "original": {
+      "git_revision": "8c2d3ed9379380940d22bbc3a1cac2b367dfbb4d",
+      "provenance": "git archive of named revision",
+      "files_sha256": {
+        "SKILL.md": "e8a6a0b997101be490ded1c1c8550fb5e600ec9dea497858cedb680cde9b9b1f",
+        "checkpoints.yaml": "b363c68f8381653b5733bcd335c555e5f9b06f782024ef7036b18c301593bd13",
+        "references/classification-heuristic.md": "c58ab03b187f6ee333c6813c22726249f72206be357155a36c3a4f8ed9955629",
+        "references/destination-taxonomy.md": "8fbcd1fac5e56a3eb234774e172a7e438aac74ea993b57161d5b1eea279e10d2",
+        "references/documentation-lookup.md": "a38d80304be00a88879adcdd45159352bca8f12b4f2e4edf71bf9f1cc36ef0f5",
+        "references/done-mode.md": "8e9fc3c00c9a9a3bd625e5afc3bdb28f3be6f23e7c39eb3deace2d4a13c5da21",
+        "references/eval-integration.md": "3dde407287e176e00361500fb4bd76b4fa3b340a03e1439a6162ce24215ed314",
+        "references/feedback-contract.md": "1bc95e3aa5a2f5eed9488d3a27d018475eca2086b91290bd749d76f5606bbccf",
+        "references/friction-catalog.md": "e4b60ba002fd3a2fe41805d8b28c7322faca5ed1f4cb83574a517e4d5a4ebb26",
+        "references/learning-contract.md": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b",
+        "references/patch-workflow.md": "a953db996bfd3278b6c67ecc85fb4bc821b8278c45dc5b7906861b0cb46ea608",
+        "references/project-harness-inspection.md": "d0cbb69070dda78b96a96bc0528b962d2299b685d2582d9c672d6af15e2e5e12",
+        "references/promote-mode.md": "fc997feecc1b7e0bab54c495e76118113694dd4bf980fba041e69a55d4b7bac9",
+        "references/session-metrics.md": "d1233e1ca03ab6d83473b8f086a7c8141a4511f8638792ae44430cca98bf115a",
+        "references/skill-discovery.md": "3d10bd7348d6db13afb73c8c0072358e7bd66721b5b894912254ac3f6f5ee3bc",
+        "references/workflow.md": "fb7c7cc638e3a3f2bfcb3343e258c53010b793acfedeea724b6b31a6dad85d7a",
+        "scripts/check-eval-samples.py": "02db910fa4fe349636ae0fe4af72fc5082da7e86c031d38650fb4c4b0028487e",
+        "scripts/check-upstream-sources.py": "4c7f377933c0d933769605ee86fcf8e8b777f5f5e4ebdd1b276779b396135e9a",
+        "scripts/codex-transcript.py": "2c2940ac1c227f3a518a3f3013a3eef36f22b30a051fa98d65e09d1580cd64e5",
+        "scripts/collect-review-findings.py": "30ddca3cfd877bc42a31ea9e0c7e627df2f75f2ba8ea1883df605e6f0384d90b",
+        "scripts/collect-session-metrics.py": "16aa0fe69e61d01dfa3243743b0092d611a4ccc9e640d98827e6697b575e6ed0",
+        "scripts/derive-session-scope.py": "f667f218b34fc9ba1af64a124eea1e99792005454c76ffc61cc7a7f9e92406dd",
+        "scripts/detect-mechanical.py": "7d1934f91fd5aab40b56f926a27bab989a916e5674a78acda5dbb35c8226449d",
+        "scripts/feedback-contract.py": "e2c6e992e990bda10c01b593a71da27baec7439c8549b662fb8b2cd9706bd967",
+        "scripts/find-installed-skills.sh": "b44309f27b10895c4a058682572a52301322b71e50fb5ac6f2851e4d78a5492b",
+        "scripts/find-org-skills.py": "f21ec66e717f0f45d0538112740896b87febf1b9b63f6f135d7fa7eb5e7f778e",
+        "scripts/mask-secrets.py": "760d0f1a24bfdff897c96ff12f9c663ac94212c9d2b88ac8af4635b2401291b6",
+        "scripts/materialize-pr.sh": "ee27ed4324016935f94e2dba5c957be7ef3f037d07a9555b4d7c81157ddcc7cb",
+        "scripts/opencode-transcript.py": "ad27718abfb91dd07830b9de2394472ea8fc6be53144de4a61632fa0d3726bea",
+        "scripts/prepare-behavior-evals.py": "3463b6e816805b8c489258f635405773e51577fde77dcf9b2266bc954f8c32be",
+        "scripts/scan-cross-session.py": "8d9aa5a4e92482bd5c1002b54c515d710da20b7bc594f6ef584a05490872760f",
+        "scripts/scan-memory-inventory.py": "762bd5912954dc3fd2a7a94d09a31c56fa8ace0f6d600881cbc09095c071a0c0",
+        "scripts/validate-evals.py": "f5fb99ec77fa02867f5c8ff9f5ad8c2371cd3b10de0957f81655906cf4918741"
+      }
+    },
+    "revised": {
+      "git_revision": null,
+      "provenance": "frozen worktree before native runs",
+      "files_sha256": {
+        "SKILL.md": "3aafbefcb1bfb95b843f639a23be680f178c2f9ad3bc0e7128dbe97b4ca5ad55",
+        "checkpoints.yaml": "b363c68f8381653b5733bcd335c555e5f9b06f782024ef7036b18c301593bd13",
+        "references/classification-heuristic.md": "a5903fe353f0c8bedf90ab0f181ed2101394aef70966e7b61bacd12b8eafdf2d",
+        "references/decision-review.md": "1719292693f1a4881c2a04201a34ee3c189548560c4cf198fc393d93418d1d48",
+        "references/destination-taxonomy.md": "8fbcd1fac5e56a3eb234774e172a7e438aac74ea993b57161d5b1eea279e10d2",
+        "references/documentation-lookup.md": "a38d80304be00a88879adcdd45159352bca8f12b4f2e4edf71bf9f1cc36ef0f5",
+        "references/done-mode.md": "8e9fc3c00c9a9a3bd625e5afc3bdb28f3be6f23e7c39eb3deace2d4a13c5da21",
+        "references/eval-integration.md": "9c576e7757ce001ad2a6896173a571b60b5db94255282540eb5436e8ebdfe417",
+        "references/feedback-contract.md": "1bc95e3aa5a2f5eed9488d3a27d018475eca2086b91290bd749d76f5606bbccf",
+        "references/friction-catalog.md": "3c752430d2121cc44e19d38e37deb4ad786d6856b7ec76348ec3633f6ffee680",
+        "references/learning-contract.md": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b",
+        "references/patch-workflow.md": "a953db996bfd3278b6c67ecc85fb4bc821b8278c45dc5b7906861b0cb46ea608",
+        "references/project-harness-inspection.md": "2226f5a0e36a7fef27a88925536638597eb3c5dae698481d1b95e39eae66b09b",
+        "references/promote-mode.md": "fc997feecc1b7e0bab54c495e76118113694dd4bf980fba041e69a55d4b7bac9",
+        "references/session-metrics.md": "d1233e1ca03ab6d83473b8f086a7c8141a4511f8638792ae44430cca98bf115a",
+        "references/skill-discovery.md": "3d10bd7348d6db13afb73c8c0072358e7bd66721b5b894912254ac3f6f5ee3bc",
+        "references/workflow.md": "77ff2cc18cb03f3d76978584dcb30f43b5217b5300a7f243ef1b66384f5ea2a7",
+        "scripts/check-eval-samples.py": "02db910fa4fe349636ae0fe4af72fc5082da7e86c031d38650fb4c4b0028487e",
+        "scripts/check-upstream-sources.py": "4c7f377933c0d933769605ee86fcf8e8b777f5f5e4ebdd1b276779b396135e9a",
+        "scripts/codex-transcript.py": "2c2940ac1c227f3a518a3f3013a3eef36f22b30a051fa98d65e09d1580cd64e5",
+        "scripts/collect-review-findings.py": "30ddca3cfd877bc42a31ea9e0c7e627df2f75f2ba8ea1883df605e6f0384d90b",
+        "scripts/collect-session-metrics.py": "16aa0fe69e61d01dfa3243743b0092d611a4ccc9e640d98827e6697b575e6ed0",
+        "scripts/derive-session-scope.py": "f667f218b34fc9ba1af64a124eea1e99792005454c76ffc61cc7a7f9e92406dd",
+        "scripts/detect-mechanical.py": "7d1934f91fd5aab40b56f926a27bab989a916e5674a78acda5dbb35c8226449d",
+        "scripts/feedback-contract.py": "e2c6e992e990bda10c01b593a71da27baec7439c8549b662fb8b2cd9706bd967",
+        "scripts/find-installed-skills.sh": "b44309f27b10895c4a058682572a52301322b71e50fb5ac6f2851e4d78a5492b",
+        "scripts/find-org-skills.py": "f21ec66e717f0f45d0538112740896b87febf1b9b63f6f135d7fa7eb5e7f778e",
+        "scripts/mask-secrets.py": "760d0f1a24bfdff897c96ff12f9c663ac94212c9d2b88ac8af4635b2401291b6",
+        "scripts/materialize-pr.sh": "ee27ed4324016935f94e2dba5c957be7ef3f037d07a9555b4d7c81157ddcc7cb",
+        "scripts/opencode-transcript.py": "ad27718abfb91dd07830b9de2394472ea8fc6be53144de4a61632fa0d3726bea",
+        "scripts/prepare-behavior-evals.py": "3463b6e816805b8c489258f635405773e51577fde77dcf9b2266bc954f8c32be",
+        "scripts/scan-cross-session.py": "8d9aa5a4e92482bd5c1002b54c515d710da20b7bc594f6ef584a05490872760f",
+        "scripts/scan-memory-inventory.py": "762bd5912954dc3fd2a7a94d09a31c56fa8ace0f6d600881cbc09095c071a0c0",
+        "scripts/validate-evals.py": "f5fb99ec77fa02867f5c8ff9f5ad8c2371cd3b10de0957f81655906cf4918741"
+      },
+      "snapshot_patch": "candidate-snapshot.json, patch field (apply to original PR revision; only executor-visible skill files)"
+    },
+    "main": {
+      "git_revision": "c6ee86f1578af299f6c71b6bb414395f01577b0b",
+      "provenance": "git archive of named revision",
+      "files_sha256": {
+        "SKILL.md": "416e8a1686b7e39528b978c15133344c0a64e574706852172542c870f3c3b5a2",
+        "checkpoints.yaml": "b363c68f8381653b5733bcd335c555e5f9b06f782024ef7036b18c301593bd13",
+        "references/classification-heuristic.md": "c3019cdfa76a5ca2d613948736ec425bc7687c332437416956f6c55361b45258",
+        "references/destination-taxonomy.md": "8fbcd1fac5e56a3eb234774e172a7e438aac74ea993b57161d5b1eea279e10d2",
+        "references/documentation-lookup.md": "a38d80304be00a88879adcdd45159352bca8f12b4f2e4edf71bf9f1cc36ef0f5",
+        "references/done-mode.md": "d8d4030257c2d16d3b4fce64f6b481385de1c0e86b37ae026a532c4b0a6e51c6",
+        "references/eval-integration.md": "3405df05a16f8b5a2d530b16ccccf787f1ae99b478357df472f5dbf95ce0c0a3",
+        "references/feedback-contract.md": "1bc95e3aa5a2f5eed9488d3a27d018475eca2086b91290bd749d76f5606bbccf",
+        "references/friction-catalog.md": "3747e2a01d1bc5136f489cfcfaf89e18a35079b1caf0d2033534f38394661e29",
+        "references/learning-contract.md": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b",
+        "references/patch-workflow.md": "a953db996bfd3278b6c67ecc85fb4bc821b8278c45dc5b7906861b0cb46ea608",
+        "references/project-harness-inspection.md": "111beaf2bc840641fc792fc38990c514caa75240a1e3028ac85dee5668d3af5e",
+        "references/promote-mode.md": "fc997feecc1b7e0bab54c495e76118113694dd4bf980fba041e69a55d4b7bac9",
+        "references/session-metrics.md": "d1233e1ca03ab6d83473b8f086a7c8141a4511f8638792ae44430cca98bf115a",
+        "references/skill-discovery.md": "3d10bd7348d6db13afb73c8c0072358e7bd66721b5b894912254ac3f6f5ee3bc",
+        "references/workflow.md": "737aa22072731c4902c141cc7b0e741ecf45ede632d1e2ea233a00f9ec68ae70",
+        "scripts/check-eval-samples.py": "02db910fa4fe349636ae0fe4af72fc5082da7e86c031d38650fb4c4b0028487e",
+        "scripts/check-upstream-sources.py": "4c7f377933c0d933769605ee86fcf8e8b777f5f5e4ebdd1b276779b396135e9a",
+        "scripts/codex-transcript.py": "2c2940ac1c227f3a518a3f3013a3eef36f22b30a051fa98d65e09d1580cd64e5",
+        "scripts/collect-review-findings.py": "30ddca3cfd877bc42a31ea9e0c7e627df2f75f2ba8ea1883df605e6f0384d90b",
+        "scripts/collect-session-metrics.py": "16aa0fe69e61d01dfa3243743b0092d611a4ccc9e640d98827e6697b575e6ed0",
+        "scripts/derive-session-scope.py": "f667f218b34fc9ba1af64a124eea1e99792005454c76ffc61cc7a7f9e92406dd",
+        "scripts/detect-mechanical.py": "7d1934f91fd5aab40b56f926a27bab989a916e5674a78acda5dbb35c8226449d",
+        "scripts/feedback-contract.py": "e2c6e992e990bda10c01b593a71da27baec7439c8549b662fb8b2cd9706bd967",
+        "scripts/find-installed-skills.sh": "b44309f27b10895c4a058682572a52301322b71e50fb5ac6f2851e4d78a5492b",
+        "scripts/find-org-skills.py": "f21ec66e717f0f45d0538112740896b87febf1b9b63f6f135d7fa7eb5e7f778e",
+        "scripts/mask-secrets.py": "760d0f1a24bfdff897c96ff12f9c663ac94212c9d2b88ac8af4635b2401291b6",
+        "scripts/materialize-pr.sh": "ee27ed4324016935f94e2dba5c957be7ef3f037d07a9555b4d7c81157ddcc7cb",
+        "scripts/opencode-transcript.py": "ad27718abfb91dd07830b9de2394472ea8fc6be53144de4a61632fa0d3726bea",
+        "scripts/prepare-behavior-evals.py": "3463b6e816805b8c489258f635405773e51577fde77dcf9b2266bc954f8c32be",
+        "scripts/scan-cross-session.py": "8d9aa5a4e92482bd5c1002b54c515d710da20b7bc594f6ef584a05490872760f",
+        "scripts/scan-memory-inventory.py": "762bd5912954dc3fd2a7a94d09a31c56fa8ace0f6d600881cbc09095c071a0c0",
+        "scripts/validate-evals.py": "f5fb99ec77fa02867f5c8ff9f5ad8c2371cd3b10de0957f81655906cf4918741"
+      }
+    }
+  },
+  "cases": {
+    "a": {
+      "provenance": "synthetic session with executable artifacts; not a captured real session",
+      "files_sha256": {
+        "after/inventory.py": "5552eac505365a266b53d7edf23d3e72476357f2b2ddb02684af40ed4e50594c",
+        "after/test_inventory.py": "626c52a223c00f1e40351288d296a94731b0f259aa8ab3f0b4bc1307bcb87168",
+        "api.json": "44fefd433d0d017df0ff6b320a968bd6486673c5c1b435359ab31d58a3915b89",
+        "before/inventory.py": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
+        "checks.json": "5643c0e8914daae199ac649a8e89c15c8365dfb14467c56cee5847b00ce8db0e",
+        "session.txt": "ee758331c23de9570f8a74fce39ab325f3686e1dff0c96c3603f48d2e1f1abf7"
+      }
+    },
+    "b": {
+      "provenance": "synthetic session with executable artifacts; not a captured real session",
+      "files_sha256": {
+        "after/inventory.py": "828b361a106e292338d117eb5e661df730909004cb2a06fcda153806b7f0c610",
+        "after/test_inventory.py": "76a298bc587c71979922f5c6531b32915672100b50247fbdc559e234df636563",
+        "api.json": "44fefd433d0d017df0ff6b320a968bd6486673c5c1b435359ab31d58a3915b89",
+        "before/inventory.py": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
+        "checks.json": "e597a971777cb125ad1cc6180761586a70ba32b3cbebf31842aa4f9d9fabf70f",
+        "session.txt": "d5e8a730dd311befb0f183f5bb4f3d5b000ead2805c8895de7c4f82fe24857ff"
+      }
+    },
+    "c": {
+      "provenance": "synthetic session with executable artifacts; not a captured real session",
+      "files_sha256": {
+        "api.json": "44fefd433d0d017df0ff6b320a968bd6486673c5c1b435359ab31d58a3915b89",
+        "before/inventory.py": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
+        "session.txt": "9c1caab3f29361b9570c721280f206c2fae56bbaeeb054a501c603bebab73438"
+      }
+    },
+    "d": {
+      "provenance": "synthetic session with executable artifacts; not a captured real session",
+      "files_sha256": {
+        "after/rendering.py": "b56c0f5f6e59ae63439a5e2a071c0d33b555b0b24f8e5f2b9225593b9abcbe48",
+        "after/test_rendering.py": "391d35d5b4d92d74cd173620ab96e34cc2105898f4038c972f8d2e7150e22f3e",
+        "before/rendering.py": "1fe08144de1e9e5e4e4c989cd719378baf9e8d28d354636753a992569ba2e478",
+        "checks.json": "6974a6c64054497f202e98488f296cda38c3e3832f1459757ea0c6d1b61a0d3f",
+        "content.json": "ce959ba095d84a605138caee2f3afa9e7b56b4e6173d48daf9a6a2d7b15589f9",
+        "session.txt": "355819eaf4bc20fa165d0be714dfb3f31a007648e133ee92b2e730a4b7d9bdfe"
+      }
+    },
+    "check": {
+      "provenance": "synthetic session with executable artifacts; not a captured real session",
+      "files_sha256": {
+        "after/inventory.py": "5552eac505365a266b53d7edf23d3e72476357f2b2ddb02684af40ed4e50594c",
+        "after/test_inventory.py": "626c52a223c00f1e40351288d296a94731b0f259aa8ab3f0b4bc1307bcb87168",
+        "api.json": "44fefd433d0d017df0ff6b320a968bd6486673c5c1b435359ab31d58a3915b89",
+        "before/inventory.py": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
+        "checks.json": "5643c0e8914daae199ac649a8e89c15c8365dfb14467c56cee5847b00ce8db0e",
+        "session.txt": "ee758331c23de9570f8a74fce39ab325f3686e1dff0c96c3603f48d2e1f1abf7"
+      }
+    }
+  },
+  "runs": [
+    {
+      "run": "alpha-a",
+      "source": "original",
+      "case": "a"
+    },
+    {
+      "run": "alpha-b",
+      "source": "original",
+      "case": "b"
+    },
+    {
+      "run": "alpha-c",
+      "source": "original",
+      "case": "c"
+    },
+    {
+      "run": "alpha-d",
+      "source": "original",
+      "case": "d"
+    },
+    {
+      "run": "beta-a",
+      "source": "revised",
+      "case": "a"
+    },
+    {
+      "run": "beta-b",
+      "source": "revised",
+      "case": "b"
+    },
+    {
+      "run": "beta-c",
+      "source": "revised",
+      "case": "c"
+    },
+    {
+      "run": "beta-d",
+      "source": "revised",
+      "case": "d"
+    },
+    {
+      "run": "gamma-a",
+      "source": "main",
+      "case": "a"
+    },
+    {
+      "run": "beta-check",
+      "source": "revised",
+      "case": "check"
+    },
+    {
+      "run": "alpha-check",
+      "source": "original",
+      "case": "check"
+    }
+  ],
+  "snapshot_integrity": [
+    {
+      "run": "alpha-a",
+      "changed_files": []
+    },
+    {
+      "run": "alpha-b",
+      "changed_files": []
+    },
+    {
+      "run": "alpha-c",
+      "changed_files": []
+    },
+    {
+      "run": "alpha-d",
+      "changed_files": []
+    },
+    {
+      "run": "beta-a",
+      "changed_files": []
+    },
+    {
+      "run": "beta-b",
+      "changed_files": []
+    },
+    {
+      "run": "beta-c",
+      "changed_files": []
+    },
+    {
+      "run": "beta-d",
+      "changed_files": []
+    },
+    {
+      "run": "gamma-a",
+      "changed_files": []
+    },
+    {
+      "run": "beta-check",
+      "changed_files": [
+        "inputs/after/inventory.py",
+        "inputs/after/test_inventory.py"
+      ]
+    },
+    {
+      "run": "alpha-check",
+      "changed_files": []
+    }
+  ],
+  "post_run_source_changes": [
+    {
+      "path": "skills/retro/SKILL.md",
+      "tested_sha256": "3aafbefcb1bfb95b843f639a23be680f178c2f9ad3bc0e7128dbe97b4ca5ad55",
+      "final_sha256": "d555b3a5c006b055d828f313688a73f1a6e5a155479ee3c18bcc786b7864c34c"
+    },
+    {
+      "path": "skills/retro/references/done-mode.md",
+      "tested_sha256": "8e9fc3c00c9a9a3bd625e5afc3bdb28f3be6f23e7c39eb3deace2d4a13c5da21",
+      "final_sha256": "910a77b3528be5105cfee008feaa62550dcef0178156995b99ec361e95516301"
+    },
+    {
+      "path": "skills/retro/references/friction-catalog.md",
+      "tested_sha256": "3c752430d2121cc44e19d38e37deb4ad786d6856b7ec76348ec3633f6ffee680",
+      "final_sha256": "259b3e5a738c5db6fcd89df25c24854c8561ca31c6b902f5a6011ca4d5b3e459"
+    },
+    {
+      "path": "skills/retro/references/workflow.md",
+      "tested_sha256": "77ff2cc18cb03f3d76978584dcb30f43b5217b5300a7f243ef1b66384f5ea2a7",
+      "final_sha256": "ff4e90e53f41c807b6c20d3ad1fefab7f53a75d41cd9b4ae18050f9f62b5f00d"
+    }
+  ],
+  "limits": [
+    "Original real-session digest and logs from PR description were unavailable.",
+    "No rerun of claude-fable-5-2 or Claude Code 2.1.323.",
+    "One sample per cell does not measure variance or general effectiveness.",
+    "No automatic skill selection/invocation test.",
+    "Case D first-use transfer: held out from core revision development; fixture unit test read after core freeze.",
+    "All tested source arms received equivalent execution requests and raw artifacts; the main arm was sampled only on case A."
+  ],
+  "post_run_fixture_formatting": [
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-a/before/inventory.py",
+      "tested_sha256": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
+      "final_sha256": "f37957a89b98b88cf4f35e1e000ece73d6912bbb6483c2bc41dd9aabd4294bee",
+      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\n\ndef collect(table):\n    return sorted(\n        line.split()[0]\n        for line in table.splitlines()[1:]\n        if line.endswith(\" enabled\")\n    )\n"
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-b/before/inventory.py",
+      "tested_sha256": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
+      "final_sha256": "f37957a89b98b88cf4f35e1e000ece73d6912bbb6483c2bc41dd9aabd4294bee",
+      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\n\ndef collect(table):\n    return sorted(\n        line.split()[0]\n        for line in table.splitlines()[1:]\n        if line.endswith(\" enabled\")\n    )\n"
+    },
+    {
+      "path": "skills/retro/evals/fixtures/session-reconciliation/case-c/before/inventory.py",
+      "tested_sha256": "e20eb4defb2d04e4d2b3b1739e1c4e4a1f73bc74b1453aa3b8461b5c2914f1b2",
+      "final_sha256": "f37957a89b98b88cf4f35e1e000ece73d6912bbb6483c2bc41dd9aabd4294bee",
+      "tested_content": "# SPDX-License-Identifier: MIT\n# SPDX-FileCopyrightText: Netresearch DTT GmbH\n\n\ndef collect(table):\n    return sorted(\n        line.split()[0]\n        for line in table.splitlines()[1:]\n        if line.endswith(\" enabled\")\n    )\n"
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+[01] USER
+Fix fragments reused for the wrong page. A cached fragment may be reused only for the same page and requested language; repeat requests for that pair should retain caching. You may change the local rendering code and tests before committing. Use the supplied content; do not call external services or deploy anything.
+
+[02] ASSISTANT
+The single shared fragment slot conflates pages. I will replace it with a dictionary and check that page requests remain isolated.
+
+[03] TOOL Read
+before/rendering.py
+
+[04] TOOL Read
+content.json
+
+[05] TOOL Write
+after/rendering.py
+
+[06] TOOL Write
+after/test_rendering.py
+
+[07] TOOL Run
+python3 -m unittest discover -s after -p test_*.py
+exit_code: 0
+stdout:
+
+stderr:
+..
+----------------------------------------------------------------------
+Ran 2 tests in 0.000s
+
+OK
+
+[08] TOOL Run
+python3 after/rendering.py content.json
+exit_code: 0
+stdout:
+["Welcome", "About us"]
+stderr:
+
+
+[09] ASSISTANT
+The cache now separates the page fragments and the checks pass. Ready to commit.

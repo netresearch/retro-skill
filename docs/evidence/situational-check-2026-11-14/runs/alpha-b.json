@@ -1,0 +1,180 @@
+{
+  "run": "alpha-b",
+  "source": "original",
+  "case": "b",
+  "report": "# Recorded-session retrospective — alpha-b\n\n**Verdict:** The requested inventory behavior is delivered for the saved responses. No implementation defect or missed situational check is supported by the evidence. Historical command-format compatibility remains unverified because no pre-change command output is supplied.\n\n## Mandate and verified outcome\n\nSession [01] requires every enabled job from the available API responses, sorted by name, with the command format preserved. It authorizes local implementation and regression-test changes and prohibits external services and deployment.\n\nThe replacement follows `next` until `None`, filters each page by `enabled`, then sorts the accumulated names (`inputs/after/inventory.py:19–26`). The saved API places enabled `build` on page one, disabled `nightly` beside it, and enabled `deploy` on page two (`inputs/api.json:2–13`). Thus the complete expected result is `[\"build\", \"deploy\"]`.\n\nThe tests cover enabled/disabled filtering, empty responses, and a continuation page containing both enabled and disabled jobs (`inputs/after/test_inventory.py:10–44`). Recorded checks [07–08] and `inputs/checks.json` show three passing tests and the expected command output. This reviewer independently replayed both commands with Python’s `-B` option to avoid bytecode writes: three tests passed and the CLI produced the same JSON array. These replays corroborate the artifacts; they are not additional actions by the recorded assistant.\n\n## Friction, unmet goals, and reusable success\n\n**Mad:** No tool failure, retry, repeated approval, or unnecessary external action appears in the recording.\n\n**Sad:** No unmet completeness, filtering, or sorting requirement is demonstrated. The earlier file contains only a table-reading function, so exact historical CLI-format preservation cannot be independently compared (`inputs/before/inventory.py:5–10`).\n\n**Glad / B22:** The warning was explicit at [01]: formatted output was not a complete inventory. The proportionate check was to inspect the structured response and exercise continuation. The assistant read the response at [04], implemented continuation, and ran the multipage regression at [07]. **The situational check was performed.** Green tests alone would not establish completeness; the continuation fixture and implementation provide the substantive evidence. There is no basis for demanding a larger redesign.\n\n**Reusable learning:** Pair a saved paginated response with a regression containing an enabled job available only on a later page; filter all pages and sort the combined result. Its prerequisites and implementation already live in the API fixture, code, and tests. Retain those artifacts as the canonical evidence. No new skill or generic rule is justified by this successful case. Transfer to other APIs or executor configurations is untested.\n\n## Proportionate follow-up\n\n**Optional `harness-artefact` candidate:** All current enabled names arrive in sorted order. A descending cross-page fixture would detect removal of the final sort; the current tests would not. Add that case to the existing regression suite when next editing it, expecting globally sorted output. This is test hardening, not evidence that sorting currently fails. No change was made during this read-only review; future benefit remains untested.\n\n**B21 candidate:** The user supplied the fact that the table is incomplete. A documentation gap is possible, not established. The run’s file inventory contains no project documentation; team records are **not-searched**, and historical documentation usage is unknown. The owning CLI/API documentation is the appropriate source. Check it before proposing a correction, link, or addition; do not duplicate this fact into agent rules.\n\n## Coverage and phase deviations\n\n- **Phase 1:** Manual inspection substituted for the JSONL mechanical pre-pass; the supplied transcript is annotated plain text.\n- **Phase 1b:** No review/tracker collector ran; external access is prohibited and no such feedback is supplied. Recorded checks are execution evidence, not review coverage.\n- **Phase 2b:** Trigger coverage is unknown; the recorded executor’s installed/loaded skills are unavailable.\n- **Phase 3:** Cross-session enrichment skipped under the single-run boundary.\n- **Phase 4:** Local file enumeration substituted for native skill discovery, which would inspect locations outside the permitted run.\n- **Phase 4b:** Harness inspection limited to the supplied code and tests; repository CI/hooks are unknown.\n- **Phase 4c:** Team documentation not searched beyond the supplied inventory.\n- **Phase 6:** No matched-skill evals supplied; no configuration comparison performed.\n- **Phases 8–9:** Authorization covers this report and action record only; no implementation, skill, repository, or external materialization.\n- **Phase 11:** No recorded retro segment exists; reviewing current tool use was expressly excluded.\n\nCommit, deployment, user acceptance, later use, costs, and model/configuration effects are not established.\n\n",
+  "agent_recorded_actions": {
+    "scope": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+    "task": "Offline read-only retrospective of inputs/session.txt using the supplied retro skill; current reviewer tool use is excluded from retrospective findings.",
+    "paths_read": [
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/skill/SKILL.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/inputs/session.txt",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/skill/references/workflow.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/skill/references/learning-contract.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/inputs/before/inventory.py",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/inputs/after/inventory.py",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/inputs/after/test_inventory.py",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/inputs/api.json",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/inputs/checks.json",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/skill/references/classification-heuristic.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/skill/references/destination-taxonomy.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/skill/references/project-harness-inspection.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/skill/references/documentation-lookup.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/skill/references/skill-discovery.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/skill/references/friction-catalog.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/report.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/actions.json"
+    ],
+    "directories_enumerated": [
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b"
+    ],
+    "commands_run": [
+      {
+        "sequence": 1,
+        "cmd": "cat skill/SKILL.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 2,
+        "cmd": "cat inputs/session.txt",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 3,
+        "cmd": "rg --files .",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 4,
+        "cmd": "cat skill/references/workflow.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "output_note": "Initial combined tool output was truncated; relevant missing workflow section was subsequently read.",
+        "exit_code": 0
+      },
+      {
+        "sequence": 5,
+        "cmd": "cat skill/references/learning-contract.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 6,
+        "cmd": "nl -ba inputs/before/inventory.py",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 7,
+        "cmd": "nl -ba inputs/after/inventory.py",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 8,
+        "cmd": "nl -ba inputs/after/test_inventory.py",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 9,
+        "cmd": "nl -ba inputs/api.json",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 10,
+        "cmd": "nl -ba inputs/checks.json",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 11,
+        "cmd": "cat skill/references/classification-heuristic.md skill/references/destination-taxonomy.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "output_note": "Output truncated; only visible sections used. No claim of exhaustive reference coverage.",
+        "exit_code": 0
+      },
+      {
+        "sequence": 12,
+        "cmd": "cat skill/references/project-harness-inspection.md skill/references/documentation-lookup.md skill/references/skill-discovery.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "output_note": "Combined result truncated; this exact read was later repeated with a larger aggregate output budget.",
+        "exit_code": 0
+      },
+      {
+        "sequence": 13,
+        "cmd": "rg -n -A 14 -B 3 'B16|B17|B18|B19|B20|B21|B22|A11|A12' skill/references/friction-catalog.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "output_note": "Selected context only; aggregate tool output truncated. B22 section subsequently read explicitly.",
+        "exit_code": 0
+      },
+      {
+        "sequence": 14,
+        "cmd": "sed -n '320,405p' skill/references/workflow.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 15,
+        "cmd": "cat skill/references/project-harness-inspection.md skill/references/documentation-lookup.md skill/references/skill-discovery.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "output_note": "Full output received.",
+        "exit_code": 0
+      },
+      {
+        "sequence": 16,
+        "cmd": "sed -n '45,170p' skill/references/friction-catalog.md",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "exit_code": 0
+      },
+      {
+        "sequence": 17,
+        "cmd": "python3 -B -m unittest discover -s after -p 'test_*.py'",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/inputs",
+        "output_summary": "Ran 3 tests; OK. -B suppresses bytecode file writes.",
+        "exit_code": 0
+      },
+      {
+        "sequence": 18,
+        "cmd": "python3 -B after/inventory.py api.json",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/inputs",
+        "output_summary": "[\"build\", \"deploy\"]",
+        "exit_code": 0
+      },
+      {
+        "sequence": 19,
+        "cmd": "python3 -B -c 'from pathlib import Path; import json; report = Path(\"report.md\").read_text(); actions = json.loads(Path(\"actions.json\").read_text()); words = len(report.split()); assert words <= 800, words; print(json.dumps({\"report_words\": words, \"recorded_shell_commands\": len(actions[\"commands_run\"]), \"status\": \"valid\"}))'",
+        "cwd": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b",
+        "purpose": "Validate delivered report word limit and actions JSON; executed immediately after writing."
+      }
+    ],
+    "outputs_written": [
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/report.md",
+      "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-b/actions.json"
+    ],
+    "write_tool": {
+      "tool": "apply_patch",
+      "purpose": "Create only report.md and actions.json; no shell write command."
+    },
+    "boundaries": {
+      "external_services_contacted": false,
+      "dependencies_installed": false,
+      "inputs_modified": false,
+      "skill_modified": false,
+      "other_directories_inspected": false,
+      "agents_invoked": false
+    },
+    "coverage_limits": [
+      "Annotated plain-text recording, not a raw host JSONL transcript.",
+      "Only supplied source, tests, API fixture and recorded checks establish the historical work.",
+      "Two local replays are reviewer corroboration and are not attributed to the recorded executor.",
+      "Classification/destination and initial multi-reference outputs were truncated; visible sections used, with targeted re-reads as recorded.",
+      "No native skill discovery, remote feedback collection, repository CI/hooks, team records, cross-session evidence, historical CLI output, commit or later acceptance evidence.",
+      "No cost, causal-effect or configuration-transfer claim."
+    ]
+  },
+  "action_log_provenance": "Written by executor; not an independently captured full native tool transcript."
+}

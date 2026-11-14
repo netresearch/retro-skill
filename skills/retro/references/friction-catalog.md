@@ -95,6 +95,12 @@ deliberately. It asks one question about one decision point: **was a warning
 sign visible at that moment, and did the agent answer it with a proportionate
 check?** That a better design was conceivable is no finding.
 
+Find candidates with [the decision review](decision-review.md): connect the
+session's original improvement claim to the changed implementation and the
+check of that property. Read unresolved links in the actual artifacts even
+when all recorded tests and reviews are green. A contradiction found there can
+reveal a warning sign; do not wait for a review to supply the diagnosis.
+
 | Warning sign at the time | Proportionate check |
 |---|---|
 | An observation contradicts the working explanation | Test the explanation against that observation and drop it if it fails. One clear counter-observation is enough; no failure count is needed |
@@ -114,7 +120,8 @@ Each B22 finding states:
 - the evidence — diffs, tool results, tests run, call sites read;
 - what speaks against the finding — independent causes, a compatibility promise,
   a check already done, a limited mandate;
-- the consequence shown (a variant still fails), or `effect untested`.
+- the consequence and its basis: reproduced, established by inspection,
+  inferred, or unknown; keep the later benefit of a proposed remedy separate.
 
 Every decision point ends in one of four outcomes. Only the third is a finding:
 
@@ -130,9 +137,10 @@ Three rules keep B22 from becoming hindsight:
 - **Judge by what was knowable then.** A case that appeared only later does not
   condemn the earlier fix; it may be a D signal in Outcome mode.
 - **Judge the work, not the prose.** A paragraph headed "architecture check"
-  without the check is no evidence. A correct root-cause fix without such a
-  paragraph is a performed check. Evidence is a contract read, a test run, a call
-  site inspected, an assumption confirmed or refuted.
+  without the check is no evidence. Actions that establish the check count
+  without such a paragraph: a contract read, a test run, a call site inspected,
+  an assumption confirmed or refuted. A correct result alone does not establish
+  which checks the agent performed.
 - **The diff size says nothing.** A local fix, a targeted contract change and
   keeping separate handling can each be the correct result of the check. A
   change outside the agreed scope remains a decision for its owner
@@ -151,9 +159,11 @@ Three rules keep B22 from becoming hindsight:
 
 B9 is about the agent's own action repeated. B22's second sign is about the
 system under work: its failure returns in a new variant after a change that was
-a real fix for the first one. Where one of the signals above already holds the
-whole pattern, attach the decision-point record to it and do not file B22 as
-well.
+a real fix for the first one. Apply this mapping only after independently
+finding and investigating candidates. Where another signal holds the whole
+pattern, attach the decision-point evidence to it and report the matter once.
+An equally supported finding under B9, B19 or another ID is equally valid;
+changing the label does not establish improved detection.
 
 Before routing, find the cause in the agent system; another instruction is
 rarely it. Candidates: a rule asking for the smallest change, read too

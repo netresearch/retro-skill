@@ -3,15 +3,14 @@
 
 # retro's own evals
 
-These scenarios test **retro's own classification behaviour** — the Phase-5
-judgement calls that are retro's entire value: skill-bug vs skill-gap, when to
-prune an instruction, and when *not* to propose anything at all. retro ships
-them so it is a regression target for its own reasoning, and so that
+These scenarios test **retro's discovery, classification and bounded checks**:
+whether a gap is found in raw artifacts, how it is routed, and when *not* to
+propose anything at all. retro ships them as regression targets, so that
 `/retro "fix the retro skill"` has real fixtures to read.
 
 ## What these are (and are not)
 
-- **Retro-owned, repo-scoped fixtures.** They test the router, not any other skill.
+- **Retro-owned, repo-scoped fixtures.** They test retro, not other skills.
 - **They do NOT impose a schema on other skills' evals.** retro still *reads*
   every other skill's `evals/` leniently and schema-free — see
   [`../references/eval-integration.md`](../references/eval-integration.md). The
@@ -28,7 +27,7 @@ them so it is a regression target for its own reasoning, and so that
 ---
 id: <slug — must equal the filename without .md>
 skill_under_test: retro
-mode: sweep | spotlight | outcome | audit | promote | done
+mode: check | sweep | spotlight | outcome | audit | promote | done
 trigger: <one-line friction or user statement that starts the scenario>
 expected:
   - <behaviour retro should exhibit — classification + bounded action>
@@ -108,11 +107,39 @@ and four controls that must not produce a finding: independent causes in one
 file, a justified small fix, information that appeared only later, and evidence
 retro cannot read (`situational-check-independent-causes`,
 `-justified-small-fix`, `-later-information`, `-not-assessable`).
+These are described classification cases. Score the substantive finding and
+evidence equally under any signal ID; they do not measure unaided discovery.
+
+### Raw session reconciliation
+
+The `session-reconciliation-*` cases contain **synthetic sessions with executable
+local artifacts**. Their recorded commands were run against the supplied files;
+the fixture tests independently verify the relevant properties. They are not
+captures of the earlier real-session experiment reported in PR #232.
+
+| Case | Evaluation scope |
+| --- | --- |
+| [A](session-reconciliation-a.md) | Find an unmet requirement from the original request, implementation and green recorded checks, without a later defect report. |
+| [B](session-reconciliation-b.md) | Accept the correct bounded change and its relevant verification. |
+| [C](session-reconciliation-c.md) | Preserve uncertainty when delegated implementation and execution evidence are missing. |
+| [D](session-reconciliation-d.md) | Transfer the procedure to a distinct requirement; reserve its first run until the instruction revision is frozen. |
+| [Check](session-reconciliation-check.md) | Invoke the in-work entry, perform a concrete probe and verify the authorized correction in the disposable copy. |
+
+The functional oracles do not require B22 vocabulary. A correct older-version
+answer receives equal credit. The trigger supplies no diagnosis. Keep the
+scenario frontmatter and explanations outside the executor's inputs; a later
+revision informed by a case makes it development data, not an untouched test.
+
+The [2026-11-14 native comparison](../../../docs/evidence/situational-check-2026-11-14/README.md)
+records eleven executions and their limits. Original and revised instructions
+gave the same functional outcomes; no detection or repair gain was observed.
+Case D's first-use status was consumed by that run.
 
 ## Tool-enabled integration inputs
 
-Four cases carry a `fixture` directory with synthetic raw artifacts. The adapter
-copies it into an isolated execution directory; modify only that copy.
+The original four cases below and the reconciliation cases carry a `fixture`
+directory. The adapter copies it into an isolated execution directory; modify
+only that copy when its task authorizes changes.
 
 | Case | Observable outcome to evaluate |
 | --- | --- |

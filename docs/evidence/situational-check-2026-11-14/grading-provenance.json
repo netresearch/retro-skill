@@ -1,0 +1,5 @@
+{
+  "correction": "The initial blind-pack anonymizer replaced bare alpha/beta/gamma words, changing legitimate synthetic job names inside embedded test files. The independent grader detected a hash mismatch before scoring. Items were regenerated from original unchanged executor records. Only absolute run paths and check-report headings are now anonymized; final file contents are preserved byte-for-byte and match observer hashes.",
+  "criteria_changed": false,
+  "executor_artifacts_changed": false
+}

@@ -127,11 +127,31 @@ Keep scenario frontmatter, prose explanations and expected answers with the
 independent evaluator. The 26 initial acceptance cases map to maintained
 Markdown fixtures in `evals/README.md`; earlier regressions remain intact.
 
-The B22 cases in `evals/` state the whole session in one trigger, later outcome
-included, and the adapter does not stage inputs. To test for hindsight, run a
-native case in two turns by hand: give the transcript up to the decision point
-and ask which check that information calls for, then give the later turns. A
-verdict that changes only because of the second turn was fitted to the outcome.
+The `situational-check-*` cases classify described situations; they do not
+demonstrate discovery from raw session material. Grade the supported behavior,
+not the signal ID, outcome vocabulary or report format. An equally supported
+finding from an older catalog receives equal credit.
+
+For discovery comparisons, use the raw `session-reconciliation-*` cases. Give
+both arms identical inputs and tools, with no later defect report or expected
+diagnosis in their prompts. Require the original property, the implementation
+evidence and the inadequacy of the recorded check to support the finding.
+Accept code inspection as well as execution evidence. Correct implementations
+and missing historical coverage are controls, not invitations to invent a
+finding. A Check-mode execution case separately tests the in-work entry and
+its bounded correction; a retrospective report alone cannot establish that.
+
+Freeze the cases and criteria before comparing, and keep development cases
+separate from a first-use transfer case. Once its result informed a revision,
+that case is no longer held out. Report all arms and failures, including a zero
+delta. Passing new synthetic artifacts neither reruns nor repairs an earlier
+real-session result whose raw inputs are unavailable.
+
+The adapter does not stage inputs. For hindsight, give the target only the
+session prefix at the decision point and preserve its response before exposing
+later evidence in a separate turn. Later information may legitimately change
+the artifact assessment; it must not be treated as knowledge the earlier agent
+already had. Do not infer hindsight merely because the later verdict changes.
 
 ## Reuse the shared text runner
 

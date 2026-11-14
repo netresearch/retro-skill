@@ -1,0 +1,294 @@
+{
+  "run": "alpha-a",
+  "source": "original",
+  "case": "a",
+  "report": "# Offline retrospective — alpha-a\n\n## Verdict and mandate\n\n**The task was not complete.** The user required every enabled job from the available API responses, sorted by name, with the existing command output format preserved. Local implementation and regression-test changes were authorized; external calls and deployment were prohibited (session [01]). The implementation returned `[\"build\"]`; the saved responses require `[\"build\", \"deploy\"]`. “The JSON inventory is complete” and “Ready to commit” were therefore unsupported (session [09]).\n\n## Critical finding: continuation was visible but unchecked\n\n**Observation / B22, missed situational check.** At session [04], the assistant read `inputs/api.json`. Its first response explicitly supplies `next: \"/jobs?cursor=2\"`; that second response contains enabled job `deploy` and terminates with `next: null` (lines 2–13). This was evidence available before implementation, not a later-discovered edge case.\n\nThe proportionate check was to follow the saved continuation chain and compare the complete enabled-name inventory against the collector’s output. Instead, `inputs/after/inventory.py:19–21` performs exactly one GET and sorts only that page. The tests replace the continuation with `None`, exercising one enabled job and an empty page (`inputs/after/test_inventory.py:10–26`). Neither test can establish pagination or meaningful ordering.\n\nThe recorded checks passed and printed `[\"build\"]` (session [07–08]; `inputs/checks.json`). Independent read-only replay reproduced both results. A counter-probe using the supplied responses failed its completeness assertion: actual calls were only `[\"/jobs?limit=2\"]`, while the required chain includes `\"/jobs?cursor=2\"`.\n\n**Counterevidence and causal limits:** The assistant did execute tests and a CLI check; filtering disabled `nightly` and applying sorting are implemented. This is insufficient semantic coverage, not absence of all verification. The original mandate permitted the missing fix, and the saved data plus existing client supported a local check. The observable verification gap is that tests erased the continuation signal and the CLI output had no acceptance comparison. The transcript does not establish why the executor overlooked it, or that any particular skill or instruction caused it. No separate duplicate hallucination finding is needed.\n\n## Learning and proposed correction\n\n**Mad:** Green checks supported a false completion claim. **Sad:** The requested complete inventory remained incomplete. **Glad:** Saved responses, a small injectable client, and its call log make the defect reproducible without external services.\n\nThe bounded reusable lesson is to preserve response-contract features in regression fixtures: switching to structured data does not establish exhaustive traversal. Its benefit on future tasks remains untested.\n\n**Proposal — canonical-source, owning inventory implementation and tests:** Begin with a failing regression that loads the supplied responses, expects `[\"build\", \"deploy\"]`, and checks both requested paths. Update `collect` to accumulate enabled names while following `next` until termination, then sort the accumulated result. Preserve the existing JSON rendering. This targets the code and its executable contract; no new personal rule or invented skill owner is warranted.\n\n**Eval stub:** Present the continuation signal before the completion decision; require a completeness check and correct output. Hold out reversed alphabetical names across pages, disabled jobs on a later page, and an empty intermediate page with a continuation. Retain a single-page control requiring only one request. These are proposed cases, not executed evaluations. Review effectiveness when the corrected implementation runs them.\n\nImplementation and test changes are proposals only: this retrospective authorizes report output, not modifying the recorded artifacts. **B21: none** evidenced.\n\n## Coverage and deviations\n\nReviewed the complete supplied nine-entry session, before/after implementation, tests, API snapshot, saved checks, and relevant retro 3.3.0 references. No original CLI baseline, executor/model metadata, timing, actual commit, or later outcome was supplied; output-format preservation and downstream benefit remain unverified.\n\n- Phase 1: manual review substituted for the mechanical parser; the supplied transcript is plain text.\n- Phase 1b: saved checks reviewed; external review/tracker collection excluded by the offline mandate.\n- Phase 2b: installed-skill trigger coverage unavailable within the permitted directory.\n- Phase 3: cross-session analysis excluded; no other sessions inspected.\n- Phase 4: native skill discovery skipped because it inspects host paths outside this run; ownership unknown.\n- Phase 4b: local inventory inspected; repository harness configuration was not supplied.\n- Phase 4c: no B21 candidate; team records not searched, not presumed absent.\n- Phase 6: no eval corpus supplied; only the bounded stub above proposed.\n- Phase 9: findings materialized only in this report; inputs and skills unchanged.\n- Phase 11: current-retro self-analysis excluded by the explicit recorded-work-only scope.\n\n",
+  "agent_recorded_actions": {
+    "scope": "Offline, read-only retrospective of supplied recorded work. Only report.md and actions.json were written.",
+    "working_directory": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a",
+    "paths_inspected": [
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a",
+        "access": "recursive filename inventory only"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/SKILL.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/inputs/session.txt",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/inputs/before/inventory.py",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/inputs/after/inventory.py",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/inputs/after/test_inventory.py",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/inputs/api.json",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/inputs/checks.json",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/references/learning-contract.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/references/workflow.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/references/friction-catalog.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/references/classification-heuristic.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/references/destination-taxonomy.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/references/skill-discovery.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/references/project-harness-inspection.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/references/eval-integration.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/skill/references/documentation-lookup.md",
+        "access": "read"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/report.md",
+        "access": "created output, read for validation"
+      },
+      {
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/actions.json",
+        "access": "created output, read for validation"
+      }
+    ],
+    "commands_run": [
+      {
+        "sequence": 1,
+        "command": "cat skill/SKILL.md"
+      },
+      {
+        "sequence": 2,
+        "command": "cat inputs/session.txt"
+      },
+      {
+        "sequence": 3,
+        "command": "rg --files --hidden -g '!report.md' -g '!actions.json'"
+      },
+      {
+        "sequence": 4,
+        "command": "nl -ba inputs/before/inventory.py"
+      },
+      {
+        "sequence": 5,
+        "command": "nl -ba inputs/after/inventory.py"
+      },
+      {
+        "sequence": 6,
+        "command": "nl -ba inputs/after/test_inventory.py"
+      },
+      {
+        "sequence": 7,
+        "command": "nl -ba inputs/api.json"
+      },
+      {
+        "sequence": 8,
+        "command": "nl -ba inputs/checks.json"
+      },
+      {
+        "sequence": 9,
+        "command": "cat skill/references/learning-contract.md"
+      },
+      {
+        "sequence": 10,
+        "command": "cat skill/references/workflow.md"
+      },
+      {
+        "sequence": 11,
+        "command": "cat skill/references/friction-catalog.md"
+      },
+      {
+        "sequence": 12,
+        "command": "cat skill/references/classification-heuristic.md"
+      },
+      {
+        "sequence": 13,
+        "command": "cat skill/references/destination-taxonomy.md"
+      },
+      {
+        "sequence": 14,
+        "command": "rg -n '^#{1,4} |B16|B17|B21|B22|Report deviations|Phase 11|Sweep.*phase|\\|.*[1-9].*\\|' skill/references/workflow.md skill/references/friction-catalog.md skill/references/classification-heuristic.md"
+      },
+      {
+        "sequence": 15,
+        "command": "cat skill/references/skill-discovery.md"
+      },
+      {
+        "sequence": 16,
+        "command": "cat skill/references/project-harness-inspection.md"
+      },
+      {
+        "sequence": 17,
+        "command": "cat skill/references/eval-integration.md"
+      },
+      {
+        "sequence": 18,
+        "command": "cat skill/references/documentation-lookup.md"
+      },
+      {
+        "sequence": 19,
+        "command": "sed -n '70,170p' skill/references/friction-catalog.md"
+      },
+      {
+        "sequence": 20,
+        "command": "rg -n '^## |^### |^#### |^\\| [0-9]|^\\| Phase' skill/references/workflow.md"
+      },
+      {
+        "sequence": 21,
+        "command": "cat skill/references/skill-discovery.md"
+      },
+      {
+        "sequence": 22,
+        "command": "cat skill/references/project-harness-inspection.md"
+      },
+      {
+        "sequence": 23,
+        "command": "sed -n '196,294p' skill/references/workflow.md"
+      },
+      {
+        "sequence": 24,
+        "command": "sed -n '454,550p' skill/references/workflow.md"
+      },
+      {
+        "sequence": 25,
+        "command": "python3 -B -m unittest discover -s inputs/after -p 'test_*.py'"
+      },
+      {
+        "sequence": 26,
+        "command": "python3 -B inputs/after/inventory.py inputs/api.json"
+      },
+      {
+        "sequence": 27,
+        "command": "python3 -B - <<'PY'\nimport json\nimport runpy\nfrom pathlib import Path\nmodule = runpy.run_path('inputs/after/inventory.py')\nresponses = json.loads(Path('inputs/api.json').read_text())\nclient = module['Client'](responses)\nactual = module['collect'](client)\nexpected = []\nvisited = []\npath = '/jobs?limit=2'\nwhile path is not None:\n    visited.append(path)\n    response = responses[path]\n    expected.extend(job['name'] for job in response['items'] if job['enabled'])\n    path = response['next']\nexpected.sort()\nprint(json.dumps({'actual': actual, 'expected': expected, 'actual_calls': client.calls, 'required_pages': visited}))\nassert actual == expected, 'Saved-response completeness check failed'\nPY"
+      },
+      {
+        "sequence": 28,
+        "command": "python3 -B - <<'PY'\nimport json\nfrom pathlib import Path\nreport = Path('report.md').read_text(encoding='utf-8')\nactions = json.loads(Path('actions.json').read_text(encoding='utf-8'))\nassert len(report.split()) <= 800, 'Report exceeds 800 words'\nassert len(actions['commands_run']) == 28\nassert actions['working_directory'].endswith('/eval-runs/alpha-a')\nprint(json.dumps({'report_words': len(report.split()), 'logged_commands': len(actions['commands_run']), 'json_valid': True}))\nPY"
+      }
+    ],
+    "execution_groups": [
+      [
+        1,
+        2,
+        3
+      ],
+      [
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13
+      ],
+      [
+        14,
+        15,
+        16,
+        17,
+        18
+      ],
+      [
+        19,
+        20,
+        21,
+        22
+      ],
+      [
+        23,
+        24,
+        25,
+        26,
+        27
+      ],
+      [
+        28
+      ]
+    ],
+    "artifact_writes": [
+      {
+        "tool": "apply_patch",
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/report.md"
+      },
+      {
+        "tool": "apply_patch",
+        "path": "/workspace/scratch/399ebe8b89d8/eval-runs/alpha-a/actions.json"
+      }
+    ],
+    "verification_results": [
+      {
+        "command_sequence": 25,
+        "exit_code": 0,
+        "outcome": "Existing two tests passed."
+      },
+      {
+        "command_sequence": 26,
+        "exit_code": 0,
+        "stdout": "[\"build\"]\\n"
+      },
+      {
+        "command_sequence": 27,
+        "exit_code": 1,
+        "outcome": "Expected completeness assertion failure.",
+        "actual": [
+          "build"
+        ],
+        "expected": [
+          "build",
+          "deploy"
+        ],
+        "actual_calls": [
+          "/jobs?limit=2"
+        ],
+        "required_pages": [
+          "/jobs?limit=2",
+          "/jobs?cursor=2"
+        ]
+      }
+    ],
+    "coverage_notes": [
+      "Some combined reference-read output was truncated. Decision-critical B22, discovery, harness, and workflow sections were re-read in bounded calls.",
+      "No external services, dependency installation, host skill discovery, other run directories, or input/skill modifications.",
+      "Python checks used -B to avoid writing bytecode caches.",
+      "Skill scripts were not executed: unsupported plain-text transcript and host-wide or external discovery exceeds the authorized scope.",
+      "Listed script files were not inspected beyond their names.",
+      "No claims about original CLI compatibility, executor configuration, downstream outcomes, or future benefit."
+    ]
+  },
+  "action_log_provenance": "Written by executor; not an independently captured full native tool transcript."
+}

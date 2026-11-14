@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: CC-BY-SA-4.0
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
 name: retro
-description: "Use when a Claude Code or Codex session ends or is declared finished, a friction needs fixing, a reusable learning needs capturing, local memory needs promoting upward, or for cross-session audits — detect friction AND learnings, route each to the right destination, including team documentation, and gate 'done'. Triggers: /retro, /retro done, 'retrospective', 'capture this learning', 'fix this skill', 'promote memory', 'audit', 'alles erledigt'."
+description: "Use when reviewing sessions, fixing recurring friction, capturing reusable learnings, promoting memory or auditing across sessions. Also use a short decision check during work when a fix recurs, evidence contradicts the explanation, or a replacement lacks verification of the limitation it should remove. Triggers: /retro, /retro check, /retro done, 'step back', 'retrospective', 'capture this learning', 'fix this skill', 'promote memory', 'audit', 'alles erledigt'. Route findings to their owners and gate 'done'."
 license: "(MIT AND CC-BY-SA-4.0). See LICENSE-MIT and LICENSE-CC-BY-SA-4.0"
 compatibility: "Requires uv (runs the scripts on Python 3.11 or later), jq, and gh and/or glab (PR creation)."
 metadata:
@@ -32,6 +32,9 @@ decisions. Process critique grants no new authority.
 ## Modes
 
 - **`/retro`** — Sweep: the whole current session.
+- **`/retro check [<decision>]`** — inspect the current decision before the
+  next change; use `references/decision-review.md`, then resume authorized
+  work. This bounded mode skips the retrospective pipeline below.
 - **`/retro "<problem>"`** — Spotlight: one described issue. A short or
   question-shaped argument naming retro itself (`/retro zur retro?`) reads
   two ways — the work since the last retro, or that retro run: ask one
@@ -54,7 +57,7 @@ decisions. Process critique grants no new authority.
   part of this skill directory: `hooks/session-end.json` at the repository root
   (see README, "Optional auto-trigger").
 
-## Pipeline (all modes)
+## Retrospective pipeline
 
 1. Mechanical pre-pass — `uv run ${CLAUDE_SKILL_DIR}/scripts/detect-mechanical.py` (Promote:
    `uv run ${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py`). Every Python
@@ -79,10 +82,13 @@ decisions. Process critique grants no new authority.
    with `--pr-list`. Resolve relevant opaque
    hints through the owning integration, never by key shape. See
    `references/feedback-contract.md`; incomplete coverage is not silence.
-2. LLM enrichment — Mad/Sad/Glad perspectives, both classes (friction +
-   learnings B16–B21); check each visible warning sign for the check it called
-   for (B22); distinguish observations, hypotheses and decisions;
-   filter false positives. A prior failure is not required for a learning.
+2. LLM enrichment — first reconcile the session's material improvement claims
+   against the actual changes and relevant checks
+   (`references/decision-review.md`), independently of pre-pass/review hits.
+   Read a relevant artifact or run a bounded counter-probe where those anchors
+   disagree; then classify, including B22. Apply Mad/Sad/Glad to friction and
+   learnings B16–B21, distinguish observations from hypotheses and filter false
+   positives. A prior failure is not required for a learning.
 3. Cross-session enrichment (optional) — JSONL scan via `${CLAUDE_SKILL_DIR}/scripts/scan-cross-session.py`.
 4. Discover skills — always run `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py`, also when the owning skill seems obvious (opening it by path is a skip that needs a deviation line) — and the repo's harness (`project-harness-inspection.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
 5. Classify (`classification-heuristic.md`) — authority and rule purpose before
@@ -110,7 +116,8 @@ use `scripts/scan-cross-session.py --learning-observations <file>`. Read
 
 ## Boundaries
 
-**Scope:** session-end/cross-session analysis, skill-PR routing, done gate.
+**Scope:** bounded in-work decision checks, session-end/cross-session analysis,
+skill-PR routing, done gate.
 Tracker identity and access belong to the owning integration; QA and time
 policy belong to project/organization rules. No implicit tracker, CLI discovery
 or organization-specific billing defaults in the core.
@@ -135,6 +142,7 @@ processes or worktrees.
 | File | Purpose |
 |---|---|
 | `references/learning-contract.md` | Purpose, evidence, quality and configuration bounds |
+| `references/decision-review.md` | Discover gaps between intended improvement, implementation and validation; in-work Check mode |
 | `references/session-metrics.md` | Observed usage/time and later application evidence |
 | `references/feedback-contract.md` | Tracker-neutral evidence and reference resolution |
 | `references/friction-catalog.md` | All signals: friction + learnings (A/B/C, B16–B21) |

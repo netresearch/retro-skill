@@ -1,0 +1,177 @@
+{
+  "run": "beta-d",
+  "source": "revised",
+  "case": "d",
+  "report": "# Retrospective: beta-d\n\n## Verdict\n\n**The change is not ready to commit: it still serves the wrong language from cache.** Page separation improved, but the complete acceptance condition was not met. This review concerns the nine-event recorded session, not the reviewer's current work.\n\n## Finding — B22: omitted check of the cache identity\n\n**Important; reproduced.** The user's requirement was explicit: reuse only for the same **page and requested language**, while preserving caching for repeated requests for that pair (`inputs/session.txt`, [01]). The assistant narrowed the problem to page isolation at [02]. The supplied bilingual content was read at [04], so the missing dimension was available before implementation and verification.\n\nThe original code used one global `\"fragment\"` key (`inputs/before/rendering.py:5–8`). Its replacement uses only `page` for membership, storage and retrieval (`inputs/after/rendering.py:9–12`). Once a page is cached in English, requesting German returns the English fragment. This is an incomplete identity key, not a need for a broad rewrite.\n\nThe proportionate check was two requests sharing a page and differing in language. Instead, both recorded tests use only English: one varies pages; the other changes backing content to prove repeated-request caching (`inputs/after/test_rendering.py:10–21`). The demonstration also requests English twice on different pages (`inputs/after/rendering.py:21–22`). Their successful results ([07]–[08], corroborated by `inputs/checks.json`) cannot support the complete readiness claim at [09].\n\n**Reviewer counter-probe:** loaded the unchanged supplied implementation with bytecode writing disabled and used `inputs/content.json`. Requests `home/en → home/de` returned `[\"Welcome\", \"Welcome\"]`; expected `[\"Welcome\", \"Willkommen\"]`. This is new review evidence, not a check performed during the recorded work. No source files were changed.\n\n**Counterevidence and limits:** page isolation and repeated English requests are covered, and both recorded commands succeeded. No later requirement narrows language support. The supplied transcript records no language-isolation check, external review, push or deployment. The artifact defect is established independently of transcript completeness; omission is assessed within the supplied record. No production impact is claimed.\n\n## Proposed correction and reusable lesson\n\n**Owner: rendering implementation and regression tests; destination: canonical source.** Use `(page, language)` consistently as the cache key, or an equivalent nested structure. Add a regression using the supplied bilingual content that switches language on the same page; retain page separation and mutation-based repeated-pair reuse checks. Verify the new regression fails on the supplied implementation and passes after the bounded correction. Include reverse language order as a variant.\n\nThe observed decision failure was reducing an explicit two-part identity to one dimension in both implementation and checks. At comparable cache changes, match each required identity component to an implementation key and a discriminating check before declaring completion. A broad architecture rule or new skill is unsupported. An owning workflow skill and original executor configuration are unknown, so skill-level routing remains provisional. Any future benefit from this recommendation is untested. No remediation was authorized in this retrospective.\n\n## Mad / Sad / Glad\n\n- **Mad:** no recorded retries, tool failures or approval friction; passing narrow checks created unjustified readiness.\n- **Sad:** requested language isolation remains unmet.\n- **Glad:** the page-isolation test targets the original symptom; modifying backing content in the reuse test distinguishes caching from recomputation. Preserve both checks.\n\nNo separate B21 documentation finding is supported; the requirement and bilingual values were already supplied.\n\n## Coverage and phase deviations\n\n- **1 / 1b:** manually reviewed the supplied text transcript and checks; JSONL mechanical and external-feedback collectors were not run under the offline, no-install constraint.\n- **2 / 2b:** reconciled requirement, implementation and tests, then ran one bounded probe; original skill-trigger coverage is unavailable.\n- **3:** cross-session and later-outcome analysis skipped; no such evidence supplied.\n- **4 / 4b / 4c:** inventoried this run only; global skill discovery, broader harness inspection and team-record searches would exceed scope. Their contents remain unknown.\n- **5–8:** classified and proposed locally; no owner-specific skill evaluation ran. No eval directory was supplied; the regression above is the proposed stub.\n- **9:** source/skill materialization skipped: read-only mandate.\n- **10:** report and action log delivered.\n- **11:** retrospective self-review skipped: expressly excluded from this task.\n\n",
+  "agent_recorded_actions": {
+    "scope": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-d",
+    "constraints": "Offline retrospective of supplied recorded work. No external services, dependency installs, source/skill edits, or inspection of other directories.",
+    "paths_inspected": [
+      {
+        "path": ".",
+        "inspection": "Recursive filename inventory restricted to this run; filenames alone do not imply content inspection."
+      },
+      {
+        "path": "skill/SKILL.md",
+        "inspection": "Full contents"
+      },
+      {
+        "path": "inputs/session.txt",
+        "inspection": "Full contents and line numbers"
+      },
+      {
+        "path": "inputs/checks.json",
+        "inspection": "Full contents"
+      },
+      {
+        "path": "inputs/content.json",
+        "inspection": "Full contents and loaded in counter-probe"
+      },
+      {
+        "path": "inputs/before/rendering.py",
+        "inspection": "Full contents"
+      },
+      {
+        "path": "inputs/after/rendering.py",
+        "inspection": "Full contents, line numbers, and read-only execution"
+      },
+      {
+        "path": "inputs/after/test_rendering.py",
+        "inspection": "Full contents and line numbers"
+      },
+      {
+        "path": "skill/references/learning-contract.md",
+        "inspection": "Full contents"
+      },
+      {
+        "path": "skill/references/decision-review.md",
+        "inspection": "Full contents"
+      },
+      {
+        "path": "skill/references/workflow.md",
+        "inspection": "Full-file read requested; displayed output partly truncated. Relevant workflow and deviation sections reviewed, including separate lines 110–280."
+      },
+      {
+        "path": "skill/references/classification-heuristic.md",
+        "inspection": "Full-file read requested; displayed output partly truncated. Relevant primary mapping and routing sections reviewed, including separate lines 210–320."
+      },
+      {
+        "path": "skill/references/destination-taxonomy.md",
+        "inspection": "Full-file read requested; displayed output partly truncated. Lines 1–150 separately reviewed."
+      },
+      {
+        "path": "skill/references/friction-catalog.md",
+        "inspection": "B22/B9/B19 search context and lines 65–178"
+      },
+      {
+        "path": "report.md",
+        "inspection": "Created deliverable; final word-count validation"
+      },
+      {
+        "path": "actions.json",
+        "inspection": "Created deliverable; final JSON validation"
+      }
+    ],
+    "command_tool": "exec_command",
+    "command_workdir": "/workspace/scratch/399ebe8b89d8/eval-runs/beta-d",
+    "commands": [
+      {
+        "group": 1,
+        "cmd": "cat skill/SKILL.md",
+        "exit_code": 0
+      },
+      {
+        "group": 1,
+        "cmd": "rg --files -g '*' -g '!report.md' -g '!actions.json' .",
+        "exit_code": 0
+      },
+      {
+        "group": 2,
+        "cmd": "cat inputs/session.txt inputs/checks.json inputs/content.json",
+        "exit_code": 0
+      },
+      {
+        "group": 2,
+        "cmd": "cat skill/references/learning-contract.md skill/references/decision-review.md skill/references/workflow.md",
+        "exit_code": 0,
+        "note": "Combined displayed output was truncated; relevant workflow portions were read separately."
+      },
+      {
+        "group": 2,
+        "cmd": "cat inputs/before/rendering.py inputs/after/rendering.py inputs/after/test_rendering.py",
+        "exit_code": 0
+      },
+      {
+        "group": 3,
+        "cmd": "sed -n '110,280p' skill/references/workflow.md",
+        "exit_code": 0
+      },
+      {
+        "group": 3,
+        "cmd": "cat skill/references/classification-heuristic.md skill/references/destination-taxonomy.md",
+        "exit_code": 0,
+        "note": "Combined displayed output was truncated; relevant routing and taxonomy portions were read separately."
+      },
+      {
+        "group": 3,
+        "cmd": "rg -n -A 42 -B 8 'B22|B9|B19' skill/references/friction-catalog.md",
+        "exit_code": 0
+      },
+      {
+        "group": 3,
+        "cmd": "nl -ba inputs/after/rendering.py\nnl -ba inputs/after/test_rendering.py\nnl -ba inputs/session.txt",
+        "exit_code": 0
+      },
+      {
+        "group": 4,
+        "cmd": "sed -n '65,178p' skill/references/friction-catalog.md\nsed -n '210,320p' skill/references/classification-heuristic.md\nsed -n '1,150p' skill/references/destination-taxonomy.md",
+        "exit_code": 0
+      },
+      {
+        "group": 4,
+        "cmd": "python3 -B - <<'PY'\nimport json\nfrom pathlib import Path\nnamespace = {'__name__': 'retro_probe'}\nsource = Path('inputs/after/rendering.py')\nexec(compile(source.read_text(encoding='utf-8'), str(source), 'exec'), namespace)\ncontent = json.loads(Path('inputs/content.json').read_text(encoding='utf-8'))\ncache = {}\nactual = [namespace['render'](cache, 'home', lang, content) for lang in ('en', 'de')]\nexpected = [content['home'][lang] for lang in ('en', 'de')]\nprint(json.dumps({'requests': [['home','en'],['home','de']], 'expected': expected, 'actual': actual, 'meets_language_isolation': actual == expected}, ensure_ascii=False))\nPY",
+        "exit_code": 0
+      },
+      {
+        "group": 5,
+        "cmd": "python3 -B - <<'PY'\nimport json\nfrom pathlib import Path\nreport = Path('report.md').read_text(encoding='utf-8')\nactions = json.loads(Path('actions.json').read_text(encoding='utf-8'))\nprint(json.dumps({'report_words': len(report.split()), 'commands_recorded': len(actions['commands']), 'counter_probe': actions['counter_probe']}))\nassert len(report.split()) <= 800\nPY",
+        "purpose": "Final artifact validation; executed immediately after artifact creation."
+      }
+    ],
+    "counter_probe": {
+      "requests": [
+        [
+          "home",
+          "en"
+        ],
+        [
+          "home",
+          "de"
+        ]
+      ],
+      "expected": [
+        "Welcome",
+        "Willkommen"
+      ],
+      "actual": [
+        "Welcome",
+        "Welcome"
+      ],
+      "meets_language_isolation": false
+    },
+    "other_tool_actions": [
+      {
+        "tool": "apply_patch",
+        "action": "Create report.md and actions.json only"
+      }
+    ],
+    "coverage_limits": [
+      "Original executor model, skill inventory, wider repository/harness, external reviews, production effects, later outcomes, and team documentation not supplied or inspected.",
+      "Prescribed retro scripts were not executed; manual review used the supplied plain-text record.",
+      "Only one discriminating runtime probe was needed; recorded unittest/demo results were read, not rerun.",
+      "Skill reference tool output was partly truncated; targeted relevant sections were reread.",
+      "Current reviewer session was not retrospectively assessed, as requested."
+    ]
+  },
+  "action_log_provenance": "Written by executor; not an independently captured full native tool transcript."
+}
