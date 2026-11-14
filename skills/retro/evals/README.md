@@ -97,16 +97,17 @@ The full corpus also retains earlier routing and completion regressions.
 No-op, authorized variants and valid alternative wording are controls, not
 failures to make the test discriminating.
 
-Seven cases cover the missed situational check (B22) of
+Eight cases cover the missed situational check (B22) of
 [`../references/friction-catalog.md`](../references/friction-catalog.md): one
 omitted check ([situational-check-omitted](situational-check-omitted.md)), its
 mirror ([situational-check-overgeneralization](situational-check-overgeneralization.md)),
 a claim without the check
 ([situational-check-claimed-not-performed](situational-check-claimed-not-performed.md)),
-and four controls that must not produce a finding: independent causes in one
-file, a justified small fix, information that appeared only later, and evidence
-retro cannot read (`situational-check-independent-causes`,
-`-justified-small-fix`, `-later-information`, `-not-assessable`).
+and five controls that must not produce a finding: independent causes in one
+file, a justified small fix, information that appeared only later, evidence
+retro cannot read, and a fix whose edit is itself the check
+(`situational-check-independent-causes`, `-justified-small-fix`,
+`-later-information`, `-not-assessable`, `-fix-is-the-evidence`).
 These are described classification cases. Score the substantive finding and
 evidence equally under any signal ID; they do not measure unaided discovery.
 

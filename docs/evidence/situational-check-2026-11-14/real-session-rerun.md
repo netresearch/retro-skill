@@ -55,7 +55,7 @@ fixes for them.
   version did not. The revision showed no gain over the original text and was
   withdrawn.
 - Samples are small: one session and one model; one run per cell without
-  code, five read-only, three with execution, two in the control.
+  code (two cells), five read-only, three with execution, two in the control.
 - The read-only finding needed only one link: a code comment already admitted
   that equal status sets pass the pre-check.
 - The instruction added afterwards (run the tests and one bounded probe in a

@@ -112,9 +112,9 @@ property it was meant to establish, run the project's tests, and run one
 bounded probe that could refute that property — for example a small fake of
 the external system the guard depends on. Run it in a copy; never write to a
 shared tree, a remote or a live system. A copy does not isolate credentials or
-the network, so read the test command first: where it can reach a live
-service, run it without network access and credentials, or do not run it and
-say so. Record what was run. Where the code is
+the network, and a test command rarely shows what it reaches, so run the tests
+and the probe without network access and credentials; where they cannot run
+that way, do not run them and say so. Record what was run. Where the code is
 not reachable, say so; the transcript alone often hides a quiet defect. In one
 real session (2026-11-14), retros that could only read the code found such a
 defect in 3 of 5 runs, and every retro that could run the tests and a probe
@@ -145,9 +145,10 @@ Three rules keep B22 from becoming hindsight:
   condemn the earlier fix; it may be a D signal in Outcome mode.
 - **Judge the work, not the prose.** A paragraph headed "architecture check"
   without the check is no evidence, and no such paragraph is needed either. A
-  correct root-cause fix alone does not prove the check ran: find the read or
-  run it rested on. Evidence is a contract read, a test run, a call site
-  inspected, an assumption confirmed or refuted.
+  root-cause fix that itself handles the property the warning sign pointed at
+  counts as performed: the edit is the evidence. A fix that passes without
+  handling that property does not show the check. Other evidence is a contract
+  read, a test run, a call site inspected, an assumption confirmed or refuted.
 - **The diff size says nothing.** A local fix, a targeted contract change and
   keeping separate handling can each be the correct result of the check. A
   change outside the agreed scope remains a decision for its owner

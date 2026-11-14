@@ -6,7 +6,8 @@
 > **Status, 2026-11-14 (later the same day):** the revision this page compares,
 > including `/retro check`, was withdrawn in commit `6e4ce44`. `SKILL.md`, the
 > command and the friction catalog went back to `8c2d3ed` plus one instruction
-> to run the tests and a bounded probe; `eval-integration.md` keeps the eval
+> to run the tests and a bounded probe and later review corrections to the B22
+> text; `eval-integration.md` keeps the eval
 > method from the revision (discovery comparisons, equal tool permissions,
 > frozen cases, the hindsight protocol). The real session was rerun with code access; see
 > [real-session-rerun.md](real-session-rerun.md). The text below and the JSON
