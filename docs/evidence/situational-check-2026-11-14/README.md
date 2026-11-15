@@ -13,7 +13,12 @@
 > [real-session-rerun.md](real-session-rerun.md). The text below and the JSON
 > records in this directory are the record of the synthetic experiment as it
 > stood and are not updated; the `final_sha256` values in
-> [manifest.json](manifest.json) describe the files at `c3cd1be`.
+> [manifest.json](manifest.json) describe the files at `c3cd1be`. The eleven
+> anonymized grading inputs whose hashes [grades.json](grades.json) lists under
+> `final_input_sha256` were not committed, so those hashes cannot be recomputed
+> from this repository. The records the inputs were
+> built from are in `runs/`; [grading-map.json](grading-map.json) maps each item
+> to its run.
 
 **Decision: keep PR #232 in draft. No additional detection or repair success
 was observed in this experiment.** The revised procedure is executable, but
