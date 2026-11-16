@@ -2634,7 +2634,7 @@ def main() -> int:
             try:
                 rules = cand.read_text(encoding="utf-8")
             except OSError:
-                pass
+                pass  # no readable global rules: C6 then has nothing to match against
         findings.extend(
             signal_rule_exists_but_violated(
                 findings_for_c6, rules, extract_hook_denials(tool_uses)
