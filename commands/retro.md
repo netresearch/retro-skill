@@ -44,6 +44,11 @@ uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/detect-mechanical.py \
   --output-format json
 ```
 
+`uv` can write an install notice to standard error when it sets up the script's
+dependencies. When standard error is merged into the pipe that feeds a parser
+(`2>&1`), use `2>/dev/null` instead, so that the notice stays out of the
+parser's input.
+
 `<session-id>.jsonl` is usually the right file but not always, and the newest
 JSONL under a slug is frequently another session's. Confirm the file contains a
 verbatim phrase from **this** conversation before analysing it — the selection
