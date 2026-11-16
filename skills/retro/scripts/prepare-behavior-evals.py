@@ -222,7 +222,8 @@ def main() -> int:
         manifest = prepare(args)
     except (OSError, ValueError) as exc:
         parser.error(str(exc))
-    print(f"Prepared {len(manifest['cases'])} cases; no model or grader executed.")
+    else:
+        print(f"Prepared {len(manifest['cases'])} cases; no model or grader executed.")
     return 0
 
 
