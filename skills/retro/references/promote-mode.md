@@ -59,7 +59,10 @@ largest always-loaded memory, so a plain `/retro promote` scans it. It
 accumulates a second kind of content: learned rules whose substance is
 team-usable procedure or domain fact (a CLI gotcha, a release recipe, an API
 trap). Those reach more people as a `skill-update` than as private prose, and
-the scanner surfaces each `##` section so the classifier can judge it. Each
+the scanner surfaces each `##` section so the classifier can judge it. Judge a
+section from its full text: read it at `source_path` under `section_title`,
+because the finding's `description` holds only its first body line, and a
+section whose first line is generic hides the rule that follows it. Each
 finding carries `section_chars`, the length of the slice `content_sha256`
 covers; rank by it to start with the sections that cost the most context. Text
 directly under a `#` heading, before its first `##`, belongs to no section and
