@@ -475,8 +475,9 @@ upward into its correct destination, draining the source once the upward write
 is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/promote-mode.md`.
 
 - **Phase 1 is substituted** by `${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py` — a
-  filesystem inventory of `~/.claude/projects/<slug>/memory/*.md`, not a
-  transcript:
+  filesystem inventory of `~/.claude/projects/<slug>/memory/*.md` and, by
+  default, of the `##` sections of the global rules file `~/.claude/CLAUDE.md`
+  (each with its `section_chars`), not a transcript:
 
   ```bash
   uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py \
@@ -485,7 +486,9 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
 
   Forward `--project=<slug>` unchanged when `/retro promote` was given one;
   without it the scanner reads every slug, so a narrowed request would
-  otherwise pull other projects' notes into Phases 4–10.
+  otherwise pull other projects' notes into Phases 4–10. The global rules
+  file is not tied to a slug, so its sections appear in a narrowed run too;
+  pass `--exclude-global-rules` only when the user asks to leave it out.
 
 - Skip Phases 1b, 2, 2b, 3, 3b, 3c (no transcript) — announce the skip in one line
 - Phases 4–11 run verbatim; destination skew is **upward** per scope-escalation

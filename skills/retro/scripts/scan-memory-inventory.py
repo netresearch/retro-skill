@@ -37,18 +37,22 @@ content_sha256 used as both an idempotency key and a drain race-check.
 Promote checks ALL memories: by default every project slug under the memory
 root is scanned, not just the current one.
 
-A second opt-in source (--include-global-rules) enumerates the `## ` sections
-of the always-loaded global rules file (~/.claude/CLAUDE.md) as C2
+A second source, on by default, enumerates the `## ` sections of the
+always-loaded global rules file (~/.claude/CLAUDE.md) as C2
 cross-project-pattern findings, so rules that outgrew the personal scope can be
-promoted into the owning skill. This source is scan-only: the `drain`
-subcommand keeps refusing anything outside a <slug>/memory/ store — a
-global-rule drain is an approval-gated agent edit that removes the section
-only after the upward write is verified (see references/promote-mode.md).
+promoted into the owning skill. Each finding carries `section_chars`, the
+section's size, so a run can start with the largest sections. Pass
+--exclude-global-rules to leave the file out; --include-global-rules, the
+former opt-in, is still accepted and changes nothing. This source is
+scan-only: the `drain` subcommand keeps refusing anything outside a
+<slug>/memory/ store — a global-rule drain is an approval-gated agent edit that
+removes the section only after the upward write is verified (see
+references/promote-mode.md).
 
 Usage:
     uv run scan-memory-inventory.py [--project SLUG] [--memory-root PATH] \
         [--include-flagged-locations] [--project-dir PATH] \
-        [--include-global-rules] [--global-rules-file PATH] \
+        [--exclude-global-rules] [--global-rules-file PATH] \
         [--output-format json|text]
     uv run scan-memory-inventory.py drain PATH [--memory-root PATH] [--expect-sha256 HEX]
         (PATH = MEMORY.md drains the one inline unit whose content_sha256 is HEX;
@@ -313,16 +317,18 @@ def _fence_step(line: str, fence: str) -> tuple[str, bool]:
 
 
 def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
-    """Opt-in C2 findings: one per `## ` section of the global rules file.
+    """C2 findings, on by default: one per `## ` section of the global rules file.
 
-    The global rules file is a *destination* for personal preferences, so it is
-    never scanned by default (re-promoting a correct destination loops). The
-    opt-in exists for the one legitimate upward move out of it: a rule whose
-    content generalizes beyond the person — a tool gotcha, a workflow recipe,
-    domain facts — belongs in the owning skill (team-shared), and this source
-    surfaces each section so the classifier can judge it. Always-on behavioral
-    rules must NOT leave the file (a skill loads only on trigger); that filter
-    is the classifier's call, not this scanner's.
+    The global rules file is a *destination* for personal preferences, and it
+    is also the largest always-loaded memory. It is scanned by default for the
+    one legitimate upward move out of it: a rule whose content generalizes
+    beyond the person — a tool gotcha, a workflow recipe, domain facts —
+    belongs in the owning skill (team-shared), and this source surfaces each
+    section so the classifier can judge it. Always-on behavioral rules must NOT
+    leave the file (a skill loads only on trigger); that filter is the
+    classifier's call, not this scanner's, so the same sections reappear on
+    every run. `section_chars` is the length of the slice `content_sha256`
+    covers, so a run can rank sections by size.
     """
     if not rules_file.is_file():
         return []
@@ -367,6 +373,7 @@ def _global_rules_findings(rules_file: Path) -> list[dict[str, Any]]:
                 "content_sha256": hashlib.sha256(
                     raw_section.encode("utf-8")
                 ).hexdigest(),
+                "section_chars": len(raw_section),
                 "title": title,
                 # Masked before it is cut: a token cut short no longer matches
                 # its pattern, and its head would be printed.
@@ -552,7 +559,7 @@ def cmd_scan(args) -> int:
         project_dir = Path(args.project_dir) if args.project_dir else Path(os.getcwd())
         findings.extend(_flagged_findings(project_dir))
 
-    if getattr(args, "include_global_rules", False):
+    if not getattr(args, "exclude_global_rules", False):
         findings.extend(_global_rules_findings(args.global_rules_file))
 
     findings = [_masked_finding(f) for f in findings]
@@ -1019,15 +1026,21 @@ def main() -> int:
     parser.add_argument(
         "--include-global-rules",
         action="store_true",
-        help="Also emit one C2 finding per `## ` section of the global rules "
-        "file, so rules that outgrew the personal scope can be promoted "
-        "into the owning skill (scan-only; drain stays an agent edit)",
+        help="Accepted for compatibility and ignored: the global rules file "
+        "is scanned by default",
+    )
+    parser.add_argument(
+        "--exclude-global-rules",
+        action="store_true",
+        help="Do not emit the C2 findings for the `## ` sections of the global "
+        "rules file (scanned by default; scan-only, a drain stays an agent "
+        "edit). Wins over --include-global-rules",
     )
     parser.add_argument(
         "--global-rules-file",
         type=Path,
         default=Path.home() / ".claude" / "CLAUDE.md",
-        help="Global rules file scanned by --include-global-rules",
+        help="Global rules file scanned unless --exclude-global-rules is given",
     )
     parser.add_argument("--output-format", choices=["json", "text"], default="json")
 

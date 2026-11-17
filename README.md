@@ -102,7 +102,7 @@ composer require netresearch/retro-skill
 | `/retro "<problem>"` | **Spotlight** — focus on one described issue; fewer tokens than a full sweep | Mid-session, for a direct fix |
 | `/retro outcome [session-id\|--since N]` | **Outcome** (layer D) — replay a *past* session through what happened to its output afterwards (reverted commits, rejected PRs, CI failures, follow-up fix sessions) | Periodically, e.g. monthly. **Do not run within 24h of the session** — the outcomes have not landed yet |
 | `/retro audit [--scope project\|repo\|skill]` | **Constitutional audit** — cross-session architectural review (design drift, convention erosion) over weeks/months | Monthly or quarterly health check |
-| `/retro promote` | **Promote** — inventory accumulated local memory and re-home each note upward; retain active access until the accepted target is delivered and reachable, then drain | When local memory has piled up and needs its canonical owner |
+| `/retro promote` | **Promote** — inventory accumulated local memory and the `##` sections of the global rules file `~/.claude/CLAUDE.md` (`--exclude-global-rules` leaves it out), and re-home each note upward; retain active access until the accepted target is delivered and reachable, then drain | When local memory has piled up and needs its canonical owner |
 | `/retro done` | **Done** — definition-of-done gate: eight evidence-backed checks (task, findings, retro, cleanup, questions, tickets, time, docs) | As the last command of a session, before calling it finished |
 
 Sweep and Spotlight ask what caused friction, what benefit remains unmet and

@@ -39,23 +39,32 @@ same envelope shape as `detect-mechanical.py`, so Phases 4–10 consume it as-is
 | `<slug>/memory/MEMORY.md`, one finding per inline unit | `C3` memory_drift, `current_location: project-local-memory-inline` | Read twice: as the index of the note files (pruned on a note drain) and for knowledge written into it directly — see "Inline units in `MEMORY.md`" |
 | `<slug>/memory/.promoted/*.md` | — | Tombstones (already drained) — skipped, never re-emitted |
 | `<project>/CLAUDE.md`, `docs/feedback/*.md` | `B8` wrong_destination | **Opt-in** via `--include-flagged-locations` |
-| `~/.claude/CLAUDE.md`, one finding per `##` section | `C2` cross_project_pattern | **Opt-in** via `--include-global-rules` — see "Draining the global rules file" |
+| `~/.claude/CLAUDE.md`, one finding per `##` section | `C2` cross_project_pattern, `current_location: global-claude-md` | **On by default**; `--exclude-global-rules` leaves it out — see "Draining the global rules file" |
 
-**Excluded by construction** (never part of the scan surface — the scanner only
-globs `<slug>/memory/*.md`, so these are never enumerated in the first place):
-`~/.claude/CLAUDE.md` unless `--include-global-rules` is passed and
-`<project>/AGENTS.md` always (they are correct *destinations* — re-promoting
-them by default loops), and `.serena/memories/*.md` (project-overview
-context, not behaviour rules — would pollute global memory).
+**Excluded by construction** (never part of the scan surface — the scanner
+globs `<slug>/memory/*.md` and reads the global rules file, so these are never
+enumerated in the first place): `<project>/AGENTS.md` (a correct
+*destination* — re-promoting it by default loops), and `.serena/memories/*.md`
+(project-overview context, not behaviour rules — would pollute global memory).
 
-### Draining the global rules file (`--include-global-rules`)
+`--project=<slug>` narrows only the memory stores. The global rules file is
+not tied to a slug, so its sections appear in a narrowed run too; pass
+`--exclude-global-rules` to leave them out. `--include-global-rules`, the
+former opt-in, is still accepted and changes nothing.
 
-The global rules file is where personal preferences *land*, so it is not a
-default source. It still accumulates a second kind of content: learned rules
-whose substance is team-usable procedure or domain fact (a CLI gotcha, a
-release recipe, an API trap). Those reach more people as a `skill-update` than
-as private prose, and this opt-in surfaces each `##` section so the classifier
-can judge it. Three binding rules:
+### Draining the global rules file
+
+The global rules file is where personal preferences *land*, and it is also the
+largest always-loaded memory, so a plain `/retro promote` scans it. It
+accumulates a second kind of content: learned rules whose substance is
+team-usable procedure or domain fact (a CLI gotcha, a release recipe, an API
+trap). Those reach more people as a `skill-update` than as private prose, and
+the scanner surfaces each `##` section so the classifier can judge it. Each
+finding carries `section_chars`, the length of the slice `content_sha256`
+covers; rank by it to start with the sections that cost the most context. Text
+directly under a `#` heading, before its first `##`, belongs to no section and
+is not emitted. Most sections stay where they are (rule 1), so the same
+findings reappear on every run. Three binding rules:
 
 1. **Always-on behavior never leaves the file.** A skill loads only when
    triggered. Rules that must hold in every turn — bans, tone rules,
