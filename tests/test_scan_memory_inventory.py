@@ -68,7 +68,7 @@ def _run_scan(**kwargs) -> dict:
         memory_root=kwargs["memory_root"],
         include_flagged_locations=kwargs.get("include_flagged_locations", False),
         project_dir=kwargs.get("project_dir"),
-        include_global_rules=kwargs.get("include_global_rules", False),
+        exclude_global_rules=kwargs.get("exclude_global_rules", False),
         global_rules_file=kwargs.get("global_rules_file", Path("/nonexistent")),
         output_format=kwargs.get("output_format", "json"),
     )
@@ -550,9 +550,7 @@ class GlobalRulesMaskingTest(unittest.TestCase):
         rules.write_text(
             "## Rule\n\n" + "x" * 175 + f" use {token}\n", encoding="utf-8"
         )
-        res = _run_scan(
-            memory_root=root, include_global_rules=True, global_rules_file=rules
-        )
+        res = _run_scan(memory_root=root, global_rules_file=rules)
         self.assertNotIn("glpat-Ab1", res["raw"])
 
 
@@ -745,16 +743,96 @@ class GlobalRulesSourceTest(unittest.TestCase):
         self.rules = self.root / "CLAUDE.md"
         self.rules.write_text(GLOBAL_RULES, encoding="utf-8")
 
-    def test_off_by_default(self):
+    def _main(self, *flags: str) -> dict:
+        """Run the scanner through its real argument parser, so the CLI
+        default is what is measured, not the test helper's namespace."""
+        argv = [
+            "scan-memory-inventory.py",
+            "--memory-root",
+            str(self.root),
+            "--global-rules-file",
+            str(self.rules),
+            *flags,
+        ]
+        buf = io.StringIO()
+        with mock.patch.object(sys, "argv", argv), redirect_stdout(buf):
+            rc = smi.main()
+        self.assertEqual(rc, 0)
+        return json.loads(buf.getvalue())
+
+    @staticmethod
+    def _global_titles(envelope: dict) -> list[str]:
+        return [
+            f["title"]
+            for f in envelope["findings"]
+            if f["current_location"] == "global-claude-md"
+        ]
+
+    def test_on_by_default(self):
+        """A plain `/retro promote` passes no flag and must still see the
+        global rules file, the largest always-loaded memory."""
         _write(self.memory, "feedback_x.md", FEEDBACK)
-        res = _run_scan(memory_root=self.root, global_rules_file=self.rules)
-        locations = {f["current_location"] for f in res["json"]["findings"]}
-        self.assertNotIn("global-claude-md", locations)
+        self.assertEqual(
+            self._global_titles(self._main()),
+            ["Signed Git Commits - MANDATORY", "CI Re-runs Replay Same Commit"],
+        )
+
+    def test_include_flag_is_still_accepted(self):
+        """--include-global-rules was the opt-in; callers that pass it keep
+        working and get the same findings as the default."""
+        self.assertEqual(
+            self._global_titles(self._main("--include-global-rules")),
+            self._global_titles(self._main()),
+        )
+
+    def test_exclude_flag_suppresses_the_global_findings(self):
+        _write(self.memory, "feedback_x.md", FEEDBACK)
+        self.assertTrue(self._global_titles(self._main()))
+        excluded = self._main("--exclude-global-rules")
+        self.assertEqual(self._global_titles(excluded), [])
+        self.assertTrue(excluded["findings"], "memory findings stay")
+        both = self._main("--include-global-rules", "--exclude-global-rules")
+        self.assertEqual(self._global_titles(both), [])
+
+    def test_rules_file_alone_makes_the_scan_available(self):
+        """No memory/ dir anywhere, but a rules file: the global sections are
+        a real backlog, not an absence."""
+        shutil.rmtree(self.memory)
+        envelope = self._main()
+        self.assertTrue(envelope["available"])
+        self.assertEqual(len(self._global_titles(envelope)), 2)
+
+    def test_section_chars_is_the_length_of_the_hashed_slice(self):
+        first = GLOBAL_RULES[
+            GLOBAL_RULES.index("## Signed") : GLOBAL_RULES.index("## Empty")
+        ]
+        last = GLOBAL_RULES[GLOBAL_RULES.index("## CI Re-runs") :]
+        c2 = [
+            f
+            for f in self._main()["findings"]
+            if f["current_location"] == "global-claude-md"
+        ]
+        self.assertEqual([f["section_chars"] for f in c2], [len(first), len(last)])
+        self.assertEqual(
+            [f["content_sha256"] for f in c2],
+            [
+                hashlib.sha256(first.encode("utf-8")).hexdigest(),
+                hashlib.sha256(last.encode("utf-8")).hexdigest(),
+            ],
+        )
+
+    def test_section_chars_counts_characters_not_bytes(self):
+        self.rules.write_text("## Umlaute\n\nÄrger über Öl\n", encoding="utf-8")
+        (finding,) = [
+            f
+            for f in self._main()["findings"]
+            if f["current_location"] == "global-claude-md"
+        ]
+        self.assertEqual(finding["section_chars"], len("## Umlaute\n\nÄrger über Öl\n"))
 
     def test_emits_one_c2_per_nonempty_section(self):
         res = _run_scan(
             memory_root=self.root,
-            include_global_rules=True,
             global_rules_file=self.rules,
         )
         c2 = [
@@ -785,7 +863,6 @@ class GlobalRulesSourceTest(unittest.TestCase):
         )
         res = _run_scan(
             memory_root=self.root,
-            include_global_rules=True,
             global_rules_file=self.rules,
         )
         c2 = [
@@ -804,7 +881,6 @@ class GlobalRulesSourceTest(unittest.TestCase):
         )
         res = _run_scan(
             memory_root=self.root,
-            include_global_rules=True,
             global_rules_file=self.rules,
         )
         titles = [
@@ -817,7 +893,6 @@ class GlobalRulesSourceTest(unittest.TestCase):
     def test_missing_rules_file_is_not_an_error(self):
         res = _run_scan(
             memory_root=self.root,
-            include_global_rules=True,
             global_rules_file=self.root / "absent.md",
         )
         self.assertEqual(res["rc"], 0)

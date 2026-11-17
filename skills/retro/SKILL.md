@@ -42,8 +42,9 @@ decisions. Process critique grants no new authority.
 - **`/retro audit [--scope project|repo|skill]`** — cross-session architectural
   drift.
 - **`/retro promote`** — re-home already-written local memory upward (never
-  project-local memory); keep active access until the accepted target is
-  delivered and reachable, then drain. See `references/promote-mode.md`.
+  project-local memory), and by default the team-usable sections of the global
+  rules file; keep active access until the accepted target is delivered and
+  reachable, then drain. See `references/promote-mode.md`.
 - **`/retro done`** — definition-of-done gate: eight evidence-backed checks
   (task, findings, retro, cleanup, questions, tickets, time, docs), each ✅ / ❌ /
   ⏸ / N/A. **⏸ only when a named person can close it with a named action;

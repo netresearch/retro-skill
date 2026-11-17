@@ -475,8 +475,9 @@ upward into its correct destination, draining the source once the upward write
 is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/promote-mode.md`.
 
 - **Phase 1 is substituted** by `${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py` — a
-  filesystem inventory of `~/.claude/projects/<slug>/memory/*.md`, not a
-  transcript:
+  filesystem inventory of `~/.claude/projects/<slug>/memory/*.md` and, by
+  default, of the `##` sections of the global rules file `~/.claude/CLAUDE.md`
+  (each with its `section_chars`), not a transcript:
 
   ```bash
   uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-memory-inventory.py \
@@ -485,7 +486,9 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
 
   Forward `--project=<slug>` unchanged when `/retro promote` was given one;
   without it the scanner reads every slug, so a narrowed request would
-  otherwise pull other projects' notes into Phases 4–10.
+  otherwise pull other projects' notes into Phases 4–10. The global rules
+  file is not tied to a slug, so its sections appear in a narrowed run too;
+  pass `--exclude-global-rules` only when the user asks to leave it out.
 
 - Skip Phases 1b, 2, 2b, 3, 3b, 3c (no transcript) — announce the skip in one line
 - Phases 4–11 run verbatim; destination skew is **upward** per scope-escalation
@@ -493,11 +496,14 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
 - Phase 8 verifies whether the existing mandate covers the target and audience
   change. Make private-to-team/public disclosure visible; ask only if uncovered.
 - **Phase 9 gains a post-step:** after the target is accepted where required,
-  delivered and reachable from the next reader's entry point, drain the source via
-  `scan-memory-inventory.py drain <path> --expect-sha256 <sha>` — a tombstone
-  move to `.promoted/` plus a `MEMORY.md` prune, **never** `rm`. An inline
-  unit of `MEMORY.md` drains with `drain <slug>/memory/MEMORY.md
-  --expect-sha256 <its content_sha256>`, which moves only that unit. On verify
+  delivered and reachable from the next reader's entry point, drain a memory-store
+  source via `scan-memory-inventory.py drain <path> --expect-sha256 <sha>` — a
+  tombstone move to `.promoted/` plus a `MEMORY.md` prune, **never** `rm`. An
+  inline unit of `MEMORY.md` drains with `drain <slug>/memory/MEMORY.md
+  --expect-sha256 <its content_sha256>`, which moves only that unit. A
+  global-rules section (`current_location: global-claude-md`) is not drained by
+  the subcommand, which refuses that path: remove it as the agent edit
+  `references/promote-mode.md` describes. On verify
   failure, keep the source and index entry. An open PR is only prepared: retain
   a minimal active Learning-Id/target/status bridge until availability is proven.
   Closed/rejected or undelivered changes trigger reclassification, not draining.
