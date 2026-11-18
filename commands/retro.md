@@ -167,7 +167,7 @@ cross-session enrichment is optional.
 For Claude user-turn evidence within the authorized project:
 
 ```bash
-uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>" --project "<project-slug>"
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern="<fingerprint>" --project="<project-slug>"
 ```
 
 `--pattern` searches **user turns only** — mostly text the user typed, plus
