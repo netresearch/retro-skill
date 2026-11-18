@@ -66,7 +66,11 @@ no indexed conversation matches. Tool output is excluded even with scope
 `all`. For a tool error, inspect the scoped native transcript or tool-result
 artifact directly. On a host without Orca, use an available scoped memory or
 session interface, or the project's JSONL scanner for Claude user turns.
-Preserve the fallback's actual coverage. Never enable indexing automatically.
+For the Claude fallback, read `coverage.status`: `scanned` covers the selected
+project(s), file-mtime window and Claude user turns; `partial` retains usable
+matches alongside unreadable inputs or invalid rows; `unavailable` means the
+requested source could not be enumerated. Neither of the last two supports a
+claim that an attempt never occurred. Never enable indexing automatically.
 
 [Orca CLI search contract](https://github.com/stablyai/orca/blob/5a28037b3f82c10b6c4454b38953d92940d11be4/src/cli/specs/search.ts)
 
