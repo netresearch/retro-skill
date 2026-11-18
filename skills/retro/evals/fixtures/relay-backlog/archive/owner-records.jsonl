@@ -1,0 +1,2 @@
+{"id":"38","subject":"Size-based connection pools","state":"accepted","body":"Read operations get a dedicated pool."}
+{"id":"44","subject":"Recover abandoned claims sooner","learning_id":"retro-20260813-abandoned-claims","prediction":"A 20 s expiry should reduce recovery time while preserving one delivery per upload.","state":"withdrawn after paired replay RL-8","evidence":"runs.jsonl#RL-8","decision":"Retain 60 s leases for live workers. Re-open if ownership can be established separately."}

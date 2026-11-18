@@ -155,12 +155,19 @@ the team's records.
 
 See `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
-## Phase 3: Cross-Session (Optional)
+## Phase 3: Cross-Session
 
-Scan session JSONL across projects for related friction:
+For a recurring problem, a prior intervention, or a proposed transfer across
+configurations, consult the attempt history before Phase 7. Use the scoped
+source selection, Orca lookup and decision procedure in
+[`prior-attempts.md`](../skills/retro/references/prior-attempts.md). If the
+sources are unavailable, carry the coverage gap into the proposal. Other
+cross-session enrichment is optional.
+
+For Claude user-turn evidence within the authorized project:
 
 ```bash
-uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>"
+uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/scan-cross-session.py --pattern "<fingerprint>" --project "<project-slug>"
 ```
 
 `--pattern` searches **user turns only** — mostly text the user typed, plus
@@ -178,11 +185,12 @@ fp=$(cat <<'EOF'
 <fingerprint>
 EOF
 )
+project_dir="<authorized Claude project directory>"
 sid="<id of the session under analysis>"
 : "${fp:?set fp}" "${sid:?set sid}"   # an empty sid would drop every hit
 fp_json=$(printf '%s' "$fp" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g')
-{ grep -rl -F --include='*.jsonl' -e "$fp_json" ~/.claude/projects/
-  grep -rl -F --include='*.txt' -e "$fp" ~/.claude/projects/
+{ grep -rl -F --include='*.jsonl' -e "$fp_json" "$project_dir/"
+  grep -rl -F --include='*.txt' -e "$fp" "$project_dir/"
 } | grep -v -F "$sid"
 ```
 
@@ -300,7 +308,7 @@ If matched skill has `evals/` directory: read evals for context. If proposing a 
 ## Phase 7: Proposal Generation
 
 Per finding, generate prose:
-- **Why:** 1-2 paragraphs explaining the friction and its root cause
+- **Why:** explain the observation, the proposed cause and the evidence for it. For a prior attempt, give its original prediction, the observed outcome and how that comparison changes the proposed action.
 - **How to apply:** 1-2 paragraphs describing the concrete fix
 
 Group proposals by destination. Show ≤10 items, ranked by severity (see

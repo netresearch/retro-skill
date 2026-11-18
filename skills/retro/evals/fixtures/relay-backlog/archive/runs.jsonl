@@ -1,0 +1,2 @@
+{"id":"RL-8","kind":"paired replay","task":"35 s upload with one silent but healthy worker","result":"60 s lease: one delivery. 20 s lease: second worker reclaimed at t=21 s, two deliveries. Crashed-worker control: earlier recovery at 20 s."}
+{"id":"RL-9","kind":"note","source":"RL-8","text":"Shorter lease recovered earlier during crash replay."}

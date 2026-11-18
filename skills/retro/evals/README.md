@@ -166,3 +166,8 @@ Instruction removal, tool choice, recovery, discovery changes and observed
 configuration regressions merit targeted comparisons. A normal retro does not
 require a second model round, and correction of false content or reliable
 duplicate consolidation does not require a broad model campaign.
+
+The three prior-attempt cases cover two different causes of duplicate work,
+an unavailable index and the recovery of a withdrawn proposal from project
+records. The [paired run record](../../../docs/evidence/prior-attempts-2026-11-18.json)
+contains the anonymized responses, rubrics, grades and context hashes.
