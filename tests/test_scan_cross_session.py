@@ -175,11 +175,17 @@ class UserTurnCoverageTest(TempDirCase):
                     )
 
     def test_valid_hits_survive_partial_reads_and_stay_in_scope(self):
-        path = Transcript().user("no, relay").write(self.root, "-project", "seen")
+        path = (
+            Transcript().user("no, first attempt").write(self.root, "-project", "seen")
+        )
         Transcript().user("no, relay").write(self.root, "-other", "unrelated")
         with path.open("ab") as raw:
             raw.write(b'{"type":\n[]\n\xff\n{"type":"user","message":null}\n')
             raw.write(b'{"type":"response_item","payload":{}}\n')
+            raw.write(
+                b'{"type":"user","message":{"content":[{"type":"text","text":null},'
+                b'{"type":"text","text":"no, relay again"}]}}\n'
+            )
         # An unreadable input without relying on Unix permissions or process uid.
         (path.parent / "broken.jsonl").mkdir()
         for mode in (["--pattern=relay"], ["--user-correction-summary"]):
@@ -194,7 +200,7 @@ class UserTurnCoverageTest(TempDirCase):
                         "sessions_read": 1,
                         "gaps": {
                             "invalid_rows": 3,
-                            "invalid_user_turns": 1,
+                            "invalid_user_turns": 2,
                             "unreadable_sessions": 1,
                             "native_codex_rows": 1,
                         },
@@ -203,7 +209,8 @@ class UserTurnCoverageTest(TempDirCase):
                 if "matches" in result:
                     self.assertEqual(list(result["matches"]), ["-project"])
                     self.assertEqual(
-                        result["matches"]["-project"][0]["session"], "seen.jsonl"
+                        result["matches"]["-project"],
+                        [{"session": "seen.jsonl", "snippet": "no, relay again"}],
                     )
                 else:
                     self.assertEqual(result["sessions_scanned"], 1)

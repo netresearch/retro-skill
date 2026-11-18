@@ -40,6 +40,7 @@ import shlex
 import subprocess
 import sys
 from collections import Counter, defaultdict
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -107,6 +108,23 @@ GIT_REVERT_RE = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?revert\b(?P<args>[^;&|\n]*)
 # --- reading -------------------------------------------------------------------
 
 
+def _project_sessions(
+    project: Path, cutoff: datetime, gaps: Counter[str]
+) -> Iterator[tuple[Path, str]]:
+    # Path.glob suppresses directory read errors on some supported versions.
+    with os.scandir(project) as entries:
+        for entry in entries:
+            if not entry.name.endswith(".jsonl"):
+                continue
+            try:
+                mtime = datetime.fromtimestamp(entry.stat().st_mtime, UTC)
+            except OSError:
+                gaps["unstatable_entries"] += 1
+                continue
+            if mtime >= cutoff:
+                yield Path(entry.path), project.name
+
+
 def session_files(
     projects_dir: Path,
     project_slug: str | None,
@@ -125,18 +143,7 @@ def session_files(
         candidates = [projects_dir / project_slug]
     for proj_dir in candidates:
         try:
-            # Path.glob suppresses directory read errors on some supported versions.
-            with os.scandir(proj_dir) as entries:
-                for entry in entries:
-                    if not entry.name.endswith(".jsonl"):
-                        continue
-                    try:
-                        mtime = datetime.fromtimestamp(entry.stat().st_mtime, UTC)
-                    except OSError:
-                        gaps["unstatable_entries"] += 1
-                        continue
-                    if mtime >= cutoff:
-                        out.append((Path(entry.path), proj_dir.name))
+            out.extend(_project_sessions(proj_dir, cutoff, gaps))
         except OSError:
             if project_slug is not None:
                 raise
@@ -211,6 +218,28 @@ def _is_synthetic_user_text(text: str) -> bool:
     return any(marker in head for marker in SYNTHETIC_USER_MARKERS)
 
 
+def _user_text_blocks(message: Any, gaps: Counter[str]) -> list[str]:
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return [content]
+    if not isinstance(content, list):
+        gaps["invalid_user_turns"] += 1
+        return []
+    texts = []
+    malformed = False
+    for block in content:
+        if not isinstance(block, dict) or not isinstance(block.get("type"), str):
+            malformed = True
+        elif block["type"] == "text":
+            if isinstance(block.get("text"), str):
+                texts.append(block["text"])
+            else:
+                malformed = True
+    if malformed:
+        gaps["invalid_user_turns"] += 1
+    return texts
+
+
 def extract_user_texts(path: Path, gaps: Counter[str] | None = None) -> list[str]:
     """What a human typed: the text of every user turn the harness did not
     write itself.
@@ -238,19 +267,7 @@ def extract_user_texts(path: Path, gaps: Counter[str] | None = None) -> list[str
             continue
         if ev.get("isMeta") or ev.get("isCompactSummary"):
             continue
-        msg = ev.get("message")
-        content = msg.get("content") if isinstance(msg, dict) else None
-        if not isinstance(content, (str, list)):
-            gaps["invalid_user_turns"] += 1
-            continue
-        found = []
-        if isinstance(content, str):
-            found.append(content)
-        elif isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    text = block.get("text", "")
-                    found.append(text if isinstance(text, str) else "")
+        found = _user_text_blocks(ev.get("message"), gaps)
         # A slash-command expansion delivers its template as a sibling text
         # block of the <command-message> marker: one synthetic block makes the
         # whole message synthetic.
