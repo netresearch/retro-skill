@@ -366,7 +366,8 @@ re-presented.
     PRs/MRs a script opened (a fleet driver's opened.jsonl) are not in the
     transcript: add them with --pr-list <file> (origin "listed")
 2. LLM enrichment (Schicht B)
-3. Cross-session enrichment (Schicht C, optional)
+3. Consult prior attempts for recurrence, transfer or a previous measure
+   (prior-attempts.md); other Schicht C enrichment is optional.
 4. Skill discovery (full catalogue, input to classification)
 4b. Project-harness inspection (for project-rule / harness-artefact)
 4c. Documentation lookup (B21 candidates: inventory, repo docs, runbooks, wiki,
@@ -458,7 +459,7 @@ or substitutes an ad-hoc step for the prescribed script — **say so in one line
 with the reason:
 
 ```
-Phase 3 (cross-session): skipped — single-project session, no cross-session pattern found.
+Phase 3 (cross-session): scoped session index unavailable, original record not supplied; recurrence unknown.
 Phase 4 (skill discovery): used `find … SKILL.md | grep` instead of find-org-skills.py because <reason>.
 ```
 

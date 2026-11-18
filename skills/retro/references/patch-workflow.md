@@ -38,6 +38,11 @@ evidence, scope, owning source/decision and expected behavior change from
 confirm, refute or leave the expected benefit open. Reference shared run
 provenance rather than duplicating configuration metadata in every finding.
 
+For a recurring problem, record the attempt and its outcome in the existing
+owner record as described in [prior-attempts.md](prior-attempts.md). Give a different
+intervention its own Learning-Id linked to the earlier problem.
+Keep historical opportunity counts attached to the intervention they evaluated.
+
 Track these states with evidence; none implies the next:
 
 | State | Evidence |
@@ -116,7 +121,7 @@ Examples:
 
 - **Conventional Commits format:** `<type>(<scope>): <summary>`
 - **`Learning-Id:` trailer** in every retro materialization commit: a stable
-  id minted at Phase 7 per finding (`retro-YYYYMMDD-<slug>`, e.g.
+  id reused for the same learning across attempts, or minted at Phase 7 for a new finding (`retro-YYYYMMDD-<slug>`, e.g.
   `retro-20260814-copilot-quota-monthly`). The same id goes into the PR body,
   a materialized checkpoint's `learning_id:` field, and an eval stub where its
   layout has a place for it (retro's own Markdown fixtures have frontmatter; an

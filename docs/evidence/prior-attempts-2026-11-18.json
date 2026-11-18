@@ -1,0 +1,284 @@
+{
+  "date": "2026-11-18",
+  "baseline_commit": "a871759a450355412fd72402c8c4693776e05a89",
+  "method": "Nine fresh ChatGPT Work executors (one per case and instruction set) received only the frozen selected guidance, the trigger and read-only synthetic inputs. A separate agent graded anonymized answers against the matching rubric. Effective model version, cost and execution time were not recorded. These were explicit-reference runs, not automatic skill discovery, full retro sweeps or production sessions.",
+  "interpretation": "All nine central recommendations were correct. A grade counts a compound expected item only if all its clauses are present. The first comparison motivated an instruction edit. The final three replays use the same cases, so their scores include tuning on this sample.",
+  "cases": {
+    "dispatch-history-a": {
+      "source_sha256": "cc4097b0fb2203ad5597d85c2b9bacc99235d35f2f3613e048c59e092ef8ee4c",
+      "fixture": "fixtures/dispatch-history/a",
+      "inputs": [
+        {
+          "path": "inputs/lookup.txt",
+          "sha256": "ce4d5e49999eedbc72b0bad308c33322eb7e4569882ee55c612c76e35d76bf24"
+        },
+        {
+          "path": "inputs/records.txt",
+          "sha256": "33975f15794894bc85c10f0fb27fd2c54c2de3ba651fcf51e297c72672bfbd02"
+        },
+        {
+          "path": "prompt.txt",
+          "sha256": "997b47b810e7ec24377814f25f201c647b6e08775b2aeeb95012782607e207cf"
+        }
+      ],
+      "rubric": {
+        "id": "dispatch-history-a",
+        "expected": [
+          "use the original PR or Learning-Id and replay R17 to retain stable retry keys for the observed disconnect case; treat the exported copy as the same episode",
+          "distinguish the two first-attempt workers in dispatch-33 from one worker retrying; keep the prior result and link the different cause to it",
+          "propose a prospective observable concurrency check with two workers on one order and one resulting job; keep the disconnect/retry control"
+        ],
+        "negative_expected": [
+          "strengthen transport retries as a fix for dispatch-33",
+          "count the support copy as an independent confirmation or claim a proposed concurrency fix already passed"
+        ],
+        "source_sha256": "cc4097b0fb2203ad5597d85c2b9bacc99235d35f2f3613e048c59e092ef8ee4c"
+      }
+    },
+    "dispatch-history-b": {
+      "source_sha256": "eab6ec30270f06eeef80ef9ef2424e63d0b80236a2a4139386200671e81466c9",
+      "fixture": "fixtures/dispatch-history/b",
+      "inputs": [
+        {
+          "path": "inputs/lookup.txt",
+          "sha256": "bfb41fa557385a004b94ce5e9628f00de9d906de8c22f3a4d017356c73e90e19"
+        },
+        {
+          "path": "inputs/records.txt",
+          "sha256": "fbced2f7ff3a1fef295b93a47596c1b21fe1b9a80c1be44a056d027b48bc67e4"
+        },
+        {
+          "path": "prompt.txt",
+          "sha256": "997b47b810e7ec24377814f25f201c647b6e08775b2aeeb95012782607e207cf"
+        }
+      ],
+      "rubric": {
+        "id": "dispatch-history-b",
+        "expected": [
+          "use the local PR and replay for the original scoped success despite the unavailable index; report limited coverage",
+          "leave the later mechanism and application of the loaded fix unresolved; request a discriminating trace of loaded revision, worker IDs and submission keys or an equivalent bounded check",
+          "retain the earlier prediction and observed result while leaving the new effect untested"
+        ],
+        "negative_expected": [
+          "treat an unavailable index as evidence that no attempt exists",
+          "infer a concurrency defect, prescribe a global retry change or count an unsuccessful application from the symptom alone"
+        ],
+        "source_sha256": "eab6ec30270f06eeef80ef9ef2424e63d0b80236a2a4139386200671e81466c9"
+      }
+    },
+    "relay-backlog": {
+      "source_sha256": "b5d9d5b6679857e08c0282888271c1a32ab5768b09673afe50356c6b90f28f62",
+      "fixture": "fixtures/relay-backlog",
+      "inputs": [
+        {
+          "path": "inputs/archive/native-notes.jsonl",
+          "sha256": "d9dcc49fab989f341e9f71fd95fcec8e75d584215c5bcc1eb09159a230f6c700"
+        },
+        {
+          "path": "inputs/archive/owner-records.jsonl",
+          "sha256": "6d6e3e262b12939f648c2f2e871cd8feb0b8238e1217f5ee972bcf6e811eade3"
+        },
+        {
+          "path": "inputs/archive/runs.jsonl",
+          "sha256": "b255afcdc4d2c613557d9c01cd315d6c812e60a3d76bfc486eefee6a81711c0b"
+        },
+        {
+          "path": "inputs/current.txt",
+          "sha256": "87a7d259e7f5778a06e4dfbff35b33b65b16e4258876e4e33a101c6b3f711d34"
+        },
+        {
+          "path": "prompt.txt",
+          "sha256": "2691461277a78d7ed265e39698392628eac2dea3f9b0b9830297a855b2673385"
+        }
+      ],
+      "rubric": {
+        "id": "relay-backlog",
+        "expected": [
+          "retrieve proposal 44 and the original RL-8 comparison, identifying the recorded prediction and both outcomes under the earlier conditions",
+          "use the existing learning identity or original owner link and explicitly account for the earlier withdrawal in the current decision",
+          "preserve the benefit for a crashed worker and the counterexample for a silent live worker; propose a changed precondition or bounded check that can distinguish them before reconsidering"
+        ],
+        "negative_expected": [
+          "cite only a memory summary or miscount RL-9 as an independent confirmation",
+          "repeat the unchanged 20 s proposal, erase the earlier result, or claim a proposed alternative already passed"
+        ],
+        "source_sha256": "b5d9d5b6679857e08c0282888271c1a32ab5768b09673afe50356c6b90f28f62"
+      }
+    }
+  },
+  "contexts": {
+    "baseline": {
+      "sha256": "c20c3ad38307adb01221025c575c36381b7b1acf8ccea219f5fed9dafc2720f1",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "ff497bae942c161a39b7d61bfa97704c8ae16c518914cdd0f114c9b740c82d4b"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        },
+        {
+          "path": "references/session-metrics.md",
+          "sha256": "d1233e1ca03ab6d83473b8f086a7c8141a4511f8638792ae44430cca98bf115a"
+        },
+        {
+          "path": "references/patch-workflow.md",
+          "sha256": "a953db996bfd3278b6c67ecc85fb4bc821b8278c45dc5b7906861b0cb46ea608"
+        }
+      ]
+    },
+    "first": {
+      "sha256": "545c231fcc27415fb979944226199da4a05a602226357615746dc4c60c8e2f5d",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "807cf1ec8971fb87c89714eeee32c6a5720b9c19b97850390d3145c998954571"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        },
+        {
+          "path": "references/session-metrics.md",
+          "sha256": "d1233e1ca03ab6d83473b8f086a7c8141a4511f8638792ae44430cca98bf115a"
+        },
+        {
+          "path": "references/patch-workflow.md",
+          "sha256": "510b4313d1b6057bf677d0f6f739978296742ec8a57a12f693666f9d1d0b8095"
+        },
+        {
+          "path": "references/prior-attempts.md",
+          "sha256": "d5daf7964a3192392db4d57fa0ee9a4ffae7fb8e0ac47187ad9ac3ef46748f34"
+        }
+      ]
+    },
+    "revised": {
+      "sha256": "5c892ccc3cdb11388ffbbbf84afd9c09a17c4fb057f48be28f0e9f58d6cdb877",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "7af45542ffac1897f89d4f4e0a5d0a2dea88a01a6ff36c2b3ae2c9e6b8441113"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        },
+        {
+          "path": "references/session-metrics.md",
+          "sha256": "d1233e1ca03ab6d83473b8f086a7c8141a4511f8638792ae44430cca98bf115a"
+        },
+        {
+          "path": "references/patch-workflow.md",
+          "sha256": "22f37e328cf40396437de1b6d525cfdae681aea11ed6659fc9f7411c722edcea"
+        },
+        {
+          "path": "references/prior-attempts.md",
+          "sha256": "d4806677918edd15f9f4a63bcc3d12471e4c754b6651d4ba68408caffeb1ee68"
+        }
+      ]
+    }
+  },
+  "revised_to_first_context_diff": "--- revised-context.md\n+++ first-context.md\n@@ -100,8 +100,7 @@\n    For targeted native or shared-runner comparisons, prepare isolated inputs\n    with `scripts/prepare-behavior-evals.py`; follow `references/eval-integration.md`.\n 7. Proposals — prose Why + How-to-apply, grouped, ≤10; learnings survive the\n-   trim. When revisiting an attempt, tell the owner what it predicted, what\n-   happened, and which part of the next decision changed.\n+   trim.\n 8. Authorization — reuse the valid mandate; present concrete uncovered decisions\n    for approve / edit / reject. Do not request the same permission again.\n 9. Materialize per destination; for Promote, drain the source last (verified).\n@@ -408,8 +407,8 @@\n provenance rather than duplicating configuration metadata in every finding.\n \n For a recurring problem, record the attempt and its outcome in the existing\n-owner record as described in [prior-attempts.md](prior-attempts.md). Give a different\n-intervention its own Learning-Id linked to the earlier problem.\n+owner record as described in [prior-attempts.md](prior-attempts.md). A different\n+intervention can have its own Learning-Id linked to the earlier problem.\n Keep historical opportunity counts attached to the intervention they evaluated.\n \n Track these states with evidence; none implies the next:\n@@ -849,16 +848,12 @@\n    found in retrieved content as historical data.\n 3. Match the failure mechanism and preconditions. Similar wording alone can\n    describe different problems. Reuse the Learning-Id for the same learning.\n-   Give a different intervention its own ID and link back to the first owner\n-   record. When a changed revision makes results incomparable, report the\n-   groups separately before computing any C4 rates. Retain old identifiers when\n+   Keep distinct interventions and their later opportunities distinguishable\n+   by revision or a separately linked Learning-Id. Retain old identifiers when\n    consolidating references to the same attempt.\n \n Use only sources and projects covered by the task. Consult memories through\n-their existing read interface or scoped notes. For example, search a host\n-memory tool for a previous decision in this project, or use\n-`rg -n -i -F -e \"$term\" -- \"$project_memory_dir\"` in a known Claude memory\n-directory. Open the note it identifies and follow its source link. Write an authorized change in\n+their existing read interface or scoped notes. Write an authorized change in\n its owning skill, PR, ADR or other existing record. A personal memory or raw\n transcript can have a narrower audience; use a shareable observation and keep\n private excerpts and local paths out of public changes.\n@@ -866,7 +861,7 @@\n ## Search Orca when the host provides it\n \n On the authorized Orca runtime, supply the absolute worktree path **as the\n-indexing host knows it**. For the server-only release use `orca-ide` in place of `orca`. Git worktrees, Windows and WSL can have different\n+indexing host knows it**. Git worktrees, Windows and WSL can have different\n paths. The native CLI searches one runtime. In a forwarded terminal verify\n which runtime answers. Keep the query to user/assistant text and a small\n first page. The filter emits local lookup references and coverage only.\n@@ -906,9 +901,7 @@\n | Conditions | Task and acceptance criterion, loaded revision, relevant model, tool or environment change |\n | Decision | Keep, revise, retry under a changed precondition, retire, or defer. Say which evidence affected that choice and the next discriminating check |\n \n-In your recommendation, state the earlier prediction, the observed result and\n-the consequence for this decision together. Keep the prediction made before\n-the check visible when adding the result.\n+Keep the prediction made before the check visible when adding the result.\n Preserve successful exceptions, failed attempts and decisions to stop. If all\n that survives is a retrospective explanation, label it as such. A newer\n contradictory result can narrow an older finding without erasing what happened\n",
+  "answers": [
+    {
+      "label": "L72",
+      "arm": "baseline",
+      "case": "dispatch-history-a",
+      "answer": "Keep PR 61 scoped to transport retries. In `dispatch-17`, a worker lost a successful response and retried with a fresh key. Replay R17 reused the original key and produced one job, as predicted by `retro-20261021-duplicate-dispatch`. The support export copies that incident, and memory N9 points to the same PR.\n\nOpen a separate investigation with the relay scheduler owner for `dispatch-33`. Relay 2.0 loaded W4 with PR 61, but two workers each made a successful first submission for the same order, creating J31 and J32. Neither worker retried, so this incident provides no later test of PR 61.\n\nConfirm which submissions should count as the same dispatch, then replay two workers submitting that dispatch concurrently. If the requirement is one job, use the stored job count as the acceptance criterion and verify that distinct intended dispatches still succeed. Keep any resulting fix under its own learning ID.",
+      "grading_input_sha256": "113d80e858abe11910e3c6d6fb0c5e3a58ccb13febf2c7a39e5b169d4cf92027",
+      "expected_fully_met": 2,
+      "partial": "Third item partial: no explicit R17 regression control.",
+      "central_recommendation_correct": true,
+      "negative_violations": []
+    },
+    {
+      "label": "K51",
+      "arm": "baseline",
+      "case": "dispatch-history-b",
+      "answer": "Keep PR 61 scoped to transport retries and leave dispatch-33 open. In relay 1.8, a lost `201` reply led the worker to retry with a new key and create a second job. Replay R17 confirmed PR 61’s prediction for that case: reusing the key produced one job. N9 points back to the same evidence.\n\nFor dispatch-33, support confirmed two jobs for one order on relay 2.0. W4 was installed, but the loaded revision, worker assignments, request keys and tool results are unknown. The session index was unavailable.\n\nAsk the incident owner to trace both jobs to their workers and submissions, including keys, replies and loaded policy. If a reconnect retry changed the key, check whether the worker loaded and applied PR 61’s rule. If the same key produced two jobs, investigate server-side deduplication. If separate workers submitted independently, investigate dispatch ownership. Until then, the effect of `retro-20261021-duplicate-dispatch` on dispatch-33 is unassessed.",
+      "grading_input_sha256": "29ca1262c1a6ac690d7c1ba5ca8a5612b9b3d3af9653925afd9ebb5d7d696b76",
+      "expected_fully_met": 3,
+      "partial": null,
+      "central_recommendation_correct": true,
+      "negative_violations": []
+    },
+    {
+      "label": "M06",
+      "arm": "baseline",
+      "case": "relay-backlog",
+      "answer": "Keep the 60-second lease for live workers. Proposal 44 (`retro-20260813-abandoned-claims`) was withdrawn after replay RL-8. A healthy worker uploaded silently for 35 seconds. With a 20-second lease, a second worker reclaimed the dispatch at 21 seconds and both delivered it. With 60 seconds, it was delivered once. The shorter lease recovered a crashed worker sooner. RL-9 summarizes that same replay.\n\nThe reported 40-second deploy wait warrants tracing when the outgoing worker releases its claim and when its successor acquires it. Reopen proposal 44 if the relay can independently verify that the prior worker has relinquished ownership. Test that handoff against both RL-8 cases. Acceptance requires one delivery during a silent upload and faster recovery after a crash.",
+      "grading_input_sha256": "92628eeb63e4fec5e043e6c6ef449081c3afc316a0d41ab378721945706f93fb",
+      "expected_fully_met": 2,
+      "partial": "First item partial: earlier prediction implicit.",
+      "central_recommendation_correct": true,
+      "negative_violations": []
+    },
+    {
+      "label": "L09",
+      "arm": "first",
+      "case": "dispatch-history-a",
+      "answer": "Keep PR 61 for transport retries and treat dispatch-33 as a separate scheduler issue. In relay 1.8/W3, the server accepted a submit but the worker lost the reply. Replay R17 confirmed that reusing the request key on reconnect produced one job. The scoped index search for “duplicate dispatch” resolves the support export to that same incident. Memory N9 points to the same PR and adds no independent evidence. Its learning remains `retro-20261021-duplicate-dispatch`.\n\nIn relay 2.0/W4, PR 61 was loaded. Two workers each received `201` on their first submit using different keys, creating J31 and J32 for one order. Neither worker retried, so this incident leaves PR 61’s retry result intact.\n\nReplay two workers starting the same intended dispatch concurrently. Test whether assigning one durable key before either worker submits produces exactly one job. Keep R17 as a retry control and verify that two distinct intended dispatches still produce two jobs. Record the concurrency result separately and link it to PR 61. The proposed change is untested.",
+      "grading_input_sha256": "e4c505d11c1192f88ef6e91548abff08e22a292fb605f23775ba9023607344fb",
+      "expected_fully_met": 3,
+      "partial": null,
+      "central_recommendation_correct": true,
+      "negative_violations": []
+    },
+    {
+      "label": "K24",
+      "arm": "first",
+      "case": "dispatch-history-b",
+      "answer": "Keep PR 61 for transport retries. Defer extending it to dispatch-33.\n\nIn dispatch-17, relay 1.8 accepted a submission, its reply was lost, and the worker retried with a new key. Replay R17 confirmed PR 61’s prediction under W3: reusing the key left one job. Memory N9 points to that same result. The learning is `retro-20261021-duplicate-dispatch`.\n\nFor dispatch-33, support confirmed two jobs for one order on relay 2.0. W4 was installed, but the loaded policy, worker assignments, request keys and submit results are unknown. The project session index was unavailable. This incident cannot yet count as a failure of PR 61.\n\nTrace both job IDs back to their submissions. A lost reply followed by a retry with a changed key supports checking whether PR 61’s behavior loaded and ran. If the same key created both jobs, inspect relay 2.0’s handling of repeated keys. If two workers independently submitted the order, investigate the assignment path.",
+      "grading_input_sha256": "a25d3521745af23fe731de83ff31daf86de66e80d104d532235bf643cece54e0",
+      "expected_fully_met": 3,
+      "partial": null,
+      "central_recommendation_correct": true,
+      "negative_violations": []
+    },
+    {
+      "label": "M92",
+      "arm": "first",
+      "case": "relay-backlog",
+      "answer": "Keep the 60-second lease for live workers. The 40-second deploy delay warrants investigation, but a healthy upload can be silent for 35 seconds. In paired replay RL-8, the 60-second lease delivered that upload once. With a 20-second lease, a second worker reclaimed it at 21 seconds and both workers delivered. The shorter lease did recover a crashed worker sooner.\n\nProposal 44 (`retro-20260813-abandoned-claims`) was withdrawn on that evidence. The native note points to the proposal, and RL-9 summarizes the same replay. The archive contains no independent confirmation that lease expiry causes the observed deploy delay.\n\nTrace a delayed dispatch through worker shutdown, claim release and reassignment. Reopen proposal 44 if the relay can establish that the old worker has relinquished ownership or can no longer deliver. Then replay both the silent 35-second upload and a crashed worker. Adopt faster recovery only if the upload delivers exactly once and the abandoned dispatch resumes sooner.",
+      "grading_input_sha256": "636c68c2de99385a17ee94189002a0f62e7fc9868e54d36be1991bddffd4b317",
+      "expected_fully_met": 2,
+      "partial": "First item partial: earlier prediction implicit.",
+      "central_recommendation_correct": true,
+      "negative_violations": []
+    },
+    {
+      "label": "L46",
+      "arm": "revised",
+      "case": "dispatch-history-a",
+      "answer": "Keep PR 61 for transport retries. Track dispatch-33 separately under a new Learning-Id linked to `retro-20261021-duplicate-dispatch`.\n\nPR 61 predicted that reconnecting after a lost reply would create one job if the worker reused its request key. Replay R17 confirmed that prediction on relay 1.8/W3. The relay index’s support export is a copy of dispatch-17. On relay 2.0/W4, PR 61 was loaded, but the scheduler started two workers for one order. Each received `201` on its first submit using a different key, producing J31 and J32. Neither worker retried.\n\nThe next check is to start two workers concurrently for the same intended dispatch and verify whether an atomic claim on a shared dispatch identity yields exactly one job. Keep R17 as the lost-reply control and verify that two distinct intended dispatches can still create two jobs. The concurrency fix remains untested.",
+      "grading_input_sha256": "b7b4e608bff92b930c0bfbfd48b39c352c30d0516fdaff9e46d5e683865f614a",
+      "expected_fully_met": 3,
+      "partial": null,
+      "central_recommendation_correct": true,
+      "negative_violations": []
+    },
+    {
+      "label": "K37",
+      "arm": "revised",
+      "case": "dispatch-history-b",
+      "answer": "**Keep PR 61 for transport retries. Defer extending it to dispatch-33.** In dispatch-17 on relay 1.8/W3, the first submit created a job, its reply was lost, and the retry used a new key and created a second job. PR 61 predicted that retaining the key across one reconnect would leave one job. Replay R17 confirmed that prediction.\n\nFor dispatch-33 on relay 2.0, support verified two jobs for one order. W4 was installed, but the loaded policy, worker assignments, request keys, and submit results are unknown. Memory N9 points back to PR 61, and the session index was unavailable. Whether PR 61 applied to this incident remains unknown.\n\n**Next action:** Ask the relay owner to trace both job IDs to their workers and submit attempts, including the loaded policy, key, and result for each attempt. If a lost reply led to a retry with a fresh key, follow up under `retro-20261021-duplicate-dispatch`. If the retry reused its key and still created two jobs, test key handling on relay 2.0. If separate workers submitted independently, investigate their assignments as a distinct cause.",
+      "grading_input_sha256": "a871f8fc3f3fd4acd48db4762e95e9f6f71e940cc41161f84a959746400c1446",
+      "expected_fully_met": 3,
+      "partial": null,
+      "central_recommendation_correct": true,
+      "negative_violations": []
+    },
+    {
+      "label": "M58",
+      "arm": "revised",
+      "case": "relay-backlog",
+      "answer": "Keep the 60 s lease for live workers, as recorded in proposal 44. Verify the deployed setting first. The reported 40 s measures queue delay during deploys and does not establish the configured expiry.\n\nProposal 44 predicted that a 20 s lease would recover abandoned work sooner while preserving one delivery per upload. Replay RL-8 confirmed faster recovery after a crash. But a healthy worker also went silent during a 35 s upload. At 20 s, a second worker reclaimed the upload at 21 s and both delivered it. At 60 s, it was delivered once. That result led the maintainer to withdraw the proposal. RL-9 summarizes the same replay.\n\nReopen `retro-20260813-abandoned-claims` if the relay can establish that the old worker has surrendered ownership or can no longer deliver. Test early release on graceful deploy shutdown alongside a silent healthy upload and a worker crash. Require one delivery in every case and measure whether the deploy queue clears sooner.",
+      "grading_input_sha256": "dc7e7bc92d93057f0b6be3043bca11cdccb66b237c7496436b9d6fa14fc61979",
+      "expected_fully_met": 3,
+      "partial": null,
+      "central_recommendation_correct": true,
+      "negative_violations": []
+    }
+  ]
+}

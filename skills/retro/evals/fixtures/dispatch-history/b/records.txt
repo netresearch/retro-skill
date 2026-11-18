@@ -1,0 +1,5 @@
+2026-10-21 / dispatch-17 / relay 1.8 / loaded worker policy W3
+POST /submit returned 201; its reply was lost on disconnect. A second submit (new key) created a second job.
+Owner PR 61, Learning-Id retro-20261021-duplicate-dispatch: retain the request key through a transport retry. Prediction: reconnecting once creates one job. In replay R17 the worker reuses the key and only one job exists.
+2026-11-02 / dispatch-33 / relay 2.0 / installed W4; loaded revision absent from the incident report
+Support counted two jobs with the same order. Worker assignments, request keys and tool results are unavailable in this export.

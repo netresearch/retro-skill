@@ -85,7 +85,12 @@ decisions. Process critique grants no new authority.
    for (B22), with the changed code's tests and one bounded probe run in a copy,
    offline, when that code is reachable (or skipped, with the reason); distinguish observations, hypotheses and decisions;
    filter false positives. A prior failure is not required for a learning.
-3. Cross-session enrichment (optional) — JSONL scan via `${CLAUDE_SKILL_DIR}/scripts/scan-cross-session.py`.
+3. Before proposing another fix for a recurring problem, a prior measure or a
+   changed configuration, consult the existing attempt history. Search scoped
+   native memory and session sources (including Orca when available), resolve
+   leads at the original and use the evidence to keep, revise or retire the
+   earlier approach. Follow `references/prior-attempts.md`. Other cross-session
+   enrichment is optional (`scripts/scan-cross-session.py`).
 4. Discover skills — always run `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py`, also when the owning skill seems obvious (opening it by path is a skip that needs a deviation line) — and the repo's harness (`project-harness-inspection.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
 5. Classify (`classification-heuristic.md`) — authority and rule purpose before
    enforcement and reach; consider simplification, tools or environment changes;
@@ -94,7 +99,8 @@ decisions. Process critique grants no new authority.
    For targeted native or shared-runner comparisons, prepare isolated inputs
    with `scripts/prepare-behavior-evals.py`; follow `references/eval-integration.md`.
 7. Proposals — prose Why + How-to-apply, grouped, ≤10; learnings survive the
-   trim.
+   trim. When revisiting an attempt, tell the owner what it predicted, what
+   happened, and which part of the next decision changed.
 8. Authorization — reuse the valid mandate; present concrete uncovered decisions
    for approve / edit / reject. Do not request the same permission again.
 9. Materialize per destination; for Promote, drain the source last (verified).
@@ -137,6 +143,7 @@ processes or worktrees.
 | File | Purpose |
 |---|---|
 | `references/learning-contract.md` | Purpose, evidence, quality and configuration bounds |
+| `references/prior-attempts.md` | Find earlier attempts, decide what carries over, record a testable next attempt |
 | `references/session-metrics.md` | Observed usage/time and later application evidence |
 | `references/feedback-contract.md` | Tracker-neutral evidence and reference resolution |
 | `references/friction-catalog.md` | All signals: friction + learnings (A/B/C, B16–B21) |

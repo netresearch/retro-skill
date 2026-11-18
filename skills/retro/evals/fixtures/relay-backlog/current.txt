@@ -1,0 +1,1 @@
+Relay maintenance review, 2026-11-09. Dispatches wait in the queue for about 40 s during deploys. The on-call engineer suggests halving the lease expiry to 20 s. A live upload may take 35 s without progress events. The team asks for a recommendation before changing the worker policy. The project exports its read-only records under archive/.

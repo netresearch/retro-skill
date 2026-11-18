@@ -1,0 +1,37 @@
+{
+  "kind": "results",
+  "hits": [
+    {
+      "agent": "claude",
+      "sessionId": "synthetic-relay",
+      "title": "test",
+      "cwd": "/synthetic/relay",
+      "branch": null,
+      "updatedAt": "2026-11-18T00:00:00.000Z",
+      "messageCount": 1,
+      "score": -0.013861372182627478,
+      "source": {
+        "presence": "present",
+        "filePath": "/synthetic/relay/s.jsonl"
+      },
+      "evidence": {
+        "snippet": "[[archive dispatch]] fixture",
+        "role": "user",
+        "timestamp": "2026-11-18T00:00:00.000Z"
+      },
+      "resumeCommand": ""
+    }
+  ],
+  "page": {
+    "hasMore": false,
+    "cursor": null
+  },
+  "generation": 4,
+  "truncated": {
+    "candidates": false,
+    "query": false,
+    "snippets": 0,
+    "freshness": false
+  },
+  "durationMs": 5.301835000000011
+}
