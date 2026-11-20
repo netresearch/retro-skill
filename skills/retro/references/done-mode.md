@@ -157,9 +157,14 @@ HEAD no branch contains, or a branch with commits, read `git cherry -v`: a `-`
 line already has an equivalent patch upstream. For each `+` line search its
 subject on the base (`git log origin/main --fixed-strings --grep='<subject>'`),
 because a squash or a re-landed rebase changes the patch and usually keeps the
-subject, and compare the found commit's diff with it. Content found on the base
-is removed, with the SHA in the report. Content not found stays, with the
-reason, under *Ask first* below. Never create a backup ref and report "delete
+subject, and compare the found commit's diff with it. `origin/main` stands for
+the branch's base here: for a branch cut from a release line, fetch and use
+that line. `git cherry` skips merge commits, and a patch that reached the base
+can have been reverted since, so before removing anything read
+`git diff <base> <branch> -- $(git diff --name-only <base>...<branch>)`: a line
+it shows only on the branch side is content the base does not hold. Content
+found on the base is removed, with the SHA in the report. Content not found
+stays, with the reason, under *Ask first* below. Never create a backup ref and report "delete
 later if nobody needs it": that hands the same decision to a later session that
 has less context. Six such refs, left behind by one cleanup, held 77 commits,
 and every one was already on `main`.
