@@ -46,7 +46,7 @@ structurally absent is N/A with its reason. `done` may be said when every row is
 | # | Gate | Evidence that closes it |
 |---|------|-------------------------|
 | 1 | **Task** — the original request, as the user phrased it, is delivered | Every artefact named with its live state: PR/MR (state, checks, threads, `mergeStateStatus` / `detailed_merge_status`), issue, tag, deploy. "I pushed" is not a state. |
-| 2 | **Findings** — every interim finding is *fixed*, *filed* or *rejected* | One row per finding: fixed (commit SHA) · filed (issue/ticket URL in the row — "filed" without a URL is not filed) · rejected (one-line reason the user has seen). The native and explicitly supplied tracker findings are listed by `collect-review-findings.py --transcript-file <session.jsonl>` — every open thread and every human comment there is a row. Resolve relevant coverage gaps from `complete: false` before passing this gate; see `feedback-contract.md`. |
+| 2 | **Findings** — every interim finding is *fixed*, *filed* or *rejected* | One row per finding: fixed (commit SHA) · filed (issue/ticket URL in the row — "filed" without a URL is not filed) · rejected (one-line reason the user has seen). In a repository the team maintains, *fixed* is the default: a defect found there gets a fix PR (a Phase 8 write) rather than an issue describing it, because an issue hands a later session the context this one already holds; *filed* is for a fix that needs a human decision the session cannot take, and the agent asks before filing. The native and explicitly supplied tracker findings are listed by `collect-review-findings.py --transcript-file <session.jsonl>` — every open thread and every human comment there is a row. Resolve relevant coverage gaps from `complete: false` before passing this gate; see `feedback-contract.md`. |
 | 3 | **Retro** — the Sweep ran for this session | Named report with scope, evidence/coverage and disposition: an authorized change with path/URL, explicit rejection, or a reasoned no-op with no useful measure. Missing evidence is an incomplete run, not a no-op; a `B22 not assessable` line is a stated coverage limit and does not hold this gate. No such record → run the Sweep now (Phases 1–11). A new rule or memory write is not required to pass. |
 | 4 | **Cleanup** — nothing of the session's own making is left running or lying around | The sweep list below, each line with its command output. |
 | 5 | **Questions** — nothing is pending on the user that the task still needs | Either no open question, or exactly one human-gated decision stated once with the exact command, and the loop stopped there. Re-listing a parked decision is a ❌. |
@@ -150,6 +150,24 @@ Plus: subagents stopped (`TaskStop`), background watchers ended, no `/loop`
 armed. **Before removing a worktree or branch:** `git status --porcelain`,
 `git stash list`, `git cherry -v origin/main <branch>` — anything unpushed
 stays, and the report says so.
+
+**A cleanup decides; it never parks a decision.** "Unpushed" means content
+that is not on the base, not commits no branch contains. For a worktree whose
+HEAD no branch contains, or a branch with commits, read `git cherry -v`: a `-`
+line already has an equivalent patch upstream. For each `+` line search its
+subject on the base (`git log origin/main --fixed-strings --grep='<subject>'`),
+because a squash or a re-landed rebase changes the patch and usually keeps the
+subject, and compare the found commit's diff with it. `origin/main` stands for
+the branch's base here: for a branch cut from a release line, fetch and use
+that line. `git cherry` skips merge commits, and a patch that reached the base
+can have been reverted since, so before removing anything read
+`git diff <base> <branch> -- $(git diff --name-only <base>...<branch>)`: a line
+it shows only on the branch side is content the base does not hold. Content
+found on the base is removed, with the SHA in the report. Content not found
+stays, with the reason, under *Ask first* below. Never create a backup ref and report "delete
+later if nobody needs it": that hands the same decision to a later session that
+has less context. Six such refs, left behind by one cleanup, held 77 commits,
+and every one was already on `main`.
 
 **Stashes are their own row, not a footnote to worktree removal.** They live in
 the repository, not in a worktree, so a repo can report a clean tree, no
