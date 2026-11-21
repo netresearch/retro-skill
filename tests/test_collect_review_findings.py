@@ -347,7 +347,7 @@ class CollectTest(unittest.TestCase):
         items = [
             dss.artefact("github.com", "netresearch/retro-skill", "pull", 122)
             | {"origin": "created"},
-            dss.artefact("github.com", "OWNER/REPO", "pull", 431)
+            dss.artefact("github.com", "netresearch/no-such-repo", "pull", 431)
             | {"origin": "mentioned"},
         ]
         result = crf.collect(items, None, run=self.runner)
@@ -356,7 +356,7 @@ class CollectTest(unittest.TestCase):
             state,
             {
                 "https://github.com/netresearch/retro-skill/pull/122": True,
-                "https://github.com/OWNER/REPO/pull/431": False,
+                "https://github.com/netresearch/no-such-repo/pull/431": False,
             },
         )
         failed = next(a for a in result["artefacts"] if not a["fetched"])
@@ -3435,6 +3435,86 @@ class CreateAndReadyTest(unittest.TestCase):
         )
         self.assertEqual(scan["origins"], {"https://github.com/o/r/pull/7": "acted"})
         self.assertEqual(scan["unresolved"], [command])
+
+
+class PlaceholderRefTest(unittest.TestCase):
+    """Documentation placeholder URLs are skipped before any read."""
+
+    # Case one is the session that prompted this: a skill document quoted in
+    # the transcript carried this URL, and --include-mentioned tried to read it.
+    REAL = "https://github.com/owner/repo/pull/123"
+
+    def _main(self, *texts: str):
+        """(exit code, text output, commands run) for a transcript holding `texts`."""
+        calls = []
+
+        def fake(command, **_):
+            calls.append(command)
+            return subprocess.CompletedProcess(command, 1, "", "HTTP 404: Not Found")
+
+        transcript = _transcript([], texts=list(texts))
+        out = io.StringIO()
+        with (
+            mock.patch.object(crf.subprocess, "run", side_effect=fake),
+            contextlib.redirect_stdout(out),
+        ):
+            code = crf.main(
+                [
+                    "x",
+                    "--transcript-file",
+                    str(transcript),
+                    "--include-mentioned",
+                    "--gitlab-host",
+                    "gitlab.example.com",
+                ]
+            )
+        return code, out.getvalue(), calls
+
+    def test_a_mentioned_placeholder_is_not_read_and_not_a_failure(self):
+        code, out, calls = self._main(f"see {self.REAL} in the skill")
+        self.assertEqual(calls, [])
+        self.assertNotIn("NOT READ", out)
+        self.assertIn(f"PLACEHOLDER {self.REAL}: documentation example, not read", out)
+        self.assertEqual(code, 0)
+
+    def test_every_placeholder_form_is_skipped(self):
+        for url in (
+            "https://github.com/OWNER/REPO/pull/431",
+            "https://github.com/Owner/Repo/issues/42",
+            "https://gitlab.example.com/group/project/-/merge_requests/42",
+            "https://gitlab.example.com/GROUP/sub/Project/-/issues/7",
+        ):
+            with self.subTest(url=url):
+                code, out, calls = self._main(f"example: {url}")
+                self.assertEqual((code, calls), (0, []))
+                self.assertIn("PLACEHOLDER ", out)
+                self.assertNotIn("NOT READ", out)
+
+    def test_a_real_failing_ref_beside_a_placeholder_still_exits_1(self):
+        gone = "https://github.com/netresearch/no-such-repo/pull/5"
+        code, out, calls = self._main(f"{self.REAL} and {gone}")
+        self.assertEqual(code, 1)
+        self.assertIn(f"NOT READ  {gone}:", out)
+        self.assertNotIn(f"NOT READ  {self.REAL}", out)
+        self.assertEqual(len(calls), 1)
+        self.assertIn("number=5", calls[0])
+
+    def test_a_near_placeholder_is_still_read(self):
+        # Whole path only: a real project merely containing the word is read.
+        for url in (
+            "https://github.com/owner/repo-skill/pull/1",
+            "https://gitlab.example.com/group/app/-/merge_requests/1",
+        ):
+            with self.subTest(url=url):
+                self.assertFalse(crf.is_placeholder(crf.parse_ref(url)))
+
+    def test_without_include_mentioned_a_placeholder_is_not_promised(self):
+        transcript = _transcript([], texts=[f"see {self.REAL}"])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            code = crf.main(["x", "--transcript-file", str(transcript)])
+        self.assertEqual(code, 0)
+        self.assertNotIn("--include-mentioned reads them", out.getvalue())
 
 
 if __name__ == "__main__":
