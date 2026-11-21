@@ -24,7 +24,7 @@ hand.
 
 A skill teaches an agent. A repo gate stops everyone, including the humans and
 the agents that never load the skill. Where both are possible, "Routing —
-enforceability first" already prefers the gate; this phase is what makes the
+authority first, then enforceability, then reach" already prefers the gate; this phase is what makes the
 gate *visible* as an option.
 
 ## What to inspect

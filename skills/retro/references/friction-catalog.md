@@ -24,7 +24,7 @@ This catalog covers what retro-skill **can** detect from session transcripts, po
 
 Ingestion of error trackers, monitoring and chat is out of scope — see "Future directions" at the bottom.
 
-## Implementation status (v0.1.1)
+## Implementation status
 
 | Schicht | Catalog signals | Implemented in code |
 |---|---|---|
@@ -32,7 +32,7 @@ Ingestion of error trackers, monitoring and chat is out of scope — see "Future
 | B — LLM inference | 22 | LLM-driven; B16–B21 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py`, B22 judges one decision point |
 | C — Cross-session | 6 | Partial (script `scan-cross-session.py`: C1, C2, C5) |
 | D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
-| E — Constitutional (audit) | 6 | Planned for v0.1.x |
+| E — Constitutional (audit) | 6 | LLM-driven in `/retro audit`; no signal-specific script. The audit pre-passes are `scan-cross-session.py` (C1, C5) and `check-upstream-sources.py` (skill drift) |
 
 Schicht A is feature-complete. See `references/destination-taxonomy.md` for what each signal class routes to.
 
@@ -77,7 +77,7 @@ Requires conversational context understanding. The LLM reads pre-pass output + r
 | B5 | Hallucination / fact check | Assistant claimed X, later refuted by verification or user |
 | B6 | Convention violation | Code doesn't match project style — no lint fail, but off |
 | B7 | Missing skill | Recurring task with no installed skill matching |
-| B8 | Wrong-destination materialization | Assistant wrote learning to wrong file (e.g. AGENTS.md instead of feedback memory) |
+| B8 | Wrong-destination materialization | Assistant wrote learning to wrong file (e.g. a fact about one project into a personal rule or project-local memory instead of that project's `AGENTS.md`; see [`classification-heuristic.md`](classification-heuristic.md) Axis 2) |
 | B9 | Repeated mistake in session | Same error N× in same session — lesson not learned |
 | B10 | Approval bypassed | Assistant performed irreversible action without user confirmation |
 | B11 | Plan / spec skipped | Non-trivial task started without TodoWrite/plan/spec |
@@ -508,7 +508,7 @@ Cross-session architectural patterns. Detectable only with longer horizon (weeks
 | # | Signal | Detection | Hint at |
 |---|---|---|---|
 | E1 | ADR violation pattern | Active ADRs declare X; recent N sessions violated X | Design erosion |
-| E2 | AGENTS.md rule compliance trend | `feedback_*.md` files exist but sessions repeatedly violate them | Rules aren't reaching the agent |
+| E2 | AGENTS.md rule compliance trend | Rules in `AGENTS.md` (or legacy `feedback_*.md` memories) exist but sessions repeatedly violate them | Rules aren't reaching the agent |
 | E3 | Test coverage trend | Coverage over recent commits trending down | Regression in quality discipline |
 | E4 | Skill-inventory drift | Skill count growing without corresponding scope; redundant skills present | Bloat / fragmentation |
 | E5 | Dependency staleness trend | Outdated-tool warnings (A16) recurring across sessions | Library maintenance gap |
@@ -516,7 +516,7 @@ Cross-session architectural patterns. Detectable only with longer horizon (weeks
 
 E mode is best for **monthly or quarterly reviews**, with tech-lead-level actor and ADR-style output (not per-developer per-session).
 
-## Future directions (out of v0.1.x scope)
+## Future directions (not implemented)
 
 External-feedback ingestion would extend the catalog significantly:
 
