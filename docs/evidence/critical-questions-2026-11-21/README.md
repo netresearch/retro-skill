@@ -4,9 +4,11 @@
 # Baseline run: downstream roles, unprotected green sessions, rule placement, discriminating checks
 
 On 2026-11-21 six new scenarios ran once each against the unchanged skill at
-`origin/main` e179037. All six passed under an independent grader. No
-instruction text was changed as a result: the run found no gap for these
-cases to close, so the scenarios are kept as regression fixtures.
+`origin/main` e179037. All six passed under an independent grader. Each
+trigger states the deciding facts, so the run shows that the current text
+classifies those facts correctly. Whether retro finds them unprompted in raw
+session material is untested. No instruction text was changed; the scenarios
+are kept as regression fixtures.
 
 ## Question
 
@@ -29,9 +31,10 @@ Text is added only where the unchanged skill fails such a case.
   `learning-contract.md`, `project-harness-inspection.md`,
   `classification-heuristic.md`, `destination-taxonomy.md`, `promote-mode.md`
   and `prior-attempts.md`. `friction-catalog.md` was not included.
-- Executor: one subagent per case (`claude-opus-5-5`, Claude Code), limited to
-  reading the frozen context and the trigger. No shell, no writes, no
-  repository access. One execution per case; the manifest's default
+- Executor: one subagent per case (`claude-opus-5-5`, Claude Code), briefed to
+  read only the frozen context and the trigger. Its recorded tool calls show
+  two reads of exactly those files and in-memory searches over their content;
+  no other read, write or shell command. One execution per case; the manifest's default
   `samples_per_arm` of 3 was not used.
 - Grader: one separate subagent of the same model with the private
   `expected` / `negative_expected` lists and the six reports. The cases'
@@ -57,9 +60,16 @@ The reports are in `responses/`, the grading in `grading.md`.
   behaviour; it does not show how reliably.
 - The cases were written after the candidates were known and are development
   data, not a held-out test.
-- The executors reported open points in the instructions. Two were fixed
-  separately because they are wrong cross-references, not behaviour changes:
-  the outdated routing heading name. Two remain open: promote mode excludes
-  `AGENTS.md` and phrases its move test only as "the owning skill reliably
-  triggers", and the tier-1 gate calibration assumes an incident, which a
-  harness finding from a green session does not have.
+- The executors reported open points in the instructions. One was fixed
+  separately because it is a wrong cross-reference, not a behaviour change:
+  the outdated routing heading name, in three places. Five remain open:
+  - promote mode excludes `AGENTS.md` and phrases its move test only as "the
+    owning skill reliably triggers";
+  - the tier-1 gate calibration assumes an incident, which a harness finding
+    from a green session does not have;
+  - the CI/hook parity rule names a pre-commit hook and does not say whether a
+    pre-push hook satisfies it;
+  - Spotlight reads the last turns and does not say when to widen the window
+    to evidence earlier in the session;
+  - B22 severity does not say whether a consequence derived from documents,
+    without an observed incident, counts as shown.

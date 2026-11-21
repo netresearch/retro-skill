@@ -172,8 +172,8 @@ an unavailable index and the recovery of a withdrawn proposal from project
 records. The [paired run record](../../../docs/evidence/prior-attempts-2026-11-18.json)
 contains the anonymized responses, rubrics, grades and context hashes.
 
-Six cases test behaviour that already exists without dedicated text, so that a
-later edit cannot lose it silently: the next role's information
+Six described cases pin classifications the current text already produces, so
+that a later edit cannot lose them silently: the next role's information
 ([downstream-role-loses-information](downstream-role-loses-information.md),
 control [downstream-side-effect-unevidenced](downstream-side-effect-unevidenced.md)),
 checks that nothing runs after a green session
@@ -184,4 +184,5 @@ the reader and timing of a moved rule
 check that can change a decision
 ([discriminating-check-before-more-analysis](discriminating-check-before-more-analysis.md)).
 The [baseline run](../../../docs/evidence/critical-questions-2026-11-21/README.md)
-passed all six with the unchanged skill.
+passed all six with the unchanged skill; discovery from raw session material is
+untested for them.
