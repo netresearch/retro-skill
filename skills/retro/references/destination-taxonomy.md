@@ -69,6 +69,9 @@ A project-specific convention belongs in that repo's `AGENTS.md` (committed,
 versioned, loaded for everyone working the repo). Append a titled rule in the
 same form as above. Do not create `<project>/CLAUDE.md` or
 `<project>/docs/feedback/` files — `AGENTS.md` is the single project rule store.
+A repository document that `AGENTS.md` links, or that a configured agent loads
+(a review guide its review agent reads), is part of that store: moving a rule
+there is still `project-rule`.
 
 ### 3. `skill-update` — PR to source repo
 

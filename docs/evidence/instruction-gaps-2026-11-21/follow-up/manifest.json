@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_executed",
+  "adapter_sha256": "d8686403b23975c96d3f0c1eeb9c97dee37974928eb848aea8a43f15e69a5713",
+  "target": {
+    "label": "actual-primary",
+    "execution_model": "claude-opus-5-5",
+    "resolved_model_version": null,
+    "review_model": null,
+    "judge_model": null,
+    "runtime": "claude-code",
+    "reasoning_budget": null,
+    "tool_environment": "read-only-subagent",
+    "samples_per_arm": 1
+  },
+  "contexts": {
+    "candidate": {
+      "sha256": "bb0511403fb597a92df60c67a500c4051cb71a5d8d24875f84df785d0efdb72a",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "806796fbb2c6c206c4f5040f6c721b6871bb78aa076244f1a1ef1aee2395d83d"
+        },
+        {
+          "path": "references/workflow.md",
+          "sha256": "080e8f7d70b1df5fa7e7a1c03ec394f5d653584761bc40291afce260c36d1db9"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        },
+        {
+          "path": "references/project-harness-inspection.md",
+          "sha256": "d0cbb69070dda78b96a96bc0528b962d2299b685d2582d9c672d6af15e2e5e12"
+        },
+        {
+          "path": "references/classification-heuristic.md",
+          "sha256": "4ed9824359e7809fb8396dadd2f208125835660de03206c73b03c42f5d8fdd5a"
+        },
+        {
+          "path": "references/destination-taxonomy.md",
+          "sha256": "ccb348d8e33868bb6aeddf07e807a0ec8f9e0e7f03dbf382a69632abb531abf2"
+        },
+        {
+          "path": "references/promote-mode.md",
+          "sha256": "9c49bb16c4fdf0585e29bba20b62aeba73c5a16ec5be4f947c6c5fea497318c6"
+        },
+        {
+          "path": "references/prior-attempts.md",
+          "sha256": "d4806677918edd15f9f4a63bcc3d12471e4c754b6651d4ba68408caffeb1ee68"
+        },
+        {
+          "path": "references/patch-workflow.md",
+          "sha256": "95ba64541ca0e2b99072c219087e04c1ab5a919bba9310691aec5a9bf8f3734f"
+        },
+        {
+          "path": "references/friction-catalog.md",
+          "sha256": "035790dd394f542b1ba5637a6785321472d457de9dad35c4d6a90b9a57095e42"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "promotion-pr-rejected",
+      "source_sha256": "ac2f72a2bd9c782e59d359d91fbbfecf30b35675b2efbbc2c5279f4fee0837d9",
+      "fixture": "fixtures/promotion",
+      "candidate_path": "execution/promotion-pr-rejected",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "inputs/destination.md",
+          "sha256": "37a5f2b5a80b6de62db744812e34a44aaedf1c339fa6d3d51cf158f0db8131d8"
+        },
+        {
+          "path": "inputs/notes.md",
+          "sha256": "5bb97a6453e40bd540910465ee307b63a091bf7524f7813eddf88f676b253d95"
+        },
+        {
+          "path": "inputs/pr-status.json",
+          "sha256": "e28d8030c5046367aeee296cdbcda441cab856f61507ad5998149914659d8901"
+        },
+        {
+          "path": "inputs/session.txt",
+          "sha256": "1476c86b6a1dbc1a3c07b843d8483a75d97cdecb803aae0ea75ef642a53e71b2"
+        },
+        {
+          "path": "prompt.txt",
+          "sha256": "0fbc028b4a4fa91d71a8e8eab48a2f03c3e93b3109d6242a43368dbc91c9fc6a"
+        }
+      ]
+    },
+    {
+      "id": "reader-and-timing-of-moved-rules",
+      "source_sha256": "e0b2e6a55eff491af3c28e0997efcb2f60f716a5024aa7d0eb5915d9543d5930",
+      "fixture": null,
+      "candidate_path": "execution/reader-and-timing-of-moved-rules",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "781e5edc3c8c9dae6b8054ee854da0c0b406bca1a5de4e74e29c5bf2c7adb03c"
+        }
+      ]
+    },
+    {
+      "id": "situational-check-later-information",
+      "source_sha256": "0e8b785e465eb91479e4fb81220d6bc8537ab5aa0898007eb08b1e003c4b4978",
+      "fixture": null,
+      "candidate_path": "execution/situational-check-later-information",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "3bd22da954d96cdaea75903335b85be2c21e81f5c9e518c1a61600e4b88e6359"
+        }
+      ]
+    }
+  ],
+  "shared_runner": {
+    "executes_tools": false,
+    "model_configuration": "Read effective models from the selected runner's result provenance; preparation does not configure that runner."
+  }
+}

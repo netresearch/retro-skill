@@ -91,8 +91,8 @@ Replay a past session through the lens of what happened to its output afterwards
 
 ```
 Input: past session id (or all sessions within --since window)
-Output: Schicht D findings — failures to learn from (D1–D10: reverted, rejected,
-        CI-broken), persistent candidates to investigate (D11: merged,
+Output: Schicht D findings — candidate adverse outcomes whose cause is read
+        first (D1–D10: reverted, rejected, CI-broken), persistent candidates to investigate (D11: merged,
         unreverted, CI-green is not evidence of actual use or benefit), and
         superseded temporary copies to prune (D12: a tracked canonical-source
         upstream content accepted, delivered and reachable → prune the labelled
