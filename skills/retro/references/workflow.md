@@ -452,6 +452,33 @@ measure can refute its hypothesis. No later opportunity leaves effect untested.
 Preserve successful counterexamples, changed requirements and incomplete
 coverage. Original task completion remains separate from this later check.
 
+### Closing question
+
+When the Phase-10 report holds proposals that the run has not carried to the
+end, the report ends with one question: are the proposals carried out, and how
+far. The user can answer it with one word. Ask in the user's language, through
+the channel the user's rules name for decisions, and list the three words with
+what each one does:
+
+| Word (English / German) | What follows |
+|---|---|
+| `complete` / `komplett` | Create the PRs, review and fix them until a round finds nothing new, then merge each PR in a repository the team owns and release each PR in a foreign repository from draft, once every gate is green |
+| `done` / `fertig` | Change nothing; the user has taken note of the proposals |
+| `propose` / `vorlegen` | Create the PRs, review and fix them until a round finds nothing new, and leave them as drafts for the user |
+
+- One question covers all open proposals of the run. Ask it once, as the last
+  item of the report, never per proposal.
+- The answer is the Phase-8 mandate for those proposals. `complete` includes
+  the merge in repositories the team owns; do not ask again per PR.
+- A word that the user already gave for this run (also as the argument, for
+  example `/retro komplett`) is the answer. Apply it and do not ask.
+- With no open proposal there is no question. The report says that nothing
+  remains to carry out.
+- A change that the run already made under an existing mandate stays reported
+  as made; the question asks only how far the open part goes. A PR that the run
+  opened as a draft before the answer is in the `propose` state until the
+  user says `complete`.
+
 ### Report deviations
 
 The mode table above is the *contract*. When a run deviates — skips a phase,

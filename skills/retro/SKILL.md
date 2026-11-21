@@ -105,7 +105,10 @@ decisions. Process critique grants no new authority.
    for approve / edit / reject. Do not request the same permission again.
 9. Materialize per destination; for Promote, drain the source last (verified).
 10. Report — with one deviation line per phase of the mode table that did not
-    run as prescribed (`references/workflow.md` § Report deviations).
+    run as prescribed (`references/workflow.md` § Report deviations). When
+    proposals remain open, end with one closing question that the user answers
+    in one word: `complete`, `done` or `propose` (`references/workflow.md`
+    § Closing question).
 11. Self-check — the retro's own scripts, phases and reading of the invocation:
     `detect-mechanical.py --since-command retro`, three closed questions, a
     finding only with evidence, at most two `skill-update`s against retro-skill,
