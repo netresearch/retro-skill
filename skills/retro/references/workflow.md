@@ -462,16 +462,22 @@ what each one does:
 
 | Word (English / German) | What follows |
 |---|---|
-| `complete` / `komplett` | Create the PRs, review and fix them until a round finds nothing new, then merge each PR in a repository the team owns and release each PR in a foreign repository from draft, once every gate is green |
-| `done` / `fertig` | Change nothing; the user has taken note of the proposals |
+| `complete` / `komplett` | Create the PRs, review and fix them until a round finds nothing new, then merge each PR in a repository the team owns and release each PR in a foreign repository from draft, once every gate is green. In Done mode too, this answer is the explicit authorization for these merges |
+| `noted` / `fertig` | Change nothing; the user has taken note of the proposals |
 | `propose` / `vorlegen` | Create the PRs, review and fix them until a round finds nothing new, and leave them as drafts for the user |
 
 - One question covers all open proposals of the run. Ask it once, as the last
   item of the report, never per proposal.
 - The answer is the Phase-8 mandate for those proposals. `complete` includes
   the merge in repositories the team owns; do not ask again per PR.
+- A proposal that does not become a PR (a personal rule, a memory, a ticket)
+  follows its own destination. Under `complete` it is written and read back.
+  Under `propose` the report shows the exact text and target, unwritten. Under
+  `noted` nothing is written.
 - A word that the user already gave for this run (also as the argument, for
-  example `/retro komplett`) is the answer. Apply it and do not ask.
+  example `/retro komplett`) is the answer. Apply it and do not ask. A mode
+  name is never an answer: `/retro done` selects Done mode and still ends with
+  the question, whereas `/retro done komplett` answers it.
 - With no open proposal there is no question. The report says that nothing
   remains to carry out.
 - A change that the run already made under an existing mandate stays reported

@@ -107,7 +107,7 @@ decisions. Process critique grants no new authority.
 10. Report — with one deviation line per phase of the mode table that did not
     run as prescribed (`references/workflow.md` § Report deviations). When
     proposals remain open, end with one closing question that the user answers
-    in one word: `complete`, `done` or `propose` (`references/workflow.md`
+    in one word: `complete`, `noted` or `propose` (`references/workflow.md`
     § Closing question).
 11. Self-check — the retro's own scripts, phases and reading of the invocation:
     `detect-mechanical.py --since-command retro`, three closed questions, a
@@ -138,7 +138,8 @@ team norms and permissions require the responsible authority.
 **Never:** auto-merge, silent writes, harness-invented attribution (a disclosure
 the user's rules prescribe is required), skip hooks (`--no-verify`),
 patch the cache, hardcode a static skill list, `rm` a drained memory (tombstone);
-from Done mode: merge, tag or deploy, or touch another session's containers,
+from Done mode: merge, tag or deploy (except the merges a `complete` answer to
+the closing question authorizes), or touch another session's containers,
 processes or worktrees.
 
 ## References
