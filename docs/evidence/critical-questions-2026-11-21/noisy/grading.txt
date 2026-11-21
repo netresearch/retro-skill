@@ -1,0 +1,69 @@
+All three reports pass. Each one meets the three expected items and contains none of the three negative items. My fact-check against the inputs found two small errors, one in A and one in B. Neither error changes a verdict.
+
+## Report A (baseline-1.txt)
+
+**Expected items**
+1. **Met.** Finding 1 quotes `on-call.md` ("For each failed host, read the error printed for that host and decide"). It then states that `after/report.py` "printed only `3 of 12 hosts failed`". Neither the host names nor the errors are in that output.
+2. **Met.** Report A weighs the change for on-call ("They cannot tell which host to retry and which to roll back") and for the user who asked for shorter output. Its proposed fix is "Keep the summary line, but also print one line per failed host with its error and leave out the `ok` hosts."
+3. **Met.** "They were not told the runbook depends on the per-host lines, so the acceptance does not cover that."
+
+**Negative items**
+1. **Absent.** Report A calls the change a critical defect. It does not accept the change as complete.
+2. **Absent.** The fix keeps the summary line.
+3. **Absent.** "The session delivered a regression" is a conclusion drawn from `checks.json` and `on-call.md`. Report A never claims that an incident happened or that an operator complained.
+
+**Fact-check:** Report A calls web-09 "a rollback case under ADR 0002". ADR 0002 only says that a host refuses a package whose signature does not verify. The rollback decision comes from `on-call.md`'s "any other error" rule. This is a minor wrong attribution. Report A's other claims hold:
+- A search for `report.py` does hit `on-call.md`, `architecture.md` and `AGENTS.md` (beside `session.txt` and `checks.json`).
+- Both existing tests assert constants.
+- CI runs `make test`.
+
+**Verdict: pass.**
+
+## Report B (baseline-2.txt)
+
+**Expected items**
+1. **Met.** Report B says `on-call.md` makes on-call read "the error printed for that host". It then says "The new output only says `3 of 12 hosts failed`."
+2. **Met.** Proposal 1 is "shorten `report.py` by dropping the `ok` lines, not the errors. It prints one line per failed host with its error, then the summary line."
+3. **Met, close call.** Report B separates the two decisions: "The user approved the one-line output. Whether on-call needs the per-host errors is decided by whoever owns `docs/operations/on-call.md`, not by retro." It also lists "The user may be the only reader of this output" as a point against the finding, and that softens the reading slightly. I still count the item as met, because Report B never treats the approval as a decision about the runbook.
+
+**Negative items**
+1. **Absent.** Report B calls the change a defect in the delivered change.
+2. **Absent.** Proposal 1 keeps the summary line. The alternative in its question is to change the runbook, not to bring back the long output.
+3. **Absent.** Report B claims no incident or complaint.
+
+**Fact-check:** Report B says "13 lines become 4". The old output had 12 lines (`checks.json`, `session.txt` [04]), so the change is 12 lines to 4. This is a minor numeric error. Report B's other claims hold:
+- There are 39 files under `inputs/`.
+- `on-call.md` is the only document that consumes the output.
+- `README.md` says only "Documentation is under `docs/`".
+- The docstring did change from "one line per failed host with its error" to "one summary line".
+
+**Verdict: pass.**
+
+## Report C (candidate-1.txt)
+
+**Expected items**
+1. **Met.** Report C quotes `on-call.md` § "When a rollout reports failures". It also quotes `checks.json`: `after/report.py` prints only `3 of 12 hosts failed\n`, with "no host names and no error texts".
+2. **Met.** Proposal 1 is "Keep the summary line and add one line per *failed* host with its error … keeps the output short, because the 9 `ok` lines go away. It also keeps what `on-call.md` needs."
+3. **Met.** "the request was 'shorter', and it never said to drop the error detail. Nothing shows the user knew the runbook depends on it … this approval did not [cover it]."
+
+**Negative items**
+1. **Absent.** Report C mentions that the exit code is preserved, but only as a point against the finding. It does not accept the change as complete.
+2. **Absent.** Report C keeps the summary line.
+3. **Absent.** Report C marks the consequence as derived: "Consequence (shown, not assumed). It follows from the change plus the two cited records."
+
+**Fact-check:** Every claim I checked holds:
+- `tests/test_healthcheck.py` does assert `90 == 90`.
+- `AGENTS.md` and `architecture.md` both say `report.py` "prints the result".
+- The cited turn numbers match `session.txt`.
+
+**Verdict: pass.**
+
+## About the case
+
+The case itself looks sound. Expected item 2 says "where the operator reads them", which is a little loose. In this repository the printed output is the only record (`on-call.md` and ADR 0004), so printing the failed hosts is the only reading that fits, and all three reports chose it. The three negative items do not separate these reports. None of them came close to accepting the change, reverting to the long output or inventing an incident. So this case does not distinguish the candidate from the baseline. On extras outside the case, C alone proposes a `skill-update` with an eval stub, while A and B both decline to propose one.
+
+| Report | Verdict |
+|---|---|
+| A (baseline-1) | pass (minor: ADR 0002 wrongly cited for the rollback rule) |
+| B (baseline-2) | pass (close call on expected item 3; minor: "13 lines" should be 12) |
+| C (candidate-1) | pass |

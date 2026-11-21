@@ -190,3 +190,6 @@ sessions with the repository files they worked in
 [raw-green-session-unwired-checks](raw-green-session-unwired-checks.md), control
 [raw-green-session-checks-already-wired](raw-green-session-checks-already-wired.md));
 their commands are reproduced by `tests/test_critical_question_fixtures.py`.
+[raw-downstream-runbook-not-referenced](raw-downstream-runbook-not-referenced.md)
+repeats the downstream session in a fixture of 39 files in which no file
+points to the on-call procedure.

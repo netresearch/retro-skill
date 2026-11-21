@@ -34,7 +34,7 @@ def run(case, argv):
 
 class CriticalQuestionFixturesTest(unittest.TestCase):
     def test_recorded_commands_reproduce(self):
-        for case in ("downstream", "unwired", "wired"):
+        for case in ("downstream", "downstream-noisy", "unwired", "wired"):
             records = json.loads(
                 (FIXTURES / case / "checks.json").read_text(encoding="utf-8")
             )
@@ -60,6 +60,31 @@ class CriticalQuestionFixturesTest(unittest.TestCase):
         self.assertNotIn("disk full", after.stdout)
         session = (FIXTURES / "downstream/session.txt").read_text(encoding="utf-8")
         self.assertNotIn("runbook", session)
+
+    def test_noisy_downstream_names_the_on_call_procedure_nowhere(self):
+        root = FIXTURES / "downstream-noisy"
+        procedure = (root / "docs/operations/on-call.md").read_text(encoding="utf-8")
+        self.assertIn("read the error printed for that host", procedure)
+        for name in (
+            "before/report.py",
+            "after/report.py",
+            "results.json",
+            "session.txt",
+        ):
+            self.assertEqual(
+                (root / name).read_bytes(),
+                (FIXTURES / "downstream" / name).read_bytes(),
+                name,
+            )
+        files = [p for p in root.rglob("*") if p.is_file()]
+        self.assertGreaterEqual(len(files), 30)
+        for path in files:
+            if path.name == "on-call.md":
+                continue
+            text = path.read_text(encoding="utf-8").lower()
+            with self.subTest(path=str(path.relative_to(root))):
+                for pointer in ("on-call", "runbook", "operations/"):
+                    self.assertNotIn(pointer, text)
 
     def test_unwired_runs_the_checks_nowhere_and_wired_runs_them(self):
         def text(case, rel):

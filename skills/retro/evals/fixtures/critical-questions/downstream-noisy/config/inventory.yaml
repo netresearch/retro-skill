@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+hosts:
+  - web-01
+  - web-02
+  - web-03
+  - web-04
+  - web-05
+  - web-06
+  - web-07
+  - web-08
+  - web-09
+  - web-10
+  - web-11
+  - web-12

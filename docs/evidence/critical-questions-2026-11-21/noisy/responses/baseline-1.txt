@@ -1,0 +1,91 @@
+I could not run any scripts, so everything below comes from reading the files under inputs/. The session delivered a regression. The new `after/report.py` drops the host names and errors that the repository's on-call runbook needs. The session never opened that runbook.
+
+## Session summary
+
+- [01] The user said the rollout report "is too noisy when I check a rollout" and asked for shorter output from `report.py`.
+- [03]–[06] The agent read `before/report.py` and ran it: 12 lines, 3 of them `FAILED: <error>`. It then wrote `after/report.py`, which prints only `3 of 12 hosts failed`. Exit code 1 was kept.
+- [07]–[08] The agent reported this and the user replied "looks good". No other file was read, and no test was run or added.
+
+## Finding 1: the new output breaks the on-call runbook
+
+Severity: critical. This is a defect in the delivered work, inside the original task's mandate.
+
+**Evidence**
+- `docs/operations/on-call.md`, section "When a rollout reports failures": "The rollout prints its result with `python3 report.py`. For each failed host, read the error printed for that host and decide". A `disk full` or `health check timeout` means retry once. Any other error means `rollback.sh <host>`.
+- The same file says: "The rollout keeps no log file; the printed result is the only record." `docs/adr/0004-no-central-log.md` agrees: `results.json` is overwritten by the next rollout.
+- `checks.json`, second entry: `after/report.py` printed only `3 of 12 hosts failed\n`. Neither the names (web-02, web-05, web-09) nor the errors appear anywhere in the output.
+- With that output, on-call cannot follow the runbook. They cannot tell which host to retry and which to roll back. Telling web-09 ("package signature rejected", a rollback case under ADR 0002) apart from web-02 and web-05 (retry cases) is exactly what the runbook depends on.
+
+**The check that was missed.** The user's wording "when I check a rollout" says the output feeds an operational check. Before changing what a script prints, the proportionate check is to look for readers of that output. One search of the repository for `report.py` turns up `docs/operations/on-call.md`, `docs/architecture.md` and `AGENTS.md`. The session ran no search.
+
+The request "shorter" also had two readings: drop the `ok` lines, or collapse everything to one count. The agent chose the second without asking.
+
+**What speaks against the finding**
+- The user accepted the result. They were not told the runbook depends on the per-host lines, so the acceptance does not cover that.
+- `results.json` stays on disk until the next rollout, so the information can be recovered for a while.
+- The exit code still signals failure. That part was done right.
+
+**Not run.** I could not run `make test` or a probe in a copy, because shell commands were off-limits for this evaluation. The defect is shown by the recorded output in `checks.json`, not by a run of my own.
+
+**Destination:** a repository PR to `after/report.py` (the work's own fix, not a skill change). Keep the summary line, but also print one line per failed host with its error and leave out the `ok` hosts:
+
+```
+3 of 12 hosts failed
+web-02: FAILED: disk full on /var
+web-05: FAILED: health check timeout after migration
+web-09: FAILED: package signature rejected
+```
+
+The exit code stays as it is. Update the module docstring to match.
+
+## Finding 2: the runbook cannot be found from the starting points the session used
+
+Severity: important. Signal: B21, state "found-unreachable".
+
+**Evidence**
+- `AGENTS.md` says only "`report.py` prints the result of a rollout from `results.json`."
+- `docs/architecture.md` says the same, and the `report.py` docstring has no pointer either.
+- Nothing an agent reads before editing `report.py` mentions that `docs/operations/on-call.md` parses its output.
+- The fact is written down correctly, so no new document is needed. It is just not linked from where the reader starts.
+
+**Destination:** `canonical-source (team record: repository docs)`, by PR to this repository. Add one line to `AGENTS.md` under the `report.py` bullet: "Its per-host output is read by on-call (`docs/operations/on-call.md`); keep each failed host's name and error in the output." Optionally add the same pointer to the `report.py` docstring.
+
+## Finding 3: no test pins the output on-call depends on
+
+Severity: important. Destination: `harness-artefact`.
+
+**Evidence**
+- `tests/` holds only `test_healthcheck.py` and `test_inventory.py`, and both assert constants.
+- Nothing tests `report.py`.
+- `.github/workflows/ci.yml` runs `make test`, so a new test there would run in CI.
+
+**Change:** add `tests/test_report.py`. It feeds the `results.json` fixture to `main()` and asserts three things:
+- each failed host's name and error appear in stdout;
+- the return value is 1 when any host fails;
+- the return value is 0 when none fails.
+
+The current `after/report.py` fails this test, which shows the test would have caught the regression. The repository has no pre-commit hook config, so CI is its only gate. Adding a hook (CI/hook parity) would be a new repository norm, so it goes in the question below rather than being proposed here.
+
+## Glad
+
+The exit-code contract was kept on purpose, and the agent said so in [07].
+
+## Deviations
+
+- **Phase 1 (mechanical pre-pass and review findings):** `detect-mechanical.py` and `collect-review-findings.py` were not run. Shell commands were not allowed, and the record is plain text (`session.txt`), not a JSONL transcript. Review and tracker feedback was not collected, so B18–B20 are unknown, not absent.
+- **Phase 2 (B22 probe):** the changed code was readable but its tests and a bounded probe could not be run. The evidence is the recorded output in `checks.json`.
+- **Phase 3 (history):** no session index or memory was available, so whether this has happened before is unknown.
+- **Phase 4 (skill discovery):** `find-org-skills.py` was not run because shell commands were not allowed. No skill was loaded in the session, so the owning skill is unknown. For that reason I propose no `skill-update`: retro does not install a check in a skill that never showed the gap.
+- **Phase 4c (documentation lookup):** I searched only the repository under inputs/. That search found `docs/operations/on-call.md`, so Finding 2 is "found-unreachable" for this repository. No other team record was searched.
+- **Phase 6 (evals):** no matched skill, so no `evals/` were read.
+- **Phase 9 (materialize):** nothing was written, because this run did not allow writes.
+- **Phase 11 (self-check):** `detect-mechanical.py --since-command retro` could not run. From reading the record: 0 script errors, because no retro script was run. The deviations above are all listed. The invocation was unambiguous (a Sweep).
+
+## Questions for the user
+
+1. Should a rollout print a full per-host list, or just the summary plus the failed hosts? The proposal above assumes the second, which is what the runbook needs.
+2. Should the repository get a pre-commit hook that runs `make test`, matching what CI runs? That would be a new repository norm, so the owner decides.
+3. Are the open proposals (Findings 1 and 3 together in one PR, plus the `AGENTS.md` link from Finding 2) to be carried out? Answer with one word:
+   - `complete`: create the PRs, review and fix until a round finds nothing new, then merge once every gate is green.
+   - `noted`: change nothing.
+   - `propose`: create the PRs, review and fix them, and leave them as drafts for you.
