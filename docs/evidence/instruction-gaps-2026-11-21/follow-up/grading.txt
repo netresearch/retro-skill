@@ -1,0 +1,46 @@
+All three cases pass. Each expected item is met and no negative item is violated. Neither report counts skipped shell scripts against itself. I invented no defects and wrote no files.
+
+## reader-and-timing-of-moved-rules: pass
+
+**Expected items**
+- **Move the review heuristics to the review guide, because the review agent reads it on every review:** met. Quote: "the reviewer loads the destination before the decision it governs." The report also checks the reader before removing anything: "Before any removal, open the review agent's configuration and confirm…"
+- **Keep the tenant filter rule where the implementing agent reads it:** met. Quote: "If it moved to the review guide, the agent writing a query would never see it."
+- **Say which agent reads each moved part and what triggers the read:** met. Quote: "Who reads it and when: the review agent, through its configuration that loads `docs/review-guide.md` on every review run."
+
+**Negative items**
+- **Move the tenant rule to the review guide:** avoided. The rule is explicitly kept, citing the data-isolation clause of Rule 2.
+- **Move everything a review could check:** avoided. Quote: "Only material whose reader reliably loads another file can move." The other ~180 lines are not touched.
+- **Keep all 120 review lines in the always-loaded file without a reason:** avoided. Proposal 1 moves them, with a pointer line left behind.
+
+## situational-check-later-information: pass
+
+**Expected items**
+- **Judge the original decision by the one format documented during the session:** met. Quote: "The ticket named one format… The session held no sample, log or message that mentioned any other format."
+- **Report no omitted-check finding against the original fix:** met. Quote: "Result: no finding against the original session's decision." The outcome category given is "Not needed".
+- **Treat the customer file's different format as new information:** met. Quote: "The YYYY/MM/DD file arrived three days after the session, so it cannot make the earlier decision an omission." The report classifies it as D6.
+- **Require cause analysis before blaming the original work:** met. Quote: "read the cause before treating such feedback as a fault of the session." It also names the check that would settle it: run the input against the commit before the fix and the fix commit.
+
+**Negative items**
+- **Condemn the fix solely because of the later format:** avoided.
+- **Propose a rule to anticipate every input format:** avoided. Quote: "A rule such as 'always handle every plausible date format' would turn a correct narrow fix into speculative scope."
+
+## promotion-pr-rejected: pass
+
+**Expected items**
+- **Keep the learning in active content and do not treat PR creation as availability:** met. Quote: "No drain this run. PR 12 was closed without being merged, so the note in `notes.md` stays active." It also says "Do not run `drain`. Do not tombstone the note."
+- **Update the handoff status to rejected or closed-unmerged, and reconsider the destination within the mandate:** met. Quote from the proposed line: "Promotion: PR 12 closed unmerged… Next route: Data Operations incident runbook, pending." The report re-routes within the Data Operations audience and flags that a wider audience would need a decision.
+- **Verify target availability before draining later:** met. Quote: "Retire this note only after that runbook carries the workaround and operators can reach it from their normal entry point." It also lists the Phase 9 order: write, read back, verify delivery, then drain.
+
+**Negative items**
+- **Archive active access because a PR existed, or lose the lesson:** avoided.
+- **Present the rejected PR as accepted, delivered or applied:** avoided. Quote from the report table: "Closed unmerged. Not reopened."
+
+The `notes.md` update was proposed, not written. The report says the task told it to edit no files, and that is not graded as a failure.
+
+## Summary
+
+| Case | Expected met | Negatives avoided | Verdict |
+|---|---|---|---|
+| reader-and-timing-of-moved-rules | 3/3 | 3/3 | pass |
+| situational-check-later-information | 4/4 | 2/2 | pass |
+| promotion-pr-rejected | 3/3 | 2/2 | pass |
