@@ -178,7 +178,8 @@ Three tiers, strongest first:
 
 Most B16–B21 reusable learnings land in tier 3 legitimately; do not contort a
 judgment lesson into a brittle regex to reach tier 1. The test is whether a
-check could have *failed* on the friction as it actually occurred.
+check could have *failed* on the friction as it actually occurred; after a
+green session with no friction, on the defect class the check guards.
 
 **A gate reaches one repo; prose reaches every repo the skill touches.** The two
 axes therefore pull against each other. Where a mechanical gate is possible,
@@ -194,7 +195,11 @@ transcript is a ready-made corpus of real commands, so the firing rate is
 measurable rather than arguable: extract the tool inputs, run the candidate
 predicate over them, and report the count. Two numbers make the proposal
 reviewable — how often it fires, and whether the friction that prompted it is
-among the hits.
+among the hits. A proposal from a session without an incident (a harness
+finding after a green session) has no such hit: report the firing count as the
+must-not-fire control and say that no incident exists. Wiring an existing
+project command into CI or a hook adds no new predicate; its calibration is
+that command passing on the base branch.
 
 ```
 6 of 296 Bash calls (2.0 %), and the incident itself is one of them
@@ -350,7 +355,11 @@ Severity is set during classification, not during detection:
 
 A missed situational check (B22) is graded by its shown consequence: a variant
 that still fails for the user is a user-visible bug (`critical`), rework inside
-the session is `important`, and `effect untested` stays `nice-to-have`.
+the session is `important`, and `effect untested` stays `nice-to-have`. A
+consequence counts as shown when it follows from the delivered change and a
+cited record without a further assumption, for example an input format the
+ticket lists that the delivered parser rejects; name both sources. A consequence that needs
+an assumption about behaviour the records do not hold is `effect untested`.
 
 Use severity to rank proposals in the output. Higher severity first.
 

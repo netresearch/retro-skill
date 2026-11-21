@@ -58,6 +58,12 @@ Use case: "fix this specific thing now"
 Token cost: low (targeted, narrow context)
 ```
 
+The last turns are the default window. Widen the read when the evidence that
+decides between explanations of the described problem can lie earlier, such as
+a skill load, a decision or the first occurrence of a repeated failure. Search
+for that evidence rather than reading everything, and say how far the search
+reached.
+
 Examples:
 ```
 /retro "the assistant kept forgetting we use bun not npm"

@@ -1,0 +1,71 @@
+I found nothing to change. The session's one decision point counts as **Performed** under B22, so this retro makes no proposals.
+
+## Mandate and scope
+
+- **Task:** a Sweep (`/retro`) of the session described in `prompt.txt`.
+- **Scope:** the parse failure of a second provider's response, and the agent's reaction to it.
+- **Inferred quality bar** (marked as inference): responses from all providers parse against the shared Response contract, and the contract stays stable unless there is evidence to change it.
+- **Evidence:** the prose description only. I had no transcript, no diff, no test output and no reachable worktree.
+
+## B22 decision point: the second parse failure
+
+**Warning sign at the time.** A second provider response failed to parse. That can be the sign "the same failure class returns after a fix, in a variant the fix did not cover". The description does not say whether the first failure had already been fixed. The outcome below is the same either way.
+
+**Check that sign called for.** Name the property the cases share, and check whether the fix handles that property or only the first example. The second matching sign, special handling spreading to several layers, calls for a check of which layer owns the responsibility and whether the shared abstraction still carries it.
+
+**What the agent did.**
+- It read the shared Response contract and all four adapters that build it, so it found the owner of the responsibility.
+- It tested the contract with responses from all four providers. This was the counter-probe that could have refuted "the contract is the problem". Three adapters met the contract. The fourth dropped an empty `content` field.
+- It fixed that adapter in 6 lines, at the layer that owns the defect, and left the contract unchanged.
+- It added a test for the failing response.
+- It added a test for a fifth response shape it had not been shown. This is a held-out variant, which goes beyond the example that triggered the work.
+
+**Outcome: Performed.** The skill's rule says "The diff size says nothing": a local fix can be the correct result of the check. This session is the "small-fix control" case the skill names, where the check ran and the small fix stays correct. It is not a finding. The other three outcomes do not apply:
+- not **Omitted**, because the proportionate check ran;
+- not **Not needed**, because the sign did call for a check;
+- not **Not assessable**, because the description shows the check directly.
+
+**What could still speak against this.** I only had the description. The adapter, the tests and the contract were not reachable, so I could not:
+- read the diff against the property it should establish (all four adapters produce a contract-conforming response, including empty `content`);
+- run the project's tests;
+- run one offline, bounded probe in a copy.
+
+The skill notes that a transcript alone can hide a quiet defect. If the worktree or merge commit can be reached, that probe is the open check. It is a coverage limit, not a finding.
+
+**Excluded neighbouring signals:**
+- **A13:** the agent checked before claiming success.
+- **A2 / B9:** no own step was repeated.
+- **B17:** there was a warning sign.
+- **B19:** no review or CI finding was reported after a push.
+
+## Mad / Sad / Glad
+
+- **Mad:** no avoidable friction described.
+- **Sad:** no unmet subgoal described.
+- **Glad:** the agent checked the contract against every adapter before choosing where to fix, and it added a held-out shape as a test. The prerequisites were reachable contract and adapter code and sample responses from all four providers. Another executor would need those same inputs.
+
+## Reusable learning (B16–B21)
+
+This is a candidate only, and I am not proposing it. The procedure "on a repeated parse failure, test the shared contract against every producer before fixing, and add a held-out shape" is generalizable. I could not run skill discovery, so I cannot show that the owning skill lacks it. Its absence there is unknown, not proven, so it is not a finding.
+
+## Severity and proposals
+
+There is no finding and therefore no severity grade. Proposals: 0.
+
+## Deviations (one line per phase that did not run as prescribed)
+
+- Phase 1 (mechanical pre-pass, `collect-review-findings.py`): not run; there was no transcript file and shell commands were not allowed, so mechanical A-signals and review feedback are unknown.
+- Phase 2 (B22 probe): code not reachable; the tests and the bounded offline probe were not run, and I judged from the description alone.
+- Phase 3 (prior attempts): not run; no session or memory sources were readable, so recurrence is unknown.
+- Phase 4 (skill discovery): `find-org-skills.py` not run because shell commands were not allowed; the owning skill is not identified. With no finding to route, nothing depends on it.
+- Phase 6 (evals): skipped, because no skill was matched and no proposal needs a stub.
+- Phases 8–9 (authorization, materialization): nothing to authorize or write.
+- Phase 11 (self-check): `detect-mechanical.py --since-command retro` not run, because there was no transcript and no shell. Phase 11 (self-check): nothing found — 0 script errors observed (no scripts ran), the deviations are listed above, the invocation is unambiguous.
+
+## Closing question
+
+There is no open proposal, so there is no closing question and nothing remains to carry out.
+
+## Contradictions in the instructions
+
+I found no contradiction that affects this run. One editorial point: `workflow.md` has the "Report deviations" section twice (once after the mode table and once after "Closing question"), with the same wording. It is a duplicate, not a conflict.

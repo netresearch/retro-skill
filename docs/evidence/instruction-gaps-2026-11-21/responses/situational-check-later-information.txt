@@ -1,0 +1,52 @@
+I found no finding against the original session's decision. Narrowing the fix to DD.MM.YYYY was the correct step on what was knowable then, so no proposal is made and no closing question follows.
+
+## Mode and coverage
+
+This is an Outcome review (`/retro outcome`) of the date-parsing session, 10 days later. My only evidence is the task's prose. I had no transcript, PR, CI result, ticket text or code, and I could not run anything.
+
+## Decision point checked
+
+The one decision point is the session's choice to handle only DD.MM.YYYY.
+
+**Was a warning sign visible at that moment?** No. I compared the session against the five warning signs of a missed situational check (B22):
+- **An observation contradicting the working explanation:** none. No sample, log or message mentioned another format.
+- **A failure class returning after its fix:** none inside the session. The YYYY/MM/DD failure came three days after the session ended.
+- **Special handling spreading across layers:** nothing in the description.
+- **Exceptions piling up:** nothing in the description.
+- **A large rebuild from one isolated case:** nothing in the description. The change was the narrow one the ticket asked for.
+
+**Outcome:** "Not needed". The ticket's own statement (one listed format) justified the narrow step, and the agent added a test for it. The skill's first rule against hindsight decides this: "Judge by what was knowable then. A case that appeared only later does not condemn the earlier fix; it may be a D signal in Outcome mode."
+
+**What speaks against this verdict:** I hold only a summary of the session. If the real transcript, the ticket body or an attached customer file showed a second format, this would become an omitted check and therefore a finding. If parts of the session I cannot see (a subagent transcript, an attachment) hold such a sign, the correct label is "not assessable", not "not needed". Reading the original ticket and transcript settles it.
+
+## Outcome signal
+
+**Ticket feedback after the session (D6): present.** A new ticket was opened three days after the session for the YYYY/MM/DD failure. The skill treats D1–D10 as candidate bad outcomes whose cause must be checked before anyone calls them a failure.
+
+**Cause:** nothing in the description says the session's change caused the YYYY/MM/DD failure. The described evidence matches a requirement that grew after the session: a format the ticket did not name, seen first in a later customer file. That is not an escaped defect (B19), because neither review, CI nor QA sent the session's output back against its requirement.
+
+**Whether the fix lasted (D11):** the DD.MM.YYYY fix itself was not reported as reverted or failing. I cannot claim it lasted or helped without merge, CI and revert data. It stays "effect untested".
+
+**Proposed change:** none. The new ticket already records this case, which is where the skill says such a case belongs. Writing a rule like "always support more date formats" or "always look at the architecture" would be the hindsight rule the skill forbids, and the skill also forbids filling a proposal quota.
+
+**Hypothesis, not proposed:** asking for sample input files when a parsing ticket comes in might have brought up the second format earlier. One case is no evidence for that. If wanted, it is a team decision for the owner of the ticket intake process. A future Outcome or Audit run could check whether parsing tickets keep getting follow-ups for unlisted formats, which would be a cross-session pattern (C1/C2).
+
+## Deviation lines
+
+- **Phase 1b and 3b (review/ticket feedback, outcome signals):** `collect-review-findings.py --since <session end>` was not run because the task forbids shell commands. The D6 evidence is the task's prose.
+- **Phase 2 (past-session highlights):** only the prose summary was available, not the transcript.
+- **Phase 3 (cross-session):** `scan-cross-session.py` was not run, so recurrence is unknown. The earlier-attempts search in `prior-attempts.md` was not done either.
+- **Phase 4 (skill discovery):** `find-org-skills.py` was not run. The skill that owned the work is unknown, which does not matter here because nothing needs routing.
+- **Phase 4c (documentation lookup):** no B21 candidates.
+- **Phases 5–9:** nothing to classify or write.
+- **Phase 11 (self-check):** skipped because no transcript of the retro run was available to `detect-mechanical.py --since-command retro`. Answered from the task alone: 0 script errors (no scripts ran), the deviations above are all reported, and the invocation was unambiguous (an Outcome review of one decision).
+
+## Contradiction in the instructions
+
+The D6 row's "Hint at" column reads "Output caused a bug, or the acceptance happened in the ticket". Taken literally, it nudges a reviewer to read any new ticket about a related failure as the earlier output's fault. That conflicts with B22's "judge by what was knowable then" and with the rule that D signals need cause analysis first. A requirement that grew after the session, like this one, is neither of the two readings the row offers.
+
+A possible `skill-update` to retro-skill would add "or a requirement that grew after the session" to that row. That belongs to the retro-skill maintainers to decide; I have not formally proposed it.
+
+## Closing question
+
+None. No proposal remains open, so nothing is left to carry out.
