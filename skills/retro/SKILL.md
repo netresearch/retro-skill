@@ -101,11 +101,19 @@ decisions. Process critique grants no new authority.
 7. Proposals — prose Why + How-to-apply, grouped, ≤10; learnings survive the
    trim. When revisiting an attempt, tell the owner what it predicted, what
    happened, and which part of the next decision changed.
-8. Authorization — reuse the valid mandate; present concrete uncovered decisions
-   for approve / edit / reject. Do not request the same permission again.
+8. Authorization — reuse the valid mandate; put the uncovered decisions about
+   proposals into the one closing question of Phase 10, not into a question per
+   proposal. Another write that needs approval (a Done-mode booking, a ticket
+   comment, removing anything unpushed) keeps its own concrete decision, also
+   when no proposal is open. A decision that belongs to another authority (a
+   team norm, a product decision) is named with its owner. Do not request the
+   same permission again.
 9. Materialize per destination; for Promote, drain the source last (verified).
 10. Report — with one deviation line per phase of the mode table that did not
-    run as prescribed (`references/workflow.md` § Report deviations).
+    run as prescribed (`references/workflow.md` § Report deviations). When
+    proposals remain open, end with one closing question that the user answers
+    in one word: `complete`, `noted` or `propose` (`references/workflow.md`
+    § Closing question).
 11. Self-check — the retro's own scripts, phases and reading of the invocation:
     `detect-mechanical.py --since-command retro`, three closed questions, a
     finding only with evidence, at most two `skill-update`s against retro-skill,
@@ -135,7 +143,8 @@ team norms and permissions require the responsible authority.
 **Never:** auto-merge, silent writes, harness-invented attribution (a disclosure
 the user's rules prescribe is required), skip hooks (`--no-verify`),
 patch the cache, hardcode a static skill list, `rm` a drained memory (tombstone);
-from Done mode: merge, tag or deploy, or touch another session's containers,
+from Done mode: merge, tag or deploy (except the merges a `complete` answer to
+the closing question authorizes), or touch another session's containers,
 processes or worktrees.
 
 ## References

@@ -269,12 +269,18 @@ A ⏸ or ❌ row ends the report with what is needed to close it — not with
 "erledigt". An N/A row needs no follow-up: it carries its reason and is settled.
 The word **done** may be said when every row is ✅ or N/A.
 
+When proposals of this session's retro are still open, the report ends after
+the table with the closing question from `workflow.md` § Closing question:
+`complete`, `noted` or `propose`, answered in one word. The mode word `done`
+is not an answer.
+
 ## Boundaries
 
 **Never:** stop or remove a container, process or worktree belonging to another
 session; mark a structurally impossible row ⏸ instead of N/A; merge, tag or
 deploy from Done mode (those are the task's own,
-explicitly authorized steps); book time without approval or required policy context; dismiss a scanner
+explicitly authorized steps; a `complete` answer to the closing question is that
+authorization for the merges of the retro's own PRs); book time without approval or required policy context; dismiss a scanner
 alert to turn a gate green; delete a worktree or branch holding unpushed
 commits; declare done with a ⏸ or ❌ in the table.
 
