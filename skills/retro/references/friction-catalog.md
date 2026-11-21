@@ -461,7 +461,7 @@ can remain green indefinitely. Preserve untested effectiveness explicitly.
 | D3 | Session PR closed without merge | `gh pr view --json closedAt,merged,state` shows closed, not merged | Output rejected |
 | D4 | Session PR required major changes | `collect-review-findings.py` lists human or bot review threads and replies, or findings with `commit_after` — GitHub and GitLab — or a `CHANGES_REQUESTED` review (GitHub; GitLab approvals are not read) | Output below standard; each finding is a B19 candidate |
 | D5 | CI failed on session commit | `gh run list --commit $sha --json conclusion` | Output was broken |
-| D6 | Issue or ticket feedback after the session | `collect-review-findings.py --since <session end>`: comments and status changes on the linked issues and supplied tracker evidence; plus `gh issue list --search "filename after:$session_date"` for issues that link nothing | Output caused a bug, or the acceptance happened in the ticket |
+| D6 | Issue or ticket feedback after the session | `collect-review-findings.py --since <session end>`: comments and status changes on the linked issues and supplied tracker evidence; plus `gh issue list --search "filename after:$session_date"` for issues that link nothing | Output caused a bug, the acceptance happened in the ticket, or a requirement grew after the session; read the cause before treating it as a fault of the session |
 | D7 | Follow-up session detected | Schicht C5 cross-referenced from outcome perspective | Session output didn't last |
 | D8 | Regression in test suite | Test that passed at session end now fails on a later commit | Output regressed |
 | D9 | Code reverted in same file within 30 days | Diff-based: session's net contribution to file is largely undone | Output not durable |

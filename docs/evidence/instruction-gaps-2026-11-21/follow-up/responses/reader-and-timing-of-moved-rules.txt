@@ -1,0 +1,83 @@
+# Retro report: `/retro promote` used to slim the repository's `AGENTS.md`
+
+I recommend moving the roughly 120 lines of review heuristics into `docs/review-guide.md`. The `tenant_id` rule stays in `AGENTS.md`. The skill's two-direction test in `promote-mode.md` decides both cases.
+
+Nothing has been written yet. The reasons are in "Not yet done" below.
+
+## How this mode applies
+
+- **No scan.** `promote-mode.md` says `<project>/AGENTS.md` is "excluded by construction". It also says a request to slim it is "no scan": the three binding rules are applied to its sections by hand. Each moved part must name which agent reads its new location and what triggers that read.
+- **Same destination class.** `destination-taxonomy.md` §2 says a document that "a configured agent loads (a review guide its review agent reads), is part of that store". Moving a rule into `docs/review-guide.md` is therefore still a `project-rule`. The audience stays the same (everyone working the repo), so no new disclosure question comes up.
+
+## Proposal 1 (`project-rule`, move): review heuristics go to `docs/review-guide.md`
+
+**Evidence**
+- The section is about 120 of the 300 lines: naming, comment style and readability checks.
+- The task says the review agent applies these to diffs, and that it is configured to load `docs/review-guide.md` for every review.
+
+**Why**
+- Rule 2 needs two things, and both hold:
+  - The content is a team convention, not personal.
+  - Removing it from always-loaded context is safe, because the agent that uses it is the reviewer, and the reviewer loads the destination before the decision it governs.
+- Rule 2 names this case directly: "a convention a reviewer can still correct in the diff can" move.
+
+**Who reads it and when:** the review agent, through its configuration that loads `docs/review-guide.md` on every review run.
+
+**Trade-off:** agents that write code stop seeing these conventions up front. Some naming or style problems will then only be caught in review. Rule 2 accepts that cost for conventions that can be fixed in the diff.
+
+**How to apply**
+1. **Check the reader.** Before any removal, open the review agent's configuration and confirm that it really loads `docs/review-guide.md` on every review. Rule 3 says the destination must be "accepted, available and reliably discoverable when needed". The task only describes this configuration; I have not opened it. If it is not confirmed, nothing is removed.
+2. **Check for duplicates.** Read `docs/review-guide.md` first and compare mechanisms, not headings. Rules it already covers are only removed from `AGENTS.md`. Only rules that are actually new are appended. Name both groups in the change.
+3. **Write first.** Append the new heuristics to `docs/review-guide.md` and read the result back.
+4. **Remove second.** Then remove the material from `AGENTS.md`:
+   - Hash each section when reading it.
+   - Compare that hash with the section's current text just before removing it.
+   - Remove one section per edit, with a fence-aware edit.
+   - Afterwards, check that code fences are balanced and the section count dropped by exactly the number removed.
+5. **Keep a pointer.** Leave a one-line link in `AGENTS.md`: "Review conventions: `docs/review-guide.md`". The guide then stays inside the linked rule store, and agents writing code can still find it. This line is my addition; the skill does not require it.
+6. **Optional enforcement check.** Look at each heuristic that can be matched mechanically (for example a naming pattern). If the repository already runs a linter, that rule belongs there as a `harness-artefact`, and the prose stays only where judgment is needed. This is the order "Axis 1 — purpose before enforcement" prescribes. It is a possible addition, not part of the requested slimming.
+
+## Proposal 2 (deliberately kept): the `tenant_id` rule stays in `AGENTS.md`
+
+**Evidence:** one section says every database query must filter by `tenant_id`.
+
+**Why it stays**
+- Rule 2 explicitly blocks this move: "A rule that must hold before code is written, such as an architecture or data-isolation constraint, does not move to a file read only at review."
+- If it moved to the review guide, the agent writing a query would never see it. A missing filter would then only be caught if the reviewer noticed it, and an unfiltered query is a security defect.
+- Rule 1 points the same way: "When in doubt, the section stays." Rule 1 is written for the global rules file; using it here is my reading.
+
+**Possible addition, needs the owner's decision:** a mechanical check for the rule, such as a static-analysis rule or a test against the query layer, as a `harness-artefact`. Rule 1 allows such a check only alongside the prose ("at most they pair with an enforcement gate while the prose stays"). This is a new enforcement step that nobody asked for, so the repository's owner decides on it.
+
+## The other ~180 lines
+
+The task says nothing about the remaining ~180 lines, so I have no evidence about them.
+
+- Each section should get the same two-direction test.
+- Rules that must hold while code is being written stay, for example architecture, security or build and test commands.
+- Only material whose reader reliably loads another file can move.
+
+## Deviations from the prescribed phases
+
+| Phase | What happened |
+|---|---|
+| 1 | `scan-memory-inventory.py` was not run. That is correct for this mode: `AGENTS.md` is outside what the scanner reads, and the by-hand path applies. |
+| 2–3 | No transcript was read and no attempt history was searched. This eval gave me only a prose description. |
+| 4 | `find-org-skills.py` and the harness inspection were not run, because this eval allowed no commands. Whether a skill owns review guidance or the tenant check is unknown, not absent. |
+| 6 | No evals were read, because no skill was matched. |
+| 9 | Nothing was written. The reader has not been verified and the closing question is unanswered. |
+| 11 | Self-check: `detect-mechanical.py --since-command retro` was not run (no shell). One instruction gap is below. |
+
+## Instruction gap (possible `skill-update` against retro-skill)
+
+Rule 1 ("Always-on behavior never leaves the file") is written for `~/.claude/CLAUDE.md`. The by-hand `AGENTS.md` path then says to "apply the three rules below to its sections by hand", but never says how rule 1 carries over to a project file. Read literally, it could stop any section of `AGENTS.md` from moving. The useful reading is that rule 2 decides. This report used that reading, and it should be written down. This is a gap in the wording rather than a real contradiction.
+
+## Not yet done
+
+1. Open the review agent's configuration to confirm it loads `docs/review-guide.md`.
+2. Compare the 120 lines against what `docs/review-guide.md` already says.
+
+## Closing question
+
+Should Proposal 1 be carried out as described, with the guide written first, `AGENTS.md` sections removed one at a time with hash checks, and a pointer line kept? Answer `complete`, `noted` or `propose`.
+
+The repository's owner separately decides whether to add a mechanical check for the `tenant_id` rule.
