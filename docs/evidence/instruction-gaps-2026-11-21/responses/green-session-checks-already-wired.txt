@@ -1,0 +1,68 @@
+# Retro report: Sweep (`/retro`) over the request-validation session in `src/api/`
+
+**Result: no proposals.** Nothing in the supplied record calls for a change to a skill, a project rule, the harness or memory. The evidence for this no-op is below, with what was covered and what was not.
+
+## What the record holds (and coverage)
+
+My only source is the task's prose description. I had no transcript, no repository access and no forge access, because the evaluation forbids shell commands and other files. Every statement below rests on that description alone. Where the skill would have measured something, I say so.
+
+## Mad / Sad / Glad
+
+- **Mad (avoidable friction):** none. Nothing failed, the record shows no retries, the user made no corrections, and no tool or environment problems are described.
+- **Sad (unmet benefit or subgoal):** none. The user accepted the change.
+- **Glad (what worked, and under which conditions):** before finishing, the agent ran the repository's own one-command entry points, `make test` and `make lint`. CI runs exactly the same commands. So the success claim rests on a check, not on assertion (not A13). The prerequisite was that the Makefile targets exist, which a future agent can find without help. This does not become a reusable learning: running the documented test and lint targets is the expected default, and a future agent would not need to re-derive it.
+
+## Project harness (Phase 4b), checked against what the session did
+
+| Surface | Question | Answer from the record |
+|---|---|---|
+| One-command entry points | Was a documented sequence run by hand? | No. `make test` and `make lint` are themselves the entry points. Whether a combined target such as `make check` exists is unknown, and the record gives no reason to propose one. |
+| CI workflows | Is a repo-local check missing? | No. `.github/workflows/ci.yml` runs `make lint` and `make test` on every pull request. |
+| Hook config | Did something reach CI that a local hook would have caught? | No. Nothing reached CI failing, and `.pre-commit-config.yaml` already runs the linter on commit. |
+| CI/hook parity | Does a fast check exist in CI but not as a hook? | No. The linter is in both. The test suite runs only in CI, and `patch-workflow.md` §3 says explicitly that a full test suite "is no parity case: CI alone is complete". |
+| Linter config | Would an existing rule have failed on this? | Nothing failed, so there is no friction to reproduce. A new rule without an incident would be an invented gate. |
+
+**Rejected candidates:**
+- "Add `make test`/`make lint` to CI" is rejected because both are already wired.
+- "Add the test suite to pre-commit" is rejected for two reasons. The skill excludes it from parity, and no incident supports it.
+
+Under the calibration rule, a harness proposal after a green session would need a must-not-fire count. Here there is no candidate to calibrate.
+
+## B22: missed situational check
+
+- **Decision points:** the record describes no warning sign. There is no contradicting observation, no failure class returning in a variant, no special handling spreading across layers, no pile-up of exceptions and no large rebuild triggered by one case. Every decision point therefore ends as "not needed", and none is a finding.
+- **Coverage limit:** the skill asks for the delivered artifact to be judged too. That means reading the validation change against the property it should establish, running the project's tests, and running one bounded probe offline in a copy. I could not do this: the code was not reachable to me. As the skill warns, a transcript or description alone can hide a quiet defect. The absence of a B22 finding is therefore a statement about the record, not a verified pass for the validation logic.
+
+## Reusable learnings (B16–B21) and documentation lookup (Phase 4c)
+
+No B16–B21 candidate exists: there is no hard-won technique, no review lesson and no dug-out fact. So Phase 4c had nothing to look up.
+
+## Deviation lines (one per phase that did not run as prescribed)
+
+- Phase 1 (mechanical pre-pass): `detect-mechanical.py` did not run. There was no transcript file and shell commands were not allowed. A-signals come from the prose only ("nothing failed").
+- Phase 1b (review/ticket feedback): `collect-review-findings.py` did not run, for the same reasons. Whether the PR has review threads is unknown, and incomplete coverage is not silence.
+- Phase 2b (trigger coverage B15): `find-installed-skills.sh` did not run, so the sweep across all skills is not done.
+- Phase 3 (cross-session / prior attempts): no scoped session index or memory was available, so recurrence is unknown. No recurring problem was described that would need an attempt history.
+- Phase 4 (skill discovery): `find-org-skills.py` did not run because shell was not allowed. No finding needs routing, so routing cannot have been affected. The skip is still a skip.
+- Phase 4b (project harness): this was done from the description only, without reading `ci.yml`, `.pre-commit-config.yaml` or the Makefile.
+- Phase 6 (evals): skipped, because there is no matched skill and no proposal.
+- Phases 8 and 9 (authorization, materialization): nothing to authorize or write.
+
+## Phase 11 (self-check)
+
+The mechanical input step did not run: `detect-mechanical.py --since-command retro` needs a transcript, and none was available. That is the deviation line.
+
+The three closed questions:
+1. No retro script failed, because none ran. All the skips are listed above.
+2. Every phase deviation is reported above.
+3. The invocation was a bare `/retro`, which is an unambiguous Sweep.
+
+Phase 11 (self-check): nothing found. 0 script errors, every deviation is reported above, and the invocation was unambiguous.
+
+## Contradictions in the instructions
+
+None found that affects this run.
+
+## Closing
+
+There are no open proposals, so there is no closing question. Nothing remains to carry out.

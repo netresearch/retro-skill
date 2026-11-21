@@ -1,0 +1,173 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_executed",
+  "adapter_sha256": "d8686403b23975c96d3f0c1eeb9c97dee37974928eb848aea8a43f15e69a5713",
+  "target": {
+    "label": "actual-primary",
+    "execution_model": "claude-opus-5-5",
+    "resolved_model_version": null,
+    "review_model": null,
+    "judge_model": null,
+    "runtime": "claude-code",
+    "reasoning_budget": null,
+    "tool_environment": "read-only-subagent",
+    "samples_per_arm": 1
+  },
+  "contexts": {
+    "candidate": {
+      "sha256": "bd5e08c1d4c239dbc648e6f3130183e6d0791320299cd2993412b112646b5068",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "806796fbb2c6c206c4f5040f6c721b6871bb78aa076244f1a1ef1aee2395d83d"
+        },
+        {
+          "path": "references/workflow.md",
+          "sha256": "080e8f7d70b1df5fa7e7a1c03ec394f5d653584761bc40291afce260c36d1db9"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        },
+        {
+          "path": "references/project-harness-inspection.md",
+          "sha256": "d0cbb69070dda78b96a96bc0528b962d2299b685d2582d9c672d6af15e2e5e12"
+        },
+        {
+          "path": "references/classification-heuristic.md",
+          "sha256": "5ff40197b84f762800624c5776d8cf92d8c96acc8fee4efa04b2107033b35439"
+        },
+        {
+          "path": "references/destination-taxonomy.md",
+          "sha256": "8fbcd1fac5e56a3eb234774e172a7e438aac74ea993b57161d5b1eea279e10d2"
+        },
+        {
+          "path": "references/promote-mode.md",
+          "sha256": "a5f83cf298ca7f86af53fdeca65b2a7887e6fb6e2138d58edd6a5ec6e4fa9834"
+        },
+        {
+          "path": "references/prior-attempts.md",
+          "sha256": "d4806677918edd15f9f4a63bcc3d12471e4c754b6651d4ba68408caffeb1ee68"
+        },
+        {
+          "path": "references/patch-workflow.md",
+          "sha256": "8588f3409345d226b970c5944867edc218936d0caddd7577e023283b19616612"
+        },
+        {
+          "path": "references/friction-catalog.md",
+          "sha256": "7fce85f92724350d3e843457249ca2416bdc4fca9eb4de5b0480b53c5ec0656c"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "discriminating-check-before-more-analysis",
+      "source_sha256": "1582565b23edcd5b2d41f23d0e950910b1b965cdcab2b4cedbd1a45f23b63d66",
+      "fixture": null,
+      "candidate_path": "execution/discriminating-check-before-more-analysis",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "7810226127040384a44729cdc8288cecebbc87d4d215a3585be655c366676287"
+        }
+      ]
+    },
+    {
+      "id": "downstream-role-loses-information",
+      "source_sha256": "be24dd1018a36d80475167fd73ab3d6b8e6bd50d7e98291868591799b8afd7e0",
+      "fixture": null,
+      "candidate_path": "execution/downstream-role-loses-information",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "3f37cfd5f718039d2b0c09ba7db1174f9ad82cd8826977fb27626843b039df6d"
+        }
+      ]
+    },
+    {
+      "id": "downstream-side-effect-unevidenced",
+      "source_sha256": "311aec8dd86ea0320e274792d08aba97f2fec007b271bdc2089ce19f76d2d50b",
+      "fixture": null,
+      "candidate_path": "execution/downstream-side-effect-unevidenced",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "73195fc77e6ed182b32b2ad7952682317e86e013e206c91124904f8892a16373"
+        }
+      ]
+    },
+    {
+      "id": "green-session-checks-already-wired",
+      "source_sha256": "7a728c6894c83b2866f13786db0510cdb6870b5004efa16f746142024e17ade1",
+      "fixture": null,
+      "candidate_path": "execution/green-session-checks-already-wired",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "acaa499a2b403dfdd3aebabcb8a23465e9722c7791d8788dea4efce1bdc1253e"
+        }
+      ]
+    },
+    {
+      "id": "green-session-unwired-checks",
+      "source_sha256": "b1fcd9b6f09b78f806f16b5332ace53a643a50d3bf264e98906685db93a03184",
+      "fixture": null,
+      "candidate_path": "execution/green-session-unwired-checks",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "ad32c05fdbfb055e09f46457e05679825c4ccdd640d93c5c523fcaf2625997e1"
+        }
+      ]
+    },
+    {
+      "id": "reader-and-timing-of-moved-rules",
+      "source_sha256": "e0b2e6a55eff491af3c28e0997efcb2f60f716a5024aa7d0eb5915d9543d5930",
+      "fixture": null,
+      "candidate_path": "execution/reader-and-timing-of-moved-rules",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "781e5edc3c8c9dae6b8054ee854da0c0b406bca1a5de4e74e29c5bf2c7adb03c"
+        }
+      ]
+    },
+    {
+      "id": "situational-check-justified-small-fix",
+      "source_sha256": "20f2632e86701bced8c4ea5eab476a4742363818451fd9d8f61ce318b8461780",
+      "fixture": null,
+      "candidate_path": "execution/situational-check-justified-small-fix",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "30a16aa7c69bd6d1c3cbd5912059f35ad74c39ceef115bda00566de5716b73ba"
+        }
+      ]
+    },
+    {
+      "id": "situational-check-later-information",
+      "source_sha256": "0e8b785e465eb91479e4fb81220d6bc8537ab5aa0898007eb08b1e003c4b4978",
+      "fixture": null,
+      "candidate_path": "execution/situational-check-later-information",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "3bd22da954d96cdaea75903335b85be2c21e81f5c9e518c1a61600e4b88e6359"
+        }
+      ]
+    }
+  ],
+  "shared_runner": {
+    "executes_tools": false,
+    "model_configuration": "Read effective models from the selected runner's result provenance; preparation does not configure that runner."
+  }
+}

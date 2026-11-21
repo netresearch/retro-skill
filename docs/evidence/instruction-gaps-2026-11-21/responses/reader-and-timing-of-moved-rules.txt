@@ -1,0 +1,71 @@
+## Retro report: `/retro promote` with "slim `AGENTS.md`"
+
+**Result:** this produces one proposal to move content and one decision to keep content in place. The roughly 120 lines of review-time heuristics move to `docs/review-guide.md`. Naming and comment-style conventions that the implementer applies while writing code are flagged as an open decision. The `tenant_id` rule stays in `AGENTS.md`. Nothing is written yet, because this run had no way to verify the review agent's configuration or the current text of `docs/review-guide.md`.
+
+### How the request was read
+
+`/retro promote` excludes `<project>/AGENTS.md` from its scan by construction. A request to slim it is "no scan": the three binding rules are applied to its sections by hand, and for each moved part the report names which agent reads the destination and what triggers that read (promote-mode.md, "What the scanner reads").
+
+The request can be read two ways:
+- **Reading 1:** slim `AGENTS.md` only.
+- **Reading 2:** a default promote, which also scans the memory stores and the global rules file, plus the `AGENTS.md` slimming.
+
+This report covers Reading 1. Question for the user: should the default memory and global-rules scan run as well?
+
+### Finding 1: review heuristics (about 120 lines). Move, after verification
+
+- **Evidence (from the task description):** these lines are review heuristics covering naming, comment style and readability checks. The repository's review agent applies them to diffs. `docs/review-guide.md` exists, and the review agent is configured to load it for every review.
+- **Two-direction test (rule 2):**
+  - *Generalizes:* yes. This is already team content in a committed repository file. The move goes from one team file to another in the same repository, so it reaches no new audience.
+  - *Safe to lose from always-loaded context:* the reader is the review agent. The trigger is the configured load at the start of every review. That makes it a reliable load before the decision these lines govern, which is judging a diff.
+- **Limit from rule 2:** "A constraint the implementer needs while designing does not move to a file read only at review." Readability checks are judged at review time, so they move. Naming and comment style are partly applied while the code is written. If they leave always-loaded context, the cost is extra review rounds, not a safety failure. Rule 1 still says "when in doubt, the section stays."
+  - Proposal: move the pure review-time checks.
+  - Decision for the user (or the repository's owners, because it is a team norm): do the naming and comment-style conventions also move, or does `AGENTS.md` keep a short version of them? A pointer sentence alone is not a reliable load for the implementer.
+  - Cheaper option, not verified: if the repository already runs a linter, a naming rule there would enforce this for everyone (harness-artefact, project-harness-inspection.md). Whether such a linter exists is unknown.
+- **Checks before materializing (not run here; each is a precondition):**
+  1. Read the review agent's configuration and one recent review run. This confirms that `docs/review-guide.md` is actually loaded, and from which ref: the PR head or the default branch. "Configured to load" is the declaration; it is not proof that the file is read.
+  2. Paraphrase dedup: read `docs/review-guide.md` and compare mechanisms. Only the parts the guide does not already cover are appended. Covered lines are simply removed from `AGENTS.md`, with the covering location cited (Instruction pruning).
+  3. Confirm that the review agent does not get these heuristics only from `AGENTS.md`, for example because it never loads the guide in some path.
+- **Destination and change:** append the uncovered heuristics to `docs/review-guide.md`, then remove them from `AGENTS.md` in the same PR. This ordering holds only if the review agent reads the guide from the PR head. If it reads from the default branch, removing the lines from `AGENTS.md` waits until the guide change is merged and available. Section removal must be fence-aware. Afterwards, check that fences are balanced and that the section count dropped by exactly the number removed.
+
+### Finding 2: `tenant_id` filter on every database query. Stays in `AGENTS.md`
+
+- **Evidence:** this constraint governs every query an implementer writes. That decision is made at design and write time, not at review.
+- **Rules applied:** rule 1 (always-on correctness and security constraint) and the last sentence of rule 2: a design-time constraint does not move to a file read only at review.
+- **Change:** none to its location. Two optional additions, neither verified:
+  - A mechanical gate (harness-artefact): a static check or test for queries without `tenant_id`. The prose stays alongside the gate.
+  - Also stating the rule in `docs/review-guide.md`, so that the reviewer checks it as well. This adds a copy and does not move the rule. It is only needed if the review agent does not load `AGENTS.md`, which is unknown. Question for the user: does the review agent load `AGENTS.md`?
+
+### The remaining roughly 180 lines
+
+The task description does not say what they contain, so I did not classify them. That is a gap in this run, not a finding that nothing else can move.
+
+### Authorization (Phase 8)
+
+"Slim `AGENTS.md`" covers preparing this edit in this repository. It reaches no new audience. Merging is not covered and goes into the closing question below. Moving the naming and comment-style conventions is a team-norm decision that belongs to the repository's owners.
+
+### Deviation lines
+
+- **Phase 1:** `scan-memory-inventory.py` did not run. The `AGENTS.md` path is by hand by design, and Reading 2 was not run. Shell commands were not available in this run.
+- **Phase 4:** `find-org-skills.py` and the repository harness inspection did not run because no commands were possible. The linter and gate options above are therefore unverified.
+- **Phase 4c:** the team records were not searched. Whether `docs/review-guide.md` already covers the heuristics is unknown, not absent.
+- **Phase 6:** no skill's `evals/` were read, because no skill matched.
+- **Phase 9:** nothing was materialized. The availability checks listed in Finding 1 are outstanding.
+- **Phase 11:** `detect-mechanical.py --since-command retro` did not run because no commands were possible. Two findings were raised by reading the instructions; they are listed below.
+
+### Phase 11 self-check: proposed changes to retro-skill (at most two)
+
+1. **Missing race check on the by-hand path.** Rule 3 requires re-checking the scan's `content_sha256` before removing a section. A by-hand `AGENTS.md` slimming has no scan, so it has no hash. The instructions name no substitute, such as recording the blob SHA or a section hash at the start and re-checking it before the edit. I propose adding one to promote-mode.md, in the "Excluded by construction" paragraph.
+2. **Rule 2's first condition is phrased for the personal file.** "Generalizes beyond this user" was written for the global rules file. For `AGENTS.md`, which is already team content, the condition is always true. That leaves the reader-timing half as the only real test without saying so. I propose wording this for the `AGENTS.md` case.
+
+### Contradictions in the instructions
+
+- SKILL.md says `/retro promote` re-homes local memory and by default scans the global rules file. promote-mode.md routes an `AGENTS.md` slimming through the same mode as a by-hand pass with no scan. Neither says whether a combined invocation still runs the default scan. This is the source of the two readings above.
+- The race-check gap described in Phase 11, item 1.
+
+### Closing question
+
+Proposals remain open: the move to `docs/review-guide.md`, the optional gate and copy for `tenant_id`, and the two retro-skill updates. How far should they be carried out?
+- `complete`: create the PRs, review and fix them until a round finds nothing new, then merge each one once every gate is green.
+- `noted`: change nothing.
+- `propose`: create the PRs, review and fix them, and leave them as drafts for you.

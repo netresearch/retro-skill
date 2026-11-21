@@ -46,6 +46,9 @@ globs `<slug>/memory/*.md` and reads the global rules file, so these are never
 enumerated in the first place): `<project>/AGENTS.md` (a correct
 *destination* — re-promoting it by default loops), and `.serena/memories/*.md`
 (project-overview context, not behaviour rules — would pollute global memory).
+A request to slim `<project>/AGENTS.md` itself is therefore no scan: apply the
+three rules below to its sections by hand, and name for each moved part which
+agent reads the destination and what triggers that read.
 
 `--project=<slug>` narrows only the memory stores. The global rules file is
 not tied to a slug, so its sections appear in a narrowed run too; pass
@@ -76,7 +79,12 @@ findings reappear on every run. Three binding rules:
    the prose stays. When in doubt, the section stays.
 2. **Two-direction test.** Promote a section only when BOTH hold: the content
    generalizes beyond this user, AND losing it from always-loaded context is
-   safe because the owning skill reliably triggers when the content matters.
+   safe because the reader who needs it reliably loads the destination before
+   the decision it governs: an owning skill that triggers, or a document that
+   agent is configured to load. A rule that must hold before code is written,
+   such as an architecture or data-isolation constraint, does not move to a
+   file read only at review; a convention a reviewer can still correct in the
+   diff can.
 3. **Drain is an agent edit, not the `drain` subcommand.** The subcommand
    refuses paths outside `<slug>/memory/` by design. Only after the destination
    is accepted, available and reliably discoverable when needed, remove the

@@ -1,0 +1,45 @@
+I found nothing to propose for this session. Shortening the debug output of `scripts/dev-check.sh` from about 400 lines to 20 left no evidence of friction, harm or a reusable learning. The skill allows that outcome, a justified no-op, as long as the reasons and the coverage are stated. Both follow.
+
+## Coverage
+- **What I read:** only the task description in `downstream-side-effect-unevidenced/prompt.txt` and the skill text in `candidate-context.md`. The task's prose is all I know about the session.
+- **No transcript or tools:** I had no transcript JSONL, repository, PR list or tracker, and I was not allowed to run shell commands.
+- **Mechanical scripts not run:** `detect-mechanical.py`, `collect-review-findings.py`, `find-org-skills.py`, the prior-attempt search and the eval preparation all did not run. Their deviation lines are below. Anything those scripts would have covered is unknown, not absent.
+
+## What the session did
+- **Change:** `scripts/dev-check.sh`, a local test helper, now prints about 20 lines of debug output instead of about 400.
+- **Callers (as stated in the task):** nothing in CI calls the script, and neither does a hook or another script.
+- **Documentation (as stated in the task):** `AGENTS.md` and `README.md` describe it only as a local convenience for whoever runs it.
+- **Result:** the session's later test runs were faster to read. That is a stated benefit, and nothing in the task contradicts it.
+
+## Candidates I checked and rejected
+
+1. **A downstream consumer that depended on the 400 lines.** There is no evidence for one.
+   - The task rules out every kind of consumer: CI, hooks, other scripts, and any documented interface.
+   - "Someone might have parsed that output" is a hypothesis with no support. `learning-contract.md` says a hypothesis stays a hypothesis and that no rule may be invented. Not a finding.
+2. **B22, missed situational check.** None of the five warning signs was visible.
+   - No observation contradicted the working explanation.
+   - No failure class came back after a fix.
+   - No special handling spread across layers, and no exceptions piled up.
+   - Nothing was restructured on the strength of one isolated case.
+   - Without a warning sign, B22 does not apply. If you count "who reads this output?" as a decision point anyway, the outcome is "not needed": the documented role and the missing callers justified the narrow change.
+   - The transcript does not say whether the agent itself looked at the call sites. A finding would need a visible warning sign, and there was none.
+3. **Lost debugging detail for the person running the script.** Not a defect. The only audience is the person running it locally, and the change served that audience. Nothing suggests the removed detail was ever needed. If it is needed later, a later session can show that as a D2 or D9 outcome; it is not a session-end finding.
+4. **Mad/Sad/Glad.**
+   - Mad: no retries, corrections or tool problems were described.
+   - Sad: no unmet subgoal.
+   - Glad: the test runs became easier to read. That is a local, one-off improvement with no technique a future agent would have to re-derive, so it fails the "would a future agent re-derive this?" filter and is not a B16–B21 learning. D11 is also excluded for local changes with no transferable approach.
+
+**Proposals: none.** There is nothing to route, so Phase 10 has no closing question (`complete` / `noted` / `propose`) and nothing to materialize or authorize.
+
+## Deviation lines
+- Phase 1 (mechanical pre-pass, review findings): not run. There was no transcript file, and the evaluation forbids shell commands. Mechanical A-signals and forge or tracker feedback are unknown.
+- Phase 3 (prior attempts): not run. There was no recurring problem and no earlier measure to look up, and I had no access to memory or session sources.
+- Phase 4 (skill discovery, harness, documentation lookup): not run. `find-org-skills.py` could not run, and with no B21 candidate there was nothing to look up.
+- Phase 6 (evals): not run, because no skill was matched.
+- Phases 8 and 9 (authorization, materialize): no proposals, so nothing to do.
+
+## Phase 11 (self-check)
+Phase 11 (self-check): nothing found. No script errors, because no script ran; the skipped phases are listed above. The invocation was unambiguous: a plain `/retro` is a Sweep. I did not run `detect-mechanical.py --since-command retro` (no transcript, no shell).
+
+## Contradictions in the instructions
+I found none that affected this run.
