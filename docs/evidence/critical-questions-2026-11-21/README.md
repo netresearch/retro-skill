@@ -105,5 +105,12 @@ Two corrections were made after the run and before grading or commit:
   a stated fast-check reason. Both arms were graded against the corrected item.
 - Both arms noted that the fixture's `build.yml` had no checkout step and the
   repository no `Dockerfile`. Both were added afterwards. Neither finding
-  depended on them, but the committed fixture is not byte-identical to the one
-  the run used.
+  depended on them, but the committed fixtures differ from the ones the run
+  used, in these files of `unwired` and `wired`:
+  - `.github/workflows/build.yml`, and in `wired` also `ci.yml`: a pinned
+    `actions/checkout` step was added, and `permissions: {}` became
+    `permissions: contents: read`, which checkout needs;
+  - `Dockerfile`: added;
+  - `tests/test_validate.py`: an unused `# noqa: E402` comment was removed for
+    the repository's linter.
+  `downstream` is unchanged.

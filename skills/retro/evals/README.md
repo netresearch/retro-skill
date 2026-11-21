@@ -139,8 +139,8 @@ as provenance.
 
 ## Tool-enabled integration inputs
 
-The original four cases below and the reconciliation cases carry a `fixture`
-directory. The adapter copies it into an isolated execution directory; modify
+The original four cases below, the reconciliation cases and the `raw-*`
+critical-question cases carry a `fixture` directory. The adapter copies it into an isolated execution directory; modify
 only that copy when its task authorizes changes.
 
 | Case | Observable outcome to evaluate |
