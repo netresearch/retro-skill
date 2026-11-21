@@ -1,0 +1,22 @@
+[
+  {
+    "argv": [
+      "python3",
+      "before/report.py",
+      "results.json"
+    ],
+    "exit_code": 1,
+    "stdout": "web-01: ok\nweb-02: FAILED: disk full on /var\nweb-03: ok\nweb-04: ok\nweb-05: FAILED: health check timeout after migration\nweb-06: ok\nweb-07: ok\nweb-08: ok\nweb-09: FAILED: package signature rejected\nweb-10: ok\nweb-11: ok\nweb-12: ok\n",
+    "stderr": ""
+  },
+  {
+    "argv": [
+      "python3",
+      "after/report.py",
+      "results.json"
+    ],
+    "exit_code": 1,
+    "stdout": "3 of 12 hosts failed\n",
+    "stderr": ""
+  }
+]

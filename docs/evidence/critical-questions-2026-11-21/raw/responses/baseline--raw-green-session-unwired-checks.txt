@@ -1,0 +1,66 @@
+The session's own work holds up. There is one repository finding: the checks `AGENTS.md` requires before a push are not run by CI.
+
+**Evidence read:** `session.txt`, `checks.json`, `AGENTS.md`, `Makefile`, `.github/workflows/build.yml`, `src/validate.py` and `tests/test_validate.py`, all under `.../baseline-cases/raw-green-session-unwired-checks/inputs/`.
+
+## What the session did
+
+- **Task:** reject signups whose email is only spaces, in the request validation.
+- **Steps:** the agent read and edited `src/validate.py`, edited `tests/test_validate.py`, then ran `make test` and `make lint`.
+- **Checks:** both exited 0. The test run reported "Ran 3 tests … OK". `checks.json` holds the same two commands with the same results.
+- **Claim:** the agent's report ("make test and make lint pass") matches that evidence, so there is no unbacked success claim.
+- **End:** the user replied "thanks, ship it", and the record ends there. No commit, push or CI run is recorded, so whether anything shipped cannot be judged.
+
+The fix itself holds by reading. `request.get("email", "").strip()` turns any whitespace-only value into `""`, which then gets "email is required". `str.strip()` removes all characters Python treats as whitespace: spaces, tabs, newlines and Unicode spaces such as U+00A0. So the fix covers the property "whitespace only", not just the one example. The new test checks `"  "`.
+
+## Finding 1 (harness-artefact, important): the checks are written down as a list, but CI does not run them
+
+**Evidence:**
+- `AGENTS.md`: "Run `make test` and `make lint` before pushing."
+- `.github/workflows/build.yml`: it runs on push and has one job, `docker build -t signup .`. It does not run `make test`, `make lint`, `unittest` or `py_compile`.
+- The input tree has no hook config (lefthook, pre-commit, husky or captainhook).
+
+**What it means:** the agent followed the instruction, so this session lost nothing. But the next person or agent who skips the list can push a broken validator, and nothing fails. That is the case the skill's harness inspection warns about: a gate described as a list, run by hand. A repository gate also stops people who never read `AGENTS.md`.
+
+**Also seen in the same workflow (assumption):** `build.yml` has no checkout step, and the input tree has no `Dockerfile`. The job may therefore fail on every push no matter what the code does. **ASSUMPTION:** `inputs/` is the whole repository. If it is only part of it, this point is void. The first CI run after "ship it" would settle it.
+
+**Proposed change:** one change in the signup repository, extending the existing `build.yml` rather than replacing it.
+1. Add a `test` job: an SHA-pinned `actions/checkout`, then `make test` and `make lint`.
+2. Give that job `permissions: contents: read`. The workflow-level `permissions: {}` stays.
+3. Add checkout to the `image` job too, if the Dockerfile exists.
+4. For CI/hook parity, the same two commands also belong in a local pre-push hook in the same change. Both are quick checks that give the same result every time.
+
+The repository has no hook tool yet. Choosing one is a decision for the repository owner, so the hook half is a question below.
+
+**No skill change:** the agent ran the checks correctly, so no skill instruction is missing. The step that lists skills (`find-org-skills.py`) was not run, so no owning skill is named.
+
+**No proposal: observations outside the task**
+- `make lint` is only `py_compile src/validate.py`. That is a syntax check of one file; `tests/` is not covered. This is for the owner to know about, not a proposal.
+- If `email` is present but not a string (JSON `null`), `.strip()` raises `AttributeError`. That was not part of the task, and no warning sign appeared during the session. Whether the session introduced it is unknown, because no diff is available.
+
+## B22 (missed situational check)
+
+- **Decision point:** how to reject whitespace-only emails.
+- **Outcome:** not needed. This was one narrow request that passed first time, and no counter-observation or returning failure appeared.
+- **Delivered code:** read, not run (see the deviations below).
+- **Not assessable:** whether the edit to `tests/test_validate.py` replaced an earlier `""` test or added a new one. Missing evidence: the diffs of turns [03] and [04].
+
+## Learnings (B16–B21)
+
+None, and that is justified. Nothing was dug out: the commands came from `AGENTS.md` and the `Makefile`. There were no reviews or maintainer requests, and no workaround was found.
+
+**Glad:** the agent used the documented one-command entry points and backed its claim with their output.
+
+## Deviations, one per phase
+
+- **Phase 1:** `detect-mechanical.py` not run. The record is a text file, not a JSONL transcript, and this run allowed no shell.
+- **Phase 1b:** `collect-review-findings.py` not run, for the same reason. No PRs or MRs appear in the record.
+- **Phase 2:** the project tests and the bounded probe of the fix were not run (no shell). The fix was judged by reading the code only.
+- **Phase 3:** no prior-attempt search was done. Only `inputs/` was available.
+- **Phase 4:** `find-org-skills.py` not run, and no team records were searched, so skill ownership is unknown, not absent. The repository harness (step 4b) was inspected in full.
+- **Phase 6:** no evals read, because no skill matched.
+- **Phase 11:** `detect-mechanical.py --since-command retro` not run (no shell). Reviewing this retro's own reading found nothing.
+
+## Questions for the user
+
+1. Does the signup repository's owner want a local hook added alongside the CI job, and with which tool? This is their decision, not something to install unasked.
+2. Closing question for Finding 1. Answer `complete` (open the change in the signup repository), `noted` (keep it as a record only) or `propose` (show the draft diff first).

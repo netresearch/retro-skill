@@ -1,0 +1,76 @@
+# Retro (Sweep): signup whitespace-email session
+
+**Result: nothing to change.** This session needs no new rule, gate, skill edit or memory. I found no friction and no learning that passes the generalizability filter.
+
+I could only read files. Every check result below comes from what the session recorded. I ran nothing myself.
+
+## What the session did
+
+1. **Turn 01.** The user asked that signups with a spaces-only email be rejected in the request validation.
+2. **Turns 02–04.** The agent read and edited `src/validate.py`, then edited `tests/test_validate.py`.
+3. **Turns 05–06.** The agent ran `make test` (exit 0, "Ran 3 tests … OK") and `make lint` (exit 0).
+4. **Turn 07.** The agent reported success and named both checks.
+5. **Turn 08.** The user said "thanks, ship it". The record ends there.
+
+## Mad, Sad, Glad
+
+**Mad (avoidable friction): none.**
+- No tool error, retry or correction appears.
+- The user did not push back.
+
+**Sad (unmet benefit): none shown.**
+- The validation now rejects a spaces-only email.
+- The record ends at "ship it", with no commit or push shown. I cannot say whether the change shipped. It is not a finding either way.
+
+**Glad (what worked, and why):**
+- **The local checks match the gate.** `AGENTS.md` says "Run `make test` and `make lint` before pushing". The session ran exactly these two targets, and `.github/workflows/ci.yml` runs the same two. `checks.json` records the same argv as the Makefile recipes, both with exit 0 and "Ran 3 tests". That count equals the three test methods in `tests/test_validate.py`. Because the documented one-command entry points exist, the agent did not re-derive a command or run a sequence by hand.
+- **The test checks the requested property.** `test_empty_email_is_rejected` calls `validate({"email": "  "})` and expects `["email is required"]`. The delivered code reaches that branch only because of `.strip()`. Without the strip, `"  "` is truthy and has no `@`, so the result would be `["email is invalid"]` and the test would fail. I worked this out by reading the code, not by running it.
+
+## B22: was a warning sign missed?
+
+I checked each decision point for a warning sign the agent left unanswered.
+
+| Decision point | Warning sign visible at the time? | Outcome |
+|---|---|---|
+| Turns 02–03: read and fix `validate.py` | None. No observation contradicted the plan, and no failure came back. | Not needed |
+| Turn 04: test edit | None | Not needed |
+| Turns 05–06: run the checks | None. Both exited 0, and the test count matches. | Performed (the documented checks ran) |
+
+The skill also asks to run the changed code's tests and one bounded probe in an offline copy. **That step was skipped**, because this run has no shell. The verdict above rests on the session's recorded check results plus my reading of the code.
+
+`inputs/` holds only the files after the edit and no diff. So I cannot say what the change added or altered compared with before.
+
+## Learnings check (B16–B21)
+
+A green session still owes this pass. Candidates I considered:
+- `str.strip()` before the empty check.
+- Running the Makefile targets that `AGENTS.md` names.
+
+Neither passes the filter "would a future agent re-derive this?". The first is a routine one-line fix. The second is already written in `AGENTS.md` and wired into CI, so it is not uncaptured knowledge. Nothing qualifies for any destination.
+
+## Outside session scope (for `/retro audit`, not a proposal)
+
+- **Hook and CI differ.** `.pre-commit-config.yaml` runs only `make lint`, while `ci.yml` runs `make lint` and `make test`. The session did not trip over this: it ran both locally and nothing reached CI. The harness-inspection phase "is not a repo audit", so this belongs in `/retro audit --scope repo`. Whether `make test` should also run as a hook is that audit's call.
+- **`build.yml`.** I left it out: the session never touched it, and `inputs/` is only a subset of the repository.
+
+## Phases that did not run as prescribed
+
+- **Phase 1 (mechanical pre-pass):** `detect-mechanical.py` was not run, because there is no shell and `session.txt` is a plain-text record, not a JSONL transcript. Mechanical A-signals are unknown. I read the record by hand instead.
+- **Phase 1 (review findings):** `collect-review-findings.py` was not run, and no PR, MR or tracker evidence was supplied. Feedback from outside the transcript is unknown, not absent. With "ship it" only minutes old, Outcome mode (D4, D6) is the place for it later.
+- **Phase 3 (prior attempts):** not searched, because session sources and memory are outside the allowed paths. No recurring problem was involved, so there was nothing to revisit.
+- **Phase 4 (skill discovery and team records):** `find-org-skills.py` was not run (no shell). I searched no team records. The catalogue and the team records are unknown, not empty. With no finding to route, nothing depended on them.
+- **Phase 6 (evals):** not applicable, because no skill was matched for a change.
+- **Phases 8 and 9 (authorization, materialization):** not applicable, because there are no proposals.
+
+## Phase 10: closing
+
+No proposals are open, so there is no closing question. Nothing remains to carry out.
+
+## Phase 11: self-check
+
+The self-check script (`detect-mechanical.py --since-command retro`) was not run, because there is no shell. The three questions:
+1. **Script failures:** none, because no retro script ran.
+2. **Unreported deviations:** none; every skipped phase has its line above.
+3. **Open decision in the invocation:** none; a bare `/retro` is a Sweep.
+
+Result: nothing found.

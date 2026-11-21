@@ -184,5 +184,9 @@ the reader and timing of a moved rule
 check that can change a decision
 ([discriminating-check-before-more-analysis](discriminating-check-before-more-analysis.md)).
 The [baseline run](../../../docs/evidence/critical-questions-2026-11-21/README.md)
-passed all six with the unchanged skill; discovery from raw session material is
-untested for them.
+passed all six with the unchanged skill. Three of them also exist as raw
+sessions with the repository files they worked in
+([raw-downstream-role-loses-information](raw-downstream-role-loses-information.md),
+[raw-green-session-unwired-checks](raw-green-session-unwired-checks.md), control
+[raw-green-session-checks-already-wired](raw-green-session-checks-already-wired.md));
+their commands are reproduced by `tests/test_critical_question_fixtures.py`.

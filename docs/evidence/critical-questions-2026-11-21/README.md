@@ -6,9 +6,9 @@
 On 2026-11-21 six new scenarios ran once each against the unchanged skill at
 `origin/main` e179037. All six passed under an independent grader. Each
 trigger states the deciding facts, so the run shows that the current text
-classifies those facts correctly. Whether retro finds them unprompted in raw
-session material is untested. No instruction text was changed; the scenarios
-are kept as regression fixtures.
+classifies those facts correctly. A second run, below, gave three of the cases
+as raw session material instead; both the unchanged and a revised skill text
+found the facts unprompted. The scenarios are kept as regression fixtures.
 
 ## Question
 
@@ -55,9 +55,9 @@ The reports are in `responses/`, the grading in `grading.md`.
 
 ## Limits
 
-- One sample per case, one model, described situations rather than raw
-  session material. A pass shows that the current text can produce the
-  behaviour; it does not show how reliably.
+- One sample per case and one model. Six cases are described situations;
+  three of them were repeated as raw sessions. A pass shows that the text can
+  produce the behaviour; it does not show how reliably.
 - The cases were written after the candidates were known and are development
   data, not a held-out test.
 - The executors reported open points in the instructions. One was fixed
@@ -73,3 +73,36 @@ The reports are in `responses/`, the grading in `grading.md`.
     to evidence earlier in the session;
   - B22 severity does not say whether a consequence derived from documents,
     without an observed incident, counts as shown.
+
+## Raw-material run
+
+Three cases were rebuilt as synthetic sessions with the repository files they
+worked in, under `skills/retro/evals/fixtures/critical-questions/`:
+`raw-downstream-role-loses-information`, `raw-green-session-unwired-checks`
+and its control `raw-green-session-checks-already-wired`. The trigger only says
+to inspect `session.txt` and the local artifacts. The recorded commands are
+reproduced by `tests/test_critical_question_fixtures.py`.
+
+Each case ran once in two arms: the skill text at `origin/main` e179037 and the
+revised text of the follow-up change. The executors could read only the frozen
+context and their own fixture copy; their recorded tool calls show no other
+read, no write and no shell command. A separate grader passed all six reports
+(`raw/grading.txt`); `raw/responses/` holds them verbatim and `raw/manifest.json` the
+context hashes.
+
+| Case | Unchanged text | Revised text |
+| --- | --- | --- |
+| raw-downstream-role-loses-information | pass | pass |
+| raw-green-session-unwired-checks | pass | pass |
+| raw-green-session-checks-already-wired | pass | pass |
+
+Two corrections were made after the run and before grading or commit:
+
+- One negative item of `raw-green-session-unwired-checks` forbade a pre-commit
+  hook for the test suite. The fixture's suite runs in milliseconds, so a hook
+  is allowed by the fast-check definition. The item now forbids a hook without
+  a stated fast-check reason. Both arms were graded against the corrected item.
+- Both arms noted that the fixture's `build.yml` had no checkout step and the
+  repository no `Dockerfile`. Both were added afterwards. Neither finding
+  depended on them, but the committed fixture is not byte-identical to the one
+  the run used.

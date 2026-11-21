@@ -1,0 +1,55 @@
+{
+  "hosts": [
+    {
+      "name": "web-01",
+      "ok": true
+    },
+    {
+      "name": "web-02",
+      "ok": false,
+      "error": "disk full on /var"
+    },
+    {
+      "name": "web-03",
+      "ok": true
+    },
+    {
+      "name": "web-04",
+      "ok": true
+    },
+    {
+      "name": "web-05",
+      "ok": false,
+      "error": "health check timeout after migration"
+    },
+    {
+      "name": "web-06",
+      "ok": true
+    },
+    {
+      "name": "web-07",
+      "ok": true
+    },
+    {
+      "name": "web-08",
+      "ok": true
+    },
+    {
+      "name": "web-09",
+      "ok": false,
+      "error": "package signature rejected"
+    },
+    {
+      "name": "web-10",
+      "ok": true
+    },
+    {
+      "name": "web-11",
+      "ok": true
+    },
+    {
+      "name": "web-12",
+      "ok": true
+    }
+  ]
+}

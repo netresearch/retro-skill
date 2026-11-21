@@ -1,0 +1,65 @@
+# Retro report: whitespace-only email rejection session
+
+**Result: no proposals.** The session went smoothly. Every check the repository defines was already wired into the documented commands and CI, and the agent ran both of them. No signal in the catalog reaches the bar for a `skill-update`, `project-rule` or `harness-artefact` proposal. There are two hypotheses about the delivered code that I could not test, and two coverage limits. Both are stated below so they are not mistaken for a clean pass.
+
+## Evidence read
+
+Everything came from `inputs/`:
+- `session.txt`: 8 turns.
+- `checks.json`: the two check runs.
+- The repository files: `AGENTS.md`, `Makefile`, `.pre-commit-config.yaml`, `.github/workflows/ci.yml`, `.github/workflows/build.yml`, `src/validate.py` and `tests/test_validate.py`.
+
+## Mandate
+
+The user asked for one thing in turn [01]: reject emails made only of spaces, in the request validation. In turn [08] the user accepted the result and said "ship it". The agent edited `src/validate.py` and `tests/test_validate.py` and ran `make test` and `make lint`. Both exited 0 ([05], [06]), and `checks.json` agrees: exit codes 0 and "Ran 3 tests … OK".
+
+## Mad / Sad / Glad
+
+- **Mad (avoidable friction):** none. There were no retries, no failed calls, no corrections from the user and no contradicting duties.
+- **Sad (unmet benefit):** the transcript ends on the user's "ship it" in [08]. It shows no commit, push or PR after that. **I cannot tell whether shipping happened.** The record may simply stop there, so this is a coverage limit, not a finding.
+- **Glad (what worked and why):** `AGENTS.md` names the checks ("Run `make test` and `make lint` before pushing"), and `Makefile` gives each check one command. The agent ran exactly those two, and its closing claim in [07] is backed by tool output. The prerequisite that made this work, a documented one-command gate, is already reachable from the repository's entry point. A future agent needs nothing extra to find it.
+
+## Harness inspection (checks already wired)
+
+- `AGENTS.md`, `Makefile` and `ci.yml` agree with each other. CI runs `make lint` and `make test` on every pull request, and pre-commit runs `make lint`.
+- `make test` is not in pre-commit, even though it takes 0.000 s. Under "CI/hook parity" this could be a candidate. It is **not a finding for this session**, because nothing reached CI that a hook would have caught, and the agent ran the tests by hand. A survey like this belongs to `/retro audit`.
+- `make lint` is only `py_compile src/validate.py`, which is weak. This session did not trip over it, so the same holds: out of scope here.
+- I propose no new gate. Bootstrapping or doubling existing checks would add enforcement that has no session evidence behind it.
+
+## B22 (missed situational check)
+
+Result for the decision point "add `.strip()` in `validate()`": **not needed.** None of the five warning signs was visible. Nothing contradicted the working explanation, no failure class came back, no special handling spread across layers, no exceptions piled up, and no restructuring started from one case. The step was narrow and the request justified it.
+
+Reading the delivered code against the requested property: `request.get("email", "").strip()` strips all whitespace, so `"  "` returns `["email is required"]`. That case has a test. The property holds.
+
+**Probe not run.** This executor was told not to run shell commands, so I ran neither the tests nor a bounded probe. Everything below comes from reading the code.
+
+## Hypotheses (untested, not findings)
+
+1. **A possible crash on `null` or non-string email.**
+   - With `{"email": None}` or `{"email": 1}`, `.strip()` raises `AttributeError` instead of returning a validation error.
+   - If the code before the change was `request.get("email", "")` without `.strip()`, then `None` used to give "email is required". In that case the edit turned a validation error into a crash, which is a regression.
+   - The pre-change code is not in `inputs/`, so whether this is a regression is unknown.
+   - The settling check is one probe in a copy: `validate({"email": None})`.
+   - Grade if confirmed: user-visible. It would then route as a local fix, not a skill change, because no warning sign was visible at the time.
+2. **Coverage of the empty string may have been lost.**
+   - The whitespace case sits in a test named `test_empty_email_is_rejected`, and the suite has 3 tests.
+   - This suggests the existing empty-email test was rewritten rather than a new test added. If so, `""` and a missing `email` key are no longer tested directly. Their behaviour is still correct by reading.
+   - Effect untested, grade nice-to-have. The settling check is the session's diff of `tests/test_validate.py`.
+
+## Deviations from the prescribed phases
+
+- **Phase 1:** `detect-mechanical.py` and `collect-review-findings.py` were not run. No shell was allowed, and the record is a text transcript, not JSONL. I judged A-signals and A13 by hand. No PR or review feedback exists in the inputs.
+- **Phase 3:** attempt history was not searched. Outside the permitted paths.
+- **Phase 4:** `find-org-skills.py` and the B15 trigger sweep were not run (no shell). One candidate is unchecked: whether a test-driven-development skill should have triggered.
+- **Phase 4c:** not applicable. There is no B21 candidate.
+- **Phase 6:** no eval stub, because there is no finding.
+- **Phase 9:** nothing was written, because nothing was proposed or authorized.
+- **Phase 11:** `detect-mechanical.py --since-command retro` was not run (no shell). The self-check was done by reading instead: invocation read as Sweep mode, no finding without evidence, nothing found against retro-skill.
+
+## Questions for the user
+
+- Can a signup request carry `"email": null` or a non-string value? If yes, should the `AttributeError` case be fixed now?
+- Was the change shipped after "ship it"? If yes, where (commit or PR)?
+
+There is no closing `complete` / `noted` / `propose` question, because no proposals are open.
