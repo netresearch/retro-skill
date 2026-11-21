@@ -101,10 +101,13 @@ decisions. Process critique grants no new authority.
 7. Proposals — prose Why + How-to-apply, grouped, ≤10; learnings survive the
    trim. When revisiting an attempt, tell the owner what it predicted, what
    happened, and which part of the next decision changed.
-8. Authorization — reuse the valid mandate; put the uncovered decisions into the
-   one closing question of Phase 10, not into a question per proposal. A decision
-   that belongs to another authority (a team norm, a product decision) is named
-   with its owner instead. Do not request the same permission again.
+8. Authorization — reuse the valid mandate; put the uncovered decisions about
+   proposals into the one closing question of Phase 10, not into a question per
+   proposal. Another write that needs approval (a Done-mode booking, a ticket
+   comment, removing anything unpushed) keeps its own concrete decision, also
+   when no proposal is open. A decision that belongs to another authority (a
+   team norm, a product decision) is named with its owner. Do not request the
+   same permission again.
 9. Materialize per destination; for Promote, drain the source last (verified).
 10. Report — with one deviation line per phase of the mode table that did not
     run as prescribed (`references/workflow.md` § Report deviations). When

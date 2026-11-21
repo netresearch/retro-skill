@@ -475,9 +475,11 @@ what each one does:
   Under `propose` the report shows the exact text and target, unwritten. Under
   `noted` nothing is written.
 - A word that the user already gave for this run (also as the argument, for
-  example `/retro komplett`) is the answer. Apply it and do not ask. A mode
-  name is never an answer: `/retro done` selects Done mode and still ends with
-  the question, whereas `/retro done komplett` answers it.
+  example `/retro komplett`) is the answer. Apply it and do not ask. An answer
+  word as the only argument runs the Sweep and is no Spotlight problem: `/retro
+  komplett` is a Sweep answered with `complete`. A mode name is never an
+  answer: `/retro done` selects Done mode and still ends with the question,
+  whereas `/retro done komplett` answers it.
 - With no open proposal there is no question. The report says that nothing
   remains to carry out.
 - A change that the run already made under an existing mandate stays reported
