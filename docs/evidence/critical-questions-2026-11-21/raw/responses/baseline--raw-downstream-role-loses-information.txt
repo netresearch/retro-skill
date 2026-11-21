@@ -1,0 +1,84 @@
+I found one finding. The change in this session removed the information the on-call runbook needs. A shorter output was possible without that loss, and the old docstring already describes it.
+
+# Retro report: Sweep of `session.txt`
+
+**Evidence base.** I read `session.txt`, `checks.json`, `results.json`, `before/report.py`, `after/report.py`, `docs/runbook.md` and `AGENTS.md` under `inputs/`. I re-executed nothing. The two runs in `checks.json` are recorded results, and I treat them as observations.
+
+## Finding 1: the shortened report drops what on-call acts on
+
+**Kind:** observation, with the consequence shown from the artifacts. It is filed under the "guidance existed and was not used" signal (B13 class) together with a Sad line, because the intended benefit went unmet. It is not filed as B22: none of the five B22 warning signs fired at a decision point, and the skill says to attach the record to the signal that already holds the pattern.
+
+**What happened**
+- [01] The user asked for shorter output "when I check a rollout". That names the reader: the person who checks a rollout.
+- [03] The only file read was `before/report.py`. Nothing in the record shows that `AGENTS.md` was read; its second line says on-call procedures are in `docs/runbook.md`. `docs/runbook.md` was not opened either.
+- [05]/[06] `after/report.py` prints only `3 of 12 hosts failed` (see `checks.json`, second entry).
+- [07] The agent said: "The exit code still signals a failed rollout." It did not say that host names and error texts are gone. [08] "looks good" therefore approved a summary whose loss had not been disclosed.
+
+**Why this breaks the downstream role**
+- `docs/runbook.md` says: "For each failed host, read the error printed for that host and decide." `disk full` and `health check timeout` mean retry once. Any other error means `rollback.sh <host>`. It also says: "The rollout keeps no log file; the printed result is the only record."
+- Recomputed from `results.json`, the runbook gives:
+
+| Host | Error | Runbook action |
+|---|---|---|
+| web-02 | disk full on /var | retry |
+| web-05 | health check timeout after migration | retry |
+| web-09 | package signature rejected | rollback |
+
+- The new output cannot name the hosts or tell retry from rollback. The rollback case for web-09 is the expensive one to miss.
+- **Consequence shown, not untested:** with this output, the runbook procedure cannot be carried out.
+
+**What speaks against the finding**
+- The user approved at [08].
+- It is unknown whether the user is the on-call reader.
+- It is unknown whether `results.json` is kept somewhere on-call can read it. The runbook says the printed result is the only record.
+- `AGENTS.md` may have been loaded into context automatically. The record does not say.
+
+**Brevity and the runbook did not conflict.** The docstring of `before/report.py` reads "one line per failed host with its error", but the code printed all 12 hosts. The noise was the 9 `ok` lines. Printing only the failed hosts (3 lines), plus an optional summary line, is shorter and still serves the runbook. The agent could have found this by comparing the docstring with the output at [03]/[04].
+
+**Cause in the agent system (hypothesis):** the agent read only the file it changed. It did not follow the repository's index (`AGENTS.md` → `docs/runbook.md`) to check who reads the output. `AGENTS.md` does not say that the runbook depends on per-host lines, so even a reader of the index only gets a pointer.
+
+## Proposals
+
+**P1. Repair the delivered artifact.** This is the session's own task, so it stays inside the original mandate. Change `after/report.py` to print one `<host>: FAILED: <error>` line per failed host, followed by `N of M hosts failed`. Keep the exit code as it is. This matches the original docstring, cuts 12 lines to 4 for this input, and keeps the runbook working.
+- **Decision needed:** the user approved the summary-only version at [08] without knowing what it drops, so the user, as task owner, has to confirm the repair.
+- **Not proposed:** rewriting `docs/runbook.md` to fit the summary-only output. That would change an on-call procedure, which only the runbook's owner can decide.
+
+**P2. Paired materialization: gate first, then the pointer.**
+- **Part a (`harness-artefact`):** add a test that runs `report.py` on a fixture shaped like `results.json`. It asserts that every failed host's name and its exact error string appear in stdout, and that the exit code is 1 when any host failed.
+  - This is a deterministic, sub-second check, so per CI/hook parity it belongs in the repository's existing hook and CI configuration.
+  - I could not tell whether those exist, because `inputs/` shows no tests, hooks or CI. That may only mean the snapshot is partial. Extend what exists rather than bootstrapping.
+  - Mutation to prove the test: run it against `after/report.py` as delivered. It must fail.
+- **Part b (`project-rule`, `AGENTS.md`):** extend the `report.py` line to say that on-call acts on the per-host error lines (`docs/runbook.md`), and that a change to the output must keep each failed host's name and error.
+- **Expected effect:** the next change to the output fails the test before it ships. This stays untested until such a change happens.
+
+No `skill-update` is proposed. I could not run skill discovery, so the skill that owned this work is undetermined. A generic line like "check the consumers of an output" would also be the vague kind of instruction the skill forbids.
+
+## Questions for the owner
+1. Are you the on-call reader, or does someone else act on this output? (This decides whether [08] covers the loss.)
+2. Does `results.json` survive the rollout somewhere on-call can read it? If it does, the loss is smaller, but the runbook still points at the printed result.
+3. If you want summary-only output, the runbook owner has to change the procedure first. Who owns `docs/runbook.md`?
+
+## Glad
+- The agent ran the before and after versions on the same input and reported that the exit code is unchanged. The exit-code contract was checked; the stdout contract was not.
+
+## Deviations
+- **Phase 1** (`detect-mechanical.py`): not run. No shell access, and the record is a text rendering, not a transcript JSONL. No mechanical findings; coverage unknown.
+- **Phase 1b** (`collect-review-findings.py`): not run, for the same reason. The session shows no PRs, MRs or tickets.
+- **Phase 2b** (trigger coverage, B15): not run, because the skill inventory was not reachable.
+- **Phase 3** (prior attempts): not run. No session index or memory sources were reachable, so whether this has happened before is unknown.
+- **Phase 4** (`find-org-skills.py`): not run, because no shell access was available. The owning skill is undetermined.
+- **Phase 4b** (harness): partial. Only `AGENTS.md` and `docs/` are in `inputs/`. Whether a Makefile, hooks or CI exist was not checked.
+- **Phase 4c** (documentation lookup): the only fact in question is the runbook's dependency on per-host lines. Only `inputs/` was searched, and the fact was found there (`docs/runbook.md`).
+- **B22 tests and probe:** not run, because I was told not to run commands. The consequence above rests on reading the code plus the recorded runs in `checks.json`.
+- **Phase 6** (evals): no `evals/` from a matched skill were reachable, so no eval stub is proposed.
+- **Phase 9** (materialization): nothing written. Writing was out of bounds for this run.
+- **Phase 11** (self-check): the mechanical part was skipped because there is no transcript of this retro run.
+  - Question 1 (retro script problems): none ran.
+  - Question 2 (phases run differently): every deviation is listed above.
+  - Question 3 (invocation): `/retro` with no argument is a Sweep, so the invocation was unambiguous.
+
+## Closing question
+P1 and P2 are open. How far should they go?
+- `complete`: write the fix, the test and the `AGENTS.md` line, review them, and merge.
+- `propose`: prepare them as drafts for you.
+- `noted`: change nothing.

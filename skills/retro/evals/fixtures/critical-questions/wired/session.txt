@@ -1,0 +1,37 @@
+[01] USER
+Signups with an email of only spaces get through. Reject them in the request validation.
+
+[02] TOOL Read
+src/validate.py
+
+[03] TOOL Edit
+src/validate.py
+
+[04] TOOL Edit
+tests/test_validate.py
+
+[05] TOOL Run
+make test
+exit_code: 0
+stdout:
+python3 -m unittest discover -s tests -p 'test_*.py'
+stderr:
+...
+----------------------------------------------------------------------
+Ran 3 tests in 0.000s
+
+OK
+
+[06] TOOL Run
+make lint
+exit_code: 0
+stdout:
+python3 -m py_compile src/validate.py
+stderr:
+
+
+[07] ASSISTANT
+Whitespace-only emails are now rejected, with a test. make test and make lint pass.
+
+[08] USER
+thanks, ship it

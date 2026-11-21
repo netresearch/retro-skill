@@ -1,0 +1,245 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_executed",
+  "adapter_sha256": "d8686403b23975c96d3f0c1eeb9c97dee37974928eb848aea8a43f15e69a5713",
+  "target": {
+    "label": "actual-primary",
+    "execution_model": "claude-opus-5-5",
+    "resolved_model_version": null,
+    "review_model": null,
+    "judge_model": null,
+    "runtime": "claude-code",
+    "reasoning_budget": null,
+    "tool_environment": "read-only-subagent",
+    "samples_per_arm": 1
+  },
+  "contexts": {
+    "candidate": {
+      "sha256": "97df366e65e2dbf8efe8b1eb7feff267943333f90b9358f5ef7455174027b870",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "806796fbb2c6c206c4f5040f6c721b6871bb78aa076244f1a1ef1aee2395d83d"
+        },
+        {
+          "path": "references/workflow.md",
+          "sha256": "080e8f7d70b1df5fa7e7a1c03ec394f5d653584761bc40291afce260c36d1db9"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        },
+        {
+          "path": "references/project-harness-inspection.md",
+          "sha256": "d0cbb69070dda78b96a96bc0528b962d2299b685d2582d9c672d6af15e2e5e12"
+        },
+        {
+          "path": "references/classification-heuristic.md",
+          "sha256": "4ed9824359e7809fb8396dadd2f208125835660de03206c73b03c42f5d8fdd5a"
+        },
+        {
+          "path": "references/destination-taxonomy.md",
+          "sha256": "8fbcd1fac5e56a3eb234774e172a7e438aac74ea993b57161d5b1eea279e10d2"
+        },
+        {
+          "path": "references/promote-mode.md",
+          "sha256": "a5f83cf298ca7f86af53fdeca65b2a7887e6fb6e2138d58edd6a5ec6e4fa9834"
+        },
+        {
+          "path": "references/prior-attempts.md",
+          "sha256": "d4806677918edd15f9f4a63bcc3d12471e4c754b6651d4ba68408caffeb1ee68"
+        },
+        {
+          "path": "references/patch-workflow.md",
+          "sha256": "95ba64541ca0e2b99072c219087e04c1ab5a919bba9310691aec5a9bf8f3734f"
+        },
+        {
+          "path": "references/friction-catalog.md",
+          "sha256": "7fce85f92724350d3e843457249ca2416bdc4fca9eb4de5b0480b53c5ec0656c"
+        }
+      ]
+    },
+    "baseline": {
+      "sha256": "c6794308cc3829de7038223de14d14ad4e1a3486b67de98ae8d738e20dd97727",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "806796fbb2c6c206c4f5040f6c721b6871bb78aa076244f1a1ef1aee2395d83d"
+        },
+        {
+          "path": "references/workflow.md",
+          "sha256": "d640be51cd334451637665e2ea95f7f26ae38d166912c53d257559b3b92a8bd9"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        },
+        {
+          "path": "references/project-harness-inspection.md",
+          "sha256": "d0cbb69070dda78b96a96bc0528b962d2299b685d2582d9c672d6af15e2e5e12"
+        },
+        {
+          "path": "references/classification-heuristic.md",
+          "sha256": "c58ab03b187f6ee333c6813c22726249f72206be357155a36c3a4f8ed9955629"
+        },
+        {
+          "path": "references/destination-taxonomy.md",
+          "sha256": "8fbcd1fac5e56a3eb234774e172a7e438aac74ea993b57161d5b1eea279e10d2"
+        },
+        {
+          "path": "references/promote-mode.md",
+          "sha256": "2ea791c2fa12451831af4f32f01cf90287d2843f3927f0edcc4fd7e54682fd77"
+        },
+        {
+          "path": "references/prior-attempts.md",
+          "sha256": "d4806677918edd15f9f4a63bcc3d12471e4c754b6651d4ba68408caffeb1ee68"
+        },
+        {
+          "path": "references/patch-workflow.md",
+          "sha256": "22f37e328cf40396437de1b6d525cfdae681aea11ed6659fc9f7411c722edcea"
+        },
+        {
+          "path": "references/friction-catalog.md",
+          "sha256": "5fb67046617e78e49337e726ff602ff7440e8c7400420ef0073446290d6a3058"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "raw-downstream-role-loses-information",
+      "source_sha256": "24aae8c73d7fb15b6aa8040384d4569f0e1132ab1ce8f103235a1adab97d79b0",
+      "fixture": "fixtures/critical-questions/downstream",
+      "candidate_path": "execution/raw-downstream-role-loses-information",
+      "baseline_path": "execution/baseline-cases/raw-downstream-role-loses-information",
+      "inputs": [
+        {
+          "path": "inputs/AGENTS.md",
+          "sha256": "a5e1b923c74f640936cf840371be97a1290f9278995d0b46e5979bc9ae045ec9"
+        },
+        {
+          "path": "inputs/after/report.py",
+          "sha256": "db2a99af5d45a848e8eed65387045f01eabc1593c5feeb0e39838d3390423841"
+        },
+        {
+          "path": "inputs/before/report.py",
+          "sha256": "35fca7b0441d630fc682ea6e235a4162a2a76a8781e4599537ce9e65eb6dd1e3"
+        },
+        {
+          "path": "inputs/checks.json",
+          "sha256": "97727f2cd3f667e016bf38ef17659bd12cb0ce602564c7a1a6260a5b01152a09"
+        },
+        {
+          "path": "inputs/docs/runbook.md",
+          "sha256": "f6ebac632fadaa02b17723ccaa87af62f035e13ce8f82051d8fe97d92cba4511"
+        },
+        {
+          "path": "inputs/results.json",
+          "sha256": "b56691403b2570372b563cb26bbba87e68205baefe6e8a37dccb88581a9ae6e8"
+        },
+        {
+          "path": "inputs/session.txt",
+          "sha256": "4295650c91ea2b2ec7c2b23b06d91bf2a9ee09572e4cbc5b2d0cb94f3f091335"
+        },
+        {
+          "path": "prompt.txt",
+          "sha256": "6c33bc4f078d1b15a7bacb1884d20091548b41278bd9b34f7e07a958ba6811d1"
+        }
+      ]
+    },
+    {
+      "id": "raw-green-session-checks-already-wired",
+      "source_sha256": "783e85432594f035523396872b28f9dea8ae37a0032b2ac726df04f63fd56aa8",
+      "fixture": "fixtures/critical-questions/wired",
+      "candidate_path": "execution/raw-green-session-checks-already-wired",
+      "baseline_path": "execution/baseline-cases/raw-green-session-checks-already-wired",
+      "inputs": [
+        {
+          "path": "inputs/.github/workflows/build.yml",
+          "sha256": "17282d1644bf9c76a3df812989281cc100ac325fb82d5341655e4feb929cff4f"
+        },
+        {
+          "path": "inputs/.github/workflows/ci.yml",
+          "sha256": "7a4ba6f6b08d7f4eca30695f41273f225e0b751d92a99ac30f150e4dca9c4601"
+        },
+        {
+          "path": "inputs/.pre-commit-config.yaml",
+          "sha256": "0c02ec1497b0f13e3cbf19ec449e5a2d15a5788c7153a8399e01ca38a2361058"
+        },
+        {
+          "path": "inputs/AGENTS.md",
+          "sha256": "566282a91159c4b6d7660c8022eeedbb68db52b05aff464bc3a81dba25e0ec1d"
+        },
+        {
+          "path": "inputs/Makefile",
+          "sha256": "5e9e525166e63383826cb2976bdec9f1e53a3af932818f8a8c7280011c75142c"
+        },
+        {
+          "path": "inputs/checks.json",
+          "sha256": "65bb3d87718707d2f64067cf4bdb6ea5152107480b8862051f6919ec07ebbe6a"
+        },
+        {
+          "path": "inputs/session.txt",
+          "sha256": "414962eaffa23f40fcb9d2238f902c821ec61eb57792058288183a08e502219a"
+        },
+        {
+          "path": "inputs/src/validate.py",
+          "sha256": "4be7d23e11a98e776bc019f22d07e95482c9b241f7ffd7ce4bf1c014aca7885d"
+        },
+        {
+          "path": "inputs/tests/test_validate.py",
+          "sha256": "ebcd2cbc05ece2c6c6664230637102c0d11c0d237b78d6678c5f61c5149095f6"
+        },
+        {
+          "path": "prompt.txt",
+          "sha256": "6c33bc4f078d1b15a7bacb1884d20091548b41278bd9b34f7e07a958ba6811d1"
+        }
+      ]
+    },
+    {
+      "id": "raw-green-session-unwired-checks",
+      "source_sha256": "84d0bce532e7365402ffde97bfb4efaca3f1d38369d14a890a4bb9049703a8fc",
+      "fixture": "fixtures/critical-questions/unwired",
+      "candidate_path": "execution/raw-green-session-unwired-checks",
+      "baseline_path": "execution/baseline-cases/raw-green-session-unwired-checks",
+      "inputs": [
+        {
+          "path": "inputs/.github/workflows/build.yml",
+          "sha256": "17282d1644bf9c76a3df812989281cc100ac325fb82d5341655e4feb929cff4f"
+        },
+        {
+          "path": "inputs/AGENTS.md",
+          "sha256": "566282a91159c4b6d7660c8022eeedbb68db52b05aff464bc3a81dba25e0ec1d"
+        },
+        {
+          "path": "inputs/Makefile",
+          "sha256": "5e9e525166e63383826cb2976bdec9f1e53a3af932818f8a8c7280011c75142c"
+        },
+        {
+          "path": "inputs/checks.json",
+          "sha256": "65bb3d87718707d2f64067cf4bdb6ea5152107480b8862051f6919ec07ebbe6a"
+        },
+        {
+          "path": "inputs/session.txt",
+          "sha256": "414962eaffa23f40fcb9d2238f902c821ec61eb57792058288183a08e502219a"
+        },
+        {
+          "path": "inputs/src/validate.py",
+          "sha256": "4be7d23e11a98e776bc019f22d07e95482c9b241f7ffd7ce4bf1c014aca7885d"
+        },
+        {
+          "path": "inputs/tests/test_validate.py",
+          "sha256": "ebcd2cbc05ece2c6c6664230637102c0d11c0d237b78d6678c5f61c5149095f6"
+        },
+        {
+          "path": "prompt.txt",
+          "sha256": "6c33bc4f078d1b15a7bacb1884d20091548b41278bd9b34f7e07a958ba6811d1"
+        }
+      ]
+    }
+  ],
+  "shared_runner": {
+    "executes_tools": false,
+    "model_configuration": "Read effective models from the selected runner's result provenance; preparation does not configure that runner."
+  }
+}

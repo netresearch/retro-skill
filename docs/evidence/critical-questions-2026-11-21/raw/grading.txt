@@ -1,0 +1,89 @@
+All six reports pass. Both arms meet every expected item in every case and avoid every negative item. I found nothing to tell them apart on substance.
+
+I read only the six reports and the frontmatter of the three eval files, as instructed. I did not open the fixture files, so where a report quotes a fixture, I grade it against the oracle and have not checked the quote against the fixture itself.
+
+## raw-downstream-role-loses-information
+
+### candidate — pass
+
+**Expected items**
+1. Met. It finds both halves from the repo files: `after/report.py` "prints `f\"{len(failed)} of {len(hosts)} hosts failed\"` and nothing else", and the runbook says "For each failed host, read the error printed for that host and decide".
+2. Met. It judges the change for the operator ("on-call cannot tell which hosts to retry … from the one to roll back"). It proposes failed-host lines plus "Optionally keep the count as a last line", so the summary stays and the errors return.
+3. Met. "But the approval was not informed. Turn [07] did not say that host names and errors were removed". The closing question for the user keeps the operator procedure as a separate decision.
+
+**Negative items**
+- Accepting the change as complete: avoided. It calls the change a defect, although the user approved and the exit code is unchanged.
+- Reverting to the long output: avoided. The `ok` lines stay out and the count stays.
+- Claiming an incident or complaint: avoided. It cites only the recorded run in `checks.json` and asserts no incident.
+
+### baseline — pass
+
+**Expected items**
+1. Met. "`after/report.py` prints only `3 of 12 hosts failed`", and it quotes the runbook's per-host rule and the "only record" line.
+2. Met. It builds a host/error/action table for on-call and proposes "one `<host>: FAILED: <error>` line per failed host, followed by `N of M hosts failed`".
+3. Met. "[08] 'looks good' therefore approved a summary whose loss had not been disclosed". It leaves changing the runbook to the runbook's owner.
+
+**Negative items**
+- Accepting the change as complete: avoided.
+- Reverting to the long output: avoided. It keeps the summary line.
+- Claiming an incident or complaint: avoided. The consequence is drawn from the artifacts only.
+
+## raw-green-session-unwired-checks
+
+### candidate — pass
+
+**Expected items**
+1. Met. "`.github/workflows/build.yml` … has one job, `image`, whose only step is `docker build -t signup .`" and "None of the seven input files is a hook config". It also quotes the `AGENTS.md` rule.
+2. Met. It proposes a `test` job in `build.yml` running `make test` and `make lint`, plus "the same commands must go into a pre-commit hook in the same PR". It leaves the choice of hook framework to the owner.
+3. Met. Under "Evidence" it lists `inputs/AGENTS.md`, `inputs/.github/workflows/build.yml`, `inputs/Makefile` and `checks.json`.
+
+**Negative items**
+- Nothing to report: avoided. It raises one finding.
+- New suites or checks: avoided. It wires the existing targets only.
+- Hook without the fast-check statement: avoided. "Both commands meet the fast-check definition as measured: deterministic, no external dependencies, and `Ran 3 tests in 0.000s`".
+
+### baseline — pass
+
+**Expected items**
+1. Met. "`build.yml` … has one job, `docker build -t signup .`. It does not run `make test`, `make lint`…" and "The input tree has no hook config".
+2. Met. It proposes a `test` job with `make test` and `make lint`, and "the same two commands also belong in a local pre-push hook". The tool choice is a question for the owner.
+3. Met. Its "Evidence read" line lists all seven files.
+
+**Negative items**
+- Nothing to report: avoided.
+- New suites or checks: avoided. It notes that `make lint` is weak but explicitly makes no proposal for it.
+- Hook without the fast-check statement: avoided. "Both are quick checks that give the same result every time" states speed and determinism. It is less measured than the candidate's wording but enough.
+
+## raw-green-session-checks-already-wired
+
+### candidate — pass
+
+**Expected items**
+1. Met. "CI runs `make lint` and `make test` on every pull request, and pre-commit runs `make lint`."
+2. Met. "I propose no new gate." The report headline is "no proposals".
+
+**Negative items**
+- Adding the checks again: avoided. It mentions `make test` missing from pre-commit as a possible gap, then says it is "not a finding for this session" and belongs to `/retro audit`.
+- Prose rule: avoided.
+
+### baseline — pass
+
+**Expected items**
+1. Met. "`.github/workflows/ci.yml` runs the same two" and "`.pre-commit-config.yaml` runs only `make lint`".
+2. Met. "Result: nothing to change."
+
+**Negative items**
+- Adding the checks again: avoided. The hook/CI difference goes to `/retro audit --scope repo`, not into a proposal.
+- Prose rule: avoided. It says the command rule "is already written in `AGENTS.md` and wired into CI".
+
+## Summary
+
+| arm \ case | downstream-role-loses-information | green-session-unwired-checks | green-session-checks-already-wired |
+|---|---|---|---|
+| candidate | pass | pass | pass |
+| baseline | pass | pass | pass |
+
+Some differences show up, but none affects a verdict:
+- In the unwired case, the candidate's fast-check statement rests on a measured run time; the baseline only says "quick".
+- In the downstream case, the baseline asks more questions about the operator's role.
+- Both arms add untested observations beyond what the oracles ask for, such as the `None`-email crash and the `build.yml` with no checkout step. Each report labels these unverified, so they are not defects.

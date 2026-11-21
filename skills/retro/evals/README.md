@@ -171,3 +171,22 @@ The three prior-attempt cases cover two different causes of duplicate work,
 an unavailable index and the recovery of a withdrawn proposal from project
 records. The [paired run record](../../../docs/evidence/prior-attempts-2026-11-18.json)
 contains the anonymized responses, rubrics, grades and context hashes.
+
+Six described cases pin classifications the current text already produces, so
+that a later edit cannot lose them silently: the next role's information
+([downstream-role-loses-information](downstream-role-loses-information.md),
+control [downstream-side-effect-unevidenced](downstream-side-effect-unevidenced.md)),
+checks that nothing runs after a green session
+([green-session-unwired-checks](green-session-unwired-checks.md), control
+[green-session-checks-already-wired](green-session-checks-already-wired.md)),
+the reader and timing of a moved rule
+([reader-and-timing-of-moved-rules](reader-and-timing-of-moved-rules.md)) and the
+check that can change a decision
+([discriminating-check-before-more-analysis](discriminating-check-before-more-analysis.md)).
+The [baseline run](../../../docs/evidence/critical-questions-2026-11-21/README.md)
+passed all six with the unchanged skill. Three of them also exist as raw
+sessions with the repository files they worked in
+([raw-downstream-role-loses-information](raw-downstream-role-loses-information.md),
+[raw-green-session-unwired-checks](raw-green-session-unwired-checks.md), control
+[raw-green-session-checks-already-wired](raw-green-session-checks-already-wired.md));
+their commands are reproduced by `tests/test_critical_question_fixtures.py`.
