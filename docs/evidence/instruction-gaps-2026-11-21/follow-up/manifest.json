@@ -15,7 +15,7 @@
   },
   "contexts": {
     "candidate": {
-      "sha256": "bb0511403fb597a92df60c67a500c4051cb71a5d8d24875f84df785d0efdb72a",
+      "sha256": "cacfe2bad89cb5314de51f6b1e5e255d6b7af06946a2899ec71c09f8376e729f",
       "sources": [
         {
           "path": "SKILL.md",
@@ -23,7 +23,7 @@
         },
         {
           "path": "references/workflow.md",
-          "sha256": "080e8f7d70b1df5fa7e7a1c03ec394f5d653584761bc40291afce260c36d1db9"
+          "sha256": "a625e7924d7bc42e60a89665a69e8b201a7e9660980a66c8ceae142c07cfddc5"
         },
         {
           "path": "references/learning-contract.md",
@@ -43,7 +43,7 @@
         },
         {
           "path": "references/promote-mode.md",
-          "sha256": "9c49bb16c4fdf0585e29bba20b62aeba73c5a16ec5be4f947c6c5fea497318c6"
+          "sha256": "0a4b097fbe25e652c86da79d6140dee57afda70624f8cef5f4b0705ea6e6994a"
         },
         {
           "path": "references/prior-attempts.md",
@@ -51,7 +51,7 @@
         },
         {
           "path": "references/patch-workflow.md",
-          "sha256": "95ba64541ca0e2b99072c219087e04c1ab5a919bba9310691aec5a9bf8f3734f"
+          "sha256": "92497afe954a9c9920f238dcdcf019496c233949d38c674cfa7a50f2ba6b60f8"
         },
         {
           "path": "references/friction-catalog.md",

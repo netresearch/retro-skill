@@ -1,67 +1,52 @@
-# Retro report: outcome review of the date-parsing session (`/retro outcome`)
+**Retro report: outcome review of the date-parsing session**
 
-**Result: no finding against the original session's decision.** The narrow fix for DD.MM.YYYY was justified by what the session could know. The later YYYY/MM/DD failure is an Outcome-mode signal (D6, a requirement that grew after the session). It is not a missed situational check (B22), and nothing in the skill or the rules needs to change because of it.
+**Mode:** Outcome (`/retro outcome`). The task is a review 10 days later, which meets the latency rule of more than 24 hours. The signal that fired is D6: after the session, a new ticket reported that a customer file with YYYY/MM/DD failed.
 
-## The decision point
+### Verdict: no finding against the original session. The narrow fix was the correct decision.
 
-**Decision:** the fix handled exactly the one format the ticket listed (DD.MM.YYYY), and a test covered it.
+**Decision point:** the session fixed parsing for DD.MM.YYYY only, the one format the ticket listed, and added a test.
 
-**What the session knew at that moment:**
-- The ticket named one format.
-- The session held no sample, log or message that mentioned any other format.
+**Was this a missed situational check (B22)?** B22 asks one question: was a warning sign visible at that moment, and did the agent answer it with a proportionate check? Here I checked each warning sign in the catalog against what the session held:
+- **A counter-observation:** none. The session held no sample, log or message with another format.
+- **A failure class returning after its fix:** none inside the session. The YYYY/MM/DD failure came three days later.
+- **Special handling spreading across layers, exceptions piling up, or a large rebuild from one case:** none reported.
 
-**Check against the B22 warning-sign table** (`friction-catalog.md` § Missed situational check). None of the five signs was visible:
-- No observation contradicted the working explanation.
-- No failure class came back in a variant during the session.
-- No special handling for one format spread across layers.
-- No new case needed another exception or a workaround.
-- No large restructuring started from one isolated case.
+So the outcome for this decision point is **"Not needed"**. The information at that point justified the narrow step, and a limit the ticket set counts as such information. Under B22's rules that outcome produces nothing.
 
-**Outcome category: "Not needed".** The skill defines this as "the information at that point justified the narrow step". It produces no finding.
+**Hindsight rule:** the catalog says to judge by what was knowable then. A case that appeared only later does not condemn the earlier fix; it may be a D signal in Outcome mode. The YYYY/MM/DD file is exactly such a later case.
 
-**Hindsight rule applied.** The skill says: "Judge by what was knowable then. A case that appeared only later does not condemn the earlier fix; it may be a D signal in Outcome mode." The YYYY/MM/DD file arrived three days after the session, so it cannot make the earlier decision an omission.
+**Severity rule:** the severity rule for B22 calls a consequence "shown" when an input format *the ticket lists* fails after the delivered change. The ticket did not list YYYY/MM/DD, so this rule does not apply either.
 
-**What speaks against this verdict:**
-- B12 (an assumption made instead of asking) would apply only if the scope was ambiguous at the time. The ticket listed the format explicitly and nothing in the session suggested other formats, so there was nothing to ask about.
-- **ASSUMPTION:** I take "the one format the ticket listed" to mean the ticket scoped the work to that format. If the ticket instead said "date parsing fails" and cited DD.MM.YYYY only as one example, the session narrowed the scope itself. That would still not be a B22 finding, because no warning sign is described. It could be a B12 candidate, and only the ticket text settles it.
+**Other signals I ruled out:**
+- **B12 (an assumption made instead of asking):** no ambiguity was visible, so there was nothing to ask about.
+- **B19 (a defect found after the push that the checks did not cover):** B19 needs an existing requirement. YYYY/MM/DD was not one at the time.
+- **B17 (a better approach found during the work):** "a broader parser was conceivable" is explicitly no finding.
 
-## The later event, classified
+### D6 classification
+D6 says to read the cause before treating feedback as a fault of the session. The cause is that **the requirement grew after the session**: a new input variant appeared in production data. It is not a defect in the delivered change. The new ticket is the right container for it, and it belongs to the normal ticket flow, not to the agent system.
 
-**D6, issue or ticket feedback after the session.** A new ticket was opened three days later. The skill says to read the cause before treating such feedback as a fault of the session. As described, the cause is an input class nobody had seen before. That is a requirement that grew, not a defect the session introduced.
+### What speaks against this verdict (open points)
+- **The ticket itself.** I only have the summary in the prompt. If the original ticket or its attachments held a YYYY/MM/DD sample, a "files from customer X" note, or a phrase like "dates in various formats", the verdict flips. It would then be B22 "Omitted" with severity `critical`: a variant that still fails for the user, with the ticket and the new failure as the two sources.
+  - **Question for the user:** did the original ticket or any attachment mention or contain a format other than DD.MM.YYYY? If yes, re-run this review on that evidence.
+- **D2 / D9 do not apply.** The fix was not reverted or superseded. A YYYY/MM/DD fix adds to the parser and does not undo the DD.MM.YYYY handling.
+- **Glad (what worked):** the requirement came with a test. That test protects DD.MM.YYYY while the follow-up ticket extends the parser.
 
-**Not B19.** B19 covers a defect that review, CI or QA found in the delivered change. Here the delivered change did what it was meant to do. The new failure lies outside its specification.
+### Proposals
+**None.** This is a supported no-op, not missing evidence. The decision point was checked against the catalog, and neither a warning sign nor a gap in the agent system's instructions exists. Adding a rule like "always handle every common date format" would turn hindsight into scope creep. The rule that the smallest change is the right one was read correctly here.
 
-**This classification rests on one unknown.** It decides between "requirement grew" and a real defect: did YYYY/MM/DD files parse before the session's fix?
-- If they failed before as well, the D6 reading stands and nothing more is needed.
-- If they parsed before and fail since the fix, the fix broke them. That is a regression (close to D8) and a real adverse outcome. It would also be a B19-type gap: the test covered only the new format and kept no characterization test for formats that already worked.
-- What settles it: run the YYYY/MM/DD input against the commit before the fix and against the fix commit, and compare the results.
+There is no closing question because no proposal is open. The only question is the one about the ticket above, and it decides whether this review stands.
 
-## Proposals
+### Deviation lines (Phase 10)
+1. **Phase 1, mechanical pre-pass:** did not run. I had no transcript, and the brief forbids shell commands, so I could not run `detect-mechanical.py` or `collect-review-findings.py`. The review rests only on the facts in the prompt.
+2. **Phase 2, B22 artifact check:** I did not read the delivered code, run its tests or run a probe, because the code was not reachable. I could not confirm independently that the DD.MM.YYYY fix and its test still pass.
+3. **Phase 3, prior attempts:** skipped. No recurring problem or earlier measure is under review.
+4. **Phases 4 to 6, skill discovery, classification and evals:** skipped. There is no finding to route, and `find-org-skills.py` could not run under the brief.
+5. **Phases 8 and 9, authorization and writes:** nothing to authorize or write.
 
-None.
-- A rule such as "always handle every plausible date format" would turn a correct narrow fix into speculative scope.
-- B22's own routing rule says retro does not install a check in a skill that never showed the gap.
-- The new ticket is ordinary work in its own right. Whoever takes it would sensibly first collect the formats that actually occur in customer files, instead of handling only the second example.
+**B22 not assessable (partly):** the session's ticket reading. My only evidence for "the session held no other format" is the prompt's statement, not the transcript.
 
-Since no proposal is open, there is no closing question (`complete` / `noted` / `propose`).
+**Phase 11 self-check:** nothing found. I could not run `--since-command retro`.
 
-## Questions for the user
-
-1. Did YYYY/MM/DD files parse successfully before the original fix? This decides between D6 (requirement grew, no fault) and a regression.
-2. Did the original ticket scope the work to DD.MM.YYYY, or did it give that format as an example? This decides whether a B12 check is relevant.
-
-## Deviation lines
-
-- **Phase 1 (mechanical pre-pass and review-findings collection):** not run. The session exists only as a prose description: there is no transcript, and shell commands were excluded. Coverage is incomplete, so silence on other signals is not evidence that they are absent.
-- **Phase 2 (B22 probe on the delivered code):** skipped, because the code is not reachable. No tests and no bounded probe were run. The verdict rests on the described session record only.
-- **Phase 3 (prior-attempt history):** not consulted. The description mentions no recurring date-parsing problem and no earlier measure.
-- **Phase 4 (skill discovery and team-record lookup):** not run. The repository and tracker are unknown, and the task forbade file access. There is no B21 candidate to look up.
-- **Phases 5–9 (classification, evals, proposals, authorization, materialization):** no material, because there is no finding.
-- **Outcome-mode signals other than D6** (D1–D5, D7–D11): not assessable, because there is no forge or CI data.
-- **Phase 11 (self-check):** `detect-mechanical.py --since-command retro` was not run, for the same reason as Phase 1. Reading of the invocation: this is an outcome review of one past decision, and I applied Outcome mode together with the B22 rules. No retro-skill defect found.
-
-## Contradictions in the instructions
-
-None found. The B22 hindsight rule, the "Not needed" outcome and D6's "read the cause before treating it as a fault of the session" all point the same way.
-
-One gap: the Outcome-mode summary in `workflow.md` calls D1–D10 "failures to learn from", while `friction-catalog.md` calls them "candidate adverse outcomes" whose cause must be inspected first. The catalog's wording is the more precise one, and the workflow's shorthand could lead a reader to treat D6 as a fault without that check. This needs no skill-update finding; I note it for the owner.
+### Where I improvised
+- The skill does not say how to run Outcome mode when only a summary is available, with no session id, transcript or repository. I treated the prompt's facts as the record and listed every phase that could not run as a deviation.
+- The skill does not say explicitly whether a supported no-op gets the closing question. I left it out because no proposals are open, and put the one evidence question into the report instead.

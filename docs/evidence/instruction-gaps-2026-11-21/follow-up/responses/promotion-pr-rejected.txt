@@ -1,76 +1,47 @@
-No drain this run. PR 12 was closed without being merged, so the note in `notes.md` stays active. The next step is to re-route the workaround to the incident runbook, which is the destination the rejection named.
+The retro's result: keep the local note active, record PR 12 as rejected in its handoff line, and re-route the learning to the incident runbook. Nothing gets drained, because no published destination holds the workaround. The re-route waits on one decision from you (Q1 below), since your earlier authorization named deployment policy as the target, not the runbook.
 
-I did not write or edit any file, as instructed. Every change below is a proposal.
+## What the inputs establish
 
-## Evidence (all under `.../promotion-pr-rejected/inputs/`)
+- **`notes.md` is the only place the workaround lives.** It is `retro-fixture-report-worker`, marked "Data Operations only". It holds the tested workaround `report-worker --resume-safe`, with evidence that the incident's worker resumed after this command. Its handoff line is stale: "PR 12 opened; not yet verified available to operators."
+- **PR 12 failed.** `pr-status.json` shows `state: CLOSED`, `merged: false`, with the reason "Incident workaround belongs in the incident runbook, not deployment policy."
+- **The rejected target does not hold it.** `destination.md` (deployment policy) has no incident procedure. It also says changes there need the policy owner's decision.
+- **Your instruction** (`session.txt`): finish the handoff within the team-only audience, and keep the workaround available until operators can reach an accepted destination.
 
-- **`pr-status.json`:** PR 12 is `"state": "CLOSED"` and `"merged": false`. The reason given is "Incident workaround belongs in the incident runbook, not deployment policy."
-- **`destination.md`:** this is the content of the destination proposed last time. It says "This document does not contain an incident response procedure" and that changes need "the policy owner's decision". The workaround is not in it.
-- **`notes.md`:** `Learning-Id: retro-fixture-report-worker`, `Audience: Data Operations only.` The evidence is that the incident's actual worker resumed successfully after `report-worker --resume-safe`. The note's own line is out of date: "Promotion: PR 12 opened; not yet verified available to operators."
-- **`session.txt`:** the user wants the handoff finished within the current team-only audience, and the tested workaround kept available until operators can reach an accepted destination. The PR state was read today.
+## Findings
 
-## Finding 1: the handoff state is stale, and the active source must stay (D3, promote Phase 9)
+### Finding 1: the rejected promotion must not drain its source
+- **Evidence:** PR 12 is closed and unmerged. The skill's promote mode says an "open, rejected, closed-unmerged or not-yet-distributed PR never passes" the availability check. It also says "Rejected proposals are never drained merely because a PR once existed."
+- **Change (`notes.md`, covered by your instruction):** keep the note active, with its Learning-Id, audience, evidence and workaround unchanged. Replace only the `Promotion:` line:
+  `Promotion: PR 12 closed unmerged (reviewer: belongs in the incident runbook, not deployment policy). Deployment policy is rejected as a destination. Next target: the Data Operations incident runbook (location to be confirmed). Retire this note only after that runbook content is accepted, delivered and reachable by Data Operations operators.`
+- **Not applied:** this run's limits forbid writing files, so this is the exact text to apply. I left out calendar dates because the fixture only says "yesterday" and "today".
 
-**What happened:** the promotion target was rejected. The skill's rule is: "an open, rejected, closed-unmerged or not-yet-distributed PR never passes this check", and "Rejected proposals are never drained merely because a PR once existed." Availability to operators is not established. No published destination contains the workaround.
+### Finding 2: re-route to the incident runbook (`canonical-source (team record: runbook)`)
+- **Evidence:** the skill's authority table assigns "a repeatable operational procedure" to a runbook. The reviewer's rejection reason names that same owner. The workaround is a fact about one of our systems, not about agent behaviour.
+- **Not a skill:** the skill says a fact about our own systems "never goes" into a skill as a temporary copy. Deployment policy is excluded by the rejection and by its own owner rule.
+- **Proposed change:** a PR or edit to the Data Operations incident runbook, through the runbook's own contribution path. It carries the workaround, its scope (report worker only), the evidence line and the Learning-Id. The note is retired only after the runbook content is accepted, delivered and reachable by the operators.
+- **Not done:** I could not search for the runbook (no access beyond `inputs/`). Its location and audience are therefore unknown, not absent. Before materializing, confirm that only Data Operations can read the runbook. If a wider group can, that is a new audience and needs your decision.
 
-**Destination:** the source note itself, as its active handoff reference. This is covered by the user's existing authorization to keep the workaround available within the same audience.
+### Finding 3 (no change): nothing goes into deployment policy
+- PR 12 is not to be reopened or revised against `destination.md`. That document's owner rule and the rejection both exclude it.
 
-**Proposed change to `notes.md`:** replace the `Promotion:` line and leave everything else as it is:
+## Report table
 
-```
-Promotion: PR 12 closed unmerged (read 2026-11-21; reason: belongs in the incident runbook, not deployment policy). Not available to operators. Next route: Data Operations incident runbook, pending. Retire this note only after that runbook carries the workaround and operators can reach it from their normal entry point.
-```
+| # | Destination | Action | Target | Status |
+|---|---|---|---|---|
+| 1 | local note (handoff state) | update `Promotion:` line, keep note active | `inputs/notes.md` | prepared, not written |
+| 2 | canonical-source (team record: runbook) | PR or edit with the workaround | Data Ops incident runbook, location unknown | waiting on Q1 |
+| — | drain | none | `notes.md` | blocked until runbook content is available |
 
-**Also:**
-- Do not run `drain`.
-- Do not tombstone the note.
-- Keep its index entry.
-- If the note changes, re-scan it so any later drain uses the new `content_sha256`.
+## Phases that did not run as prescribed
+- **Phases 1, 4 and 11:** `scan-memory-inventory.py`, `detect-mechanical.py`, `collect-review-findings.py` and `find-org-skills.py` did not run, because this run allows no shell. The evidence is the four files in `inputs/` only.
+- **Phase 4c:** the documentation lookup covered `inputs/` only. Whether a runbook exists, and where, is unknown.
+- **Phase 6:** no evals were read; no skill is involved.
+- **Phase 9:** nothing was materialized, because writes are forbidden here. The `notes.md` text above is ready to apply.
 
-## Finding 2: re-route the learning to the incident runbook (re-evaluate after rejection)
+## Where I improvised
+- **Which mode:** the task did not say. I treated it as the promote-mode step for a rejected PR: update the handoff state and re-evaluate the route.
+- **How far the authorization reaches:** the skill says authorization must cover the exact target, but not whether "this promotion" carries over to a new target in the same audience. I read it as covering the note update but not the new runbook target.
 
-**Why the runbook:** the rejection names the runbook. The skill's taxonomy maps "a repeatable operational procedure" to the Runbook record kind. `destination.md` excludes incident procedures. The learning is still valid: it was tested on the real worker, and nothing disproves it. So the route changes, not the content.
-
-**Destination:** `canonical-source` (team record: runbook), with the same Learning-Id `retro-fixture-report-worker`. A runbook kept in a repository goes by PR. Phase 9 order applies:
-1. Write it.
-2. Read it back.
-3. Verify the change is accepted and delivered where Data Operations operators read it.
-4. Only then drain the note.
-
-**Proposed runbook content:** this applies the generalization check from the skill.
-- Scope it to the report worker and the incident condition it was tested under.
-- State that it was verified once, on the incident's actual worker.
-- Name the full command `report-worker --resume-safe`.
-- State the audience as Data Operations.
-
-The generalization check also asks which condition of the original context the reader is missing. The inputs do not record which incident symptom or which worker version made the command safe. The runbook entry should name that condition or narrow its claim.
-
-**Do not:**
-- Reopen PR 12.
-- Re-submit to the deployment policy. That would also need the policy owner's decision, which nobody has asked for.
-
-**Not verified:** the inputs contain no incident runbook. Its existence, location, owner, audience and how operators reach it are unknown. Phase 4c (documentation lookup) has to find it before the PR is written.
-
-## Finding 3: wrong destination in the earlier proposal (D3, lesson). No skill change proposed.
-
-**Mechanism:** an incident procedure was routed to a policy document. That document's own text says it holds no incident procedure.
-
-**Why no skill change:** the skill already covers this. Its classification table sends a repeatable procedure to a runbook, and Phase 4c says to read the target before proposing. Adding another rule would duplicate existing text. The inputs do not show why the earlier run picked the policy document, so I do not name a cause.
-
-## Authorization
-
-The user authorized this promotion within the same audience, Data Operations only. Re-routing the same content to a Data Operations runbook is covered, provided the runbook's readers are that same team. If the runbook is visible to a wider audience, that is promotion to a new audience and needs a decision first.
-
-## Questions for the user
-
-1. Where is the Data Operations incident runbook, and who owns it? I could not find one in the inputs.
-2. Is that runbook limited to Data Operations? If it reaches more readers, do you approve publishing the `report-worker --resume-safe` workaround to them?
-
-## Phase-10 report rows
-
-| Item | State |
-|---|---|
-| Handoff note (`notes.md`) | Kept active. `Promotion:` line update proposed (not written). |
-| Runbook promotion | Justified. Not prepared. Destination not yet located. |
-| Deployment-policy PR 12 | Closed unmerged. Not reopened. |
-| Drain | Not done. Availability not established. |
+## Questions for you
+- **Q1:** Does your authorization for "this promotion within the same audience" also cover writing the workaround into the Data Operations incident runbook? Two things must also be known first: where that runbook lives, and whether its readership is exactly Data Operations.
+- **Closing question:** reply `complete`, `noted` or `propose`.

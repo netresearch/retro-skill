@@ -91,7 +91,8 @@ findings reappear on every run. Three binding rules:
    is accepted, available and reliably discoverable when needed, remove the
    section within the authorized scope, re-checking the scan's `content_sha256` against the
    section text first (same race-check semantics). On the by-hand `AGENTS.md`
-   path there is no scan: hash each section when reading it, and compare that
+   path there is no scan: take the sha256 of each section's text when reading
+   it, with section boundaries found fence-aware as below, and compare that
    hash with the section's current text immediately before removing it. One
    section per edit.
    Section-removal is markdown surgery and boundary regexes are FENCE-BLIND: a

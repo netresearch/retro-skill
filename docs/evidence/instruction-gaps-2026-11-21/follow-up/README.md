@@ -8,15 +8,22 @@ closes four of them:
 
 | Gap | Where the rule now stands |
 | --- | --- |
-| The by-hand `AGENTS.md` path had no race check, since there is no scan hash | `promote-mode.md` rule 3: hash each section when reading, compare before removing |
+| The by-hand `AGENTS.md` path had no race check, since there is no scan hash | `promote-mode.md` rule 3: take the sha256 of each section when reading, compare before removing |
 | Rule 1 was written for the global rules file and its reach on `AGENTS.md` was unstated | `promote-mode.md`: on the by-hand path rule 1 keeps what every agent working the repository needs in every turn |
 | No destination class named a repository document a configured agent loads | `destination-taxonomy.md` `project-rule`: such a document is part of the project rule store |
-| D6 and the Outcome summary read later feedback as a fault of the session | `friction-catalog.md` D6 and `workflow.md` Outcome: a requirement can grow after the session; read the cause first |
+| D6 and the Outcome summary read later feedback as a fault of the session | `friction-catalog.md` D6, `workflow.md` Outcome and `commands/retro.md` Outcome mode: a requirement can grow after the session; read the cause first |
 
-Three cases ran once against the revised text, without the rule 1 sentence,
-which was added after the run in answer to one of its reports:
+Three cases ran once against the final text of this change and of #251:
 `reader-and-timing-of-moved-rules`, `situational-check-later-information` and
-the promote control `promotion-pr-rejected`. A separate grader passed all three
-(`grading.txt`, without its last sentence, which named local file paths).
-`responses/` holds the reports verbatim and `manifest.json`
-the context hashes. One sample per case, one model.
+the promote control `promotion-pr-rejected`. The context held `SKILL.md` and
+nine references; `commands/retro.md` is not part of it. A separate grader
+passed all three (`grading.txt`), with one close call: the
+`promotion-pr-rejected` report prepared the handoff-status update without
+writing it, because the executor brief forbade writes. `responses/` holds the
+reports verbatim and `manifest.json` the context hashes.
+
+One change followed the run: the rerun executor of
+`reader-and-timing-of-moved-rules` noted that rule 3 named no hash, so the
+sentence now says sha256 over each section, with fence-aware boundaries.
+`promote-mode.md` therefore differs from its hash in `manifest.json`; every
+other context file matches. One sample per case, one model.
