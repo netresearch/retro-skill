@@ -62,7 +62,8 @@ The reports are in `responses/`, the grading in `grading.md`.
   data, not a held-out test.
 - The executors reported open points in the instructions. One was fixed
   separately because it is a wrong cross-reference, not a behaviour change:
-  the outdated routing heading name, in three places. Five remain open:
+  the outdated routing heading name, in three places. Five remained open and
+  are addressed in #251:
   - promote mode excludes `AGENTS.md` and phrases its move test only as "the
     owning skill reliably triggers";
   - the tier-1 gate calibration assumes an incident, which a harness finding
