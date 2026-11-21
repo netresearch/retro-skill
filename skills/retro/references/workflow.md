@@ -482,8 +482,8 @@ what each one does:
   remains to carry out.
 - A change that the run already made under an existing mandate stays reported
   as made; the question asks only how far the open part goes. A PR that the run
-  opened as a draft before the answer is in the `propose` state until the
-  user says `complete`.
+  opened as a draft before the answer still gets the review and fix rounds
+  under `propose` and `complete`.
 
 ### Report deviations
 

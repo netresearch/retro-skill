@@ -131,11 +131,16 @@ Analyzed session (4200 words). Mechanical pre-pass + LLM enrichment found 3 find
   Why:  A stale ref caused a rejected push, then a forced retry.
   How:  Append a titled rule to ~/.claude/CLAUDE.md.
 
-Approve / edit / reject each? [1] a  [2] e  [3] r
-> ...
+Carry the proposals out? Answer in one word:
+  complete  PRs created, reviewed and fixed until no new finding, own PRs merged,
+            foreign PRs released, every gate green; files written
+  noted     no change, taken note of
+  propose   PRs created, reviewed and fixed until no new finding, left as drafts;
+            file changes shown, unwritten
+> complete
 
 Report
-  PRs opened:   1  (git-workflow: feat: require DCO sign-off)
+  PRs merged:    1  (git-workflow: feat: require DCO sign-off)
   Files written: 2 (<project>/AGENTS.md, ~/.claude/CLAUDE.md)
 ```
 
@@ -171,7 +176,7 @@ The pipeline is built in layers (the project calls them *Schicht* A/B/C/D — la
 5. **Classification** — map each finding to one of the seven destinations, authority first (`skills/retro/references/classification-heuristic.md`), using the catalogue from step 4.
 6. **Eval consultation** — if the matched skill has an `evals/` directory, read it for context and propose an eval stub (TDD style). retro ships its **own** evals under `skills/retro/evals/` testing its classification, validated by `skills/retro/scripts/validate-evals.py`.
 7. **Proposal generation** — per finding: a *Why* paragraph and a *How-to-apply* paragraph, grouped by destination, ≤10 items.
-8. **Authorization** — reuse the valid mandate; approve / edit / reject only uncovered decisions.
+8. **Authorization** — reuse the valid mandate; the uncovered decisions go into one closing question that the user answers in one word (`complete`, `noted` or `propose`).
 9. **Materialization** — per-destination convention. PRs use Conventional Commits with DCO sign-off (`git commit -s`; without it the PR is **BLOCKED** even when all checks pass), preserve signing, and verify private-repo and audience authority.
 10. **Report** — a summary table of created PRs and written files.
 
