@@ -358,9 +358,10 @@ If the proposed artefact is a CI check meeting the fast-check definition
 pre-commit hook config, in the **same PR**. A CI check without the matching hook
 is a half-materialized proposal; say so rather than shipping the half.
 Parity covers fast checks only and means a pre-commit hook. A check too slow
-for that, such as a full test suite, is no parity case: CI alone is complete,
-and a pre-push hook for it is optional (`enforcement-mechanisms.md`, "What
-counts as a fast check").
+for that, such as a full test suite, is no parity case and stays CI-only
+(`enforcement-mechanisms.md`, "What counts as a fast check"). Moving a slow
+hook step to `pre-push` is that file's fix for a bypassed hook ("How parity
+fails in practice"), not a parity requirement.
 
 The reverse does not hold: a hook may exist without a CI counterpart only when
 the check cannot run in CI at all, which is rare.
@@ -388,7 +389,9 @@ file — it is a config edit (`phpstan.neon` level, an ESLint rule entry, a
 a new hook or workflow whenever the analyzer is already wired in.
 
 Verify the rule actually fires on the friction as it occurred before proposing
-it. A rule that does not reproduce the failure is not a gate. Wiring an existing
+it, or, after a green session with no friction, on the defect class it guards,
+with its firing count over the transcript as the must-not-fire control. A rule
+that does not reproduce the failure is not a gate. Wiring an existing
 project command into CI or a hook adds no rule: it needs only that command to
 pass on the base branch.
 

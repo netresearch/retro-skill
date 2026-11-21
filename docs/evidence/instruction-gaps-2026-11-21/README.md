@@ -13,7 +13,7 @@ and checks that the existing behaviour holds.
 | --- | --- |
 | Slimming `AGENTS.md` is outside the promote scan, and the move test only asked whether "the owning skill reliably triggers" | `promote-mode.md`: by-hand path for `AGENTS.md`; rule 2 asks whether the reader loads the destination before the decision it governs |
 | Gate calibration and the tier-1 test assume an incident, which a harness finding after a green session lacks | `classification-heuristic.md` and `patch-workflow.md`: firing count as the must-not-fire control; wiring an existing command needs only that it pass on the base branch |
-| CI/hook parity did not say what a slow check needs | `patch-workflow.md`: parity covers fast checks and means pre-commit; a full test suite is complete in CI, a pre-push hook optional |
+| CI/hook parity did not say what a slow check needs | `patch-workflow.md`: parity covers fast checks and means pre-commit; a full test suite stays CI-only |
 | Spotlight reads the last turns without saying when to read earlier | `workflow.md`: search earlier for evidence that decides between explanations, and say how far |
 | B22 severity did not say whether a consequence derived from records counts as shown | `classification-heuristic.md` and `friction-catalog.md`: shown when it follows from the change and a cited record without a further assumption |
 
@@ -34,8 +34,11 @@ verdict is the author's reading against the case's expectations.
 Two findings of the run itself changed the text before commit: the first B22
 severity example (a runbook reading removed output) matched none of the B22
 warning signs and was replaced, and the tier-1 failure test in
-`classification-heuristic.md` and `patch-workflow.md` got the same green-session
-reading as the calibration rule. The run used the text before those two edits.
+`classification-heuristic.md` got the same green-session reading as the
+calibration rule. The run used the text before those two edits.
+A later review aligned the parity sentence in `patch-workflow.md` with its
+cited source and gave that file's linter-rule check the same green-session
+reading; no case was rerun for it.
 
 `manifest.json` records the context hashes; `responses/` holds the reports
 verbatim. Three raw-session cases of the same change are recorded with the
