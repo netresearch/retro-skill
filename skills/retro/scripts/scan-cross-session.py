@@ -15,7 +15,7 @@ patterns. Used to detect "same friction again" (C1), "cross-project pattern"
 (C2) and "follow-up-fix session" (C5) signals.
 
 Usage:
-    uv run scan-cross-session.py --pattern "<keyword or phrase>" [--days 30] [--project <slug>]
+    uv run scan-cross-session.py --pattern="<keyword or phrase>" [--days 30] [--project=<slug>]
     uv run scan-cross-session.py --user-correction-summary [--days 7]
     uv run scan-cross-session.py --recurring-failures [--days 30] [--limit 20] [--include-refusals]
     uv run scan-cross-session.py --follow-up-sessions [--days 30] [--window-days 7] [--limit 20]
@@ -40,6 +40,7 @@ import shlex
 import subprocess
 import sys
 from collections import Counter, defaultdict
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -107,31 +108,52 @@ GIT_REVERT_RE = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?revert\b(?P<args>[^;&|\n]*)
 # --- reading -------------------------------------------------------------------
 
 
+def _project_sessions(
+    project: Path, cutoff: datetime, gaps: Counter[str]
+) -> Iterator[tuple[Path, str]]:
+    # Path.glob suppresses directory read errors on some supported versions.
+    with os.scandir(project) as entries:
+        for entry in entries:
+            if not entry.name.endswith(".jsonl"):
+                continue
+            try:
+                mtime = datetime.fromtimestamp(entry.stat().st_mtime, UTC)
+            except OSError:
+                gaps["unstatable_entries"] += 1
+                continue
+            if mtime >= cutoff:
+                yield Path(entry.path), project.name
+
+
 def session_files(
-    projects_dir: Path, project_slug: str | None, days: int
+    projects_dir: Path,
+    project_slug: str | None,
+    days: int,
+    gaps: Counter[str] | None = None,
 ) -> list[tuple[Path, str]]:
     """Return list of (jsonl_path, project_slug) within the last N days."""
     # Use elapsed days so local clock changes cannot shift the cutoff.
     cutoff = datetime.now(UTC) - timedelta(days=days)
     out = []
-    if project_slug:
-        candidates = [projects_dir / project_slug]
-    else:
+    if gaps is None:
+        gaps = Counter()
+    if project_slug is None:
         candidates = [p for p in projects_dir.iterdir() if p.is_dir()]
+    else:
+        candidates = [projects_dir / project_slug]
     for proj_dir in candidates:
-        if not proj_dir.exists():
-            continue
-        for f in proj_dir.glob("*.jsonl"):
-            try:
-                mtime = datetime.fromtimestamp(f.stat().st_mtime, UTC)
-            except OSError:
-                continue
-            if mtime >= cutoff:
-                out.append((f, proj_dir.name))
+        try:
+            out.extend(_project_sessions(proj_dir, cutoff, gaps))
+        except OSError:
+            if project_slug is not None:
+                raise
+            gaps["unreadable_projects"] += 1
     return out
 
 
-def load_events(path: Path) -> list[dict[str, Any]] | None:
+def load_events(
+    path: Path, gaps: Counter[str] | None = None
+) -> list[dict[str, Any]] | None:
     """The transcript's event objects, or None when it cannot be read.
 
     A transcript can vanish between listing and reading while another session
@@ -139,17 +161,21 @@ def load_events(path: Path) -> list[dict[str, Any]] | None:
     scan or be counted as a session.
     """
     events = []
+    if gaps is None:
+        gaps = Counter()
     try:
-        with path.open("r", encoding="utf-8", errors="replace") as fh:
+        with path.open("rb") as fh:
             for line in fh:
                 line = line.strip()
                 if not line:
                     continue
                 try:
-                    ev = json.loads(line)
-                except json.JSONDecodeError:
+                    ev = json.loads(line.decode("utf-8"))
+                except (UnicodeDecodeError, json.JSONDecodeError):
+                    gaps["invalid_rows"] += 1
                     continue
                 if not isinstance(ev, dict):
+                    gaps["invalid_rows"] += 1
                     continue
                 # Claude Code's API request logs replay earlier messages, tool
                 # calls included; read as conversation they repeat every call.
@@ -158,6 +184,7 @@ def load_events(path: Path) -> list[dict[str, Any]] | None:
                     ev = {}
                 events.append(ev)
     except OSError:
+        gaps["unreadable_sessions"] += 1
         return None
     return events
 
@@ -191,7 +218,29 @@ def _is_synthetic_user_text(text: str) -> bool:
     return any(marker in head for marker in SYNTHETIC_USER_MARKERS)
 
 
-def extract_user_texts(path: Path) -> list[str]:
+def _user_text_blocks(message: Any, gaps: Counter[str]) -> list[str]:
+    content = message.get("content") if isinstance(message, dict) else None
+    if isinstance(content, str):
+        return [content]
+    if not isinstance(content, list):
+        gaps["invalid_user_turns"] += 1
+        return []
+    texts = []
+    malformed = False
+    for block in content:
+        if not isinstance(block, dict) or not isinstance(block.get("type"), str):
+            malformed = True
+        elif block["type"] == "text":
+            if isinstance(block.get("text"), str):
+                texts.append(block["text"])
+            else:
+                malformed = True
+    if malformed:
+        gaps["invalid_user_turns"] += 1
+    return texts
+
+
+def extract_user_texts(path: Path, gaps: Counter[str] | None = None) -> list[str]:
     """What a human typed: the text of every user turn the harness did not
     write itself.
 
@@ -201,24 +250,24 @@ def extract_user_texts(path: Path) -> list[str]:
     fallback for transcripts older than those flags, as in
     detect-mechanical.py. Without this, `--user-correction-summary` counted a
     hook's `Stop …` feedback, repeated in every session, as a correction."""
+    if gaps is None:
+        gaps = Counter()
     texts = []
-    for ev in load_events(path) or []:
+    for ev in load_events(path, gaps) or []:
+        if ev.get("type") in (
+            "response_item",
+            "event_msg",
+            "turn_context",
+            "session_meta",
+        ) and isinstance(ev.get("payload"), dict):
+            # Raw Codex records require the adapter even in a mixed export.
+            gaps["native_codex_rows"] += 1
+            continue
         if ev.get("type") != "user":
             continue
         if ev.get("isMeta") or ev.get("isCompactSummary"):
             continue
-        msg = ev.get("message", {}) or {}
-        if not isinstance(msg, dict):
-            continue
-        content = msg.get("content")
-        found = []
-        if isinstance(content, str):
-            found.append(content)
-        elif isinstance(content, list):
-            for block in content:
-                if isinstance(block, dict) and block.get("type") == "text":
-                    text = block.get("text", "")
-                    found.append(text if isinstance(text, str) else "")
+        found = _user_text_blocks(ev.get("message"), gaps)
         # A slash-command expansion delivers its template as a sibling text
         # block of the <command-message> marker: one synthetic block makes the
         # whole message synthetic.
@@ -311,11 +360,22 @@ def _correction_key(text: str) -> str:
     return squeeze(text, 80).lower()
 
 
-def cmd_pattern(args, files) -> int:
+def user_turn_coverage(args, files, gaps):
+    """Coverage of the requested Claude user-turn search in the selected time window."""
+    return {
+        "status": "partial" if gaps else "scanned",
+        "corpus": "claude_user_turns",
+        "project": args.project,
+        "sessions_read": len(files) - gaps["unreadable_sessions"],
+        "gaps": dict(gaps),
+    }
+
+
+def cmd_pattern(args, files, gaps) -> int:
     pattern = re.compile(re.escape(args.pattern), re.IGNORECASE)
     hits = defaultdict(list)
     for path, proj in files:
-        for txt in extract_user_texts(path):
+        for txt in extract_user_texts(path, gaps):
             if pattern.search(txt):
                 hits[proj].append(
                     {
@@ -327,7 +387,8 @@ def cmd_pattern(args, files) -> int:
     print(
         json.dumps(
             {
-                "pattern": args.pattern,
+                "coverage": user_turn_coverage(args, files, gaps),
+                "pattern": mask(args.pattern),
                 "days": args.days,
                 "projects_with_matches": len(hits),
                 "matches": dict(hits),
@@ -339,14 +400,14 @@ def cmd_pattern(args, files) -> int:
     return 0
 
 
-def cmd_correction_summary(args, files) -> int:
+def cmd_correction_summary(args, files, gaps) -> int:
     corrections_by_project: dict[str, Counter] = defaultdict(Counter)
     # C1 is "the same correction in several sessions"; C2 is the same across
     # projects. Counting only projects hid C1 inside a single project.
     sessions_by_key: dict[str, set[str]] = defaultdict(set)
     projects_by_key: dict[str, set[str]] = defaultdict(set)
     for path, proj in files:
-        for txt in extract_user_texts(path):
+        for txt in extract_user_texts(path, gaps):
             if not CORRECTION_PATTERNS.search(txt):
                 continue
             key = _correction_key(txt)
@@ -365,7 +426,8 @@ def cmd_correction_summary(args, files) -> int:
     )
     output = {
         "days": args.days,
-        "sessions_scanned": len(files),
+        "coverage": user_turn_coverage(args, files, gaps),
+        "sessions_scanned": len(files) - gaps["unreadable_sessions"],
         "projects_scanned": len({proj for _path, proj in files}),
         "cross_session_corrections": [
             {
@@ -931,19 +993,30 @@ def main() -> int:
             parser.exit(2, f"scan-cross-session: {error}\n")
         return 0
 
-    if not args.projects_dir.exists():
+    if args.project is not None and (
+        args.project in ("", ".", "..") or Path(args.project).name != args.project
+    ):
+        parser.error("--project expects one nonempty project slug")
+
+    gaps: Counter[str] = Counter()
+    try:
+        files = session_files(args.projects_dir, args.project, args.days, gaps)
+    except OSError as error:
         print(
             json.dumps(
-                {"available": False, "reason": f"not found: {args.projects_dir}"}
+                {
+                    "available": False,
+                    "reason": str(error),
+                    "coverage": {"status": "unavailable", "project": args.project},
+                }
             )
         )
         return 0
 
-    files = session_files(args.projects_dir, args.project, args.days)
     if args.pattern:
-        return cmd_pattern(args, files)
+        return cmd_pattern(args, files, gaps)
     if args.user_correction_summary:
-        return cmd_correction_summary(args, files)
+        return cmd_correction_summary(args, files, gaps)
     if args.recurring_failures:
         return cmd_recurring_failures(args, files)
     if args.follow_up_sessions:
