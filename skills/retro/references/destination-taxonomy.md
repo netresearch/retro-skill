@@ -219,8 +219,8 @@ the prose that belongs beside it is the *recipe for installing that gate
 elsewhere*, not a restatement of the rule the gate already enforces.
 
 Only narrow when escalation would be wrong (the lesson is genuinely personal or
-repo-specific). Never project-local memory. See "Routing — enforceability first,
-then reach" in `classification-heuristic.md`. When the *fit* is truly ambiguous,
+repo-specific). Never project-local memory. See "Routing — authority first, then
+enforceability, then reach" in `classification-heuristic.md`. When the *fit* is truly ambiguous,
 ask the user.
 
 ## Paired materialization — the bounded exceptions to "one destination"

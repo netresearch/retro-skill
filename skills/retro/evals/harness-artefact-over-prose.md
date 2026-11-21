@@ -21,7 +21,7 @@ negative_expected:
 
 This is the routing case the enforceability axis exists for (see
 [`../references/classification-heuristic.md`](../references/classification-heuristic.md),
-"Routing — enforceability first, then reach"). The friction is mechanical,
+"Routing — authority first, then enforceability, then reach"). The friction is mechanical,
 deterministic, and under the fast-check threshold, so tier 1 is available: the
 lesson can be *enforced* rather than *stated*.
 

@@ -57,7 +57,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 ## Relationships
 
 - `agent-harness-skill` — verifies integration points (PR retro question, optional SessionEnd hook)
-- `agent-rules-skill` — defines feedback-memory schema for project-rule materialization
+- `agent-rules-skill` — defines the `AGENTS.md` conventions that project-rule materialization writes to
 - `skill-repo-skill` — defines PR/branch convention for skill-update materialization
 - `automated-assessment-skill` — defines YAML schema for checkpoint materialization
 
