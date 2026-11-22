@@ -155,6 +155,111 @@ class SessionFilesTest(TempDirCase):
                         time.tzset()
 
 
+class UserTurnCoverageTest(TempDirCase):
+    def test_empty_project_and_missing_source_are_distinct(self):
+        (self.root / "-empty").mkdir()
+        for mode in (["--pattern=relay"], ["--user-correction-summary"]):
+            with self.subTest(mode=mode):
+                empty = _run(self.root, "--project=-empty", *mode)["coverage"]
+                self.assertEqual(
+                    (empty["status"], empty["sessions_read"]), ("scanned", 0)
+                )
+                for root, slug in (
+                    (self.root, "-gone"),
+                    (self.root / "absent", "-empty"),
+                ):
+                    missing = _run(root, "--project=" + slug, *mode)
+                    self.assertFalse(missing["available"])
+                    self.assertEqual(
+                        missing["coverage"], {"status": "unavailable", "project": slug}
+                    )
+
+    def test_valid_hits_survive_partial_reads_and_stay_in_scope(self):
+        path = (
+            Transcript().user("no, first attempt").write(self.root, "-project", "seen")
+        )
+        Transcript().user("no, relay").write(self.root, "-other", "unrelated")
+        with path.open("ab") as raw:
+            raw.write(b'{"type":\n[]\n\xff\n{"type":"user","message":null}\n')
+            raw.write(b'{"type":"response_item","payload":{}}\n')
+            raw.write(
+                b'{"type":"user","message":{"content":[{"type":"text","text":null},'
+                b'{"type":"text","text":"no, relay again"}]}}\n'
+            )
+        # An unreadable input without relying on Unix permissions or process uid.
+        (path.parent / "broken.jsonl").mkdir()
+        for mode in (["--pattern=relay"], ["--user-correction-summary"]):
+            with self.subTest(mode=mode):
+                result = _run(self.root, "--project=-project", *mode)
+                self.assertEqual(
+                    result["coverage"],
+                    {
+                        "status": "partial",
+                        "corpus": "claude_user_turns",
+                        "project": "-project",
+                        "sessions_read": 1,
+                        "gaps": {
+                            "invalid_rows": 3,
+                            "invalid_user_turns": 2,
+                            "unreadable_sessions": 1,
+                            "native_codex_rows": 1,
+                        },
+                    },
+                )
+                if "matches" in result:
+                    self.assertEqual(list(result["matches"]), ["-project"])
+                    self.assertEqual(
+                        result["matches"]["-project"],
+                        [{"session": "seen.jsonl", "snippet": "no, relay again"}],
+                    )
+                else:
+                    self.assertEqual(result["sessions_scanned"], 1)
+                    self.assertEqual(list(result["by_project_top5"]), ["-project"])
+
+    def test_codex_user_event_alone_is_not_a_complete_claude_search(self):
+        fixture = REPO_ROOT / "tests/fixtures/codex/rollout-0.101.0.jsonl"
+        rows = (json.loads(line) for line in fixture.read_text().splitlines())
+        event = next(
+            row
+            for row in rows
+            if row.get("type") == "event_msg"
+            and row["payload"].get("type") == "user_message"
+        )
+        project = self.root / "-project"
+        project.mkdir()
+        (project / "one-turn.jsonl").write_text(json.dumps(event) + "\n")
+        result = _run(self.root, "--project=-project", "--pattern=Run the test suite")
+        self.assertEqual(result["matches"], {})
+        self.assertEqual(result["coverage"]["status"], "partial")
+        self.assertEqual(result["coverage"]["gaps"], {"native_codex_rows": 1})
+
+    def test_explicit_empty_scope_does_not_search_every_project(self):
+        Transcript().user("no, relay").write(self.root, "-other", "unrelated")
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(SCRIPT),
+                "--projects-dir",
+                str(self.root),
+                "--project=",
+                "--pattern=relay",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, "")
+
+    def test_query_and_matching_excerpt_use_the_same_mask(self):
+        query = "Authorization: Bearer " + "example" * 5
+        Transcript().user(query).write(self.root, "-project", "seen")
+        result = _run(self.root, "--pattern=" + query)
+        self.assertEqual(result["projects_with_matches"], 1)
+        self.assertNotIn("example" * 5, json.dumps(result))
+        self.assertIn("[REDACTED]", result["pattern"])
+
+
 class LoadEventsTest(TempDirCase):
     def test_skips_lines_that_are_not_objects(self) -> None:
         path = self.root / "s.jsonl"
