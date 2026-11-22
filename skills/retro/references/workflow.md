@@ -369,6 +369,22 @@ On a repeat `/retro` within one session, filter findings to turns after the
 previous retro — earlier signals were already proposed and must not be
 re-presented.
 
+The review collector takes the same window: `--scan-since <time of the
+previous retro>` reads only the transcript events at or after it, so only the
+PRs, MRs and issues written since then are read from the forge. Subagent
+transcripts last written before it are not opened, and the output counts what
+was skipped. On a long session this is the difference between minutes and
+seconds: a 382 MB session with 1,091 subagent transcripts named 1,072
+artefacts, its last hour 13. `--since` keeps its own meaning (which comments
+are listed); add `--since` with the same time when only feedback from the
+window matters. Outcome mode reads a past session whole and does not pass
+`--scan-since`.
+
+```bash
+uv run "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" --transcript-file "$TF" \
+  --scan-since 2026-11-21T23:00:00Z --since 2026-11-21T23:00:00Z --output-format json
+```
+
 ```
 1. Mechanical pre-pass (Schicht A)
 1b. Native reviews plus supplied tracker feedback (collect-review-findings.py);

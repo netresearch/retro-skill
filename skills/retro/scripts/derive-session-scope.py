@@ -56,6 +56,7 @@ import re
 import shlex
 import subprocess
 import sys
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote as unquote_url
@@ -2004,16 +2005,63 @@ class _ArtefactScan:
                 handlers[block["type"]](block)
 
 
-def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
+def event_time(event: dict[str, Any]) -> datetime | None:
+    """The event's top-level `timestamp`, or None when it has none or it is
+    not ISO 8601. A time without an offset is taken as UTC."""
+    stamp = event.get("timestamp")
+    if not isinstance(stamp, str):
+        return None
+    try:
+        moment = datetime.fromisoformat(stamp.strip())
+    except ValueError:
+        return None
+    return moment if moment.tzinfo else moment.replace(tzinfo=UTC)
+
+
+def _before(event: dict[str, Any], cutoff: datetime | None) -> bool:
+    """True only for an event whose own timestamp is older than `cutoff`.
+    An event without a readable timestamp is never before it."""
+    if cutoff is None:
+        return False
+    moment = event_time(event)
+    return moment is not None and moment < cutoff
+
+
+def _registers_calls_only(scan: _ArtefactScan, event: dict[str, Any]) -> None:
+    """An event before the scan cutoff: keep its tool calls pending and drop
+    the pending call its results answer, nothing else. A call made before the
+    cutoff whose result arrives after it is still read, by its result."""
+    content = _message(event).get("content")
+    for block in content if isinstance(content, list) else []:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") == "tool_use":
+            scan.tool_use(block)
+        elif block.get("type") == "tool_result":
+            scan.pending.pop(block.get("tool_use_id", ""), None)
+
+
+def collect_artefacts(
+    transcript: Path, gitlab_host: str = "", scan_since: datetime | None = None
+) -> dict[str, Any]:
     """Native artifacts plus unassigned, context-preserving reference hints.
 
     `origin` says how much the transcript supports the link: `created` (the
     command's own output printed the URL), `acted` (a write command named it),
     `mentioned` (a URL appeared somewhere, which includes documentation
     placeholders such as `OWNER/REPO` — a reader weighs those, a fetch skips them).
+
+    With `scan_since`, an event whose timestamp is older is not read
+    (`events_before_scan_since` counts them). Each line is checked on its own:
+    timestamps in a transcript are not in order.
     """
     scan = _ArtefactScan(gitlab_host, transcript.resolve().as_uri())
+    before = 0
     for event in iter_events(transcript):
+        if _before(event, scan_since):
+            before += 1
+            _registers_calls_only(scan, event)
+            continue
         scan.event(event)
     items = sorted(
         scan.by_url.values(), key=lambda a: (-ORIGIN_RANK[a["origin"]], a["url"])
@@ -2029,6 +2077,7 @@ def collect_artefacts(transcript: Path, gitlab_host: str = "") -> dict[str, Any]
         # unresolved (`only_review_threads`). collect-review-findings.py asks
         # the forge which pull request each thread belongs to.
         "review_thread_writes": scan.review_thread_writes,
+        "events_before_scan_since": before,
     }
 
 
@@ -2068,20 +2117,43 @@ def session_transcripts(transcript: Path) -> list[Path]:
     return [transcript, *subagent_transcripts(transcript)]
 
 
-def scan_transcripts(paths: list[Path], gitlab_host: str) -> dict[str, Any]:
+def _written_before(path: Path, cutoff: datetime) -> bool:
+    """The file was last written before `cutoff`, so no event in it is newer:
+    the harness appends each event when it happens. Checked on the session of
+    2026-11-22: in 1,091 subagent transcripts no event was newer than its file.
+    A file copied later only reads as newer, and is then scanned line by line."""
+    return path.stat().st_mtime < cutoff.timestamp()
+
+
+def scan_transcripts(
+    paths: list[Path], gitlab_host: str, scan_since: datetime | None = None
+) -> dict[str, Any]:
     """`collect_artefacts` over several transcripts of one session.
 
     An artefact named in more than one keeps its strongest origin, so a PR a
-    subagent created and the main loop only mentioned counts as created."""
+    subagent created and the main loop only mentioned counts as created.
+
+    With `scan_since`, a subagent transcript last written before it is not
+    opened (`transcripts_before_scan_since`), and every other transcript is
+    read from its events at or after it. The main transcript (`paths[0]`) is
+    always read. `transcripts_read` lists the files read, main first."""
     by_url: dict[str, dict[str, Any]] = {}
     merged: dict[str, Any] = {
         "tickets": set(),
         "reference_candidates": [],
         "unresolved_forge_commands": [],
         "review_thread_writes": [],
+        "transcripts_read": [],
+        "transcripts_before_scan_since": [],
+        "events_before_scan_since": 0,
     }
-    for path in paths:
-        data = collect_artefacts(path, gitlab_host)
+    for index, path in enumerate(paths):
+        if index and scan_since is not None and _written_before(path, scan_since):
+            merged["transcripts_before_scan_since"].append(path)
+            continue
+        merged["transcripts_read"].append(path)
+        data = collect_artefacts(path, gitlab_host, scan_since)
+        merged["events_before_scan_since"] += data["events_before_scan_since"]
         for item in data["artefacts"]:
             have = by_url.get(item["url"])
             if not have or ORIGIN_RANK[item["origin"]] > ORIGIN_RANK[have["origin"]]:
@@ -2112,6 +2184,13 @@ def collect(transcript: Path, gitlab_host: str = "") -> dict[str, Any]:
     candidates, forges, tags = _scan_commands(commands)
     roots, unresolved = _resolve_roots(candidates | file_paths)
     forge_artefacts = scan_transcripts(transcripts, gitlab_host)
+    # Without a scan cutoff every transcript is read; `transcripts` names them.
+    for key in (
+        "transcripts_read",
+        "transcripts_before_scan_since",
+        "events_before_scan_since",
+    ):
+        forge_artefacts.pop(key)
 
     return {
         "transcript": str(transcript),

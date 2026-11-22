@@ -17,6 +17,7 @@ import importlib.util
 import io
 import itertools
 import json
+import os
 import subprocess
 import tempfile
 import time
@@ -3248,6 +3249,182 @@ class SubagentTranscriptTest(unittest.TestCase):
         self.assertEqual(result["artefacts"], [])
         text = self._main(main, "text")
         self.assertIn("transcripts read: 1 main + 0 subagent\n", text)
+
+
+class ScanSinceTest(unittest.TestCase):
+    """`--scan-since` bounds the transcript scan to a window of a long session.
+
+    2026-11-22: a 382 MB session with 1,091 subagent transcripts named 1,072
+    artefacts; reading them all ran past 500 s, while the last hour named 13.
+    Events before the cutoff are not read, subagent files last written before
+    it are not opened, and what lies inside the window comes out unchanged."""
+
+    CUT = "2026-09-30T10:00:00Z"
+
+    @staticmethod
+    def _pair(n: int, used: str | None, answered: str | None, pr: int) -> list:
+        """A `gh pr create` call and its result, each stamped or not."""
+        use = {"type": "tool_use", "id": f"s{n}", "name": "Bash"}
+        use["input"] = {"command": f"gh pr create -R o/r --head b{pr} --fill"}
+        result = {"type": "tool_result", "tool_use_id": f"s{n}", "is_error": False}
+        result["content"] = f"https://github.com/o/r/pull/{pr}"
+        events = [
+            {"type": "assistant", "message": {"content": [use]}},
+            {"type": "user", "message": {"content": [result]}},
+        ]
+        for event, stamp in zip(events, (used, answered)):
+            if stamp:
+                event["timestamp"] = stamp
+        return events
+
+    @staticmethod
+    def _write(path: Path, events: list, written: str) -> Path:
+        path.write_text("\n".join(json.dumps(e) for e in events), encoding="utf-8")
+        moment = datetime.fromisoformat(written).timestamp()
+        os.utime(path, (moment, moment))
+        return path
+
+    def _session(self) -> tuple[Path, Path, Path]:
+        root = Path(TMP.name) / f"project{next(_COUNTER)}"
+        root.mkdir()
+        sid = "5b0c7d0e-3f1a-4c2b-9d8e-7a6f5e4d3c2b"
+        start = {"timestamp": "2026-09-30T09:00:00Z", "message": {"content": "go"}}
+        main = self._write(
+            root / f"{sid}.jsonl",
+            [start]
+            # Before the cutoff: not read.
+            + self._pair(1, "2026-09-30T09:10:00Z", "2026-09-30T09:10:05Z", 1)
+            # Called before the cutoff, answered after it: counted.
+            + self._pair(2, "2026-09-30T09:59:00Z", "2026-09-30T10:01:00Z", 2)
+            + self._pair(3, "2026-09-30T10:10:00Z", "2026-09-30T10:10:05Z", 3)
+            # No timestamp at all: read, as without a cutoff.
+            + self._pair(4, None, None, 4),
+            "2026-09-30T10:40:00Z",
+        )
+        subagents = root / sid / "subagents"
+        subagents.mkdir(parents=True)
+        # Last written before the cutoff: never opened.
+        old = self._write(
+            subagents / "agent-old.jsonl",
+            self._pair(5, "2026-09-30T09:20:00Z", "2026-09-30T09:20:05Z", 5),
+            "2026-09-30T09:30:00Z",
+        )
+        # Spans the cutoff: read from its events at or after it.
+        new = self._write(
+            subagents / "agent-new.jsonl",
+            self._pair(6, "2026-09-30T09:40:00Z", "2026-09-30T09:40:05Z", 6)
+            + self._pair(7, "2026-09-30T10:20:00Z", "2026-09-30T10:20:05Z", 7),
+            "2026-09-30T10:30:00Z",
+        )
+        return main, old, new
+
+    @staticmethod
+    def _answer(number: int) -> dict:
+        """A PR with one comment before and one after 10:00."""
+        url = f"https://github.com/o/r/pull/{number}"
+        comments = [
+            _comment("alice", "User", "2026-09-30T08:00:00Z", f"early {number}"),
+            _comment("alice", "User", "2026-09-30T11:00:00Z", f"late {number}"),
+        ]
+        raw = _pr()
+        node = raw["data"]["repository"]["pullRequest"]
+        node.update(url=url, comments={"totalCount": 2, "nodes": comments})
+        return raw
+
+    def _run(self, *extra: str) -> tuple[dict, list[int]]:
+        read: list[int] = []
+
+        def fake(command, **_):
+            number = int(next(a for a in command if a.startswith("number="))[7:])
+            read.append(number)
+            body = json.dumps(self._answer(number))
+            return subprocess.CompletedProcess(command, 0, body, "")
+
+        main, _, _ = self._sessions
+        out = io.StringIO()
+        argv = ["x", "--transcript-file", str(main), "--since", self.CUT, *extra]
+        with (
+            mock.patch.object(crf.subprocess, "run", side_effect=fake),
+            contextlib.redirect_stdout(out),
+        ):
+            crf.main([*argv, "--output-format", "json"])
+        return json.loads(out.getvalue()), read
+
+    def setUp(self) -> None:
+        self._sessions = self._session()
+
+    def test_only_the_window_is_read(self):
+        result, read = self._run("--scan-since", self.CUT)
+        self.assertEqual(sorted(read), [2, 3, 4, 7])
+        main, old, new = self._sessions
+        self.assertEqual(result["transcripts"], [str(main), str(new)])
+        self.assertEqual(result["transcripts_before_scan_since"], [str(old)])
+        # main: start, call 1 and its result, call 2; agent-new: call 6, result.
+        self.assertEqual(result["events_before_scan_since"], 6)
+        self.assertEqual(result["scan_since"], "2026-09-30T10:00:00+00:00")
+
+    def test_the_window_comes_out_as_it_does_without_the_cutoff(self):
+        whole, read_all = self._run()
+        window, _ = self._run("--scan-since", self.CUT)
+        self.assertEqual(sorted(read_all), [1, 2, 3, 4, 5, 6, 7])
+        inside = {f"https://github.com/o/r/pull/{n}" for n in (2, 3, 4, 7)}
+
+        def only(items, key):
+            return sorted(
+                (i for i in items if i[key] in inside), key=lambda i: json.dumps(i)
+            )
+
+        self.assertEqual(
+            only(window["artefacts"], "url"), only(whole["artefacts"], "url")
+        )
+        self.assertEqual(window["findings"], only(whole["findings"], "artefact"))
+        self.assertEqual(len(window["findings"]), 4)
+        # The call answered after the cutoff keeps its command: created.
+        origins = {a["url"]: a["origin"] for a in window["artefacts"]}
+        self.assertEqual(origins["https://github.com/o/r/pull/2"], "created")
+        self.assertEqual(window["findings_before_since"], 4)
+        self.assertEqual(window["since"], whole["since"])
+
+    def test_without_the_cutoff_the_output_names_no_scan(self):
+        result, _ = self._run()
+        self.assertNotIn("scan_since", result)
+        self.assertNotIn("transcripts_before_scan_since", result)
+        self.assertEqual(len(result["transcripts"]), 3)
+
+    def test_the_text_names_what_was_skipped(self):
+        main, _, _ = self._sessions
+        out = io.StringIO()
+        with (
+            mock.patch.object(
+                crf.subprocess,
+                "run",
+                side_effect=lambda c, **_: subprocess.CompletedProcess(c, 1, "", "x"),
+            ),
+            contextlib.redirect_stdout(out),
+        ):
+            crf.main(["x", "--transcript-file", str(main), "--scan-since", self.CUT])
+        text = out.getvalue()
+        self.assertIn("transcripts read: 1 main + 1 subagent", text)
+        self.assertIn(
+            "--scan-since 2026-09-30T10:00:00+00:00: 1 subagent transcripts"
+            " and 6 events before it were not read",
+            text,
+        )
+
+    def test_a_bad_cutoff_or_one_without_a_transcript_is_refused(self):
+        for argv in (
+            ["x", "--ref", "NRS-1", "--scan-since", self.CUT],
+            ["x", "--transcript-file", "t.jsonl", "--scan-since", "30.09.2026"],
+            # Given but empty is not omitted: it would read the whole session.
+            ["x", "--transcript-file", "t.jsonl", "--scan-since", ""],
+        ):
+            with (
+                self.subTest(argv=argv),
+                contextlib.redirect_stderr(io.StringIO()),
+                self.assertRaises(SystemExit) as raised,
+            ):
+                crf.main(argv)
+            self.assertEqual(raised.exception.code, 2)
 
 
 class CreateAndReadyTest(unittest.TestCase):
