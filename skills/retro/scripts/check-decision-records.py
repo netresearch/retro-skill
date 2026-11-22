@@ -44,9 +44,13 @@ Accepted anchors in a record (an ADR file, or a section of AGENTS.md):
 A path is relative to the repository root, also with a leading slash. It may
 name a file, a directory (everything below it) or a glob, where * and ? stay
 within one directory and ** spans directories. A `#Symbol` suffix is accepted
-and ignored. A record binds unless its status starts with superseded,
+and ignored, and so is a YAML comment. A path that exists as written is not
+read as a glob. A record binds unless its status starts with superseded,
 deprecated, rejected, withdrawn, retired, proposed or draft. Lines inside
-fenced code blocks are examples, not declarations or records.
+fenced code blocks are examples, not declarations or records. The status is
+read from a bold or frontmatter field, or from a "## Status" heading and the
+line after it (the adr-tools layout). Changed paths are relative to --repo; an
+absolute one inside it is made relative, one outside it is listed as ignored.
 
 Usage:
     uv run check-decision-records.py [--repo DIR] [--changed-file PATH ...]
@@ -60,6 +64,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -71,8 +76,13 @@ GLOB_CHARS = "*?["
 
 # Each pattern has one unbounded group at its end, so no input backtracks
 # super-linearly; separators after it are stripped in Python.
-_DECL = re.compile(r"^ADRs?\s*:\s*(yes|no|ja|nein)\b(.*)$", re.IGNORECASE)
-_FIELD = re.compile(r"^(status|touches)\s*:(.*)$", re.IGNORECASE)
+_BOLD = r"(?:\*\*|__)?"
+_DECL = re.compile(
+    rf"^{_BOLD}ADRs?{_BOLD}\s*:{_BOLD}\s*(yes|no|ja|nein)\b(.*)$", re.IGNORECASE
+)
+_FIELD = re.compile(rf"^{_BOLD}(status|touches){_BOLD}\s*:{_BOLD}(.*)$", re.IGNORECASE)
+_STATUS_HEADING = re.compile(r"^#{2,3}\s+status\s*$", re.IGNORECASE)
+_YAML_COMMENT = re.compile(r"\s+#.*$")
 _BACKTICK = re.compile(r"`([^`]+)`")
 _LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
 _SEPARATORS = " \t—–:-"
@@ -82,12 +92,9 @@ NON_BINDING_STATUSES = ("proposed", "draft")
 
 
 def _plain(line: str) -> str:
-    """A line without list markers and bold markers; code spans stay as written."""
-    s = _LIST_MARKER.sub("", line.strip())
-    parts = s.split("`")
-    for i in range(0, len(parts), 2):  # even parts lie outside code spans
-        parts[i] = parts[i].replace("**", "").replace("__", "")
-    return "`".join(parts).strip()
+    """A line without its list marker; bold around a field name is matched by
+    the field patterns, so paths keep their __ and **."""
+    return _LIST_MARKER.sub("", line.strip()).strip()
 
 
 def _unfenced(lines: list[str]) -> list[str]:
@@ -130,7 +137,7 @@ def _dir_key(rest: str) -> str:
     ticks = _BACKTICK.findall(rest)
     links = _LINK.findall(rest)
     first = ticks[0] if ticks else links[0] if links else (rest.split() or [""])[0]
-    return first.strip().rstrip(".,;").rstrip("/")
+    return _strip_dot_slash(first.strip().rstrip(".,;")).rstrip("/")
 
 
 def _check_adr_dir(rest: str, repo: Path) -> tuple[str | None, list[str]]:
@@ -219,7 +226,7 @@ def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
         indented = raw.startswith((" ", "\t"))
         m = None if indented else _FIELD.match(raw.strip())
         if m:
-            current, val = m.group(1).lower(), m.group(2).strip()
+            current, val = m.group(1).lower(), _YAML_COMMENT.sub("", m.group(2)).strip()
             if current == "status" and val:
                 status = val.strip("'\"")
             elif current == "touches" and val:
@@ -227,16 +234,26 @@ def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
         elif not indented:
             current = None
         elif current == "touches" and raw.strip().startswith("- "):
-            touches += _split_paths(raw.strip()[2:])
+            touches += _split_paths(_YAML_COMMENT.sub("", raw.strip()[2:]))
     return status, touches
 
 
 def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
-    """title, status and touches from a record body with bold fields."""
+    """title, status and touches from a record body: bold fields, or a
+    "## Status" heading followed by its value (the adr-tools layout)."""
     title, status, touches = None, None, []
+    status_next = False
     for raw in _unfenced(lines):
         if title is None and raw.startswith("# "):
             title = raw[2:].strip()
+        if _STATUS_HEADING.match(raw.strip()):
+            status_next = True
+            continue
+        if status_next and raw.strip():
+            status_next = False
+            if status is None and not raw.lstrip().startswith("#"):
+                status = _plain(raw)
+            continue
         m = _FIELD.match(_plain(raw))
         if not m:
             continue
@@ -308,26 +325,49 @@ def _glob_regex(pattern: str) -> re.Pattern:
     return re.compile("".join(out) + r"\Z")
 
 
+def _glob_matches(repo: Path, pattern: str) -> bool:
+    """Whether a glob matches a path below the root, without leaving it."""
+    try:
+        matches = repo.glob(pattern)
+        return any(_inside(repo, str(m.relative_to(repo))) is not None for m in matches)
+    except (ValueError, NotImplementedError):
+        # Path.glob refuses some patterns (** inside a segment on 3.11); match
+        # the walked tree with the same meaning instead.
+        rx = _glob_regex(pattern)
+        for root, dirs, files in os.walk(repo):
+            dirs[:] = [d for d in dirs if d != ".git"]
+            base = Path(root).relative_to(repo)
+            for name in dirs + files:
+                if rx.match((base / name).as_posix()):
+                    return True
+        return False
+
+
 def anchor_exists(repo: Path, touch: str) -> bool:
     """Whether the anchored path exists below the root; an anchor outside it,
-    also through a symbolic link, counts as gone."""
+    also through a symbolic link, counts as gone. A path that exists as
+    written (a route file such as app/[slug]/page.tsx) is not read as a glob."""
     p = _anchor_path(touch)
-    if any(c in p for c in GLOB_CHARS):
-        if ".." in Path(p).parts:
-            return False
-        return any(
-            _inside(repo, str(m.relative_to(repo))) is not None for m in repo.glob(p)
-        )
+    if ".." in Path(p).parts:
+        return False
     target = _inside(repo, p)
-    return target is not None and target.exists()
+    if target is not None and target.exists():
+        return True
+    return any(c in p for c in GLOB_CHARS) and _glob_matches(repo, p)
 
 
 def anchor_covers(touch: str, changed: str) -> bool:
+    """Whether a changed path is the anchor, lies below it, or lies below a
+    directory its glob names."""
     p = _anchor_path(touch).rstrip("/")
     c = _strip_dot_slash(changed)
-    if any(ch in p for ch in GLOB_CHARS):
-        return _glob_regex(p).match(c) is not None
-    return c == p or c.startswith(p + "/")
+    if c == p or c.startswith(p + "/"):
+        return True
+    if not any(ch in p for ch in GLOB_CHARS):
+        return False
+    rx = _glob_regex(p)
+    parts = c.split("/")
+    return any(rx.match("/".join(parts[:i])) for i in range(1, len(parts) + 1))
 
 
 def agents_sections(text: str) -> list[tuple[str, str]]:
@@ -446,6 +486,21 @@ def findings_for(policy: dict, records: list[dict], hits: list[dict]) -> list[di
     return findings
 
 
+def _relative_changes(repo: Path, changed: list[str]) -> tuple[list[str], list[str]]:
+    """Changed paths relative to the root; an absolute path inside the root is
+    made relative, one outside it is listed as ignored."""
+    kept, ignored = [], []
+    for c in changed:
+        if Path(c).is_absolute():
+            try:
+                kept.append(Path(c).resolve().relative_to(repo).as_posix())
+            except ValueError:
+                ignored.append(c)
+        else:
+            kept.append(c)
+    return kept, ignored
+
+
 def build_report(repo: Path, changed: list[str]) -> dict:
     agents = repo / AGENTS_MD
     agents_text = (
@@ -455,6 +510,7 @@ def build_report(repo: Path, changed: list[str]) -> dict:
     )
     policy = read_policy(agents_text, repo)
     records = collect_records(repo, agents_text, policy)
+    changed, ignored = _relative_changes(repo, changed)
     hits = changed_hits(records, changed)
     findings = findings_for(policy, records, hits)
     adr = [r for r in records if r["kind"] == "adr"]
@@ -474,6 +530,7 @@ def build_report(repo: Path, changed: list[str]) -> dict:
         },
         "records": records,
         "changed_hits": hits,
+        "ignored_changed_files": ignored,
         "findings_total": len(findings),
         "findings": findings,
     }

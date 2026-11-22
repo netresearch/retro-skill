@@ -147,6 +147,14 @@ class PolicyTest(unittest.TestCase):
         )
         self.assertEqual(self.repo.report()["policy"]["status"], "undefined")
 
+    def test_leading_slash_in_the_declared_directory_means_the_root(self):
+        self.repo.write("AGENTS.md", "ADRs: yes — `/docs/adr/`\n")
+        self.repo.write("docs/adr/AGENTS.md", "x\n")
+        r = self.repo.report()
+        self.assertEqual(
+            (r["policy"]["status"], r["policy"]["adr_dir"]), ("yes", "docs/adr/")
+        )
+
     def test_german_answer_is_read(self):
         self.repo.write(
             "AGENTS.md", "- ADRs: nein — Entscheidungen stehen in der PR-Beschreibung\n"
@@ -280,6 +288,79 @@ class RecordTest(unittest.TestCase):
         r = self.repo.report(changed=["src/x.py"])
         self.assertFalse(r["records"][0]["active"])
         self.assertEqual(r["findings"], [])
+
+    def test_route_file_with_brackets_is_a_literal_path(self):
+        self.repo.write("app/[slug]/page.tsx", "")
+        self.repo.write(
+            "docs/adr/ADR-012.md",
+            "# ADR-012\n\n**Status:** Accepted\n**Touches:** `app/[slug]/page.tsx`\n",
+        )
+        r = self.repo.report(changed=["app/[slug]/page.tsx"])
+        self.assertEqual(r["records"][0]["missing"], [])
+        self.assertEqual(len(r["changed_hits"]), 1)
+
+    def test_glob_naming_a_directory_covers_the_files_below(self):
+        self.repo.write("packages/a/config/x.yml", "")
+        self.repo.write(
+            "docs/adr/ADR-013.md",
+            "# ADR-013\n\n**Status:** Accepted\n**Touches:** `packages/*/config/`\n",
+        )
+        r = self.repo.report(changed=["packages/a/config/x.yml", "packages/a/src/y.py"])
+        self.assertEqual(
+            [h["file"] for h in r["changed_hits"]], ["packages/a/config/x.yml"]
+        )
+        self.assertEqual(r["records"][0]["missing"], [])
+
+    def test_double_star_inside_a_segment_does_not_crash(self):
+        self.repo.write("src/a.py", "")
+        self.repo.write(
+            "docs/adr/ADR-014.md",
+            "# ADR-014\n\n**Status:** Accepted\n**Touches:** `src/**.py`\n",
+        )
+        r = self.repo.report(changed=["src/a.py"])
+        self.assertEqual(r["records"][0]["missing"], [])
+        self.assertEqual(len(r["changed_hits"]), 1)
+
+    def test_status_heading_of_adr_tools_is_read(self):
+        self.repo.write(
+            "docs/adr/0003-old.md",
+            "# 3. Old choice\n\n## Status\n\nSuperseded by 0004\n\n**Touches:** `gone.py`, `src/`\n",
+        )
+        r = self.repo.report(changed=["src/x.py"])
+        self.assertEqual(r["records"][0]["status"], "Superseded by 0004")
+        self.assertEqual(r["findings"], [])
+
+    def test_paths_without_backticks_keep_their_underscores_and_stars(self):
+        self.repo.write("src/pkg/__init__.py", "")
+        self.repo.write(
+            "docs/adr/ADR-015.md",
+            "# ADR-015\n\n**Status:** Accepted\n**Touches:** src/pkg/__init__.py, src/**/*.py\n",
+        )
+        r = self.repo.report()
+        self.assertEqual(
+            r["records"][0]["touches"], ["src/pkg/__init__.py", "src/**/*.py"]
+        )
+        self.assertEqual(r["records"][0]["missing"], [])
+
+    def test_yaml_comment_is_not_an_anchor(self):
+        self.repo.write("src/a.py", "")
+        self.repo.write(
+            "docs/adr/0016.md",
+            "---\nstatus: accepted\ntouches:\n  - src/a.py  # retry loop\n---\n# Retry\n",
+        )
+        self.assertEqual(self.repo.report()["records"][0]["touches"], ["src/a.py"])
+
+    def test_absolute_changed_paths_are_made_relative(self):
+        self.repo.write("src/a.py", "")
+        self.repo.write(
+            "docs/adr/ADR-017.md",
+            "# ADR-017\n\n**Status:** Accepted\n**Touches:** `src/a.py`\n",
+        )
+        r = self.repo.report(
+            changed=[str(self.repo.root / "src/a.py"), "/elsewhere/b.py"]
+        )
+        self.assertEqual([h["file"] for h in r["changed_hits"]], ["src/a.py"])
+        self.assertEqual(r["ignored_changed_files"], ["/elsewhere/b.py"])
 
     def test_glob_anchor(self):
         self.repo.write("src/a_test.py", "")

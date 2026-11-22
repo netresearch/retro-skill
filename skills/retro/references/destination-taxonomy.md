@@ -79,8 +79,9 @@ declares in its Key Decisions, as `**ADRs:** yes — <directory>` or
 `**ADRs:** no — <where decisions are recorded instead>`:
 
 - With `yes`, write a new record in that directory and follow the directory's
-  own `AGENTS.md`. Never edit an accepted record: a new record supersedes it
-  and names it.
+  own `AGENTS.md`. Never change an accepted decision in place: a new record
+  supersedes it and names it. A `**Touches:**` path that only moved with its
+  code is a reference fix and may be corrected in place.
 - With `no`, write the decision where the declaration says.
 - When the declaration is missing or inconsistent (E7), choose no place.
   Report E7 and name the project owner, who decides yes or no.
