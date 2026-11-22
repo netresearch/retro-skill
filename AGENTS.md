@@ -55,6 +55,10 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - Tracker-neutral core: no implicit tracker, external CLI discovery or organization billing policy; see `skills/retro/references/feedback-contract.md`
 - A transcript adapter (`*-transcript.py`) is checked against sessions a real CLI wrote, not only hand-built rows: its docstring names the CLI versions measured, and either its tests carry a redacted excerpt of a real session or a `docs/` page records the live check, as [opencode live test](docs/opencode-live-test.md) does. Hand-built rows for one shape left every tool call of the other shapes unconverted in #168
 
+## Key Decisions
+
+- **ADRs:** yes — `docs/adr/` ([how to write one](docs/adr/AGENTS.md))
+
 ## Relationships
 
 - `agent-harness-skill` — verifies integration points (PR retro question, optional SessionEnd hook)

@@ -75,8 +75,8 @@ there is still `project-rule`.
 
 **Decision records.** A decision — what was chosen, what was ruled out and
 why — is a `project-rule` too. Its place is the one the root `AGENTS.md`
-declares, in a line `ADRs: yes — <directory>` or `ADRs: no — <where decisions
-are recorded instead>`:
+declares in its Key Decisions, as `**ADRs:** yes — <directory>` or
+`**ADRs:** no — <where decisions are recorded instead>`:
 
 - With `yes`, write a new record in that directory and follow the directory's
   own `AGENTS.md`. Never edit an accepted record: a new record supersedes it
