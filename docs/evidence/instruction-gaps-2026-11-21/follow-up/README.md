@@ -32,7 +32,13 @@ Changes followed the run:
   `classification-heuristic.md` and `patch-workflow.md`: each transcript hit
   is read, and new wiring is shown by one run of the job or hook.
 
-`promote-mode.md`, `classification-heuristic.md` and `patch-workflow.md`
-therefore differ from their hashes in `manifest.json`; the other seven context
-files match. No case was rerun for these changes. One sample per case, one
-model.
+`manifest.json` records the context as it was at the run. After these changes
+and the rebase onto `main`, which brought in #249 and the 3.7.0 release, seven
+context files differ from their recorded hashes: `SKILL.md`,
+`references/project-harness-inspection.md`,
+`references/classification-heuristic.md`,
+`references/destination-taxonomy.md`, `references/promote-mode.md`,
+`references/patch-workflow.md` and `references/friction-catalog.md`.
+`references/workflow.md`, `references/learning-contract.md` and
+`references/prior-attempts.md` match. No case was rerun for these changes. One
+sample per case, one model.

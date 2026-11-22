@@ -452,7 +452,7 @@ Steps:
 
 - Skip Phase 1 (the session is in the past; mechanical pre-pass on a stale transcript is low value) and Phase 2b; Phase 2 reads only the past session's highlights
 - Phase 3 runs against the target session(s)
-- **Phase 3b is the primary detection step:** walk forward from session end with `collect-review-findings.py --transcript-file <past session> --since <session end>` (reviews, issue and ticket feedback that arrived later, GitHub and GitLab), `git log`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the candidate adverse outcomes, the durable successes, and superseded temporary copies (D12: a tracked canonical-source upstream PR merged → propose pruning the skill's labelled copy).
+- **Phase 3b is the primary detection step:** walk forward from session end with `collect-review-findings.py --transcript-file <past session> --since <session end>` (reviews, issue and ticket feedback that arrived later, GitHub and GitLab), `git log`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the candidate adverse outcomes, the durable successes, and superseded temporary copies (D12: a tracked canonical-source change accepted, delivered and reachable by its intended reader → propose pruning the skill's labelled copy; a merge alone is not enough).
 - Phase 3c may also fire if the window is large
 - Phases 4–11 proceed; destinations skew toward `skill-update` — the skill should learn both what to avoid where the cause of D1–D10 lies in the session and what to codify (D11) — and `personal-rule` for personal patterns
 - Guard D11 with the same generalizability filter as B16–B21: a local, one-off change that merged cleanly is **not** a learning; codifying it is noise
