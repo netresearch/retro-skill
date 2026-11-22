@@ -3,6 +3,19 @@
   "extends": [
     "github>netresearch/renovate-config"
   ],
+  "ignorePaths": [
+    "**/node_modules/**",
+    "**/bower_components/**",
+    "**/vendor/**",
+    "**/examples/**",
+    "**/__tests__/**",
+    "**/test/**",
+    "**/tests/**",
+    "**/__fixtures__/**",
+    "**/.mise/locks/**",
+    "**/.config/mise/locks/**",
+    "skills/*/evals/fixtures/**"
+  ],
   "pre-commit": {
     "enabled": true
   }
