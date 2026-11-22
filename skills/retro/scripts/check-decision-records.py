@@ -249,26 +249,40 @@ def _frontmatter_list_item(raw: str) -> str | None:
     return _strip_yaml_comment(item[2:]) if item.startswith("- ") else None
 
 
-def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
+class _FrontmatterReader:
     """status and touches from YAML-like frontmatter lines (no YAML loader)."""
-    status, touches, current = None, [], None
-    for raw in lines:
+
+    def __init__(self) -> None:
+        self.status: str | None = None
+        self.touches: list[str] = []
+        self.current: str | None = None
+
+    def feed(self, raw: str) -> None:
         indented = raw.startswith((" ", "\t"))
         m = None if indented else _FIELD.match(raw.strip())
         if m:
-            current = m.group(1).lower()
-            val = _strip_yaml_comment(m.group(2).strip())
-            if current == "status" and val:
-                status = val.strip("'\"")
-            elif current == "touches" and val:
-                touches += _split_paths(val)
-            continue
-        item = _frontmatter_list_item(raw) if current == "touches" else None
-        if item is not None and (indented or raw.startswith("- ")):
-            touches += _split_paths(item)
+            self._field(m.group(1).lower(), _strip_yaml_comment(m.group(2).strip()))
+        elif self.current == "touches" and (indented or raw.startswith("- ")):
+            item = _frontmatter_list_item(raw)
+            if item is not None:
+                self.touches += _split_paths(item)
         elif not indented:
-            current = None
-    return status, touches
+            self.current = None
+
+    def _field(self, key: str, val: str) -> None:
+        self.current = key
+        if key == "status" and val:
+            self.status = val.strip("'\"")
+        elif key == "touches" and val:
+            self.touches += _split_paths(val)
+
+
+def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
+    """status and touches from YAML-like frontmatter lines (no YAML loader)."""
+    reader = _FrontmatterReader()
+    for raw in lines:
+        reader.feed(raw)
+    return reader.status, reader.touches
 
 
 _LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+")
@@ -313,38 +327,64 @@ def _status_after_heading(raw: str) -> str | None:
     return None if raw.lstrip().startswith("#") else _plain(raw)
 
 
-def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
+class _BodyReader:
     """title, status and touches from a record body: bold fields, or a
     "## Status" heading followed by its value (the adr-tools layout)."""
-    title, status, touches = None, None, []
-    status_next, touches_mode = False, ""
-    for raw in _unfenced(lines):
-        if touches_mode and _touches_continuation(raw, touches_mode):
-            if raw.strip():
-                line = _plain(raw)
-                touches += _split_paths(line)
-                touches_mode = _touches_mode_after(line, touches_mode)
-            continue
-        touches_mode = ""
-        if title is None and raw.startswith("# "):
-            title = raw[2:].strip()
-        if _STATUS_HEADING.match(raw.strip()):
-            status_next = True
-            continue
-        if status_next and raw.strip():
-            status_next = False
-            status = status or _status_after_heading(raw)
-            continue
+
+    def __init__(self) -> None:
+        self.title: str | None = None
+        self.status: str | None = None
+        self.touches: list[str] = []
+        self.status_next = False
+        self.touches_mode = ""
+
+    def feed(self, raw: str) -> None:
+        if self._continue_touches(raw):
+            return
+        if self.title is None and raw.startswith("# "):
+            self.title = raw[2:].strip()
+        if self._status_heading(raw):
+            return
         m = _FIELD.match(_plain(raw))
-        if not m:
-            continue
-        key, val = m.group(1).lower(), m.group(2).strip()
-        if key == "status" and status is None and val:
-            status = val
+        if m:
+            self._field(m.group(1).lower(), m.group(2).strip())
+
+    def _continue_touches(self, raw: str) -> bool:
+        if not self.touches_mode:
+            return False
+        if not _touches_continuation(raw, self.touches_mode):
+            self.touches_mode = ""
+            return False
+        if raw.strip():
+            line = _plain(raw)
+            self.touches += _split_paths(line)
+            self.touches_mode = _touches_mode_after(line, self.touches_mode)
+        return True
+
+    def _status_heading(self, raw: str) -> bool:
+        if _STATUS_HEADING.match(raw.strip()):
+            self.status_next = True
+            return True
+        if not (self.status_next and raw.strip()):
+            return False
+        self.status_next = False
+        self.status = self.status or _status_after_heading(raw)
+        return True
+
+    def _field(self, key: str, val: str) -> None:
+        if key == "status" and self.status is None and val:
+            self.status = val
         elif key == "touches":
-            touches += _split_paths(val)
-            touches_mode = _touches_mode_for_field(val)
-    return title, status, touches
+            self.touches += _split_paths(val)
+            self.touches_mode = _touches_mode_for_field(val)
+
+
+def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
+    """title, status and touches from a record body."""
+    reader = _BodyReader()
+    for raw in _unfenced(lines):
+        reader.feed(raw)
+    return reader.title, reader.status, reader.touches
 
 
 def parse_record(text: str) -> dict:
