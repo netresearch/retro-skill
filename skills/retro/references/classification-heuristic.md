@@ -196,10 +196,12 @@ measurable rather than arguable: extract the tool inputs, run the candidate
 predicate over them, and report the count. Two numbers make the proposal
 reviewable — how often it fires, and whether the friction that prompted it is
 among the hits. A proposal from a session without an incident (a harness
-finding after a green session) has no such hit: report the firing count as the
-must-not-fire control and say that no incident exists. Wiring an existing
-project command into CI or a hook adds no new predicate; its calibration is
-that command passing on the base branch.
+finding after a green session) has no such hit: report the firing count and
+say that no incident exists. Read every hit, because each one is either a
+false positive or an instance of the defect class that the session missed.
+Wiring an existing project command into CI or a hook adds no new predicate; its
+calibration is that command passing on the base branch and one run of the new
+CI job or hook that executes it as configured.
 
 ```
 6 of 296 Bash calls (2.0 %), and the incident itself is one of them

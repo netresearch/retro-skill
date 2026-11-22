@@ -390,10 +390,11 @@ a new hook or workflow whenever the analyzer is already wired in.
 
 Verify the rule actually fires on the friction as it occurred before proposing
 it, or, after a green session with no friction, on the defect class it guards,
-with its firing count over the transcript as the must-not-fire control. A rule
-that does not reproduce the failure is not a gate. Wiring an existing
-project command into CI or a hook adds no rule: it needs only that command to
-pass on the base branch.
+with its firing count over the transcript reported and each hit read as a false
+positive or a missed instance. A rule that does not reproduce the failure is
+not a gate. Wiring an existing project command into CI or a hook adds no rule:
+it needs that command to pass on the base branch and one run of the new CI job
+or hook that executes it as configured.
 
 ## New-skill workflow
 
