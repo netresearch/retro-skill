@@ -22,8 +22,17 @@ passed all three (`grading.txt`), with one close call: the
 writing it, because the executor brief forbade writes. `responses/` holds the
 reports verbatim and `manifest.json` the context hashes.
 
-One change followed the run: the rerun executor of
-`reader-and-timing-of-moved-rules` noted that rule 3 named no hash, so the
-sentence now says sha256 over each section, with fence-aware boundaries.
-`promote-mode.md` therefore differs from its hash in `manifest.json`; every
-other context file matches. One sample per case, one model.
+Changes followed the run:
+
+- The rerun executor of `reader-and-timing-of-moved-rules` noted that rule 3
+  named no hash, so the sentence now says sha256 over each section, with
+  fence-aware boundaries. A bot review added that a changed section is
+  classified again before removal.
+- A bot review of #251 changed the green-session calibration in
+  `classification-heuristic.md` and `patch-workflow.md`: each transcript hit
+  is read, and new wiring is shown by one run of the job or hook.
+
+`promote-mode.md`, `classification-heuristic.md` and `patch-workflow.md`
+therefore differ from their hashes in `manifest.json`; the other seven context
+files match. No case was rerun for these changes. One sample per case, one
+model.

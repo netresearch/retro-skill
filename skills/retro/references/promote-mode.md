@@ -93,7 +93,8 @@ findings reappear on every run. Three binding rules:
    section text first (same race-check semantics). On the by-hand `AGENTS.md`
    path there is no scan: take the sha256 of each section's text when reading
    it, with section boundaries found fence-aware as below, and compare that
-   hash with the section's current text immediately before removing it. One
+   hash with the section's current text immediately before removing it. A
+   section that changed is classified again before anything is removed. One
    section per edit.
    Section-removal is markdown surgery and boundary regexes are FENCE-BLIND: a
    `#`-anchored section-heading boundary also matches `#` comment lines inside code
