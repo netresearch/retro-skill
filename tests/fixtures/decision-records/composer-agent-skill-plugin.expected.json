@@ -1,0 +1,98 @@
+{
+  "report": {
+    "script": "check-decision-records.py",
+    "agents_md": null,
+    "policy": {
+      "status": "undefined",
+      "adr_dir": null,
+      "alternative": null,
+      "lines": [],
+      "problems": [
+        "the repository has no root AGENTS.md"
+      ]
+    },
+    "summary": {
+      "adr_records": 0,
+      "anchored_records": 0,
+      "unanchored_adr_records": 0,
+      "records_with_missing_anchors": 0,
+      "changed_files": 0
+    },
+    "records": [],
+    "changed_hits": [],
+    "ignored_changed_files": [],
+    "findings_total": 1,
+    "findings": [
+      {
+        "signal": "E7",
+        "name": "decision_policy_undefined",
+        "status": "undefined",
+        "problems": [
+          "the repository has no root AGENTS.md"
+        ]
+      }
+    ]
+  },
+  "records": {
+    "docs/adr/001-universal-discovery.md": {
+      "title": "ADR-001: Universal discovery via `extra.ai-agent-skill`",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/002-trust-prompt-allow-plugins.md": {
+      "title": "ADR-002: Trust prompt modeled on Composer's `allow-plugins`",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/003-pure-discovery-boundary-gate.md": {
+      "title": "ADR-003: Pure discovery; trust gating only at install boundary",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/004-atomic-write-flock-persistence.md": {
+      "title": "ADR-004: Atomic write + flock for trust persistence",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/005-case-sensitive-glob-matching.md": {
+      "title": "ADR-005: Case-sensitive glob matching for trust patterns",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/006-first-run-policy-deny-default.md": {
+      "title": "ADR-006: First-run policy `[n/d/a]` with deny-by-default",
+      "status": "Accepted (replaces an earlier draft within the same PR)",
+      "touches": []
+    },
+    "docs/adr/007-auto-trust-root-package.md": {
+      "title": "ADR-007: Auto-trust the root package",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/008-description-sanitization.md": {
+      "title": "ADR-008: Reject control characters and bidi overrides in skill descriptions",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/009-direct-skills-lifecycle-blocking-policy.md": {
+      "title": "ADR-009: Direct skills lifecycle — lock policy vs. non-blocking Composer installs",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/010-cli-skills-command-shape.md": {
+      "title": "ADR-010: CLI shape for direct skills (`composer skills …`)",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/011-agents-md-direct-skill-metadata.md": {
+      "title": "ADR-011: AGENTS.md schema — backward-compatible metadata for direct skills",
+      "status": "Accepted",
+      "touches": []
+    },
+    "docs/adr/012-skills-content-hash-and-trust.md": {
+      "title": "ADR-012: `composer.skills.lock` content-hash — trust excluded",
+      "status": "Accepted",
+      "touches": []
+    }
+  }
+}
