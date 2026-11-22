@@ -109,16 +109,25 @@ def _plain(line: str) -> str:
 
 
 def _unfenced(lines: list[str]) -> list[str]:
-    """The lines outside fenced code blocks; examples in fences are not records."""
+    """The lines outside fenced code blocks; examples in fences are not records.
+    A closing fence repeats the opening character, at least as often, and has
+    nothing but whitespace after it (CommonMark)."""
     out, fence = [], None
     for line in lines:
         m = _FENCE.match(line)
-        if m and (
-            fence is None or m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)
-        ):
-            fence = m.group(1) if fence is None else None
+        if fence is None and m:
+            fence = m.group(1)
             continue
-        if fence is None:
+        closing = (
+            fence is not None
+            and m is not None
+            and m.group(1)[0] == fence[0]
+            and len(m.group(1)) >= len(fence)
+            and not line.strip()[len(m.group(1)) :].strip()
+        )
+        if closing:
+            fence = None
+        elif fence is None:
             out.append(line)
     return out
 
@@ -436,7 +445,7 @@ def _glob_regex(pattern: str) -> re.Pattern:
             i += 1
         elif pattern[i] == "[" and "]" in pattern[i + 1 :]:
             j = pattern.index("]", i + 1)
-            body = pattern[i + 1 : j].replace("\\", "\\\\")
+            body = pattern[i + 1 : j].replace("\\", "\\\\").replace("[", "\\[")
             out.append(
                 "[^" + body[1:] + "]" if body.startswith("!") else "[" + body + "]"
             )
@@ -444,7 +453,11 @@ def _glob_regex(pattern: str) -> re.Pattern:
         else:
             out.append(re.escape(pattern[i]))
             i += 1
-    return re.compile("".join(out) + r"\Z")
+    try:
+        return re.compile("".join(out) + r"\Z")
+    except re.error:
+        # An unbalanced character class: match the pattern as written.
+        return re.compile(re.escape(pattern) + r"\Z")
 
 
 def _glob_matches(repo: Path, pattern: str) -> bool:
@@ -465,6 +478,15 @@ def _glob_matches(repo: Path, pattern: str) -> bool:
         return False
 
 
+def _exists_as_written(repo: Path, touch: str) -> bool:
+    """Whether the anchor names an existing path without glob expansion."""
+    p = _anchor_path(touch)
+    if ".." in Path(p).parts:
+        return False
+    target = _inside(repo, p)
+    return target is not None and target.exists()
+
+
 def anchor_exists(repo: Path, touch: str) -> bool:
     """Whether the anchored path exists below the root; an anchor outside it,
     also through a symbolic link, counts as gone. A path that exists as
@@ -478,14 +500,14 @@ def anchor_exists(repo: Path, touch: str) -> bool:
     return any(c in p for c in GLOB_CHARS) and _glob_matches(repo, p)
 
 
-def anchor_covers(touch: str, changed: str) -> bool:
+def anchor_covers(touch: str, changed: str, literal: bool = False) -> bool:
     """Whether a changed path is the anchor, lies below it, or lies below a
     directory its glob names."""
     p = _anchor_path(touch).rstrip("/")
     c = _strip_dot_slash(changed)
     if p in ("", ".") or c == p or c.startswith(p + "/"):
         return True
-    if not any(ch in p for ch in GLOB_CHARS):
+    if literal or not any(ch in p for ch in GLOB_CHARS):
         return False
     rx = _glob_regex(p)
     parts = c.split("/")
@@ -574,6 +596,7 @@ def collect_records(repo: Path, policy: dict) -> list[dict]:
     for rec in records:
         rec["active"] = _is_active(rec["status"])
         rec["missing"] = [t for t in rec["touches"] if not anchor_exists(repo, t)]
+        rec["literal"] = [t for t in rec["touches"] if _exists_as_written(repo, t)]
     return records
 
 
@@ -583,7 +606,10 @@ def changed_hits(records: list[dict], changed: list[str]) -> list[dict]:
         hit = [
             r
             for r in records
-            if r["active"] and any(anchor_covers(t, c) for t in r["touches"])
+            if r["active"]
+            and any(
+                anchor_covers(t, c, t in r.get("literal", ())) for t in r["touches"]
+            )
         ]
         if hit:
             hits.append(
@@ -633,11 +659,19 @@ def findings_for(policy: dict, records: list[dict], hits: list[dict]) -> list[di
     return findings
 
 
+def _git_unquote(path: str) -> str:
+    """A path as git prints it with core.quotePath: "src/\\303\\274ber.py" -> src/über.py."""
+    if not (len(path) >= 2 and path[0] == path[-1] == '"'):
+        return path
+    raw = path[1:-1].encode("latin-1", "backslashreplace").decode("unicode_escape")
+    return raw.encode("latin-1").decode("utf-8", errors="replace")
+
+
 def _relative_changes(repo: Path, changed: list[str]) -> tuple[list[str], list[str]]:
     """Changed paths relative to the root; an absolute path inside the root is
     made relative, one outside it is listed as ignored."""
     kept, ignored = [], []
-    for c in changed:
+    for c in map(_git_unquote, changed):
         if Path(c).is_absolute():
             try:
                 kept.append(Path(c).resolve().relative_to(repo).as_posix())

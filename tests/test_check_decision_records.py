@@ -155,6 +155,13 @@ class PolicyTest(unittest.TestCase):
             (r["policy"]["status"], r["policy"]["adr_dir"]), ("yes", "docs/adr/")
         )
 
+    def test_fence_with_info_string_does_not_close_a_fence(self):
+        self.repo.write(
+            "AGENTS.md",
+            "## Example\n\n~~~text\n~~~example\nADRs: no — PR descriptions\n~~~\n",
+        )
+        self.assertEqual(self.repo.report()["policy"]["status"], "undefined")
+
     def test_german_answer_is_read(self):
         self.repo.write(
             "AGENTS.md", "- ADRs: nein — Entscheidungen stehen in der PR-Beschreibung\n"
@@ -473,6 +480,34 @@ class RecordTest(unittest.TestCase):
         r = self.repo.report(changed=["tmp/a.py"])
         self.assertEqual(r["records"][0]["missing"], [])
         self.assertEqual(len(r["changed_hits"]), 1)
+
+    def test_literal_route_anchor_is_not_a_glob_for_changes(self):
+        self.repo.write("app/[slug]/page.tsx", "")
+        self.repo.write(
+            "docs/adr/ADR-028.md",
+            "# ADR-028\n\n**Status:** Accepted\n**Touches:** `app/[slug]/page.tsx`\n",
+        )
+        r = self.repo.report(changed=["app/s/page.tsx", "app/[slug]/page.tsx"])
+        self.assertEqual(
+            [h["file"] for h in r["changed_hits"]], ["app/[slug]/page.tsx"]
+        )
+
+    def test_unbalanced_bracket_glob_does_not_crash(self):
+        self.repo.write(
+            "docs/adr/ADR-029.md",
+            "# ADR-029\n\n**Status:** Accepted\n**Touches:** `app/[[]slug[]]/page.tsx`\n",
+        )
+        r = self.repo.report(changed=["app/x/page.tsx"])
+        self.assertEqual(r["changed_hits"], [])
+
+    def test_git_quoted_changed_path_is_decoded(self):
+        self.repo.write("src/über.py", "")
+        self.repo.write(
+            "docs/adr/ADR-030.md",
+            "# ADR-030\n\n**Status:** Accepted\n**Touches:** `src/über.py`\n",
+        )
+        r = self.repo.report(changed=['"src/\\303\\274ber.py"'])
+        self.assertEqual([h["file"] for h in r["changed_hits"]], ["src/über.py"])
 
     def test_glob_anchor(self):
         self.repo.write("src/a_test.py", "")
