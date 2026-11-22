@@ -93,7 +93,20 @@ current default branch:
 git log --oneline -20 origin/main -- <files the fix would touch>
 git log --grep '<incident keyword>' --oneline origin/main
 gh pr list --repo <owner/repo> --state all --search '<incident keyword>' --limit 10
+git grep -n -i -E '^#+ .*<word>' origin/main -- '*.md'
 ```
+
+The last line finds the duplicate the history of the target file cannot show:
+a section on the same topic in another file of the skill. `<word>` is one
+distinctive word of the topic, never the finding's title, which a section
+rarely repeats verbatim; run the line once per word, and drop `^#+ .*` to
+search body text when the headings give nothing. Open each hit's section. It
+is a duplicate only if it states the same rule, and then the proposal becomes
+an edit of that section, plus a pointer from the file you meant to change. A
+shared word alone is no duplicate. (Seen on git-workflow: a fork-stack
+paragraph was added to `merge-dependencies.md` although `stack` in the
+headings of `pull-request-workflow.md` lists "A stack needs push access to the
+repository the PRs target".)
 
 A duplicate found is a proposal **withdrawn** (or re-scoped to the delta the
 landed fix lacks), not a second PR. Skipping this check does not fail fast — it
