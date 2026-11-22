@@ -83,8 +83,9 @@ Failure stays distinguishable from silence: an artefact that could not be read
 is listed with `fetched: false` and the error, never as an artefact with no
 findings. A documentation placeholder (`github.com/OWNER/REPO/...`, GitLab
 `group/project` or `group/sub/project`, any case) is neither: it is not read
-and not an artefact, only listed in `placeholders_skipped`. Comments from before `--since` (default: the transcript's first
-timestamp) are counted, not listed — on a linked issue they are the request,
+and not an artefact, only listed in `placeholders_skipped`. Comments from
+before `--since` (default: the transcript's first timestamp) are counted, not
+listed — on a linked issue they are the request,
 not feedback on the work.
 """
 
