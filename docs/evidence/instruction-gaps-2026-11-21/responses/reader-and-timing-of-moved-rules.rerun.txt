@@ -1,0 +1,85 @@
+# Retro report: `/retro promote`, slimming the repository's `AGENTS.md`
+
+**Result:** there are two findings and one open proposal. Move the roughly 120 lines of review heuristics into `docs/review-guide.md`, which the review agent loads for every review. Keep the `tenant_id` query rule in `AGENTS.md`. Remove nothing from `AGENTS.md` until the moved text is in the review guide and the review agent actually reads it.
+
+## How the mode applies
+
+`references/promote-mode.md` says the scanner never reads `<project>/AGENTS.md`. It also says: "A request to slim `<project>/AGENTS.md` itself is therefore no scan: apply the three rules below to its sections by hand, and name for each moved part which agent reads the destination and what triggers that read." So both findings come from the three rules for the global rules file, applied to each section by hand.
+
+## Finding 1: move the review heuristics to `docs/review-guide.md`
+
+**Evidence (from the task description):**
+- About 120 of the 300 always-loaded lines are review heuristics: naming, comment style and readability checks.
+- The review agent applies them to diffs.
+- `docs/review-guide.md` is configured to load for every review.
+
+**Rule 1 (always-on behaviour stays):** these lines do not have to hold in every turn. They are used when a diff is reviewed. They are not bans, tone rules or verification discipline.
+
+**Rule 2 (two-direction test):**
+- The content is already team content in a team file, so it reaches no new audience. The test is whether removing it from always-loaded context is safe.
+- It is safe. These are "a convention a reviewer can still correct in the diff", and their reader loads the destination before the decision it governs.
+- Who reads the destination: the repository's review agent.
+- What triggers the read: its configuration loads `docs/review-guide.md` at the start of every review.
+
+**What has to be verified before this goes into a proposal:**
+1. **The load configuration.** "Configured to load for every review" comes from the task prose. Open the review agent's actual configuration and confirm it loads the guide on every review, and from which branch. If that is not verified, the destination is not available and the move stays pending.
+2. **Paraphrase duplicates.** Read `docs/review-guide.md` first and compare mechanisms, not headings. A heuristic the guide already covers is deleted from `AGENTS.md` without being copied. Only heuristics that are new or adjacent get appended, and the PR says which ones are new.
+3. **Stale heuristics.** Check each heuristic against the current code and tooling. A stale one is dropped, not moved.
+
+**Side effect to name in the PR:** the coding agent stops seeing these conventions before it writes code. It may produce more naming and style findings that the reviewer then has to correct, which means more rework. A one-line pointer in `AGENTS.md` ("Review conventions: `docs/review-guide.md`") keeps the guide reachable from the coding agent's starting point at almost no context cost. Recommended.
+
+**Better than prose where possible:** naming and comment-style checks are often mechanical. If a linter the repository already runs can enforce some of them, that is a stronger home (`harness-artefact`, a linter rule). The ones that need judgement stay in the review guide as text. The task gives no linter configuration, so this is a candidate to check, not a finding.
+
+**Destination and change:**
+- One draft PR in this repository.
+- It appends the new heuristics to `docs/review-guide.md`.
+- It replaces the heuristic sections in `AGENTS.md` with the one-line pointer.
+- Authority: the user asked to slim `AGENTS.md`. The move stays in the same repository and reaches the same audience, so that request covers it. The PR still opens as a draft.
+
+**Timing (rule 3):**
+- The `AGENTS.md` text goes only once the guide contains it and the review agent reads the guide from the branch the PR lands on.
+- Remove one section per edit, with section boundaries that respect code fences.
+- Afterwards, check that the fences are balanced and that the section count dropped by exactly the number removed.
+- There is no scan, so there is no `content_sha256` to check against. Re-read each section just before removing it, and work on the text as it then stands.
+
+## Finding 2: the `tenant_id` rule stays in `AGENTS.md`
+
+**Evidence:** one section requires every database query to filter by `tenant_id`.
+
+**Rules 1 and 2:**
+- This is a data-isolation constraint. It must hold before any query is written.
+- Rule 2 names this exact case: such a rule "does not move to a file read only at review."
+- In the review guide, a query without the filter would be caught at review at the earliest, and only if the reviewer notices it.
+- Rule 1 adds: "When in doubt, the section stays."
+
+**Destination and change:** none for the prose. It stays where it is.
+
+**Optional pair, not a replacement:** the rule may also be enforceable, for example by a static check or a query-builder test that fails on a query without the tenant filter (`harness-artefact`). Before proposing one, ask what the rule protects and check what the repository already enforces (`classification-heuristic.md`, Axis 1). The task does not say. Even with a gate in place, the prose stays.
+
+## Not assessed
+
+- **The other ~180 lines of `AGENTS.md`.** The task does not describe them, so nothing is claimed about them.
+- **Local memory stores and the global rules file.** A plain `/retro promote` scans these by default. No inventory was available, so whether they hold anything is unknown. This is not a finding that they are empty.
+
+## Contradictions and gaps in the instructions
+
+1. **Which destination the review guide is.** The priority order is canonical-source › skill-update › project-rule › personal-rule. A repository document loaded only by the review agent is none of those clearly. The nearest fits are `canonical-source` (a team record) or the `harness-artefact` item "AGENTS.md / docs/ scaffolding". The taxonomy should name this case.
+2. **"Promote" means "upward", but this move is sideways.** `SKILL.md` describes promote as re-homing memory upward. Here the content moves from an always-loaded file to one loaded only at review, which narrows when it is read. The mode text covers it only through the hand-applied "slim `AGENTS.md`" sentence.
+3. **"Materialize, verify, then drain" assumes two places.** Inside one repository, one PR that moves the text takes effect for both files at the same merge. If the review agent reads the branch the PR merges into, there is no window where the knowledge is unreachable, which is the point of the rule. Read strictly, the rule asks for two PRs. The instructions should say whether one atomic move satisfies it.
+4. **Rule 2's first half does not fit `AGENTS.md`.** "The content generalizes beyond this user" was written for the personal global file. For a section of `AGENTS.md` that is always true. The test that decides here is a different one: is the content repository-specific, or does it belong in a skill? A skill would not reach this review agent anyway.
+
+## Deviation lines
+
+- Phase 1 (mechanical pre-pass): `scan-memory-inventory.py` was not run. `AGENTS.md` is outside its scan surface by design, and the memory stores and global rules file were not given to me.
+- Phases 2–3 (enrichment and prior attempts): there was no session transcript or memory index. Whether an earlier slimming of this file was attempted is unknown.
+- Phase 4 (skill discovery and team records): `find-org-skills.py` was not run, and the team records were not searched. A second owner of these review heuristics is unknown, not absent.
+- Phase 6 (evals): no matched skill `evals/` were read.
+- Phase 9 (materialize and drain): nothing was written. Both steps wait on the answer below and on the availability check in Finding 1.
+- Phase 11 (self-check): skipped, because there is no transcript of this run to pass to `detect-mechanical.py --since-command retro`.
+
+## Closing question
+
+One proposal is open: the draft PR in Finding 1. It appends the new heuristics to `docs/review-guide.md` and replaces the heuristic sections in `AGENTS.md` with a pointer. Which of these should happen?
+- `complete`: create the PR, review and fix it until a round finds nothing new, then merge it once every gate is green. The `AGENTS.md` sections are removed only after the review agent's load configuration is verified.
+- `noted`: change nothing.
+- `propose`: create the PR, review and fix it the same way, and leave it as a draft for you.

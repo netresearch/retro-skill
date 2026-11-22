@@ -1,0 +1,108 @@
+# Retro report: Sweep (`/retro`) of the session that changed request validation in `src/api/`
+
+## Summary
+
+There is one finding. The repository's pre-push gate exists only as a sentence in `AGENTS.md`. `.github/workflows/build.yml` builds the container image and runs neither `make test` nor `make lint`, and no hook configuration exists. This session met the gate because the agent ran both targets by hand. Nothing in the repository stops a person or agent who skips them.
+
+I propose one `harness-artefact`: add both targets to the existing workflow, plus a hook if `make lint` proves to be a fast check. There is no B22 finding and no friction finding. The other phases end in a justified no-op.
+
+## Mandate and attention
+
+- **Task:** change request validation in `src/api/`. The quality bar is what `AGENTS.md` states: run `make test` and `make lint` before pushing.
+- **Accepted:** yes. Both targets passed and the user accepted the change.
+- **Authority given to the retro:** a bare `/retro`. It does not authorize writes to the service repository. Every proposal below is therefore open and goes into the closing question.
+
+## Mad / Sad / Glad
+
+- **Mad:** nothing. No retries, no corrections and no failed tool calls are described.
+- **Sad:** one unmet benefit. The pre-push rule depends on each reader remembering it.
+  - The protection itself is a fact: the CI workflow runs neither target, and no hook config exists.
+  - The risk is a hypothesis: someone who does not read `AGENTS.md`, or who skips the step, can push a change that fails tests or lint, and nothing catches it.
+- **Glad:** before finishing, the agent ran the documented gate from `AGENTS.md`, and both targets passed. The prerequisite was reading `AGENTS.md`. Another executor finds that prerequisite only if it reads the same file, which is the gap the finding closes.
+
+## Finding 1: a documented gate that nothing enforces
+
+**Signal:** project-harness inspection, row "One-command entry points / CI workflows". The question that row asks is: "Did the session run a documented sequence by hand? A gate described as a list is a gate whose last two steps get skipped." This session did exactly that. It is the same shape the inspection reference cites as its founding case: "a documented six-suite pre-push gate that existed only as a list to execute by hand."
+
+**Claim and kind:** a verified fact about the harness, plus a hypothesis about the risk.
+
+**Evidence** (all from the task description; I read no repository file):
+- `AGENTS.md`: "run make test and make lint before pushing".
+- `.github/workflows/build.yml` is the only CI workflow. It builds the image and runs neither target.
+- No hook configuration exists in the repository.
+- The agent ran both targets by hand, and both passed.
+
+**What speaks against it:**
+- No failure happened, so the expected benefit is untested.
+- CI may have had a reason not to run tests, for example tests that need services the runner lacks, or an earlier decision to drop them. Unknown.
+- Whether branch protection requires any check is unknown.
+
+**Purpose check (Axis 1):** the rule protects code quality before a push, the user's own repository states it, and the agent followed it without conflict. It is valid and not redundant. Only its enforcement is missing.
+
+**Authority (Axis 0):** this is not a fact about the world with an outside owner. It is a rule of the repository itself, so `canonical-source` does not apply.
+
+**Enforceability (Axis 1, tier 1):** both rules are exit codes of `make` targets, so a mechanical gate is available. A CI step fails whenever either target fails.
+
+**Destination:** `harness-artefact` in the service repository the session worked in. It stays a plain artefact, not a pair: I could not run skill discovery (see the deviations), so I cannot show that a skill should carry an install recipe. Inventing that second half is not allowed.
+
+**How to apply:**
+1. **Read the history first.** Run `git log -S 'make test' -- .github/workflows` and `git log -S 'make lint' -- .github/workflows`. If an earlier commit removed these steps on purpose, read that decision before reversing it.
+2. **Extend `build.yml`, do not replace it.** Add a job or steps that run `make lint` and `make test` on `pull_request` and `push`. The image build stays as it is.
+3. **Check that `make test` can run on the CI runner.** Run it once in CI or a clean container to find out whether it needs a database or another service. If it does, prepare that service in the job.
+4. **Decide the hook parity by measurement.**
+   - `make test` is a full test suite, so CI alone is complete. A pre-push hook is optional.
+   - `make lint` needs parity only if it counts as a fast check: deterministic, under about 5 seconds, no external dependencies. Time it.
+   - If it is fast, the same command goes into a pre-commit hook in the same PR. Because no hook config exists, that is a bootstrap through `agent-harness-skill`. Which hook manager to use is the team's choice.
+   - If it is not fast, CI alone is complete, and the PR body says why there is no hook.
+5. **Make the job block merges (manual, not applied).** A CI job blocks a merge only if it is a required status check. Without branch-protection access I would prepare the `gh api … /branches/<default>/protection` specification and mark that row `manual`.
+6. **Leave `AGENTS.md` unchanged.** The sentence there is still useful as local guidance. Optionally, add one line saying CI now enforces both targets.
+
+**Expected behaviour after the change:** a push or PR that fails `make test` or `make lint` turns CI red and, if the job is required, blocks the merge. The first PR whose CI fails on these steps confirms the benefit. Until then it stays untested.
+
+## Other signals
+
+- **B22 (missed situational check):** no warning sign is described. Nothing contradicted the working explanation, no failure class came back and no exceptions piled up. Each decision point is therefore "performed" or "not needed", which is not a finding.
+  - The delivered code was not reachable here: no shell, no file access. I ran neither the project's tests nor a bounded probe on the validation change, so the effect is untested.
+  - Whether the tests cover the changed validation is unknown from the description.
+- **A13 (skipped verification):** does not apply. Verification ran.
+- **B13 / A10 (guidance not used):** does not apply. The agent used `AGENTS.md`.
+- **Learnings (B16–B21):** none. Running a documented gate by hand is the expected behaviour and needs no reusable procedure. B21 has no candidate, so Phase 4c has nothing to search.
+
+## Phase-10 table
+
+| # | Destination | Action | Target | Status |
+|---|---|---|---|---|
+| 1 | harness-artefact | proposed, not written | service repo `.github/workflows/build.yml` (+ hook config if `make lint` is fast) | open, see closing question |
+| 1-note | (server-side) | not prepared | branch protection: required status check | manual, only after a `complete` or `propose` answer |
+
+## Deviation lines
+
+The executor constraints of this evaluation allowed no shell, no scripts and no file reads beyond the two given files. That produces these deviations:
+
+- **Phase 1 (mechanical pre-pass):** `detect-mechanical.py` did not run. No transcript was available, only a prose description. A signals are taken from the description: none.
+- **Phase 1b (review and ticket feedback):** `collect-review-findings.py` did not run. Whether a PR or review threads exist is unknown.
+- **Phase 2b (trigger coverage, B15):** the sweep with `find-installed-skills.sh` did not run. The skills loaded in the session are unknown.
+- **Phase 3 (prior attempts):** not searched. Whether an earlier session or decision removed tests from CI is unknown, which is why step 1 of the proposal checks it.
+- **Phase 4 (skill discovery):** `find-org-skills.py` did not run, and I opened no skill by path. A skill that owns "CI must run the repository's documented gates" may exist, so the gate-plus-propagation pair is not assessable.
+- **Phase 4b (project harness):** ran from the description only, not from files read at a named commit.
+- **Phase 4c (documentation lookup):** not needed; there is no B21 candidate.
+- **Phase 6 (evals):** not consulted, because no skill was matched.
+- **Phase 9 (materialization):** nothing written; there is no write mandate.
+- **Phase 11 (self-check):** skipped, because no transcript of this run exists for `detect-mechanical.py --since-command retro`. Judged by hand: 0 script errors (no scripts ran); the deviations are all reported above; the invocation was unambiguous (bare `/retro`, so a Sweep).
+
+## Contradictions in the instructions
+
+1. **A green session and the tier-1 test.** The classification heuristic tests a gate by "whether a check could have *failed* on the friction as it actually occurred". The linter rule in `patch-workflow.md` §5 says a rule must fire "on the friction as it occurred". But the Sweep says a smooth session still owes its findings, and the harness-inspection reference cites a hand-run gate list as a qualifying finding with no failure attached. In a session with no friction, the test has nothing to test against.
+   - I read it as: the check must be able to fail on the defect class the rule guards. A failing `make test` or `make lint` turns CI red.
+   - A single sentence in `classification-heuristic.md` covering latent gaps would remove the ambiguity.
+2. **Parity, two wordings.** `destination-taxonomy.md` says "every fast, deterministic check in CI must also run as a pre-commit hook". The harness-inspection reference says "A hook config … almost never absent outright … Extend it". Here no hook config exists, so parity means bootstrapping a new one, which the texts treat as the exception.
+   - This is not strictly a contradiction, because verify-before-bootstrap does allow a bootstrap when the artefact is truly missing.
+   - Neither text says who chooses the hook manager when none exists. I left that choice to the team.
+
+## Closing question
+
+How far should the open proposal be carried out? Answer with one word:
+
+- `complete`: create the PR against the service repository, review and fix it until a round finds nothing new, then merge it once every gate is green. The branch-protection row stays manual unless you also grant that access.
+- `noted`: change nothing.
+- `propose`: create the PR, review and fix it until a round finds nothing new, and leave it as a draft for you.

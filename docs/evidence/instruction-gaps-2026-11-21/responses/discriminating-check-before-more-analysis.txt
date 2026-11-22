@@ -1,0 +1,51 @@
+# Retro report: Spotlight on "the agent ignored the release checklist again"
+
+**Mode:** Spotlight. The argument describes a problem; it does not name retro, so no question about which reading is meant is needed.
+
+## Result first
+
+There is no finding yet, and the rewording the user proposed should wait. One cheap check decides between the two explanations, and it has not run. The task gives me the transcript only as a description, so I cannot run the check myself. The check comes before any more analysis and before any proposal.
+
+## The check that decides
+
+- **What to check:** search the session transcript for a Skill tool call whose name is the release skill. The transcript records every Skill call by name, so this is a lookup, not an inference. In Spotlight mode, widen the read past the last few turns. The skill load, if there was one, can be far earlier, at the start of the release work (workflow.md § Spotlight). The report must say how far the search reached.
+- **Branch A, no Skill call for the release skill.** The checklist was never in context. Rewording it cannot help, because the agent did not read the text. The signal is A10, B2/B4 or B15, depending on whether a system reminder named the skill. The destination is a `skill-update` to the release skill's `description` and trigger words. If the gap is in delegation, it is a `harness-artefact`. Phase 2b, the trigger-coverage pass over the argument's skill area, applies here.
+- **Branch B, the Skill call is there, then a release step ran with the checklist skipped.** This is B3 or B22, a guidance gap or a missed check at a decision point. Even here, louder wording is only a hypothesis. The classification order is "rule purpose and authority before enforcement", and it asks first whether a tool, a script or a gate can remove the cause. Two examples: a release script that refuses to run until the checklist items pass, or a checkpoint. Find the turn where the checklist should have applied, and check two things there. First, whether the checklist text was still in context at that turn (a compaction can drop it). Second, whether the checklist's order matches the order of the release steps.
+- **Third outcome, not assessable.** The release work may have run in a subagent whose transcript is missing, or the transcript may be truncated. Then the report carries `B22 not assessable: <decision point> — <missing evidence>`. That is neither a finding nor a pass.
+
+## "Again" points to an earlier attempt (Phase 3, prior-attempts.md)
+
+The word "again" means this has happened before. Before any fix is proposed, search the earlier attempts:
+- memory and session sources, and Orca if the host has it;
+- the release skill's git history for earlier checklist edits (`git log -S` on the checklist lines);
+- closed or rejected PRs.
+
+If someone already made the checklist more forceful and it failed again, that is direct evidence against the proposed rewording. The report then states three things: what that attempt predicted, what happened, and what changes now. The search has not run.
+
+## The user's proposal: reword more forcefully
+
+I recommend not applying it yet.
+- **Under branch A it does nothing**, because the agent never loaded the text.
+- **Under branch B it is one candidate among several**, and the "again" history may already refute it.
+
+Applying it before the check would be the retro's own missed check (a B22 pattern). It would put a large change ahead of a cheap discriminating test.
+
+## Phase deviation lines
+
+- **Phase 1** (mechanical pre-pass, `detect-mechanical.py`): not run. I have no transcript file, only the prose description.
+- **Phase 1b** (review feedback): skipped as Spotlight prescribes, because the argument is not about a review.
+- **Phase 2/2b** (enrichment, trigger coverage): performed as far as the prose allows. The decisive evidence is missing.
+- **Phase 3** (earlier attempts): not run. No access to memory, the session index or the skill's history. Whether it happened before is unknown, not "nothing found".
+- **Phase 4** (skill discovery): `find-org-skills.py` not run. The release skill's name and repository are unverified, and its `SKILL.md` was not opened. A second owner, such as a release-orchestration command or harness, may exist.
+- **Phase 4b** (project harness): not run. Whether a release gate or hook already exists is unknown.
+- **Phase 6** (evals): not run. The release skill's `evals/` were not read. Once the branch is known, a TDD eval stub fits: a release task where the checklist must appear in the agent's steps.
+- **Phases 7–9** (proposals, authorization, materialization): no proposal yet, so nothing is written.
+- **Phase 11** (self-check): 1 finding, no proposal. Every script phase was skipped because no transcript file was available to this run. Each skip is reported above with its reason. The invocation is unambiguous.
+
+## Closing question
+
+None. No proposal is open yet. The next step is the Skill-call search in the transcript, followed by the search for earlier attempts. Once both have run, the retro gives its proposal for the branch that applies, and only then the closing question, answered with one word: `complete`, `noted` or `propose`.
+
+## Contradiction in the instructions
+
+None found that bears on this case. The Spotlight window ("last N turns") and the rule to widen the read for decisive evidence fit together: the widening is written as an exception for exactly this situation.

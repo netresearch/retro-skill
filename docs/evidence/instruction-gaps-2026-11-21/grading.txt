@@ -1,0 +1,97 @@
+Seven of the eight cases pass. `reader-and-timing-of-moved-rules` is partial: the report moves only part of the review heuristics and leaves naming and comment style as an open decision.
+
+### downstream-role-loses-information: **pass**
+| Item | Grade | Evidence |
+|---|---|---|
+| E1 assess for the operator, not agent speed | met | "The agent's faster checks moved the cost onto on-call." |
+| E2 cite the runbook's per-host decision | met | "`docs/runbook.md`. The operator must pick retry or rollback per host, using the error printed for that host." |
+| E3 keep the gain, restore errors where the operator reads them, routed to the repo | met | "keep the summary line and also print each failed host with its error … Alternatively, write the per-host errors to a kept log"; the destination is the target repository |
+| N1 count it as an improvement | avoided | The report says "'Looks good' is not a 'Not needed' outcome." |
+| N2 plain revert | avoided | The report keeps the summary line ("Glad: the summary line … can stay"). |
+| N3 operator loss without a source | avoided | The runbook is named as source 2. |
+
+### downstream-side-effect-unevidenced: **pass**
+| Item | Grade | Evidence |
+|---|---|---|
+| E1 local improvement, no evidenced effect elsewhere | met | "left no evidence of friction, harm or a reusable learning" |
+| E2 at most "no consumer found", naming what was searched | met | The report lists CI, hooks, other scripts, `AGENTS.md` and `README.md` as stated in the task. |
+| N1 invent a consumer | avoided | "'Someone might have parsed that output' is a hypothesis with no support … Not a finding." |
+| N2 restore the output or add a preservation rule | avoided | "Proposals: none." |
+| N3 ask the user about hypothetical consumers | avoided | The report asks the user nothing. |
+
+### green-session-unwired-checks: **pass**
+| Item | Grade | Evidence |
+|---|---|---|
+| E1 the checks are enforced by nobody, though they passed | met | "This session met the gate because the agent ran both targets by hand. Nothing in the repository stops a person or agent who skips them." |
+| E2 wire `make test` and `make lint` into CI, plus a fast hook, as a harness-artefact | met | "add both targets to the existing workflow, plus a hook if `make lint` proves to be a fast check"; destination is `harness-artefact` in the service repo |
+| E3 name the inspected surfaces | met | `AGENTS.md`, `.github/workflows/build.yml`, "No hook configuration exists" |
+| N1 green session, so no finding | avoided | The report raises the finding. |
+| N2 new test suites | avoided | It wires only the existing targets. |
+| N3 survey of all quality tooling | avoided | The scope stays on these two targets. The branch-protection row only makes the same check enforceable. |
+
+### green-session-checks-already-wired: **pass**
+| Item | Grade | Evidence |
+|---|---|---|
+| E1 the checks are already enforced | met | "`ci.yml` runs `make lint` and `make test` on every pull request"; ".pre-commit-config.yaml already runs the linter" |
+| E2 no harness-artefact | met | "'Add `make test`/`make lint` to CI' is rejected because both are already wired." |
+| N1 add the checks again | avoided | Same rejection as above. |
+| N2 a prose rule to run the checks | avoided | "Result: no proposals." |
+
+### reader-and-timing-of-moved-rules: **partial**
+| Item | Grade | Evidence |
+|---|---|---|
+| E1 move the review heuristics, because the review agent reads the guide every review | partly | Readability checks move, with reader and trigger given. Naming and comment style are held back as "an open decision", although the task calls the whole block review heuristics that the review agent applies. |
+| E2 keep the tenant rule where the implementer reads it before writing queries | met | "Stays in `AGENTS.md` … decision is made at design and write time, not at review." |
+| E3 for each moved part, which agent reads it and what triggers the read | met | "the reader is the review agent. The trigger is the configured load at the start of every review." |
+| N1 move the tenant rule to the review guide | avoided | It only offers an optional extra copy and keeps the rule in place. |
+| N2 move everything reviewable | avoided | The tenant rule stays. |
+| N3 keep all 120 lines without a reason | avoided | The lines it may keep come with a stated reason (implementer applies them while writing). |
+
+The partial verdict is borderline. The hold-back is reasoned, but it splits a block the oracle treats as one move.
+
+### discriminating-check-before-more-analysis: **pass**
+| Item | Grade | Evidence |
+|---|---|---|
+| E1 name the decisive check and run it before choosing a measure | met | "search the session transcript for a Skill tool call whose name is the release skill"; "The check comes before any more analysis and before any proposal." It could not run without a shell, which the grading rules accept. |
+| E2 how the measure differs by result | met | Branch A goes to the skill's `description` and trigger words; branch B goes to the checklist, its order, or a gate. |
+| E3 no rewording before the check | met | "the rewording the user proposed should wait" |
+| N1 reword without reading the Skill calls | avoided | No rewording is proposed. |
+| N2 broad investigation of other sessions or models | avoided, borderline | It adds a prior-attempt search because of "again" (memory, the skill's git history, PRs), placed after the transcript check. That search is scoped to the release skill, not to other models. |
+| N3 ask the user which explanation is true | avoided | The transcript is the named source. |
+
+Minor slip: Phase 11 says "1 finding", while the result section says "There is no finding yet".
+
+### situational-check-justified-small-fix: **pass**
+| Item | Grade | Evidence |
+|---|---|---|
+| E1 the agent checked the shared contract | met | "It read the shared Response contract and all four adapters" |
+| E2 the agent tested all four providers | met | "tested the contract with responses from all four providers" |
+| E3 the fourth adapter's missing field justified the local fix | met | "The fourth dropped an empty `content` field." |
+| E4 no omitted-check finding | met | "Outcome: Performed … It is not a finding." |
+| E5 no corrective change | met | "Proposals: 0." |
+| N1 missed check inferred from the small diff | avoided | Quotes "The diff size says nothing". |
+| N2 missed check inferred from no refactor | avoided | Same reasoning. |
+| N3 contract redesign | avoided | The report proposes none. |
+| N4 rule demanding structural change after a second failure | avoided | The report proposes none. |
+
+### situational-check-later-information: **pass**
+| Item | Grade | Evidence |
+|---|---|---|
+| E1 judge by the one documented format | met | "The ticket's own statement (one listed format) justified the narrow step" |
+| E2 no omitted-check finding | met | "I found no finding against the original session's decision." |
+| E3 the customer file's format is new information | met | "a requirement that grew after the session" |
+| E4 cause analysis before blaming the original work | met | "cause must be checked before anyone calls them a failure"; "nothing in the description says the session's change caused" the later failure |
+| N1 condemn the fix because of the later ticket | avoided | It quotes the rule against hindsight. |
+| N2 a rule to anticipate every format | avoided | It rejects "always support more date formats" as a hindsight rule. |
+
+### Summary
+| Case | Verdict |
+|---|---|
+| downstream-role-loses-information | pass |
+| downstream-side-effect-unevidenced | pass |
+| green-session-unwired-checks | pass |
+| green-session-checks-already-wired | pass |
+| reader-and-timing-of-moved-rules | partial |
+| discriminating-check-before-more-analysis | pass |
+| situational-check-justified-small-fix | pass |
+| situational-check-later-information | pass |

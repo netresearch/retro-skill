@@ -128,7 +128,8 @@ Each B22 finding states:
 - the evidence — diffs, tool results, tests run, call sites read;
 - what speaks against the finding — independent causes, a compatibility promise,
   a check already done, a limited mandate;
-- the consequence shown (a variant still fails), or `effect untested`.
+- the consequence shown (a variant still fails, or it follows from the change
+  and a cited record without a further assumption), or `effect untested`.
 
 Every decision point ends in one of four outcomes. Only the third is a finding:
 

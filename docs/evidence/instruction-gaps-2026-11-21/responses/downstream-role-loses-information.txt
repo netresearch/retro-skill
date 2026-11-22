@@ -1,0 +1,96 @@
+# Retro report: Sweep over the `deploy.sh` output change
+
+**Scope and coverage.** I had only the task's prose description. I had no transcript, no repository, no pre-pass JSON and no skill catalogue. Every finding below rests on four facts from that description:
+
+1. The diff replaced one line per failed host, with its error, by a single summary line.
+2. The agent finished its own rollout checks faster.
+3. The user said "looks good".
+4. `docs/runbook.md`, which the session never opened, tells on-call to decide retry or rollback per host from the error printed for that host. No log keeps those errors.
+
+## Finding 1 (critical): the change removed output the on-call runbook depends on
+
+- **Kind:** Observation. The consequence follows from the change plus a cited record, with no further assumption.
+- **Evidence, source 1:** the delivered `deploy.sh` change. A failed rollout now prints only "3 of 12 hosts failed".
+- **Evidence, source 2:** `docs/runbook.md`. The operator must pick retry or rollback per host, using the error printed for that host.
+- **No fallback:** no log keeps the per-host errors. On the next failed rollout, the operator cannot follow the documented procedure.
+- **Why critical:** this is the shown-consequence case the severity section describes: "a runbook step that reads output the change removed; name both sources". It is a defect that people outside the session will see.
+- **Mad/Sad/Glad:**
+  - Sad: the work fell short of the required quality. `learning-contract.md` says "saving tokens while increasing defects or shifting work to people is not an improvement". The agent's faster checks moved the cost onto on-call.
+  - Glad: the summary line is useful in itself and can stay.
+- **"Looks good" is not a "Not needed" outcome.** Nothing shows the user knew about the runbook, so the approval covered the new display, not the operator's need. This is inferred, because I had no transcript. Whether the user is the authority over the operator procedure is also unknown.
+- **What speaks against the finding:**
+  - The runbook could be stale, so the per-host step is no longer wanted.
+  - The user could have meant to drop the step.
+
+  Neither is supported by the record. The owner of the runbook or the on-call procedure decides.
+- **Destination:** this is a defect in the target repository, so the fix goes there.
+  - Change `deploy.sh` to keep the summary line and also print each failed host with its error, as before. Alternatively, write the per-host errors to a kept log and change the runbook to point at it.
+  - If the runbook owner decides the per-host step is obsolete, the fix is `canonical-source (team record: runbook)`: correct `docs/runbook.md` instead (state `found-wrong`).
+
+## Finding 2 (important): no check stops the output contract from being removed
+
+- **Signal:** a gap in the project harness, found in Phase 4b, which the instructions call for here (Axis 1 says a gate outranks a sentence).
+- **Evidence:** the change passed the agent's checks and the user's review while breaking the runbook. Nothing in the record shows a test of `deploy.sh` failure output.
+- **Destination:** `harness-artefact` in the worked-in repository. Add a test that simulates a rollout with some failed hosts. It asserts that each failed host appears with its error, and that the summary line is present.
+- **Not verified:** the repository was out of reach, so I did not check whether a test suite or CI job already covers `deploy.sh`. The B22 rule to run the tests and one probe in a copy could not be followed. Code not reachable.
+- **Expected effect:** a later change that drops per-host lines fails the test. Untested until such a change happens.
+
+## Finding 3 (important, a candidate until Phase 4c runs): the runbook is not reachable from the script
+
+- **Signal:** the session never opened the runbook. That makes it B13 if the script or `AGENTS.md` links it (`found-correct`, nobody opened it). It is a B21-type gap if it is unlinked (`found-unreachable`).
+- **Evidence:** the runbook names this script's output as its input, and the session edited the script without reading it.
+- **Not searched:** I could not check the `deploy.sh` header, `AGENTS.md` or the README for a link, so reachability is unknown.
+- **Destination if `found-unreachable`:** `canonical-source (team record: repository docs)`, meaning a link from where a reader starts. Either a header comment in `deploy.sh` ("output is consumed by docs/runbook.md § …; per-host errors are required") or one line in `AGENTS.md`. No new page, and no copy of the runbook fact.
+
+## Finding 4 (important, routed to a skill, owner not discovered): no check for who reads an output before reducing it
+
+- **Cause in the agent system:** the agent judged the output change by its own benefit, which was faster checks. It did not ask who else reads that output.
+- **The warning sign:** a change that removes, aggregates or reformats what an operational script prints or logs (deploy, rollout, backup, CI output).
+- **The check it calls for:** before the change, search the repository's docs, runbooks and callers for the script name and the output being removed. Keep or relocate any information a documented procedure reads.
+- **Destination:** `skill-update` to the skill that owned the deploy or shell work. Phase 4 did not run, so that skill is not identified. It must not go into a skill that never showed the gap.
+- **Eval stub:**
+  - Case 1: `deploy.sh` with a runbook that reads per-host errors. Expected: the agent keeps the per-host lines.
+  - Held-out variant: a backup script whose per-file failures a runbook reads.
+  - Control: a script where no consumer reads the removed lines. A summary-only change stays correct there.
+- **Expected effect:** untested until such a case runs.
+
+## A contradiction in the instructions
+
+The B22 warning-sign table in `friction-catalog.md` has five rows: contradicted explanation, recurring failure variant, special handling spreading, piling exceptions, large rebuild from one case. None of them fits "a change drops information a downstream role consumes".
+
+The B22 severity text in `classification-heuristic.md` uses exactly this case as its example of a shown consequence: "a runbook step that reads output the change removed".
+
+Read strictly, the table makes this case "no warning sign, so no B22". The catalogue's limits section then says retro does not detect it at all. Yet the severity rules grade it. I routed Finding 1 as a defect in the delivered work with a shown consequence, and Finding 4 as the missing check, instead of forcing it into B22.
+
+**Proposal (fifth, against retro-skill):** add a row to the B22 table. Sign: "the change removes or condenses output, a field or a side effect that another role may consume". Check: "search the repository's docs, runbooks and callers for that output". This finding comes from reading the instructions, not from Phase 11, which was skipped below.
+
+## Deviations by phase
+
+- **Phase 1 (mechanical):** no transcript was supplied, so `detect-mechanical.py` did not run. The A signals are unknown.
+- **Phase 1b (review feedback):** no PRs, MRs or tickets were named, so `collect-review-findings.py` did not run.
+- **Phase 2 (enrichment):** this ran on the prose alone. The B22 rule to run the tests and one probe in a copy was not followed, because the code was not reachable.
+- **Phase 3 (prior attempts):** no session index or memory was available, so whether this has happened before is unknown.
+- **Phase 4 (skill discovery):** `find-org-skills.py` did not run, so the owning skill for Finding 4 is unknown.
+- **Phase 4b (project harness):** not inspected. Test and CI coverage of `deploy.sh` is unknown.
+- **Phase 4c (documentation lookup):** this covered only the runbook the task described. The links from the script and from `AGENTS.md` were not searched.
+- **Phase 6 (evals):** the matched skills' `evals/` were not read.
+- **Phase 9 (materialization):** nothing was written, because this was a read-only evaluation.
+- **Phase 11 (self-check):** no transcript of this run was available, so it was skipped.
+
+## Closing question
+
+Who decides between the runbook and the summary-only output? The owner of `docs/runbook.md` or the on-call procedure. The user's "looks good" does not settle it.
+
+There are five open proposals:
+
+1. Restore the per-host errors in `deploy.sh`, or log them and update the runbook.
+2. Add an output-contract test for `deploy.sh`.
+3. Link the runbook from `deploy.sh` or `AGENTS.md`, if it is unreachable.
+4. A `skill-update` to the owning skill with the eval stub.
+5. A new row in retro-skill's B22 table.
+
+Should these be carried out, and how far? Answer with one word:
+
+- `complete`: create the PRs, review and fix them until a round finds nothing new, and merge them once every gate is green.
+- `noted`: change nothing.
+- `propose`: create and review the PRs, and leave them as drafts for you.
