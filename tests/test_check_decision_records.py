@@ -155,6 +155,29 @@ class PolicyTest(unittest.TestCase):
             (r["policy"]["status"], r["policy"]["adr_dir"]), ("yes", "docs/adr/")
         )
 
+    def test_indented_code_and_html_comment_are_examples(self):
+        self.repo.write(
+            "AGENTS.md",
+            "Intro.\n\n    ADRs: no — an indented code block\n\n<!--\nADRs: yes — `docs/adr/`\n-->\n",
+        )
+        self.assertEqual(self.repo.report()["policy"]["status"], "undefined")
+
+    def test_link_and_code_span_to_one_directory_agree(self):
+        self.repo.write("docs/über/AGENTS.md", "")
+        self.repo.write(
+            "AGENTS.md",
+            "- **ADRs:** yes — `docs/über/`\n- **ADRs:** yes — [records](docs/über/)\n",
+        )
+        p = self.repo.report()["policy"]
+        self.assertEqual((p["status"], p["adr_dir"]), ("yes", "docs/über/"))
+
+    def test_link_target_survives_a_code_span_across_a_line(self):
+        self.repo.write("docs/adr/AGENTS.md", "")
+        for tail in ("", "See `a\nb`.\n"):
+            self.repo.write("AGENTS.md", "ADRs: yes — [records](docs/adr/)\n" + tail)
+            p = self.repo.report()["policy"]
+            self.assertEqual((p["status"], p["adr_dir"]), ("yes", "docs/adr/"))
+
     def test_fence_with_info_string_does_not_close_a_fence(self):
         self.repo.write(
             "AGENTS.md",
@@ -349,6 +372,69 @@ class RecordTest(unittest.TestCase):
         )
         self.assertEqual(r["records"][0]["missing"], [])
 
+    def test_invalid_frontmatter_is_reported_not_read_as_empty(self):
+        self.repo.write(
+            "docs/adr/0030.md",
+            "---\nstatus: accepted\ntouches:\n  - **/*.py\n---\n# Unquoted glob\n",
+        )
+        rec = self.repo.report()["records"][0]
+        self.assertEqual(rec["touches"], [])
+        self.assertIn("not valid YAML", rec["frontmatter_error"])
+
+    def test_frontmatter_keeps_scalars_as_written(self):
+        self.repo.write("001/x.py", "")
+        self.repo.write(
+            "docs/adr/0031.md",
+            "---\nstatus: accepted\ndate: 2026-02-30\ntouches: [001]\n---\n# Numbered dir\n",
+        )
+        rec = self.repo.report()["records"][0]
+        self.assertEqual(rec["touches"], ["001"])
+        self.assertEqual(rec["missing"], [])
+
+    def test_repeated_frontmatter_key_is_reported(self):
+        self.repo.write(
+            "docs/adr/0032.md",
+            "---\nstatus: accepted\ntouches: [gone.py]\nTouches: [src/]\n---\n# Twice\n",
+        )
+        rec = self.repo.report()["records"][0]
+        self.assertIn("repeated key", rec["frontmatter_error"])
+
+    def test_field_item_ends_a_touches_list(self):
+        self.repo.write(
+            "docs/adr/ADR-033.md",
+            "# ADR-033\n\n**Touches:**\n- `src/gone.py`\n- **Status:** Superseded by ADR-034\n",
+        )
+        r = self.repo.report()
+        self.assertFalse(r["records"][0]["active"])
+        self.assertEqual(r["findings"], [])
+
+    def test_fields_after_the_adr_tools_status_line_are_read(self):
+        self.repo.write(
+            "docs/adr/0035.md",
+            "# 35. Retry\n\n## Status\n\nAccepted\n**Touches:** `src/gone.py`\n",
+        )
+        r = self.repo.report()
+        self.assertEqual(r["records"][0]["status"], "Accepted")
+        self.assertEqual(signals(r), ["E8"])
+
+    def test_unindented_prose_after_a_comma_is_no_anchor(self):
+        self.repo.write("src/a.py", "")
+        self.repo.write(
+            "docs/adr/ADR-036.md",
+            "# ADR-036\n\n**Status:** Accepted\n**Touches:** src/a.py,\nSee the rollout plan.\n",
+        )
+        self.assertEqual(self.repo.report()["records"][0]["touches"], ["src/a.py"])
+
+    def test_code_span_across_a_line_keeps_other_spans(self):
+        self.repo.write("docs/retry plan.md", "")
+        self.repo.write(
+            "docs/adr/ADR-037.md",
+            "# ADR-037\n\n**Status:** Accepted\n**Touches:** `docs/retry plan.md`\nSee `a\nb`.\n",
+        )
+        rec = self.repo.report()["records"][0]
+        self.assertEqual(rec["touches"], ["docs/retry plan.md"])
+        self.assertEqual(rec["missing"], [])
+
     def test_yaml_comment_is_not_an_anchor(self):
         self.repo.write("src/a.py", "")
         self.repo.write(
@@ -407,6 +493,15 @@ class RecordTest(unittest.TestCase):
         )
         r = self.repo.report(changed=["config/retry.yaml"])
         self.assertEqual(r["findings"], [])
+
+    def test_quoted_heading_does_not_start_a_rule_section(self):
+        self.repo.write("src/a.py", "")
+        self.repo.write(
+            "src/AGENTS.md",
+            "## Retry rule\n\n> ## Background\n> Quoted.\n\n**Touches:** `src/a.py`\n",
+        )
+        r = self.repo.report(changed=["src/a.py"])
+        self.assertEqual([x["title"] for x in r["records"]], ["Retry rule"])
 
     def test_rules_in_a_nested_agents_md_are_checked(self):
         self.repo.write(

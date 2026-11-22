@@ -32,6 +32,9 @@ jobs:
     with:
       test-command: |
         uv run --python "$PYTHON_VERSION" python -m py_compile skills/retro/scripts/*.py
-        uv run --python "$PYTHON_VERSION" --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 python -m unittest discover -s tests -v
+        uv run --python "$PYTHON_VERSION" \
+          --with tree-sitter==0.26.0 --with tree-sitter-bash==0.25.1 \
+          --with markdown-it-py==4.3.0 --with mdit-py-plugins==0.7.0 --with PyYAML==6.0.4 \
+          python -m unittest discover -s tests -v
         uv run --python "$PYTHON_VERSION" python skills/retro/scripts/validate-evals.py
       python-versions: '["3.11", "3.12", "3.13", "3.14"]'
