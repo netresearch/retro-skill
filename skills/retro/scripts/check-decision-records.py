@@ -4,7 +4,11 @@
 #
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = [
+#     "markdown-it-py==4.3.0",
+#     "mdit-py-plugins==0.7.0",
+#     "PyYAML==6.0.4",
+# ]
 # ///
 
 """
@@ -29,6 +33,8 @@ Only paths are matched. Names in a record's prose are not compared with the
 code: Trail-Code measured that approach on 2026-10-29 and 9 of the 10 records
 it flagged still matched the code (trailhq/Trail-Code, learning l-3cfeb3b1).
 A record without a Touches field is reported as unanchored, not as an error.
+Frontmatter that is not valid YAML (a glob starting with * must be quoted
+there) is reported in the record as frontmatter_error.
 
 Accepted declaration lines in AGENTS.md (list markers and bold are ignored):
 
@@ -51,7 +57,9 @@ deprecated, rejected, withdrawn, retired, proposed or draft, or a German
 form of these. Lines inside
 fenced code blocks are examples, not declarations or records. The status is
 read from a bold or frontmatter field, or from a "## Status" heading and the
-line after it (the adr-tools layout). Changed paths are relative to --repo; an
+text after it (the adr-tools layout). Markdown is parsed by markdown-it-py
+(CommonMark) and frontmatter by PyYAML; only the field names inside a line of
+text are matched with patterns here. Changed paths are relative to --repo; an
 absolute one inside it is made relative, one outside it is listed as ignored.
 
 Usage:
@@ -71,6 +79,11 @@ import re
 import sys
 from pathlib import Path
 
+import yaml
+from markdown_it import MarkdownIt
+from markdown_it.token import Token
+from mdit_py_plugins.front_matter import front_matter_plugin
+
 AGENTS_MD = "AGENTS.md"
 INACTIVE_STATUSES = (
     "superseded",
@@ -86,50 +99,38 @@ INACTIVE_STATUSES = (
 NON_RECORD_NAMES = {"agents.md", "readme.md", "index.md", "claude.md"}
 GLOB_CHARS = "*?["
 
-# Each pattern has one unbounded group at its end, so no input backtracks
-# super-linearly; separators after it are stripped in Python.
+# The field patterns match one line of text that the Markdown parser has
+# already taken out of its block. Each has one unbounded group at its end, so
+# no input backtracks super-linearly; separators after it are stripped in Python.
 _BOLD = r"(?:\*\*|__)?"
 _DECL = re.compile(
     rf"^{_BOLD}ADRs?{_BOLD}\s*:{_BOLD}\s*(yes|no|ja|nein)\b(.*)$", re.IGNORECASE
 )
 _FIELD = re.compile(rf"^{_BOLD}(status|touches){_BOLD}\s*:{_BOLD}(.*)$", re.IGNORECASE)
-_STATUS_HEADING = re.compile(r"^#{2,3}\s+status\s*$", re.IGNORECASE)
-_BACKTICK = re.compile(r"`([^`]+)`")
-_LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
+_ANY_FIELD = re.compile(r"^(?:\*\*|__)?[\w-]+(?: [\w-]+)*(?:\*\*|__)?:")
 _SEPARATORS = " \t—–:-"
-_FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
-_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 NON_BINDING_STATUSES = ("proposed", "draft", "vorgeschlagen", "entwurf")
+_MD = MarkdownIt("commonmark").use(front_matter_plugin)
+
+Line = tuple[str, list[str], list[str]]
 
 
-def _plain(line: str) -> str:
-    """A line without its list marker; bold around a field name is matched by
-    the field patterns, so paths keep their __ and **."""
-    return _LIST_MARKER.sub("", line.strip()).strip()
-
-
-def _unfenced(lines: list[str]) -> list[str]:
-    """The lines outside fenced code blocks; examples in fences are not records.
-    A closing fence repeats the opening character, at least as often, and has
-    nothing but whitespace after it (CommonMark)."""
-    out, fence = [], None
-    for line in lines:
-        m = _FENCE.match(line)
-        if fence is None and m:
-            fence = m.group(1)
-            continue
-        closing = (
-            fence is not None
-            and m is not None
-            and m.group(1)[0] == fence[0]
-            and len(m.group(1)) >= len(fence)
-            and not line.strip()[len(m.group(1)) :].strip()
-        )
-        if closing:
-            fence = None
-        elif fence is None:
-            out.append(line)
-    return out
+def _lines(inline: Token) -> list[Line]:
+    """The source lines of a block's text, each with its code spans and link
+    targets. The text is taken as written, so a path keeps its __ and **."""
+    raw = inline.content.split("\n")
+    groups: list[tuple[list[str], list[str]]] = [([], [])]
+    for child in inline.children or []:
+        if child.type in ("softbreak", "hardbreak"):
+            groups.append(([], []))
+        elif child.type == "code_inline":
+            groups[-1][0].append(child.content)
+        elif child.type == "link_open":
+            groups[-1][1].append(str(child.attrs.get("href", "")))
+    if len(groups) != len(raw):
+        # A code span runs across a line break: keep the text, drop the spans.
+        groups = [([], []) for _ in raw]
+    return [(r.strip(), c, links) for r, (c, links) in zip(raw, groups)]
 
 
 def _inside(repo: Path, rel: str) -> Path | None:
@@ -138,34 +139,26 @@ def _inside(repo: Path, rel: str) -> Path | None:
     return p if p == repo or p.is_relative_to(repo) else None
 
 
-def _declarations(text: str) -> list[tuple[int, str, str]]:
+def _declarations(text: str) -> list[tuple[int, str, str, str]]:
+    """(line, answer, rest of the line, named directory) per declaration;
+    code blocks are examples, the parser leaves them out."""
     decls = []
-    lines = text.splitlines()
-    kept = set(map(id, _unfenced(lines)))
-    for n, line in enumerate(lines, 1):
-        if id(line) not in kept:
+    for tok in _MD.parse(text):
+        if tok.type != "inline" or not tok.map:
             continue
-        m = _DECL.match(_plain(line))
-        if m:
-            answer = "yes" if m.group(1).lower() in ("yes", "ja") else "no"
-            decls.append((n, answer, m.group(2).strip(_SEPARATORS)))
+        for n, (line, codes, links) in enumerate(_lines(tok), tok.map[0] + 1):
+            m = _DECL.match(line)
+            if m:
+                answer = "yes" if m.group(1).lower() in ("yes", "ja") else "no"
+                rest = m.group(2).strip(_SEPARATORS)
+                decls.append((n, answer, rest, _dir_key(rest, codes, links)))
     return decls
 
 
-def _strip_yaml_comment(value: str) -> str:
-    """The value without a trailing YAML comment (a # after whitespace)."""
-    for i in range(1, len(value)):
-        if value[i] == "#" and value[i - 1].isspace():
-            return value[:i].rstrip()
-    return value
-
-
-def _dir_key(rest: str) -> str:
+def _dir_key(rest: str, codes: list[str], links: list[str]) -> str:
     """The directory a yes-declaration names: code span, link target or first word."""
-    ticks = _BACKTICK.findall(rest)
-    links = _LINK.findall(rest)
-    if ticks:
-        first = ticks[0]
+    if codes:
+        first = codes[0]
     elif links:
         first = links[0]
     else:
@@ -173,9 +166,8 @@ def _dir_key(rest: str) -> str:
     return _strip_dot_slash(first.strip().rstrip(".,;")).rstrip("/")
 
 
-def _check_adr_dir(rest: str, repo: Path) -> tuple[str | None, list[str]]:
+def _check_adr_dir(target: str, repo: Path) -> tuple[str | None, list[str]]:
     """The directory a yes-declaration names, and what the repository says about it."""
-    target = _dir_key(rest)
     if not target:
         return None, ["'ADRs: yes' names no directory"]
     adr_dir = target.rstrip("/") + "/"
@@ -211,16 +203,16 @@ def read_policy(text: str | None, repo: Path) -> dict:
             f"{AGENTS_MD} does not say whether the project keeps ADRs"
         )
         return policy
-    policy["lines"] = [n for n, _, _ in decls]
-    yes_dirs = {_dir_key(r) for _, a, r in decls if a == "yes"}
-    if len({a for _, a, _ in decls}) > 1 or len(yes_dirs) > 1:
+    policy["lines"] = [d[0] for d in decls]
+    yes_dirs = {d[3] for d in decls if d[1] == "yes"}
+    if len({d[1] for d in decls}) > 1 or len(yes_dirs) > 1:
         policy["status"] = "inconsistent"
-        lines = ", ".join(str(n) for n, _, _ in decls)
+        lines = ", ".join(str(d[0]) for d in decls)
         policy["problems"].append(
             f"{AGENTS_MD} gives disagreeing ADR declarations (lines {lines})"
         )
         return policy
-    _, answer, rest = decls[0]
+    _, answer, rest, target = decls[0]
     policy["status"] = answer
     if answer == "no":
         policy["alternative"] = rest or None
@@ -229,184 +221,140 @@ def read_policy(text: str | None, repo: Path) -> dict:
                 "'ADRs: no' names no place where decisions are recorded instead"
             )
     else:
-        policy["adr_dir"], problems = _check_adr_dir(rest, repo)
+        policy["adr_dir"], problems = _check_adr_dir(target, repo)
         policy["problems"] += problems
     if policy["problems"]:
         policy["status"] = "inconsistent"
     return policy
 
 
-def _split_paths(value: str) -> list[str]:
-    ticks = _BACKTICK.findall(value)
-    items = ticks if ticks else re.split(r"[,\s]+", value.strip().strip("[]"))
-    return [i.strip().strip("'\"") for i in items if i.strip().strip("'\"")]
+def _split_paths(value: str, codes: list[str]) -> list[str]:
+    """The paths of a Touches value: its code spans, else its comma- or
+    space-separated words."""
+    items = codes or re.split(r"[,\s]+", value.strip().strip("[]"))
+    return [i.strip().strip("'\"`") for i in items if i.strip().strip("'\"`")]
 
 
-def _frontmatter_end(lines: list[str]) -> int:
-    """Index of the first body line; 0 when the text has no frontmatter."""
-    if not lines or lines[0].strip() != "---":
-        return 0
-    for i in range(1, len(lines)):
-        if lines[i].strip() == "---":
-            return i + 1
-    return 0
+def _frontmatter(tokens: list[Token]) -> tuple[str | None, list[str], str | None]:
+    """status, touches and a parse error from a record's YAML frontmatter."""
+    if not tokens or tokens[0].type != "front_matter":
+        return None, [], None
+    try:
+        data = yaml.safe_load(tokens[0].content)
+    except yaml.YAMLError as e:
+        return (
+            None,
+            [],
+            f"frontmatter is not valid YAML: {getattr(e, 'problem', None) or e}",
+        )
+    if not isinstance(data, dict):
+        return None, [], None
+    fields = {str(k).lower(): v for k, v in data.items()}
+    status, touches = fields.get("status"), fields.get("touches") or []
+    if isinstance(touches, list):
+        paths = [str(t).strip() for t in touches if t is not None and str(t).strip()]
+    else:
+        paths = _split_paths(str(touches), [])
+    return (None if status is None else str(status)), paths, None
 
 
-def _frontmatter_list_item(raw: str) -> str | None:
-    """The value of a YAML list item, at column 0 or indented, else None."""
-    item = raw.strip()
-    return _strip_yaml_comment(item[2:]) if item.startswith("- ") else None
-
-
-class _FrontmatterReader:
-    """status and touches from YAML-like frontmatter lines (no YAML loader)."""
-
-    def __init__(self) -> None:
-        self.status: str | None = None
-        self.touches: list[str] = []
-        self.current: str | None = None
-
-    def feed(self, raw: str) -> None:
-        indented = raw.startswith((" ", "\t"))
-        m = None if indented else _FIELD.match(raw.strip())
-        if m:
-            self._field(m.group(1).lower(), _strip_yaml_comment(m.group(2).strip()))
-        elif self.current == "touches" and (indented or raw.startswith("- ")):
-            item = _frontmatter_list_item(raw)
-            if item is not None:
-                self.touches += _split_paths(item)
-        elif not indented:
-            self.current = None
-
-    def _field(self, key: str, val: str) -> None:
-        self.current = key
-        if key == "status" and val:
-            self.status = val.strip("'\"")
-        elif key == "touches" and val:
-            self.touches += _split_paths(val)
-
-
-def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
-    """status and touches from YAML-like frontmatter lines (no YAML loader)."""
-    reader = _FrontmatterReader()
-    for raw in lines:
-        reader.feed(raw)
-    return reader.status, reader.touches
-
-
-_LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+")
-_ANY_FIELD = re.compile(r"^(?:\*\*|__)?[\w-]+(?: [\w-]+)*(?:\*\*|__)?:")
-
-
-def _touches_continuation(raw: str, mode: str) -> bool:
-    """Whether a line continues a Touches field. After an empty value, list
-    items continue it ("list"); after a value ending in a comma, one indented
-    or code-span line does ("wrap"). A line that is itself a field ends it."""
-    item = _plain(raw)
-    if not raw.strip():
-        # A formatter puts a blank line between a field and its list (MD032).
-        return mode == "list"
-    if raw.startswith("#") or _ANY_FIELD.match(item):
-        return False
-    if mode == "list":
-        return _LIST_ITEM.match(raw) is not None
-    return mode == "wrap" and (
-        raw.startswith((" ", "\t")) or raw.lstrip().startswith("`")
-    )
-
-
-def _touches_mode_after(value: str, mode: str) -> str:
-    """How a Touches field continues after a line with this value."""
-    if value.rstrip().endswith(","):
-        return "wrap"
-    if mode == "list":
-        return "list"
-    return ""
-
-
-def _touches_mode_for_field(value: str) -> str:
-    """How a Touches field continues after its own line."""
-    if not value:
-        return "list"
-    return "wrap" if value.endswith(",") else ""
-
-
-def _status_after_heading(raw: str) -> str | None:
-    """The status written on the line after a "## Status" heading."""
-    return None if raw.lstrip().startswith("#") else _plain(raw)
-
-
-class _BodyReader:
-    """title, status and touches from a record body: bold fields, or a
-    "## Status" heading followed by its value (the adr-tools layout)."""
+class _RecordReader:
+    """title, status and touches from the parsed blocks of a record: bold or
+    plain fields, a "## Status" heading with the text after it (adr-tools),
+    and a Touches field continued by a list or by a line after a comma."""
 
     def __init__(self) -> None:
         self.title: str | None = None
         self.status: str | None = None
         self.touches: list[str] = []
-        self.status_next = False
-        self.touches_mode = ""
+        self.await_list = False  # an empty Touches field: the next list holds it
+        self.status_next = False  # a Status heading: the next text holds it
 
-    def feed(self, raw: str) -> None:
-        if self._continue_touches(raw):
+    def read(self, tokens: list[Token]) -> None:
+        i = 0
+        while i < len(tokens):
+            tok = tokens[i]
+            if self.await_list and tok.type in (
+                "bullet_list_open",
+                "ordered_list_open",
+            ):
+                i = self._list(tokens, i)
+            elif tok.type == "heading_open":
+                self._heading(tok.tag, tokens[i + 1].content.strip())
+                i += 3
+            else:
+                if tok.type == "inline":
+                    self._text(tok)
+                i += 1
+
+    def _list(self, tokens: list[Token], start: int) -> int:
+        """Read the list that starts at tokens[start]; the index after it."""
+        self.await_list = False
+        depth = 0
+        for j in range(start, len(tokens)):
+            depth += tokens[j].nesting
+            if tokens[j].type == "inline":
+                for text, codes, _ in _lines(tokens[j]):
+                    self.touches += _split_paths(text, codes)
+            if depth == 0:
+                return j + 1
+        return len(tokens)
+
+    def _heading(self, tag: str, text: str) -> None:
+        self.await_list = False
+        if tag == "h1" and self.title is None:
+            self.title = text
+        self.status_next = tag in ("h2", "h3") and text.lower() == "status"
+
+    def _text(self, inline: Token) -> None:
+        lines = _lines(inline)
+        if self.status_next:
+            self.status_next = False
+            if self.status is None and lines[0][0]:
+                self.status = lines[0][0]
             return
-        if self.title is None and raw.startswith("# "):
-            self.title = raw[2:].strip()
-        if self._status_heading(raw):
-            return
-        m = _FIELD.match(_plain(raw))
-        if m:
-            self._field(m.group(1).lower(), m.group(2).strip())
+        wrap = False
+        for text, codes, _ in lines:
+            self.await_list = False
+            if wrap and not _ANY_FIELD.match(text):
+                self.touches += _split_paths(text, codes)
+                wrap = text.endswith(",")
+                continue
+            wrap = False
+            m = _FIELD.match(text)
+            if m:
+                wrap = self._field(m.group(1).lower(), m.group(2).strip(), codes)
 
-    def _continue_touches(self, raw: str) -> bool:
-        if not self.touches_mode:
+    def _field(self, key: str, val: str, codes: list[str]) -> bool:
+        """Record one field; whether the next line continues it."""
+        if key == "status":
+            if self.status is None and val:
+                self.status = val
             return False
-        if not _touches_continuation(raw, self.touches_mode):
-            self.touches_mode = ""
-            return False
-        if raw.strip():
-            line = _plain(raw)
-            self.touches += _split_paths(line)
-            self.touches_mode = _touches_mode_after(line, self.touches_mode)
-        return True
-
-    def _status_heading(self, raw: str) -> bool:
-        if _STATUS_HEADING.match(raw.strip()):
-            self.status_next = True
-            return True
-        if not (self.status_next and raw.strip()):
-            return False
-        self.status_next = False
-        self.status = self.status or _status_after_heading(raw)
-        return True
-
-    def _field(self, key: str, val: str) -> None:
-        if key == "status" and self.status is None and val:
-            self.status = val
-        elif key == "touches":
-            self.touches += _split_paths(val)
-            self.touches_mode = _touches_mode_for_field(val)
+        self.touches += _split_paths(val, codes)
+        self.await_list = not val
+        return val.endswith(",")
 
 
-def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
-    """title, status and touches from a record body."""
-    reader = _BodyReader()
-    for raw in _unfenced(lines):
-        reader.feed(raw)
-    return reader.title, reader.status, reader.touches
+def _read_blocks(tokens: list[Token]) -> dict:
+    reader = _RecordReader()
+    reader.read(tokens)
+    return {"title": reader.title, "status": reader.status, "touches": reader.touches}
 
 
 def parse_record(text: str) -> dict:
-    """Title, status and Touches of one record (frontmatter or bold fields)."""
-    lines = text.splitlines()
-    start = _frontmatter_end(lines)
-    fm_status, fm_touches = _frontmatter_fields(lines[1 : start - 1] if start else [])
-    title, body_status, body_touches = _body_fields(lines[start:])
-    return {
-        "title": title,
-        "status": fm_status or body_status,
-        "touches": list(dict.fromkeys(fm_touches + body_touches)),
+    """Title, status and Touches of one record (frontmatter or fields in the body)."""
+    tokens = _MD.parse(text)
+    fm_status, fm_touches, fm_error = _frontmatter(tokens)
+    body = _read_blocks(tokens)
+    rec = {
+        "title": body["title"],
+        "status": fm_status or body["status"],
+        "touches": list(dict.fromkeys(fm_touches + body["touches"])),
     }
+    if fm_error:
+        rec["frontmatter_error"] = fm_error
+    return rec
 
 
 def _is_active(status: str | None) -> bool:
@@ -514,18 +462,18 @@ def anchor_covers(touch: str, changed: str, literal: bool = False) -> bool:
     return any(rx.match("/".join(parts[:i])) for i in range(1, len(parts) + 1))
 
 
-def agents_sections(text: str) -> list[tuple[str, str]]:
-    """The ## / ### sections of AGENTS.md as (heading, body) pairs."""
-    sections, head, buf = [], None, []
-    for line in _unfenced(text.splitlines()):
-        if re.match(r"^#{2,3} ", line):
+def agents_sections(text: str) -> list[tuple[str, list[Token]]]:
+    """The ## / ### sections of AGENTS.md as (heading, parsed blocks) pairs."""
+    tokens = _MD.parse(text)
+    sections: list[tuple[str, list[Token]]] = []
+    head, start = None, 0
+    for i, tok in enumerate(tokens):
+        if tok.type == "heading_open" and tok.tag in ("h2", "h3"):
             if head is not None:
-                sections.append((head, "\n".join(buf)))
-            head, buf = line.lstrip("#").strip(), []
-        elif head is not None:
-            buf.append(line)
+                sections.append((head, tokens[start:i]))
+            head, start = tokens[i + 1].content.strip(), i + 3
     if head is not None:
-        sections.append((head, "\n".join(buf)))
+        sections.append((head, tokens[start:]))
     return sections
 
 
@@ -549,8 +497,8 @@ def _rule_records(repo: Path) -> list[dict]:
         if _inside(repo, str(path.relative_to(repo))) is None:
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
-        for head, body in agents_sections(text):
-            rec = parse_record(body)
+        for head, blocks in agents_sections(text):
+            rec = _read_blocks(blocks)
             if rec["touches"]:
                 records.append(
                     {

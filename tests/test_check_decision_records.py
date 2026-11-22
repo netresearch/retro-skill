@@ -155,6 +155,13 @@ class PolicyTest(unittest.TestCase):
             (r["policy"]["status"], r["policy"]["adr_dir"]), ("yes", "docs/adr/")
         )
 
+    def test_indented_code_and_html_comment_are_examples(self):
+        self.repo.write(
+            "AGENTS.md",
+            "Intro.\n\n    ADRs: no — an indented code block\n\n<!--\nADRs: yes — `docs/adr/`\n-->\n",
+        )
+        self.assertEqual(self.repo.report()["policy"]["status"], "undefined")
+
     def test_fence_with_info_string_does_not_close_a_fence(self):
         self.repo.write(
             "AGENTS.md",
@@ -348,6 +355,15 @@ class RecordTest(unittest.TestCase):
             r["records"][0]["touches"], ["src/pkg/__init__.py", "src/**/*.py"]
         )
         self.assertEqual(r["records"][0]["missing"], [])
+
+    def test_invalid_frontmatter_is_reported_not_read_as_empty(self):
+        self.repo.write(
+            "docs/adr/0030.md",
+            "---\nstatus: accepted\ntouches:\n  - **/*.py\n---\n# Unquoted glob\n",
+        )
+        rec = self.repo.report()["records"][0]
+        self.assertEqual(rec["touches"], [])
+        self.assertIn("not valid YAML", rec["frontmatter_error"])
 
     def test_yaml_comment_is_not_an_anchor(self):
         self.repo.write("src/a.py", "")
