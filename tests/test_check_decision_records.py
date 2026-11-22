@@ -362,6 +362,58 @@ class RecordTest(unittest.TestCase):
         self.assertEqual([h["file"] for h in r["changed_hits"]], ["src/a.py"])
         self.assertEqual(r["ignored_changed_files"], ["/elsewhere/b.py"])
 
+    def test_touches_as_a_list_or_wrapped_line_in_the_body(self):
+        self.repo.write("src/retry.py", "")
+        self.repo.write(
+            "docs/adr/ADR-018.md",
+            "# ADR-018\n\n**Status:** Accepted\n**Touches:**\n- `src/retry.py`\n- `src/gone.py`\n\n## Context\n",
+        )
+        self.repo.write(
+            "docs/adr/ADR-019.md",
+            "# ADR-019\n\n**Status:** Accepted\n**Touches:** `src/retry.py`,\n  `src/gone2.py`\n**Date:** 2026-11-22\n",
+        )
+        recs = {r["path"]: r for r in self.repo.report()["records"]}
+        self.assertEqual(recs["docs/adr/ADR-018.md"]["missing"], ["src/gone.py"])
+        self.assertEqual(
+            recs["docs/adr/ADR-019.md"]["touches"], ["src/retry.py", "src/gone2.py"]
+        )
+
+    def test_unindented_frontmatter_list(self):
+        self.repo.write("src/retry.py", "")
+        self.repo.write(
+            "docs/adr/0020.md",
+            "---\nstatus: accepted\ntouches:\n- src/retry.py\n- src/gone.py\n---\n# Retry\n",
+        )
+        self.assertEqual(self.repo.report()["records"][0]["missing"], ["src/gone.py"])
+
+    def test_madr_template_is_not_a_record(self):
+        self.repo.write(
+            "docs/adr/adr-template.md",
+            '---\nstatus: "{proposed | accepted}"\ntouches:\n  - path/to/file\n---\n',
+        )
+        self.assertEqual(self.repo.report()["records"], [])
+
+    def test_german_superseded_status_does_not_bind(self):
+        self.repo.write(
+            "docs/adr/ADR-021.md",
+            "# ADR-021\n\n**Status:** Abgelöst durch ADR-022\n**Touches:** `config/`\n",
+        )
+        r = self.repo.report(changed=["config/retry.yaml"])
+        self.assertEqual(r["findings"], [])
+
+    def test_rules_in_a_nested_agents_md_are_checked(self):
+        self.repo.write(
+            "src/AGENTS.md",
+            "## Retry rule\n\nKeep 4.\n**Touches:** `src/gone.py`, `config/retry.yaml`\n",
+        )
+        self.repo.write("config/retry.yaml", "")
+        r = self.repo.report(changed=["config/retry.yaml"])
+        rule = next(x for x in r["records"] if x["kind"] == "rule")
+        self.assertEqual(
+            (rule["path"], rule["missing"]), ("src/AGENTS.md", ["src/gone.py"])
+        )
+        self.assertEqual(len(r["changed_hits"]), 1)
+
     def test_glob_anchor(self):
         self.repo.write("src/a_test.py", "")
         self.repo.write(

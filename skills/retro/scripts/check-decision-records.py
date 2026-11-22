@@ -35,7 +35,8 @@ Accepted declaration lines in AGENTS.md (list markers and bold are ignored):
     ADRs: yes — `docs/adr/`
     ADRs: no — decisions are recorded in the PR description
 
-Accepted anchors in a record (an ADR file, or a section of AGENTS.md):
+Accepted anchors in a record (an ADR file, or a section of any AGENTS.md in
+the repository), on one line, wrapped, or as a list below the field:
 
     **Touches:** `src/retry.py`, `config/`
     touches:            (YAML frontmatter list)
@@ -46,7 +47,8 @@ name a file, a directory (everything below it) or a glob, where * and ? stay
 within one directory and ** spans directories. A `#Symbol` suffix is accepted
 and ignored, and so is a YAML comment. A path that exists as written is not
 read as a glob. A record binds unless its status starts with superseded,
-deprecated, rejected, withdrawn, retired, proposed or draft. Lines inside
+deprecated, rejected, withdrawn, retired, proposed or draft, or a German
+form of these. Lines inside
 fenced code blocks are examples, not declarations or records. The status is
 read from a bold or frontmatter field, or from a "## Status" heading and the
 line after it (the adr-tools layout). Changed paths are relative to --repo; an
@@ -70,7 +72,17 @@ import sys
 from pathlib import Path
 
 AGENTS_MD = "AGENTS.md"
-INACTIVE_STATUSES = ("superseded", "deprecated", "rejected", "withdrawn", "retired")
+INACTIVE_STATUSES = (
+    "superseded",
+    "deprecated",
+    "rejected",
+    "withdrawn",
+    "retired",
+    "abgelöst",
+    "ersetzt",
+    "verworfen",
+    "zurückgezogen",
+)
 NON_RECORD_NAMES = {"agents.md", "readme.md", "index.md", "claude.md"}
 GLOB_CHARS = "*?["
 
@@ -88,7 +100,7 @@ _LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
 _SEPARATORS = " \t—–:-"
 _FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
 _LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
-NON_BINDING_STATUSES = ("proposed", "draft")
+NON_BINDING_STATUSES = ("proposed", "draft", "vorgeschlagen", "entwurf")
 
 
 def _plain(line: str) -> str:
@@ -231,6 +243,8 @@ def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
                 status = val.strip("'\"")
             elif current == "touches" and val:
                 touches += _split_paths(val)
+        elif current == "touches" and raw.startswith("- "):
+            touches += _split_paths(_YAML_COMMENT.sub("", raw[2:]))
         elif not indented:
             current = None
         elif current == "touches" and raw.strip().startswith("- "):
@@ -238,12 +252,28 @@ def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
     return status, touches
 
 
+_CONTINUATION = re.compile(r"^(?:[-*+]\s+`?|`|\s+[^\s*_])")
+
+
+def _touches_continuation(raw: str) -> bool:
+    """Whether a line continues a Touches field: a list item, a code span, or
+    an indented wrapped line; another bold field or a heading ends it."""
+    if not raw.strip() or raw.startswith("#"):
+        return False
+    return _CONTINUATION.match(raw) is not None
+
+
 def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
     """title, status and touches from a record body: bold fields, or a
     "## Status" heading followed by its value (the adr-tools layout)."""
     title, status, touches = None, None, []
-    status_next = False
+    status_next = in_touches = False
     for raw in _unfenced(lines):
+        if in_touches:
+            if _touches_continuation(raw):
+                touches += _split_paths(_plain(raw))
+                continue
+            in_touches = False
         if title is None and raw.startswith("# "):
             title = raw[2:].strip()
         if _STATUS_HEADING.match(raw.strip()):
@@ -260,8 +290,11 @@ def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
         key, val = m.group(1).lower(), m.group(2).strip()
         if key == "status" and status is None and val:
             status = val
-        elif key == "touches" and val:
+        elif key == "touches":
             touches += _split_paths(val)
+            in_touches = True
+            continue
+        in_touches = False
     return title, status, touches
 
 
@@ -385,12 +418,37 @@ def agents_sections(text: str) -> list[tuple[str, str]]:
     return sections
 
 
-def _rule_records(agents_text: str | None) -> list[dict]:
+SKIP_DIRS = {".git", "node_modules", "vendor", ".venv"}
+
+
+def _agents_files(repo: Path) -> list[Path]:
+    """Every AGENTS.md below the root, the root file first."""
+    found = []
+    for root, dirs, files in os.walk(repo):
+        dirs[:] = sorted(d for d in dirs if d not in SKIP_DIRS)
+        if AGENTS_MD in files:
+            found.append(Path(root) / AGENTS_MD)
+    return found
+
+
+def _rule_records(repo: Path) -> list[dict]:
+    """Sections with a Touches field in any AGENTS.md of the repository."""
     records = []
-    for head, body in agents_sections(agents_text or ""):
-        rec = parse_record(body)
-        if rec["touches"]:
-            records.append({"path": AGENTS_MD, "kind": "rule", **rec, "title": head})
+    for path in _agents_files(repo):
+        if _inside(repo, str(path.relative_to(repo))) is None:
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        for head, body in agents_sections(text):
+            rec = parse_record(body)
+            if rec["touches"]:
+                records.append(
+                    {
+                        "path": path.relative_to(repo).as_posix(),
+                        "kind": "rule",
+                        **rec,
+                        "title": head,
+                    }
+                )
     return records
 
 
@@ -399,7 +457,7 @@ def _is_record_file(f: Path) -> bool:
     return (
         f.suffix.lower() == ".md"
         and name not in NON_RECORD_NAMES
-        and not name.startswith("template")
+        and "template" not in name
     )
 
 
@@ -423,7 +481,7 @@ def _adr_records(repo: Path, policy: dict) -> list[dict]:
 
 
 def collect_records(repo: Path, agents_text: str | None, policy: dict) -> list[dict]:
-    records = _rule_records(agents_text) + _adr_records(repo, policy)
+    records = _rule_records(repo) + _adr_records(repo, policy)
     for rec in records:
         rec["active"] = _is_active(rec["status"])
         rec["missing"] = [t for t in rec["touches"] if not anchor_exists(repo, t)]

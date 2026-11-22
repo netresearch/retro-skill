@@ -97,6 +97,11 @@ E1 when a later change crosses them:
 **Touches:** `src/retry.py`, `config/`
 ```
 
+`check-decision-records.py` reads anchored rules in every `AGENTS.md` of the
+repository and records in the declared directory; a rule kept in another
+linked document keeps its anchors unchecked, so anchored rules belong in an
+`AGENTS.md`.
+
 `agent-rules-skill` defines the `AGENTS.md` conventions;
 `scripts/check-decision-records.py` documents the forms it reads.
 

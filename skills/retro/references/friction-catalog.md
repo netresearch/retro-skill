@@ -527,7 +527,11 @@ branch). An undefined or inconsistent declaration (E7) is reported whenever
 the script runs; the project owner decides yes or no, never retro. A record
 without a `**Touches:**` field is reported as unanchored, not as a finding.
 A record binds unless its status starts with superseded, deprecated, rejected,
-withdrawn, retired, proposed or draft; E1 and E8 consider binding records only.
+withdrawn, retired, proposed or draft, or their German forms (abgelöst,
+ersetzt, verworfen, zurückgezogen, vorgeschlagen, Entwurf); E1 and E8 consider
+binding records only. The script reads the records in the declared directory
+and the rules with a `**Touches:**` field in every `AGENTS.md` of the
+repository; anchors in other linked documents are not checked.
 The script compares paths only. Names in a record's prose are not matched
 against the code, because that approach flagged 9 false hits in 10 when
 Trail-Code measured it (trailhq/Trail-Code, learning `l-3cfeb3b1`).
