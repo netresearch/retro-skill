@@ -1548,6 +1548,19 @@ def with_thread_prs(
     return merged + [p for p in prs if p["url"] not in known]
 
 
+def _scan_skipped(data: dict[str, Any], cutoff: datetime | None) -> dict[str, Any]:
+    """What `--scan-since` left unread, for the output; empty without it."""
+    if cutoff is None:
+        return {}
+    return {
+        "scan_since": cutoff.isoformat(),
+        "transcripts_before_scan_since": [
+            _masking.mask(str(p)) for p in data["transcripts_before_scan_since"]
+        ],
+        "events_before_scan_since": data["events_before_scan_since"],
+    }
+
+
 def _items_from_args(
     args, gitlab_host: str, listed: list[dict[str, Any]], run: Runner = default_runner
 ):
@@ -1582,14 +1595,7 @@ def _items_from_args(
             scope.session_transcripts(args.transcript_file), gitlab_host, cutoff
         )
         transcripts = data["transcripts_read"]
-        if cutoff is not None:
-            skipped = {
-                "scan_since": cutoff.isoformat(),
-                "transcripts_before_scan_since": [
-                    _masking.mask(str(p)) for p in data["transcripts_before_scan_since"]
-                ],
-                "events_before_scan_since": data["events_before_scan_since"],
-            }
+        skipped = _scan_skipped(data, cutoff)
         prs, unresolved, failures, urls = resolve_review_thread_writes(
             data["review_thread_writes"], data["unresolved_forge_commands"], run
         )
@@ -1609,6 +1615,19 @@ def _items_from_args(
     # After the transcript's own: collect() reads a URL once, first come.
     items += listed + refs
     return items, mentioned_skipped, start, unresolved, threads, transcripts, skipped
+
+
+def _scan_cutoff(parser: argparse.ArgumentParser, args) -> datetime | None:
+    """`--scan-since` as a time; a parser error when unreadable or when there
+    is no transcript to bound."""
+    if not args.scan_since:
+        return None
+    cutoff = parse_time(args.scan_since)
+    if cutoff is None:
+        parser.error(f"--scan-since is not an ISO 8601 time: {args.scan_since}")
+    if not args.transcript_file:
+        parser.error("--scan-since needs --transcript-file")
+    return cutoff
 
 
 def main(argv: list[str]) -> int:
@@ -1663,11 +1682,7 @@ def main(argv: list[str]) -> int:
     since = parse_time(args.since) if args.since else None
     if args.since and since is None:
         parser.error(f"--since is not an ISO 8601 time: {args.since}")
-    args.scan_cutoff = parse_time(args.scan_since) if args.scan_since else None
-    if args.scan_since and args.scan_cutoff is None:
-        parser.error(f"--scan-since is not an ISO 8601 time: {args.scan_since}")
-    if args.scan_since and not args.transcript_file:
-        parser.error("--scan-since needs --transcript-file")
+    args.scan_cutoff = _scan_cutoff(parser, args)
     gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
     try:
         external = load_feedback(args.feedback_file)
