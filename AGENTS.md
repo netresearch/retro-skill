@@ -26,6 +26,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/scripts/feedback-contract.py` — Validates local, tracker-neutral feedback; no discovery or execution
 - `skills/retro/scripts/scan-memory-inventory.py` — Promote-mode pre-pass over the memory backlog
 - `skills/retro/scripts/check-upstream-sources.py` — Drift check against canonical sources
+- `skills/retro/scripts/check-decision-records.py` — Reads the ADR declaration of a root `AGENTS.md` and the `Touches` anchors of decision records (E1, E7, E8)
 - `skills/retro/scripts/materialize-pr.sh` — Opens the skill-update PR against the source repo
 - `skills/retro/scripts/validate-evals.py` — Validates retro's own eval scenarios (RT-40..42)
 - `skills/retro/scripts/prepare-behavior-evals.py` — Freezes selected Markdown scenarios for native execution or the shared runner, with private grading inputs and isolated old/new fixtures

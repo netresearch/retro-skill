@@ -1,0 +1,270 @@
+#!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+
+"""Unit tests for skills/retro/scripts/check-decision-records.py."""
+
+from __future__ import annotations
+
+import importlib.util
+import io
+import json
+import tempfile
+import unittest
+from contextlib import redirect_stderr, redirect_stdout
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load():
+    path = REPO_ROOT / "skills" / "retro" / "scripts" / "check-decision-records.py"
+    spec = importlib.util.spec_from_file_location("check_decision_records", path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+cdr = _load()
+
+# The field layout of the ADRs in netresearch/agent-harness-skill and
+# netresearch/coding_agent_cli_toolset: bold fields, no frontmatter, no anchors.
+REAL_FORMAT_ADR = """# ADR-001: Verify-First Design
+
+**Status:** Accepted
+**Date:** 2026-03-22
+**Context:** The skill could be a generator or a verifier.
+**Decision:** The skill is primarily a verifier.
+"""
+
+
+class Repo:
+    def __init__(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name)
+
+    def write(self, rel: str, text: str = "") -> Path:
+        p = self.root / rel
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(text, encoding="utf-8")
+        return p
+
+    def report(self, changed=()):
+        return cdr.build_report(self.root, list(changed))
+
+    def close(self):
+        self._tmp.cleanup()
+
+
+def signals(report):
+    return [f["signal"] for f in report["findings"]]
+
+
+class PolicyTest(unittest.TestCase):
+    def setUp(self):
+        self.repo = Repo()
+
+    def tearDown(self):
+        self.repo.close()
+
+    def test_missing_agents_md_is_undefined(self):
+        r = self.repo.report()
+        self.assertEqual(r["policy"]["status"], "undefined")
+        self.assertEqual(signals(r), ["E7"])
+
+    def test_agents_md_without_a_declaration_is_undefined(self):
+        self.repo.write("AGENTS.md", "# Project\n\n## Commands\n\n- make test\n")
+        r = self.repo.report()
+        self.assertEqual(r["policy"]["status"], "undefined")
+        self.assertEqual(signals(r), ["E7"])
+
+    def test_no_with_a_named_place_passes(self):
+        self.repo.write(
+            "AGENTS.md",
+            "## Key Decisions\n\n- **ADRs:** no — decisions are recorded in the PR description\n",
+        )
+        r = self.repo.report()
+        self.assertEqual(r["policy"]["status"], "no")
+        self.assertEqual(
+            r["policy"]["alternative"], "decisions are recorded in the PR description"
+        )
+        self.assertEqual(r["findings"], [])
+
+    def test_bare_no_is_inconsistent(self):
+        self.repo.write("AGENTS.md", "ADRs: no\n")
+        r = self.repo.report()
+        self.assertEqual(r["policy"]["status"], "inconsistent")
+        self.assertEqual(signals(r), ["E7"])
+
+    def test_yes_with_directory_and_its_agents_md_passes(self):
+        self.repo.write("AGENTS.md", "## Decision records\n\nADRs: yes — `docs/adr/`\n")
+        self.repo.write("docs/adr/AGENTS.md", "# How we write ADRs\n")
+        r = self.repo.report()
+        self.assertEqual(r["policy"]["status"], "yes")
+        self.assertEqual(r["policy"]["adr_dir"], "docs/adr/")
+        self.assertEqual(r["findings"], [])
+
+    def test_yes_with_missing_directory_is_inconsistent(self):
+        self.repo.write("AGENTS.md", "**ADRs:** yes — `docs/adr/`\n")
+        r = self.repo.report()
+        self.assertEqual(r["policy"]["status"], "inconsistent")
+        self.assertIn("does not exist", r["policy"]["problems"][0])
+
+    def test_yes_without_the_directory_agents_md_is_inconsistent(self):
+        self.repo.write("AGENTS.md", "ADRs: yes — docs/adr\n")
+        self.repo.write("docs/adr/ADR-001.md", REAL_FORMAT_ADR)
+        r = self.repo.report()
+        self.assertEqual(r["policy"]["status"], "inconsistent")
+        self.assertIn("no AGENTS.md of its own", r["policy"]["problems"][0])
+
+    def test_contradicting_lines_are_inconsistent(self):
+        self.repo.write("AGENTS.md", "ADRs: yes — `docs/adr/`\n\nADRs: no — none\n")
+        self.repo.write("docs/adr/AGENTS.md", "x\n")
+        r = self.repo.report()
+        self.assertEqual(r["policy"]["status"], "inconsistent")
+
+    def test_german_answer_is_read(self):
+        self.repo.write(
+            "AGENTS.md", "- ADRs: nein — Entscheidungen stehen in der PR-Beschreibung\n"
+        )
+        self.assertEqual(self.repo.report()["policy"]["status"], "no")
+
+
+class RecordTest(unittest.TestCase):
+    def setUp(self):
+        self.repo = Repo()
+        self.repo.write(
+            "AGENTS.md", "## Key Decisions\n\n**ADRs:** yes — `docs/adr/`\n"
+        )
+        self.repo.write("docs/adr/AGENTS.md", "# How we write ADRs\n")
+        self.repo.write("docs/adr/README.md", "# Index\n")
+
+    def tearDown(self):
+        self.repo.close()
+
+    def test_real_format_record_is_unanchored_not_an_error(self):
+        self.repo.write("docs/adr/ADR-001-verify-first.md", REAL_FORMAT_ADR)
+        r = self.repo.report()
+        self.assertEqual(r["summary"]["adr_records"], 1)
+        self.assertEqual(r["summary"]["unanchored_adr_records"], 1)
+        rec = r["records"][0]
+        self.assertEqual(rec["status"], "Accepted")
+        self.assertEqual(rec["title"], "ADR-001: Verify-First Design")
+        self.assertTrue(rec["active"])
+        self.assertEqual(r["findings"], [])
+
+    def test_index_and_agents_files_are_not_records(self):
+        r = self.repo.report()
+        self.assertEqual(r["summary"]["adr_records"], 0)
+
+    def test_missing_anchor_of_an_active_record_is_e8(self):
+        self.repo.write("config/retry.yaml", "max: 4\n")
+        self.repo.write(
+            "docs/adr/ADR-002-retries.md",
+            REAL_FORMAT_ADR.replace(
+                "**Date:**", "**Touches:** `src/retry.py`, `config/`\n**Date:**"
+            ),
+        )
+        r = self.repo.report()
+        e8 = [f for f in r["findings"] if f["signal"] == "E8"]
+        self.assertEqual(len(e8), 1)
+        self.assertEqual(e8[0]["missing"], ["src/retry.py"])
+        self.assertEqual(e8[0]["record"], "docs/adr/ADR-002-retries.md")
+
+    def test_superseded_record_is_neither_stale_nor_crossed(self):
+        self.repo.write(
+            "docs/adr/ADR-003-old.md",
+            "# ADR-003\n\n**Status:** Superseded by ADR-004\n**Touches:** `gone.py`, `config/`\n",
+        )
+        self.repo.write("config/retry.yaml", "max: 4\n")
+        r = self.repo.report(changed=["config/retry.yaml"])
+        self.assertFalse(r["records"][0]["active"])
+        self.assertEqual(r["findings"], [])
+
+    def test_frontmatter_touches_and_symbol_suffix(self):
+        self.repo.write("src/client.go", "const defaultRetryMax = 4\n")
+        self.repo.write(
+            "docs/adr/0005-retry-max.md",
+            "---\nstatus: accepted\ntouches:\n  - src/client.go#defaultRetryMax\n  - src/gone.go\n---\n\n# Keep retries at 4\n",
+        )
+        r = self.repo.report(changed=["src/client.go"])
+        rec = r["records"][0]
+        self.assertEqual(
+            rec["touches"], ["src/client.go#defaultRetryMax", "src/gone.go"]
+        )
+        self.assertEqual(rec["missing"], ["src/gone.go"])
+        self.assertEqual(sorted(signals(r)), ["E1", "E8"])
+
+    def test_changed_file_under_a_directory_anchor_is_a_candidate(self):
+        self.repo.write("config/retry.yaml", "max: 4\n")
+        self.repo.write(
+            "docs/adr/ADR-002.md",
+            "# ADR-002: Retries\n\n**Status:** Accepted\n**Touches:** `config/`\n",
+        )
+        r = self.repo.report(
+            changed=["config/retry.yaml", "README.md", "configuration.md"]
+        )
+        e1 = [f for f in r["findings"] if f["signal"] == "E1"]
+        self.assertEqual([f["file"] for f in e1], ["config/retry.yaml"])
+        self.assertTrue(e1[0]["candidate"])
+        self.assertEqual(e1[0]["records"][0]["title"], "ADR-002: Retries")
+
+    def test_glob_anchor(self):
+        self.repo.write("src/a_test.py", "")
+        self.repo.write(
+            "docs/adr/ADR-006.md",
+            "# ADR-006\n\n**Status:** Accepted\n**Touches:** `src/*_test.py`\n",
+        )
+        r = self.repo.report(changed=["src/a_test.py", "src/a.py"])
+        self.assertEqual([h["file"] for h in r["changed_hits"]], ["src/a_test.py"])
+        self.assertEqual(r["records"][0]["missing"], [])
+
+
+class RuleAnchorTest(unittest.TestCase):
+    def test_agents_md_rule_with_touches_is_a_record(self):
+        repo = Repo()
+        try:
+            repo.write(
+                "AGENTS.md",
+                "**ADRs:** no — decisions are recorded in the PR description\n\n"
+                "## Keep the report summary short\n\nThe on-call page reads per-host errors.\n"
+                "**Touches:** `after/report.py`, `docs/operations/on-call.md`\n",
+            )
+            repo.write("after/report.py", "")
+            r = repo.report(changed=["after/report.py"])
+            self.assertEqual(r["records"][0]["kind"], "rule")
+            self.assertEqual(r["records"][0]["missing"], ["docs/operations/on-call.md"])
+            self.assertEqual(sorted(signals(r)), ["E1", "E8"])
+        finally:
+            repo.close()
+
+
+class CliTest(unittest.TestCase):
+    def test_json_output_and_changed_files_from(self):
+        repo = Repo()
+        try:
+            repo.write("AGENTS.md", "ADRs: no — PR descriptions\n")
+            lst = repo.write("changed.txt", "a.py\n\nb.py\n")
+            buf = io.StringIO()
+            with redirect_stdout(buf):
+                rc = cdr.main(
+                    ["--repo", str(repo.root), "--changed-files-from", str(lst)]
+                )
+            self.assertEqual(rc, 0)
+            out = json.loads(buf.getvalue())
+            self.assertEqual(out["summary"]["changed_files"], 2)
+            self.assertEqual(out["policy"]["status"], "no")
+        finally:
+            repo.close()
+
+    def test_missing_repository_is_a_usage_error(self):
+        err = io.StringIO()
+        with redirect_stdout(io.StringIO()), redirect_stderr(err):
+            self.assertEqual(
+                cdr.main(["--repo", "/nonexistent/check-decision-records"]), 2
+            )
+        self.assertIn("not a directory", err.getvalue())
+
+
+if __name__ == "__main__":
+    unittest.main()
