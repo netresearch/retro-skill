@@ -94,7 +94,6 @@ _DECL = re.compile(
 )
 _FIELD = re.compile(rf"^{_BOLD}(status|touches){_BOLD}\s*:{_BOLD}(.*)$", re.IGNORECASE)
 _STATUS_HEADING = re.compile(r"^#{2,3}\s+status\s*$", re.IGNORECASE)
-_YAML_COMMENT = re.compile(r"\s+#.*$")
 _BACKTICK = re.compile(r"`([^`]+)`")
 _LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
 _SEPARATORS = " \t—–:-"
@@ -144,11 +143,24 @@ def _declarations(text: str) -> list[tuple[int, str, str]]:
     return decls
 
 
+def _strip_yaml_comment(value: str) -> str:
+    """The value without a trailing YAML comment (a # after whitespace)."""
+    for i in range(1, len(value)):
+        if value[i] == "#" and value[i - 1].isspace():
+            return value[:i].rstrip()
+    return value
+
+
 def _dir_key(rest: str) -> str:
     """The directory a yes-declaration names: code span, link target or first word."""
     ticks = _BACKTICK.findall(rest)
     links = _LINK.findall(rest)
-    first = ticks[0] if ticks else links[0] if links else (rest.split() or [""])[0]
+    if ticks:
+        first = ticks[0]
+    elif links:
+        first = links[0]
+    else:
+        first = (rest.split() or [""])[0]
     return _strip_dot_slash(first.strip().rstrip(".,;")).rstrip("/")
 
 
@@ -231,6 +243,12 @@ def _frontmatter_end(lines: list[str]) -> int:
     return 0
 
 
+def _frontmatter_list_item(raw: str) -> str | None:
+    """The value of a YAML list item, at column 0 or indented, else None."""
+    item = raw.strip()
+    return _strip_yaml_comment(item[2:]) if item.startswith("- ") else None
+
+
 def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
     """status and touches from YAML-like frontmatter lines (no YAML loader)."""
     status, touches, current = None, [], None
@@ -238,22 +256,23 @@ def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
         indented = raw.startswith((" ", "\t"))
         m = None if indented else _FIELD.match(raw.strip())
         if m:
-            current, val = m.group(1).lower(), _YAML_COMMENT.sub("", m.group(2)).strip()
+            current = m.group(1).lower()
+            val = _strip_yaml_comment(m.group(2).strip())
             if current == "status" and val:
                 status = val.strip("'\"")
             elif current == "touches" and val:
                 touches += _split_paths(val)
-        elif current == "touches" and raw.startswith("- "):
-            touches += _split_paths(_YAML_COMMENT.sub("", raw[2:]))
+            continue
+        item = _frontmatter_list_item(raw) if current == "touches" else None
+        if item is not None and (indented or raw.startswith("- ")):
+            touches += _split_paths(item)
         elif not indented:
             current = None
-        elif current == "touches" and raw.strip().startswith("- "):
-            touches += _split_paths(_YAML_COMMENT.sub("", raw.strip()[2:]))
     return status, touches
 
 
 _LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+")
-_ANY_FIELD = re.compile(r"^(?:\*\*|__)?[\w -]+(?:\*\*|__)?\s*:")
+_ANY_FIELD = re.compile(r"^(?:\*\*|__)?[\w-]+(?: [\w-]+)*(?:\*\*|__)?:")
 
 
 def _touches_continuation(raw: str, mode: str) -> bool:
@@ -273,26 +292,40 @@ def _touches_continuation(raw: str, mode: str) -> bool:
     )
 
 
+def _touches_mode_after(value: str, mode: str) -> str:
+    """How a Touches field continues after a line with this value."""
+    if value.rstrip().endswith(","):
+        return "wrap"
+    if mode == "list":
+        return "list"
+    return ""
+
+
+def _touches_mode_for_field(value: str) -> str:
+    """How a Touches field continues after its own line."""
+    if not value:
+        return "list"
+    return "wrap" if value.endswith(",") else ""
+
+
+def _status_after_heading(raw: str) -> str | None:
+    """The status written on the line after a "## Status" heading."""
+    return None if raw.lstrip().startswith("#") else _plain(raw)
+
+
 def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
     """title, status and touches from a record body: bold fields, or a
     "## Status" heading followed by its value (the adr-tools layout)."""
     title, status, touches = None, None, []
-    status_next = False
-    touches_mode = ""
+    status_next, touches_mode = False, ""
     for raw in _unfenced(lines):
-        if touches_mode:
-            if _touches_continuation(raw, touches_mode):
-                if not raw.strip():
-                    continue
+        if touches_mode and _touches_continuation(raw, touches_mode):
+            if raw.strip():
                 line = _plain(raw)
                 touches += _split_paths(line)
-                touches_mode = (
-                    "wrap"
-                    if line.rstrip().endswith(",")
-                    else ("list" if touches_mode == "list" else "")
-                )
-                continue
-            touches_mode = ""
+                touches_mode = _touches_mode_after(line, touches_mode)
+            continue
+        touches_mode = ""
         if title is None and raw.startswith("# "):
             title = raw[2:].strip()
         if _STATUS_HEADING.match(raw.strip()):
@@ -300,8 +333,7 @@ def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
             continue
         if status_next and raw.strip():
             status_next = False
-            if status is None and not raw.lstrip().startswith("#"):
-                status = _plain(raw)
+            status = status or _status_after_heading(raw)
             continue
         m = _FIELD.match(_plain(raw))
         if not m:
@@ -311,7 +343,7 @@ def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
             status = val
         elif key == "touches":
             touches += _split_paths(val)
-            touches_mode = "list" if not val else "wrap" if val.endswith(",") else ""
+            touches_mode = _touches_mode_for_field(val)
     return title, status, touches
 
 
@@ -497,7 +529,7 @@ def _adr_records(repo: Path, policy: dict) -> list[dict]:
     ]
 
 
-def collect_records(repo: Path, agents_text: str | None, policy: dict) -> list[dict]:
+def collect_records(repo: Path, policy: dict) -> list[dict]:
     records = _rule_records(repo) + _adr_records(repo, policy)
     for rec in records:
         rec["active"] = _is_active(rec["status"])
@@ -584,7 +616,7 @@ def build_report(repo: Path, changed: list[str]) -> dict:
         else None
     )
     policy = read_policy(agents_text, repo)
-    records = collect_records(repo, agents_text, policy)
+    records = collect_records(repo, policy)
     changed, ignored = _relative_changes(repo, changed)
     hits = changed_hits(records, changed)
     findings = findings_for(policy, records, hits)
