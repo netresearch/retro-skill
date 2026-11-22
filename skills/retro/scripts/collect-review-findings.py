@@ -81,8 +81,11 @@ directory is read with it, and its writes count like the main loop's;
 
 Failure stays distinguishable from silence: an artefact that could not be read
 is listed with `fetched: false` and the error, never as an artefact with no
-findings. Comments from before `--since` (default: the transcript's first
-timestamp) are counted, not listed — on a linked issue they are the request,
+findings. A documentation placeholder (`github.com/OWNER/REPO/...`, GitLab
+`group/project` or `group/sub/project`, any case) is neither: it is not read
+and not an artefact, only listed in `placeholders_skipped`. Comments from
+before `--since` (default: the transcript's first timestamp) are counted, not
+listed — on a linked issue they are the request,
 not feedback on the work.
 """
 
@@ -1128,6 +1131,21 @@ def _new_identity(seen, item: dict[str, Any], parsed: dict[str, Any]) -> bool:
     return parsed["url"] == item["url"] or _first_visit(seen, (parsed["url"], ""))
 
 
+# Documentation placeholders: example URLs a skill or README quotes, such as
+# `https://github.com/OWNER/REPO/pull/431`. derive-session-scope keeps them as
+# `mentioned`; reading one can only fail and mark a clean run incomplete. The
+# whole project path is compared, case-insensitively, per forge.
+PLACEHOLDER_PROJECTS = {
+    "github": frozenset({"owner/repo"}),
+    "gitlab": frozenset({"group/project", "group/sub/project"}),
+}
+
+
+def is_placeholder(item: dict[str, Any]) -> bool:
+    project = str(item.get("project") or "").casefold()
+    return project in PLACEHOLDER_PROJECTS.get(item.get("forge"), frozenset())
+
+
 def _first_visit(seen: set[tuple[str, str]], key: tuple[str, str]) -> bool:
     if key in seen:
         return False
@@ -1156,10 +1174,15 @@ def collect(
     artefacts: list[dict[str, Any]] = []
     findings: list[dict[str, Any]] = []
     earlier = 0
+    placeholders: list[str] = []
 
     while queue:
         item = _resolved(queue.pop(0), external["references"])
         if not _first_visit(seen, (item["url"], item.get("context", ""))):
+            continue
+        if is_placeholder(item):
+            # Never read, never an artefact: not a failure, not a finding.
+            placeholders.append(item["url"])
             continue
         record = {k: item.get(k) for k in ("url", "forge", "kind", "origin")}
         parsed, unread = _read_item(
@@ -1191,6 +1214,7 @@ def collect(
         "artefacts": _masked_text(artefacts),
         "findings": _masked_text(findings),
         "findings_before_since": earlier,
+        "placeholders_skipped": placeholders,
         "complete": all(_read_whole(a) for a in artefacts),
     }
 
@@ -1370,6 +1394,10 @@ def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
             " (--include-mentioned reads them)."
         )
     lines += [f"NOT READ  {a['url']}: {oneline(a['error'])}" for a in failed]
+    lines += [
+        f"PLACEHOLDER {url}: documentation example, not read"
+        for url in result.get("placeholders_skipped") or []
+    ]
     lines += [f"UNSUPPORTED {a['url']}: {oneline(a['error'])}" for a in unsupported]
     lines += [
         f"UNRESOLVED REF {a['url']} (context: {a['context']}): {a['reason']}"
@@ -1544,7 +1572,9 @@ def _items_from_args(
             mentioned_skipped = sum(
                 1
                 for a in data["artefacts"]
-                if a["origin"] == "mentioned" and a["url"] not in listed_urls
+                if a["origin"] == "mentioned"
+                and a["url"] not in listed_urls
+                and not is_placeholder(a)
             )
         # The main loop starts the session; a subagent starts after it.
         start = transcript_start(args.transcript_file)
