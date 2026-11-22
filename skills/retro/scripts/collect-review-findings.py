@@ -51,7 +51,7 @@ systems.
 
 Usage:
     collect-review-findings.py --transcript-file <session.jsonl> [--since ISO]
-        [--include-mentioned] [--output-format text|json]
+        [--scan-since ISO] [--include-mentioned] [--output-format text|json]
     collect-review-findings.py --ref <artifact URL or unresolved short reference> [--ref …]
     collect-review-findings.py --transcript-file <session.jsonl> --pr-list <opened.jsonl>
 
@@ -78,6 +78,14 @@ beside `<session id>.jsonl` (a Workflow's agents in `subagents/workflows/wf_*/`)
 When `--transcript-file` is named by its session UUID, every one below that
 directory is read with it, and its writes count like the main loop's;
 `transcripts` in the output lists the files read, the main transcript first.
+
+`--scan-since` bounds the transcript scan to a window of a long session: an
+event with an older timestamp is not read, and a subagent transcript last
+written before it is not opened (every event in it is older). Events without a
+timestamp are read; a call made before the cutoff whose result arrives after it
+counts. The output names what was skipped (`transcripts_before_scan_since`,
+`events_before_scan_since`). `--since` is unaffected: it still decides which
+comments are listed, never which artefacts are read.
 
 Failure stays distinguishable from silence: an artefact that could not be read
 is listed with `fetched: false` and the error, never as an artefact with no
@@ -1384,6 +1392,13 @@ def _tally(result: dict[str, Any], mentioned_skipped: int) -> list[str]:
         if len(transcripts) > 1:
             line += " (--output-format json lists them)"
         lines.append(line)
+    if result.get("scan_since"):
+        lines.append(
+            f"--scan-since {result['scan_since']}: "
+            f"{len(result['transcripts_before_scan_since'])} subagent transcripts"
+            f" and {result['events_before_scan_since']} events before it were not"
+            " read; artefacts named only there are not listed."
+        )
     if result["findings_before_since"]:
         lines.append(
             f"{result['findings_before_since']} comments predate --since and are not listed."
@@ -1540,7 +1555,8 @@ def _items_from_args(
     transcript's start, the forge writes whose target no transcript names,
     what the review-thread lookup found (`review_threads`) and could not
     (`review_thread_lookup_failures`), and the transcripts read: the given
-    one and its subagents' (`scope.session_transcripts`).
+    one and its subagents' (`scope.session_transcripts`), minus those
+    `--scan-since` skipped, and what it skipped (empty without it).
     A listed PR the transcript already names keeps the transcript's origin.
     Raises ValueError on a bad transcript path or ref, before any network call."""
     items: list[dict[str, Any]] = []
@@ -1550,6 +1566,8 @@ def _items_from_args(
         "review_thread_lookup_failures": [],
     }
     transcripts: list[Path] = []
+    skipped: dict[str, Any] = {}
+    cutoff = getattr(args, "scan_cutoff", None)
     listed_urls = {i["url"] for i in listed}
     refs = [parse_ref(ref) for ref in args.ref]
     for ref, item in zip(args.ref, refs):
@@ -1560,8 +1578,18 @@ def _items_from_args(
     if args.transcript_file:
         if not args.transcript_file.is_file():
             raise ValueError(f"no such transcript: {args.transcript_file}")
-        transcripts = scope.session_transcripts(args.transcript_file)
-        data = scope.scan_transcripts(transcripts, gitlab_host)
+        data = scope.scan_transcripts(
+            scope.session_transcripts(args.transcript_file), gitlab_host, cutoff
+        )
+        transcripts = data["transcripts_read"]
+        if cutoff is not None:
+            skipped = {
+                "scan_since": cutoff.isoformat(),
+                "transcripts_before_scan_since": [
+                    _masking.mask(str(p)) for p in data["transcripts_before_scan_since"]
+                ],
+                "events_before_scan_since": data["events_before_scan_since"],
+            }
         prs, unresolved, failures, urls = resolve_review_thread_writes(
             data["review_thread_writes"], data["unresolved_forge_commands"], run
         )
@@ -1580,7 +1608,7 @@ def _items_from_args(
         start = transcript_start(args.transcript_file)
     # After the transcript's own: collect() reads a URL once, first come.
     items += listed + refs
-    return items, mentioned_skipped, start, unresolved, threads, transcripts
+    return items, mentioned_skipped, start, unresolved, threads, transcripts, skipped
 
 
 def main(argv: list[str]) -> int:
@@ -1596,6 +1624,12 @@ def main(argv: list[str]) -> int:
     )
     parser.add_argument(
         "--since", help="ISO time; default: the transcript's first timestamp"
+    )
+    parser.add_argument(
+        "--scan-since",
+        help="ISO time; read only transcript events at or after it, so only the"
+        " artefacts that window names (default: every event). --since still"
+        " decides which comments are listed",
     )
     parser.add_argument("--include-mentioned", action="store_true")
     parser.add_argument("--self-login", action="append", default=[])
@@ -1629,6 +1663,11 @@ def main(argv: list[str]) -> int:
     since = parse_time(args.since) if args.since else None
     if args.since and since is None:
         parser.error(f"--since is not an ISO 8601 time: {args.since}")
+    args.scan_cutoff = parse_time(args.scan_since) if args.scan_since else None
+    if args.scan_since and args.scan_cutoff is None:
+        parser.error(f"--scan-since is not an ISO 8601 time: {args.scan_since}")
+    if args.scan_since and not args.transcript_file:
+        parser.error("--scan-since needs --transcript-file")
     gitlab_hosts = gitlab_hosts_from(args.gitlab_host, os.environ.get("GITLAB_HOST"))
     try:
         external = load_feedback(args.feedback_file)
@@ -1640,6 +1679,7 @@ def main(argv: list[str]) -> int:
             unresolved,
             threads,
             transcripts,
+            skipped,
         ) = _items_from_args(args, gitlab_hosts[0], listed)
     except ValueError as exc:
         # The message quotes the rejected input: a --pr-list line or a
@@ -1663,6 +1703,8 @@ def main(argv: list[str]) -> int:
     # "no PRs" from "the transcripts that held them were not read".
     # Masked like every other string in the output (set after collect()'s pass).
     result["transcripts"] = [_masking.mask(str(p)) for p in transcripts]
+    # What --scan-since left unread: the files, and the events in files read.
+    result.update(skipped)
     result["complete"] = result["complete"] and not unresolved
     if args.output_format == "json":
         print(json.dumps(result, indent=2, default=str))
