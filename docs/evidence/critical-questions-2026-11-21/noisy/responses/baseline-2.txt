@@ -1,0 +1,82 @@
+I found one real problem. The shortened `report.py` that the user accepted no longer prints what the repository's on-call runbook needs. The runbook was not linked from anywhere the agent started, so it was never read. Two proposals and one question follow.
+
+## Retro (Sweep) of `raw-downstream-runbook-not-referenced`
+
+### What the session did
+- **[01]** The user asked for shorter output from `report.py`.
+- **[03]** The agent read only `before/report.py`.
+- **[05]** It replaced the output with one line, `3 of 12 hosts failed`. It also rewrote the docstring from "one line per failed host with its error" to "one summary line".
+- **[06]** It ran the new version once. The exit code stayed 1.
+- **[08]** The user replied "looks good".
+
+### Finding 1: the new output breaks a documented procedure
+This is a defect in the delivered change. The signal is B21, found but unreachable, with the B22 decision-point record attached.
+
+**What the output used to feed:**
+- `inputs/docs/operations/on-call.md` says on-call reads "the error printed for that host" for each failed host, then decides per error:
+  - `disk full` or `health check timeout`: retry the host once.
+  - any other error: run `rollback.sh <host>`.
+- The same file says: "The rollout keeps no log file; the printed result is the only record."
+- `inputs/docs/adr/0004-no-central-log.md` adds that `results.json` is overwritten by the next rollout.
+
+**What is now missing:**
+- `checks.json` shows the old output carried `web-02: FAILED: disk full on /var`, `web-05: FAILED: health check timeout after migration` and `web-09: FAILED: package signature rejected`.
+- The new output only says `3 of 12 hosts failed`.
+- With it, on-call cannot tell that web-02 and web-05 need a retry and web-09 needs a rollback.
+
+**Decision point (turns 03–05):**
+- *Warning sign:* the docstring the agent read stated the output contract: per-host errors.
+- *Check it called for:* search for who consumes `report.py` output before changing that contract. A search for `report.py` in `docs/` finds `on-call.md`.
+- *What the agent did instead:* rewrote the contract and checked only the exit code.
+
+**What speaks against the finding:**
+- The user asked for "shorter" and accepted the result.
+- The user may be the only reader of this output.
+- `results.json` still holds the errors until the next rollout.
+- The case is not one of the five listed B22 warning signs. That is why it is reported as B21 with the B22 record attached.
+
+**How it was reached:** I listed all 39 files under `inputs/` and searched them for report, `results.json`, log and on-call. `on-call.md` is the only consumer. `AGENTS.md`, `README.md`, `docs/architecture.md` and the `report.py` docstring do not point to it. `README.md` only says "Documentation is under `docs/`".
+
+**Effect:** shown with the recorded run in `checks.json`. The fix below is untested, because no code could be run.
+
+### Proposal 1 (repository, one PR): fix the output and add a test
+- **Destination:** a code fix in the session's own work, plus `harness-artefact`.
+- **Code fix:** shorten `report.py` by dropping the `ok` lines, not the errors. It prints one line per failed host with its error, then the summary line. The exit code stays as it is. The original docstring already describes this. The user's goal ("shorter when I check a rollout") is met: 13 lines become 4.
+- **Test:** add `tests/test_report.py`. It runs `main()` on a fixture shaped like `results.json` and checks three things:
+  - every failed host's name and error appear;
+  - no `ok` host appears;
+  - the exit code is 1.
+  It also needs one case that must not fire: an all-ok fixture, which gives exit 0 and no host lines.
+- **Expected calibration (not run):** the test should fail on `after/report.py`, because the errors are missing. It should also fail on `before/report.py`, because the `ok` lines are printed. It should pass on the proposed version.
+- **Where it runs:** CI already runs `make test`, through `.github/workflows/ci.yml` and the `Makefile`. The repository has no hook config. Bootstrapping a hook framework is a separate decision, so this is tier 1 in CI only.
+
+### Proposal 2: make the runbook reachable
+- **Destination:** `canonical-source` (team record: repository docs), by PR.
+- **What changes:** only links are added. No new page, because the runbook exists and is correct.
+  - In `AGENTS.md`, extend the `report.py` bullet: "Its per-host error lines are read by `docs/operations/on-call.md` to choose between retry and rollback. Per ADR 0004 the printed output is the only record. Keep one line per failed host with its error."
+  - Add one line to the `report.py` docstring pointing to `docs/operations/on-call.md`.
+- **Why:** this removes the cause of Finding 1. The agent's starting points (`AGENTS.md`, the file it edited) never led to the consumer.
+
+### Not proposed
+- **No `skill-update` for the B22 check.** No skill was loaded in the session, and retro does not install a check in a skill that never showed the gap.
+- **Wording fix in `on-call.md`.** It says "the printed result is the only record", while `results.json` survives until the next rollout. That is minor and belongs in the same PR if wanted.
+
+### Question for the user
+Should the on-call procedure keep working? The user approved the one-line output. Whether on-call needs the per-host errors is decided by whoever owns `docs/operations/on-call.md`, not by retro. If the one-line output stays, the runbook must change instead, for example to read `results.json` directly.
+
+### Phases that did not run as prescribed
+- **Phase 1 (mechanical pre-pass):** `detect-mechanical.py` was not run, because shell commands are not allowed and the transcript is plain text, not JSONL. 1b had no PRs, MRs or tickets to collect.
+- **Phase 2:** the probe B22 asks for was not run, because no code could be executed. The test calibration above is a prediction.
+- **Phase 2b (trigger-coverage B15):** not run, because the installed-skills list could not be loaded.
+- **Phase 3 (prior attempts):** no other session sources were available, so whether this has happened before is unknown.
+- **Phase 4 (skill discovery):** `find-org-skills.py` was not run (no shell commands). Who owns the B22 check is unknown.
+- **Phase 4b/4c:** done by hand over all 39 files in `inputs/`. No records outside the repository were searched.
+- **Phase 6 (evals):** no matched skill, so no `evals/` were read.
+- **Phase 9 (materialize):** nothing written, by instruction.
+- **Phase 11 (self-check):** nothing found. 0 script errors, because no scripts ran. The deviations are those listed here. The invocation was unambiguous.
+
+### Closing question
+How far should the two proposals be carried out? Answer with one word:
+- `complete`: open the PRs, review and fix until a round finds nothing new, then merge.
+- `noted`: change nothing.
+- `propose`: open the PRs and leave them as drafts.

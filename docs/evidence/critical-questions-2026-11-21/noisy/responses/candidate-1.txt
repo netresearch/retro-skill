@@ -1,0 +1,49 @@
+## Retro report: Sweep of session.txt ("make report.py shorter")
+
+The session has one finding. It is a missed situational check (B22, outcome "omitted"). The new `report.py` output removes the per-host lines, and the on-call runbook needs those lines to decide what to do with each failed host. The session did not look for anyone who reads that output, so it did not see this.
+
+### Finding 1: B22, output contract changed without checking its consumers
+
+- **Warning sign and turn.** In turn [04] the old output (`before/report.py`) showed one line per host, and each failed host carried its own error text: `web-02: FAILED: disk full on /var`, `web-05: FAILED: health check timeout after migration`, `web-09: FAILED: package signature rejected`. Turn [05] dropped exactly that information. The user's request in turn [01] ("when I check a rollout") says a person reads this output as part of a procedure. `AGENTS.md` and `docs/architecture.md` both describe `report.py` as what "prints the result" of a rollout, which also points to readers outside the script.
+- **The check that was called for.** Before removing information from the output, look for what consumes it. One search of the repository for `report.py` would have done it. That search finds `docs/operations/on-call.md`.
+- **What the agent did instead.** It read only `before/report.py` (turn [03]), wrote `after/report.py` (turn [05]) and ran it once (turn [06]). It then reported "one summary line; exit code still signals a failed rollout" (turn [07]). It read no docs, ran no search and added no test.
+- **Evidence.**
+  - `docs/operations/on-call.md` § "When a rollout reports failures" says: "For each failed host, read the error printed for that host and decide: `disk full` or `health check timeout`: retry that host once. Any other error: roll that host back with `rollback.sh <host>`." It also says: "The rollout keeps no log file; the printed result is the only record."
+  - `docs/adr/0004-no-central-log.md` (accepted) says there is no central log and that "`results.json` is overwritten by the next rollout."
+  - The recorded run in `checks.json` shows `after/report.py` printing only `3 of 12 hosts failed\n` with exit code 1. That line has no host names and no error texts.
+- **Consequence (shown, not assumed).** It follows from the change plus the two cited records. With the new output, on-call cannot tell which hosts failed. They also cannot choose between "retry once" (web-02, web-05) and `rollback.sh <host>` (web-09). The documented procedure has no other source for this information, because the printed output is the only record and `results.json` is overwritten by the next rollout.
+- **What speaks against the finding.**
+  - The user approved the result ("looks good", turn [08]). But the request was "shorter", and it never said to drop the error detail. Nothing shows the user knew the runbook depends on it. A person's approval makes a check "not needed" only when it covers the information in question, and this approval did not.
+  - The exit code is preserved, so any automation that only gates on success or failure still works.
+  - The change is still local. The session shows no commit or push, so nothing has shipped yet.
+- **Tests and probe.** I could not run anything here. The repository has no test for `report.py`: `tests/` holds only `test_healthcheck.py` and `test_inventory.py`. The recorded runs in `checks.json` are enough to show the consequence above.
+
+### Proposals
+
+1. **Repair the delivered change (destination: the repository's code).** Keep the summary line and add one line per *failed* host with its error. Example: `3 of 12 hosts failed`, then `web-02: disk full on /var`, and so on. This keeps the output short, because the 9 `ok` lines go away. It also keeps what `on-call.md` needs, and it is the only option consistent with ADR 0004. Add `tests/test_report.py`, which asserts that every failed host's name and error appear in stdout and that the exit code is 1. Then run `make test` as `AGENTS.md` requires.
+2. **Make the consumer visible to agents (destination: `project-rule`, the repo's `AGENTS.md`).** Extend the `report.py` bullet, for example: "`report.py` prints the result from `results.json`. Its per-host error lines are the input of `docs/operations/on-call.md`, and per ADR 0004 they are the only record. Do not remove host names or error texts from the output." This is the B22 alternate route "decision record not reachable from the repo": `AGENTS.md` does not link the runbook today.
+3. **Fix the agent-side cause (destination: `skill-update`, owner not yet determined).** The proposed guidance: "Before removing fields or lines from a script's output, search the repo for the script's name and for docs that describe reading its output; treat runbooks as consumers." I could not run skill discovery (see the deviation for Phase 4), and no skill was loaded in the session, so I have not named an owning skill. The proposal comes with an eval stub:
+   - Held-out variant 1: shorten a CLI whose output a CI step parses.
+   - Held-out variant 2: rename a JSON field that a doc tells operators to read.
+   - Small-fix control: shorten output that nothing reads, where the narrow change is correct and no extra check should be demanded.
+
+Question for the user: which skill should own "check output consumers before changing output"? A code-change or simplification skill from the catalogue, or none, which would make proposal 2 the only route?
+
+### Checked, no finding
+- **A13 (success claimed without a check):** not applicable. The agent ran the new script, and its claim about the exit code is true (`checks.json`: exit code 1).
+- **Glad:** the exit-code contract was kept on purpose and stated in turn [07].
+- **Not this session's fault:** `tests/test_healthcheck.py` asserts `90 == 90`, so it tests nothing. That is not a fault of this session; note it for an `/retro audit` if wanted.
+
+### Deviations
+- Phase 1 (mechanical pre-pass): `detect-mechanical.py` and `collect-review-findings.py` were not run, because this run cannot use a shell and has no JSONL transcript (only `session.txt`). A-signals were read by hand. No PRs or reviews exist in the record.
+- Phase 3 (prior attempts / cross-session): no session index or memory was available, so whether this has happened before is unknown.
+- Phase 4 (skill discovery): `find-org-skills.py` was not run (no shell), so the owner for proposal 3 is still open. The repo harness was inspected by reading `AGENTS.md`, `Makefile`, `.github/workflows/ci.yml` and `docs/contributing.md`. Phase 4c (documentation lookup) is covered: all of `docs/` under inputs was searched, and that is how the runbook was found.
+- Phase 6 (evals): no matched skill's `evals/` could be read, so the eval stub above is proposed and not written.
+- Phase 9 (materialize): nothing was written, because this run may not write files.
+- Phase 11 (self-check): `detect-mechanical.py --since-command retro` was not run (no shell, no transcript). On the closed questions answered from this run: no retro script ran, so none failed. The invocation was read as a Sweep. The only gaps are the script-based phases listed above.
+
+### Closing question
+Should the open proposals be carried out, and how far? Answer with one word:
+- `complete`: create the PRs, review and fix them until a round finds nothing new, then merge them in team-owned repositories once every gate is green.
+- `noted`: change nothing.
+- `propose`: create the PRs, review and fix them, and leave them as drafts for you.

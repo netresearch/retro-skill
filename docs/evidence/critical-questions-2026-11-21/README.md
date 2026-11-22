@@ -8,7 +8,9 @@ On 2026-11-21 six new scenarios ran once each against the unchanged skill at
 trigger states the deciding facts, so the run shows that the current text
 classifies those facts correctly. A second run, below, gave three of the cases
 as raw session material instead; both the unchanged and a revised skill text
-found the facts unprompted. The scenarios are kept as regression fixtures.
+found the facts unprompted. A third run repeated the downstream case in a
+larger repository in which no file points to the deciding record. The
+scenarios are kept as regression fixtures.
 
 ## Question
 
@@ -114,3 +116,47 @@ Two corrections were made after the run and before grading or commit:
   - `tests/test_validate.py`: an unused `# noqa: E402` comment was removed for
     the repository's linter.
   `downstream` is unchanged.
+
+## Unreferenced-record run
+
+The raw downstream fixture is small, and its `AGENTS.md` names
+`docs/runbook.md`. A pass there shows that the skill judges the operator's loss
+correctly once the runbook is read. It does not show that the skill looks for
+that reader. `raw-downstream-runbook-not-referenced` removes both aids. Its
+fixture, `fixtures/critical-questions/downstream-noisy`, keeps the session,
+both versions of `report.py` and `results.json` byte for byte. The procedure
+moved to `docs/operations/on-call.md`, among the 38 other files of the fixture, and
+no other file contains "on-call", "runbook" or "operations/" in any letter case.
+The fixture test asserts this; it failed when a pointer was added to
+`AGENTS.md`.
+
+The case ran three times: twice against the skill text at `origin/main`
+89a3891 and once against the text of the follow-up change at a7b2edd. Each
+executor could read only the frozen context and its fixture copy; the recorded
+tool calls show no other path, no write and no shell command. A separate grader
+passed all three reports (`noisy/grading.txt`); `noisy/responses/` holds them
+verbatim and `noisy/manifest.json` the context hashes.
+
+| Report | Skill text | Verdict |
+| --- | --- | --- |
+| baseline-1 | `origin/main` | pass |
+| baseline-2 | `origin/main` | pass, one expected item graded as a close call |
+| candidate-1 | follow-up change | pass |
+
+Every executor listed the whole fixture and searched it for the readers of
+`report.py`, which is how each found `docs/operations/on-call.md`. The
+unchanged text therefore needs no addition for this case. One baseline report
+noted that removing information from an output is not among the listed B22
+warning signs, and classified the finding as B21 with the B22 record attached.
+The grader found two small factual slips, one each in the baseline reports,
+that do not change a verdict.
+
+Two changes were made after the run. `deploy.sh` and `rollback.sh` gained a
+`#!/usr/bin/env bash` line for the repository's shellcheck hook; no report
+relied on either script's first line. The end-of-file hook added a final
+newline to each stored report and to `grading.txt`.
+
+Limits: three samples, one model, a fixture of 39 files rather than a real
+repository, and the case's author built the fixture. The executors were told
+that the repository is under `inputs/`; a real session leaves the agent to find
+the working copy itself.

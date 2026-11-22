@@ -1,0 +1,283 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_executed",
+  "adapter_sha256": "d8686403b23975c96d3f0c1eeb9c97dee37974928eb848aea8a43f15e69a5713",
+  "target": {
+    "label": "actual-primary",
+    "execution_model": "claude-opus-5-5",
+    "resolved_model_version": null,
+    "review_model": null,
+    "judge_model": null,
+    "runtime": "claude-code",
+    "reasoning_budget": null,
+    "tool_environment": "read-only-subagent",
+    "samples_per_arm": 2
+  },
+  "contexts": {
+    "candidate": {
+      "sha256": "533cbbcafc9861854cb716a036a640a61524f7a1e1931606984ea45c250890ab",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "806796fbb2c6c206c4f5040f6c721b6871bb78aa076244f1a1ef1aee2395d83d"
+        },
+        {
+          "path": "references/workflow.md",
+          "sha256": "a625e7924d7bc42e60a89665a69e8b201a7e9660980a66c8ceae142c07cfddc5"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        },
+        {
+          "path": "references/project-harness-inspection.md",
+          "sha256": "d0cbb69070dda78b96a96bc0528b962d2299b685d2582d9c672d6af15e2e5e12"
+        },
+        {
+          "path": "references/classification-heuristic.md",
+          "sha256": "4ed9824359e7809fb8396dadd2f208125835660de03206c73b03c42f5d8fdd5a"
+        },
+        {
+          "path": "references/destination-taxonomy.md",
+          "sha256": "ccb348d8e33868bb6aeddf07e807a0ec8f9e0e7f03dbf382a69632abb531abf2"
+        },
+        {
+          "path": "references/promote-mode.md",
+          "sha256": "0a4b097fbe25e652c86da79d6140dee57afda70624f8cef5f4b0705ea6e6994a"
+        },
+        {
+          "path": "references/prior-attempts.md",
+          "sha256": "d4806677918edd15f9f4a63bcc3d12471e4c754b6651d4ba68408caffeb1ee68"
+        },
+        {
+          "path": "references/patch-workflow.md",
+          "sha256": "95ba64541ca0e2b99072c219087e04c1ab5a919bba9310691aec5a9bf8f3734f"
+        },
+        {
+          "path": "references/friction-catalog.md",
+          "sha256": "035790dd394f542b1ba5637a6785321472d457de9dad35c4d6a90b9a57095e42"
+        }
+      ]
+    },
+    "baseline": {
+      "sha256": "14a536ff0bfa34c1bca4d38caeaf85c9fa6188df0717182ad762be704dac18f4",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "5c3dc75e1c1fb00094e3cb209d5874e341c97bfb1ccab13242fa513830933cc4"
+        },
+        {
+          "path": "references/workflow.md",
+          "sha256": "d640be51cd334451637665e2ea95f7f26ae38d166912c53d257559b3b92a8bd9"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        },
+        {
+          "path": "references/project-harness-inspection.md",
+          "sha256": "d0cbb69070dda78b96a96bc0528b962d2299b685d2582d9c672d6af15e2e5e12"
+        },
+        {
+          "path": "references/classification-heuristic.md",
+          "sha256": "c58ab03b187f6ee333c6813c22726249f72206be357155a36c3a4f8ed9955629"
+        },
+        {
+          "path": "references/destination-taxonomy.md",
+          "sha256": "8fbcd1fac5e56a3eb234774e172a7e438aac74ea993b57161d5b1eea279e10d2"
+        },
+        {
+          "path": "references/promote-mode.md",
+          "sha256": "2ea791c2fa12451831af4f32f01cf90287d2843f3927f0edcc4fd7e54682fd77"
+        },
+        {
+          "path": "references/prior-attempts.md",
+          "sha256": "d4806677918edd15f9f4a63bcc3d12471e4c754b6651d4ba68408caffeb1ee68"
+        },
+        {
+          "path": "references/patch-workflow.md",
+          "sha256": "22f37e328cf40396437de1b6d525cfdae681aea11ed6659fc9f7411c722edcea"
+        },
+        {
+          "path": "references/friction-catalog.md",
+          "sha256": "5fb67046617e78e49337e726ff602ff7440e8c7400420ef0073446290d6a3058"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "raw-downstream-runbook-not-referenced",
+      "source_sha256": "35f3e85ec8bbbeaab07a667c2703e37578ac53bd4912b0c0499999d1c6c07ae9",
+      "fixture": "fixtures/critical-questions/downstream-noisy",
+      "candidate_path": "execution/raw-downstream-runbook-not-referenced",
+      "baseline_path": "execution/baseline-cases/raw-downstream-runbook-not-referenced",
+      "inputs": [
+        {
+          "path": "inputs/.github/workflows/ci.yml",
+          "sha256": "21958f356a60b9fbe36f1b229fed9915d802043a6853653760037684168c6064"
+        },
+        {
+          "path": "inputs/AGENTS.md",
+          "sha256": "12c603fd1b0b658998da93f62ec20df97172a07b073f2d65556d43dcb79276c9"
+        },
+        {
+          "path": "inputs/CHANGELOG.md",
+          "sha256": "2ee698647cc54b2a4721d2bb6125ebbb4ff3df642c16ea0aec0634ba75a02379"
+        },
+        {
+          "path": "inputs/Makefile",
+          "sha256": "30740061f8ca37bfd4c0cb16ad5236333af5e7e670697b7a62d213015b417b61"
+        },
+        {
+          "path": "inputs/README.md",
+          "sha256": "3602f4afa657dc8346a9504e9fe0d382d373ec7a9aaf9c03dac2d7db79b62892"
+        },
+        {
+          "path": "inputs/after/report.py",
+          "sha256": "db2a99af5d45a848e8eed65387045f01eabc1593c5feeb0e39838d3390423841"
+        },
+        {
+          "path": "inputs/before/report.py",
+          "sha256": "35fca7b0441d630fc682ea6e235a4162a2a76a8781e4599537ce9e65eb6dd1e3"
+        },
+        {
+          "path": "inputs/checks.json",
+          "sha256": "97727f2cd3f667e016bf38ef17659bd12cb0ce602564c7a1a6260a5b01152a09"
+        },
+        {
+          "path": "inputs/config/batches.yaml",
+          "sha256": "a79a363b83518ea526d8c732a6b2884a895d3431f1c91eb6066cd38af0660f59"
+        },
+        {
+          "path": "inputs/config/healthcheck.yaml",
+          "sha256": "cdb76be724988c9ae531d231cec87d31671f3cc0c4d117927d5d30d38995c770"
+        },
+        {
+          "path": "inputs/config/inventory.yaml",
+          "sha256": "bd7717c5ce457f2ee5c8a0bffcc377a23f6c7a7b689075114fab357e88a8b507"
+        },
+        {
+          "path": "inputs/deploy.sh",
+          "sha256": "78f0acc2ec99e6fcfe62e834ba02262d0d5dc7b746c84d5b6bfc7c18feafce7a"
+        },
+        {
+          "path": "inputs/docs/adr/0001-batch-rollout.md",
+          "sha256": "971ce3de9164a2e3d73a0e55fb884e60b4dffaf71a3f1e99a5e77658f3c88a92"
+        },
+        {
+          "path": "inputs/docs/adr/0002-signed-packages.md",
+          "sha256": "6f9105a17aad98a5790befd7a050ed8e068ed10def1aeeea0ce2f2f6f0ea9cd8"
+        },
+        {
+          "path": "inputs/docs/adr/0003-inventory-yaml.md",
+          "sha256": "b2d63c1406c1e6624e7bb0a1ddf4764e795c5a9a7ae49dbf5b9a6622ed90840f"
+        },
+        {
+          "path": "inputs/docs/adr/0004-no-central-log.md",
+          "sha256": "4fd4c8a5af8ffb3bbffd24735a185c22c2a0a5b2c7f3fdfabeca37e78630f289"
+        },
+        {
+          "path": "inputs/docs/architecture.md",
+          "sha256": "5521413ac7e022add2b2ece1bf734861f5081e6edeb6766498e3279a7710ee85"
+        },
+        {
+          "path": "inputs/docs/configuration.md",
+          "sha256": "0d766ffb4fba5081e1043bce68ab323e1ade8ffedb322f822ec19d9dbdf71f02"
+        },
+        {
+          "path": "inputs/docs/contributing.md",
+          "sha256": "ae61d0c6bda14e821d54792570e7c60390184513f019ef49ec67de995e183a91"
+        },
+        {
+          "path": "inputs/docs/faq.md",
+          "sha256": "aa6d704629db8f4d046d2a4111cc937a09ba40e762bcb1287333a22b5fa42473"
+        },
+        {
+          "path": "inputs/docs/glossary.md",
+          "sha256": "e665794a3d304f4d61fa105469c0e62707848f132f9b8f100a9403186062d749"
+        },
+        {
+          "path": "inputs/docs/inventory.md",
+          "sha256": "31897d1aa7c540f7cc015c9b6d83e86b47b22cf30fadeb5f7b38c4722725fd52"
+        },
+        {
+          "path": "inputs/docs/operations/backup.md",
+          "sha256": "75d0a77fd828fbf968988fdb29917619de84edd7c643422c9b1d02f276222dd7"
+        },
+        {
+          "path": "inputs/docs/operations/certificates.md",
+          "sha256": "814908fe8240bc7356174ad55e77febd05868b34c6a9d4f45f836d0dddb1d496"
+        },
+        {
+          "path": "inputs/docs/operations/dns.md",
+          "sha256": "6d2b30defd56c24a5e9ff34860ff0be7d23d6b6b516ea060662cb5eb602a2477"
+        },
+        {
+          "path": "inputs/docs/operations/incident-template.md",
+          "sha256": "91ac8381605808f99d77784e668ef92778bb76cf9582713bb5a487905ca792b6"
+        },
+        {
+          "path": "inputs/docs/operations/on-call.md",
+          "sha256": "65761d07236ff3c69c58471c03f285422a88347fb0d7ce95da02b34f946f3194"
+        },
+        {
+          "path": "inputs/docs/operations/scaling.md",
+          "sha256": "4ccc4480afe94c81aeb405c395df0ef35759031d7084bfb1b59e148d18e521da"
+        },
+        {
+          "path": "inputs/docs/release-process.md",
+          "sha256": "15c052fae2b9e2cc6dc1d8e283d6eeb10011291bab298a575c6334bad6828afa"
+        },
+        {
+          "path": "inputs/results.json",
+          "sha256": "b56691403b2570372b563cb26bbba87e68205baefe6e8a37dccb88581a9ae6e8"
+        },
+        {
+          "path": "inputs/rollback.sh",
+          "sha256": "6d6ed57ec6bdf495e1dad1d9ce6dd57a2d1c0135df7038f7895e7c8fdcca8041"
+        },
+        {
+          "path": "inputs/session.txt",
+          "sha256": "4295650c91ea2b2ec7c2b23b06d91bf2a9ee09572e4cbc5b2d0cb94f3f091335"
+        },
+        {
+          "path": "inputs/src/__init__.py",
+          "sha256": "0dec9a8f3a8c7832238de7a06b0fc8ed38ea2f308e1092b64d8d028ab419b2ea"
+        },
+        {
+          "path": "inputs/src/healthcheck.py",
+          "sha256": "cac4e411697b7f06382ddd04e48e207a6ae01a2e33622816c0f6bd359cbf926e"
+        },
+        {
+          "path": "inputs/src/inventory.py",
+          "sha256": "d1184de472be9a3c738bda5b37f1f44cbddea3add24448cb2672280a7ecddd1d"
+        },
+        {
+          "path": "inputs/src/packages.py",
+          "sha256": "e658db0262ade26d1d21a07c9bb5799f5340bba6626d8490a6d2c6532a42b559"
+        },
+        {
+          "path": "inputs/src/rollout.py",
+          "sha256": "eb4a0060a10578a1dc4a9ac2f2d57c8ce5002e4e756a3b4392806dee45e92204"
+        },
+        {
+          "path": "inputs/tests/test_healthcheck.py",
+          "sha256": "da64d94c95aaeff935d0851e70f5c56cd2758cfa685f6b6cc1fc64c50f6d7e98"
+        },
+        {
+          "path": "inputs/tests/test_inventory.py",
+          "sha256": "dfaeee4b4fac61a2fc98285af1e9510184262f04641bca0913c030ddfbcf6f1c"
+        },
+        {
+          "path": "prompt.txt",
+          "sha256": "6c33bc4f078d1b15a7bacb1884d20091548b41278bd9b34f7e07a958ba6811d1"
+        }
+      ]
+    }
+  ],
+  "shared_runner": {
+    "executes_tools": false,
+    "model_configuration": "Read effective models from the selected runner's result provenance; preparation does not configure that runner."
+  }
+}
