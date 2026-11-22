@@ -19,10 +19,10 @@ in AGENTS.md, and checks the paths each record names in its Touches field:
   one that the repository contradicts (the directory is missing, it has no
   AGENTS.md of its own, "no" names no other place for decisions, or two lines
   disagree).
-- E8 decision_anchor_missing — a record that is not superseded names a path
-  that no longer exists. The record may describe code that has moved or gone.
+- E8 decision_anchor_missing — a binding record names a path that no longer
+  exists. The record may describe code that has moved or gone.
 - E1 decision_record_crossed — with --changed-file, a changed path lies under
-  the anchor of a record that is not superseded. This is a candidate only: the
+  the anchor of a binding record. This is a candidate only: the
   reading pass decides whether the change contradicts the decision.
 
 Only paths are matched. Names in a record's prose are not compared with the
@@ -41,8 +41,12 @@ Accepted anchors in a record (an ADR file, or a section of AGENTS.md):
     touches:            (YAML frontmatter list)
       - src/retry.py
 
-A path may name a file, a directory (everything below it) or a glob. A
-`#Symbol` suffix is accepted and ignored.
+A path is relative to the repository root, also with a leading slash. It may
+name a file, a directory (everything below it) or a glob, where * and ? stay
+within one directory and ** spans directories. A `#Symbol` suffix is accepted
+and ignored. A record binds unless its status starts with superseded,
+deprecated, rejected, withdrawn, retired, proposed or draft. Lines inside
+fenced code blocks are examples, not declarations or records.
 
 Usage:
     uv run check-decision-records.py [--repo DIR] [--changed-file PATH ...]
@@ -55,7 +59,6 @@ error or an unreadable repository.
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import json
 import re
 import sys
@@ -73,12 +76,33 @@ _FIELD = re.compile(r"^(status|touches)\s*:(.*)$", re.IGNORECASE)
 _BACKTICK = re.compile(r"`([^`]+)`")
 _LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
 _SEPARATORS = " \t—–:-"
+_FENCE = re.compile(r"^\s{0,3}(`{3,}|~{3,})")
+_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+NON_BINDING_STATUSES = ("proposed", "draft")
 
 
 def _plain(line: str) -> str:
-    """A line without list markers, bold markers and surrounding space."""
+    """A line without list markers and bold markers; code spans stay as written."""
     s = _LIST_MARKER.sub("", line.strip())
-    return s.replace("**", "").replace("__", "").strip()
+    parts = s.split("`")
+    for i in range(0, len(parts), 2):  # even parts lie outside code spans
+        parts[i] = parts[i].replace("**", "").replace("__", "")
+    return "`".join(parts).strip()
+
+
+def _unfenced(lines: list[str]) -> list[str]:
+    """The lines outside fenced code blocks; examples in fences are not records."""
+    out, fence = [], None
+    for line in lines:
+        m = _FENCE.match(line)
+        if m and (
+            fence is None or m.group(1)[0] == fence[0] and len(m.group(1)) >= len(fence)
+        ):
+            fence = m.group(1) if fence is None else None
+            continue
+        if fence is None:
+            out.append(line)
+    return out
 
 
 def _inside(repo: Path, rel: str) -> Path | None:
@@ -89,7 +113,11 @@ def _inside(repo: Path, rel: str) -> Path | None:
 
 def _declarations(text: str) -> list[tuple[int, str, str]]:
     decls = []
-    for n, line in enumerate(text.splitlines(), 1):
+    lines = text.splitlines()
+    kept = set(map(id, _unfenced(lines)))
+    for n, line in enumerate(lines, 1):
+        if id(line) not in kept:
+            continue
         m = _DECL.match(_plain(line))
         if m:
             answer = "yes" if m.group(1).lower() in ("yes", "ja") else "no"
@@ -97,10 +125,17 @@ def _declarations(text: str) -> list[tuple[int, str, str]]:
     return decls
 
 
+def _dir_key(rest: str) -> str:
+    """The directory a yes-declaration names: code span, link target or first word."""
+    ticks = _BACKTICK.findall(rest)
+    links = _LINK.findall(rest)
+    first = ticks[0] if ticks else links[0] if links else (rest.split() or [""])[0]
+    return first.strip().rstrip(".,;").rstrip("/")
+
+
 def _check_adr_dir(rest: str, repo: Path) -> tuple[str | None, list[str]]:
     """The directory a yes-declaration names, and what the repository says about it."""
-    ticks = _BACKTICK.findall(rest)
-    target = (ticks[0] if ticks else (rest.split() or [""])[0]).strip().rstrip(".,;")
+    target = _dir_key(rest)
     if not target:
         return None, ["'ADRs: yes' names no directory"]
     adr_dir = target.rstrip("/") + "/"
@@ -137,11 +172,12 @@ def read_policy(text: str | None, repo: Path) -> dict:
         )
         return policy
     policy["lines"] = [n for n, _, _ in decls]
-    if len({a for _, a, _ in decls}) > 1:
+    yes_dirs = {_dir_key(r) for _, a, r in decls if a == "yes"}
+    if len({a for _, a, _ in decls}) > 1 or len(yes_dirs) > 1:
         policy["status"] = "inconsistent"
         lines = ", ".join(str(n) for n, _, _ in decls)
         policy["problems"].append(
-            f"{AGENTS_MD} answers both yes and no (lines {lines})"
+            f"{AGENTS_MD} gives disagreeing ADR declarations (lines {lines})"
         )
         return policy
     _, answer, rest = decls[0]
@@ -198,7 +234,7 @@ def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
 def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
     """title, status and touches from a record body with bold fields."""
     title, status, touches = None, None, []
-    for raw in lines:
+    for raw in _unfenced(lines):
         if title is None and raw.startswith("# "):
             title = raw[2:].strip()
         m = _FIELD.match(_plain(raw))
@@ -226,13 +262,15 @@ def parse_record(text: str) -> dict:
 
 
 def _is_active(status: str | None) -> bool:
-    return not (status and status.strip().lower().startswith(INACTIVE_STATUSES))
+    """Whether a record binds: not superseded or retired, and not merely proposed."""
+    s = (status or "").strip().lower()
+    return not s.startswith(INACTIVE_STATUSES + NON_BINDING_STATUSES)
 
 
 def _strip_dot_slash(path: str) -> str:
     """The path without leading "./" segments; "../" and dotfiles stay as written."""
-    while path.startswith("./"):
-        path = path[2:]
+    while path.startswith(("./", "/")):
+        path = path[2:] if path.startswith("./") else path[1:]
     return path
 
 
@@ -240,11 +278,46 @@ def _anchor_path(touch: str) -> str:
     return _strip_dot_slash(touch.split("#", 1)[0].strip()) or touch
 
 
+def _glob_regex(pattern: str) -> re.Pattern:
+    """A glob as a regular expression with Path.glob's meaning: * and ? stay
+    within one path segment, ** spans segments."""
+    out, i = [], 0
+    while i < len(pattern):
+        if pattern.startswith("**/", i):
+            out.append("(?:.*/)?")
+            i += 3
+        elif pattern.startswith("**", i):
+            out.append(".*")
+            i += 2
+        elif pattern[i] == "*":
+            out.append("[^/]*")
+            i += 1
+        elif pattern[i] == "?":
+            out.append("[^/]")
+            i += 1
+        elif pattern[i] == "[" and "]" in pattern[i + 1 :]:
+            j = pattern.index("]", i + 1)
+            body = pattern[i + 1 : j].replace("\\", "\\\\")
+            out.append(
+                "[^" + body[1:] + "]" if body.startswith("!") else "[" + body + "]"
+            )
+            i = j + 1
+        else:
+            out.append(re.escape(pattern[i]))
+            i += 1
+    return re.compile("".join(out) + r"\Z")
+
+
 def anchor_exists(repo: Path, touch: str) -> bool:
-    """Whether the anchored path exists below the root; an anchor outside it counts as gone."""
+    """Whether the anchored path exists below the root; an anchor outside it,
+    also through a symbolic link, counts as gone."""
     p = _anchor_path(touch)
     if any(c in p for c in GLOB_CHARS):
-        return ".." not in Path(p).parts and any(True for _ in repo.glob(p))
+        if ".." in Path(p).parts:
+            return False
+        return any(
+            _inside(repo, str(m.relative_to(repo))) is not None for m in repo.glob(p)
+        )
     target = _inside(repo, p)
     return target is not None and target.exists()
 
@@ -253,14 +326,14 @@ def anchor_covers(touch: str, changed: str) -> bool:
     p = _anchor_path(touch).rstrip("/")
     c = _strip_dot_slash(changed)
     if any(ch in p for ch in GLOB_CHARS):
-        return fnmatch.fnmatch(c, p)
+        return _glob_regex(p).match(c) is not None
     return c == p or c.startswith(p + "/")
 
 
 def agents_sections(text: str) -> list[tuple[str, str]]:
     """The ## / ### sections of AGENTS.md as (heading, body) pairs."""
     sections, head, buf = [], None, []
-    for line in text.splitlines():
+    for line in _unfenced(text.splitlines()):
         if re.match(r"^#{2,3} ", line):
             if head is not None:
                 sections.append((head, "\n".join(buf)))
@@ -303,7 +376,9 @@ def _adr_records(repo: Path, policy: dict) -> list[dict]:
             **parse_record(f.read_text(encoding="utf-8", errors="replace")),
         }
         for f in sorted(d.iterdir())
-        if f.is_file() and _is_record_file(f)
+        if f.is_file()
+        and _is_record_file(f)
+        and _inside(repo, str(f.relative_to(repo))) is not None
     ]
 
 

@@ -41,5 +41,5 @@ fields below, then the sections:
 
 Never edit an accepted record. Write a new record that states the new
 decision and its reason, and set the old record's status to
-`Superseded by ADR-NNN`. A typo or a broken link in a record may be fixed
-in place.
+`Superseded by ADR-NNN`. A typo, a broken link or a `**Touches:**` path
+that moved with its code may be fixed in place.

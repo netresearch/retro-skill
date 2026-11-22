@@ -515,7 +515,7 @@ Cross-session architectural patterns. Detectable only with longer horizon (weeks
 | E5 | Dependency staleness trend | Outdated-tool warnings (A16) recurring across sessions | Library maintenance gap |
 | E6 | Convention divergence | Style/naming patterns diverging across recent commits | Onboarding or review gap |
 | E7 | Decision-record policy undefined | The root `AGENTS.md` does not say whether the project keeps ADRs, or says it inconsistently: the declared directory is missing or has no `AGENTS.md` of its own, `no` names no other place for decisions, or two lines disagree (`check-decision-records.py`) | Decisions land in no agreed place, so a later session cannot find them |
-| E8 | Decision anchor gone | A record that is not superseded names a path in its `**Touches:**` field that no longer exists (`check-decision-records.py`) | The decision may describe code that moved or went; a missing path does not prove the decision wrong |
+| E8 | Decision anchor gone | A binding record names a path in its `**Touches:**` field that no longer exists (`check-decision-records.py`) | The decision may describe code that moved or went; a missing path does not prove the decision wrong |
 
 E mode is best for **monthly or quarterly reviews**, with tech-lead-level actor and ADR-style output (not per-developer per-session).
 
@@ -526,6 +526,8 @@ repository, or when retro is about to write a decision there: run
 branch). An undefined or inconsistent declaration (E7) is reported whenever
 the script runs; the project owner decides yes or no, never retro. A record
 without a `**Touches:**` field is reported as unanchored, not as a finding.
+A record binds unless its status starts with superseded, deprecated, rejected,
+withdrawn, retired, proposed or draft; E1 and E8 consider binding records only.
 The script compares paths only. Names in a record's prose are not matched
 against the code, because that approach flagged 9 false hits in 10 when
 Trail-Code measured it (trailhq/Trail-Code, learning `l-3cfeb3b1`).

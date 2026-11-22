@@ -9,6 +9,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import json
+import shutil
 import tempfile
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
@@ -123,6 +124,29 @@ class PolicyTest(unittest.TestCase):
         r = self.repo.report()
         self.assertEqual(r["policy"]["status"], "inconsistent")
 
+    def test_two_yes_lines_naming_different_directories_are_inconsistent(self):
+        self.repo.write(
+            "AGENTS.md", "**ADRs:** yes — `docs/adr/`\n\n**ADRs:** yes — `decisions/`\n"
+        )
+        self.repo.write("docs/adr/AGENTS.md", "x\n")
+        self.repo.write("decisions/AGENTS.md", "x\n")
+        self.assertEqual(self.repo.report()["policy"]["status"], "inconsistent")
+
+    def test_markdown_link_names_the_directory(self):
+        self.repo.write("AGENTS.md", "- **ADRs:** yes — [docs/adr/](docs/adr/)\n")
+        self.repo.write("docs/adr/AGENTS.md", "x\n")
+        r = self.repo.report()
+        self.assertEqual(
+            (r["policy"]["status"], r["policy"]["adr_dir"]), ("yes", "docs/adr/")
+        )
+
+    def test_declaration_inside_a_code_fence_is_an_example(self):
+        self.repo.write(
+            "AGENTS.md",
+            "## Example\n\n```markdown\n**ADRs:** no — PR descriptions\n```\n",
+        )
+        self.assertEqual(self.repo.report()["policy"]["status"], "undefined")
+
     def test_german_answer_is_read(self):
         self.repo.write(
             "AGENTS.md", "- ADRs: nein — Entscheidungen stehen in der PR-Beschreibung\n"
@@ -209,6 +233,54 @@ class RecordTest(unittest.TestCase):
         self.assertTrue(e1[0]["candidate"])
         self.assertEqual(e1[0]["records"][0]["title"], "ADR-002: Retries")
 
+    def test_bold_markers_inside_code_spans_are_kept(self):
+        self.repo.write("src/pkg/__init__.py", "")
+        self.repo.write("src/pkg/sub/mod.py", "")
+        self.repo.write(
+            "docs/adr/ADR-007.md",
+            "# ADR-007\n\n**Status:** Accepted\n**Touches:** `src/pkg/__init__.py`, `src/**/*.py`\n",
+        )
+        r = self.repo.report(
+            changed=["src/pkg/__init__.py", "src/pkg/sub/mod.py", "README.md"]
+        )
+        self.assertEqual(
+            r["records"][0]["touches"], ["src/pkg/__init__.py", "src/**/*.py"]
+        )
+        self.assertEqual(r["records"][0]["missing"], [])
+        self.assertEqual(
+            [h["file"] for h in r["changed_hits"]],
+            ["src/pkg/__init__.py", "src/pkg/sub/mod.py"],
+        )
+
+    def test_single_star_stays_within_one_directory_for_e1_and_e8(self):
+        self.repo.write("docs/sub/deep.md", "")
+        self.repo.write(
+            "docs/adr/ADR-008.md",
+            "# ADR-008\n\n**Status:** Accepted\n**Touches:** `docs/*.md`\n",
+        )
+        r = self.repo.report(changed=["docs/sub/deep.md", "docs/top.md"])
+        self.assertEqual(r["records"][0]["missing"], ["docs/*.md"])
+        self.assertEqual([h["file"] for h in r["changed_hits"]], ["docs/top.md"])
+
+    def test_leading_slash_means_the_repository_root(self):
+        self.repo.write("src/a.py", "")
+        self.repo.write(
+            "docs/adr/ADR-009.md",
+            "# ADR-009\n\n**Status:** Accepted\n**Touches:** `/src/*.py`, `/src/a.py`\n",
+        )
+        r = self.repo.report(changed=["src/a.py"])
+        self.assertEqual(r["records"][0]["missing"], [])
+        self.assertEqual(len(r["changed_hits"]), 1)
+
+    def test_proposed_record_does_not_bind(self):
+        self.repo.write(
+            "docs/adr/ADR-010.md",
+            "# ADR-010\n\n**Status:** Proposed\n**Touches:** `gone.py`, `src/`\n",
+        )
+        r = self.repo.report(changed=["src/x.py"])
+        self.assertFalse(r["records"][0]["active"])
+        self.assertEqual(r["findings"], [])
+
     def test_glob_anchor(self):
         self.repo.write("src/a_test.py", "")
         self.repo.write(
@@ -261,6 +333,31 @@ class ConfinementTest(unittest.TestCase):
         self.assertEqual(
             [h["file"] for h in r["changed_hits"]], [".github/workflows/ci.yml"]
         )
+
+    def test_symlinks_out_of_the_repository_are_not_followed(self):
+        outside = Path(tempfile.mkdtemp())
+        self.addCleanup(shutil.rmtree, outside)
+        (outside / "secret.md").write_text(
+            "# SECRET TITLE\n\n**Status:** Accepted\n", encoding="utf-8"
+        )
+        (outside / "f.txt").write_text("x", encoding="utf-8")
+        self.repo.write(
+            "AGENTS.md",
+            "**ADRs:** yes — `docs/adr/`\n\n## Rule\n\n**Touches:** `lnk/*.txt`, `lnk/f.txt`\n",
+        )
+        self.repo.write("docs/adr/AGENTS.md", "x\n")
+        (self.repo.root / "docs/adr/ADR-011.md").symlink_to(outside / "secret.md")
+        (self.repo.root / "lnk").symlink_to(outside, target_is_directory=True)
+        r = self.repo.report()
+        self.assertNotIn("SECRET TITLE", json.dumps(r))
+        self.assertEqual(r["records"][0]["missing"], ["lnk/*.txt", "lnk/f.txt"])
+
+    def test_rule_example_in_a_code_fence_is_not_a_record(self):
+        self.repo.write(
+            "AGENTS.md",
+            "ADRs: no — PR descriptions\n\n## Form\n\n```markdown\n## <title>\n\n**Touches:** `src/retry.py`\n```\n",
+        )
+        self.assertEqual(self.repo.report()["records"], [])
 
     def test_long_separator_run_is_read_in_linear_time(self):
         self.repo.write("AGENTS.md", "ADRs: no " + "-" * 50000 + " PR descriptions\n")
