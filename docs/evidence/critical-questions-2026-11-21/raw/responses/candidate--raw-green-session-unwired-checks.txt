@@ -1,0 +1,79 @@
+## Retro report: Sweep of `session.txt` (signup whitespace-email fix)
+
+The retro found one finding, a repository gate. The checks the repo documents (`make test`, `make lint`) are only a line in `AGENTS.md`. CI does not run them. Nothing else qualified as a finding. The reasons, and what I could and could not check, are below.
+
+### Session summary (from `session.txt`)
+
+- **[01]** The user asked for request validation to reject emails made only of spaces.
+- **[02]–[04]** The agent read `src/validate.py`, edited it and edited `tests/test_validate.py`.
+- **[05]–[06]** The agent ran `make test` (exit 0, "Ran 3 tests … OK") and `make lint` (exit 0).
+- **[07]** The agent claimed the fix was done and both commands passed.
+- **[08]** The user said "thanks, ship it". The record ends there. No commit or push appears.
+
+### Finding 1: the documented test and lint gate is not wired into CI (`harness-artefact`, important)
+
+- **Claim and kind:** This is an observation and a verified fact. `AGENTS.md` says "Run `make test` and `make lint` before pushing". `.github/workflows/build.yml` runs on `push` and has one job, `image`, whose only step is `docker build -t signup .`. Neither documented command runs in CI. A push made without the manual step, by a human or by an agent that skips the line, reaches the remote untested.
+- **Evidence:** `inputs/AGENTS.md`, `inputs/.github/workflows/build.yml` and `inputs/Makefile`. `inputs/checks.json` shows that both commands exit 0 on the session's tree.
+- **Why this session:** The agent did follow the rule ([05], [06]), and that is the Glad line below. But the user's next step is "ship it", and at that point nothing on the server checks the change. The skill's harness-inspection text describes this exact case: "a gate described as a list is a gate whose last two steps get skipped." I did not see a skipped run happen. The consequence is that the next push gets no test or lint run.
+- **Purpose check:** The rule protects real quality: the validation tests are the only check on the requested behaviour. Keep it and enforce it. Do not remove it.
+- **Proposed change:** Extend `build.yml`; do not replace it.
+  - Add a `test` job with `actions/checkout` (SHA-pinned, since it is a third-party action) and then `make test` and `make lint`.
+  - Add job-level `permissions: contents: read`, because the workflow sets `permissions: {}` and checkout needs read access.
+  - Optionally add `pull_request` to `on:`.
+- **CI/hook parity:** Both commands meet the fast-check definition as measured: deterministic, no external dependencies, and `Ran 3 tests in 0.000s`. `py_compile` clearly qualifies. I am treating `make test` as fast because it measurably is, not as a "full test suite" exception. Under `patch-workflow.md` § CI/hook parity, the same commands must go into a pre-commit hook in the same PR.
+  - None of the seven input files is a hook config (no lefthook, pre-commit or husky), so the hook would be a new bootstrap, not an extension.
+  - Bringing in a hook framework is the repo owner's decision, so it is in the question below.
+- **Routing:** This is a plain `harness-artefact` with no `skill-update` paired to it. There is no evidence of sibling repos with the same gap, and skill discovery could not run (see deviations), so I cannot show a skill that lacks an install recipe.
+- **Precondition:** Wiring in existing commands adds no rule. It needs only that they pass on the base branch. They pass on the session's tree. The base branch is not in the record.
+- **What would confirm the benefit:** The first push after the merge shows a `test` job that runs both commands. A deliberately broken test makes that job red. Until that happens, the effect is untested.
+
+### Side observation (unverified, not a finding)
+
+The existing `image` job has no checkout step, and no `Dockerfile` is among the seven input files. `docker build .` may therefore have no build context. The inputs may not be the whole repo, so this is a question for the owner. It also means the new job must not copy the `image` job's step layout.
+
+### Delivered change: read-through only (B22)
+
+- **Reading:** `validate()` now calls `.strip()` on the email before the empty check. `"  "` becomes `""` and returns `["email is required"]`, which is the requested behaviour. `test_empty_email_is_rejected` uses `{"email": "  "}`.
+- **Probe not run:** I had no shell, so I did not run the tests or a probe. I did not run the "fails without the fix" check either.
+- **No diffs:** The record has no diffs for [03] and [04], and no test run before the edit. I cannot tell what either file looked like before. For example, I cannot tell whether an earlier test for `""` was replaced or a new test was added. I am not claiming either.
+- **No warning sign:** At no decision point does the record show a sign that called for a check (no contradicting observation, no repeated failure class). So there is no B22 finding. `B22 not assessable` applies to "guard seen to fail before the fix", because the evidence is missing.
+- **Untested, outside the request:** `request.get("email", "")` returns `None` for `{"email": None}`, and `.strip()` would then raise `AttributeError`. I did not run this, and I make no proposal for it.
+
+### Mad / Sad / Glad
+
+- **Mad:** None. There were no retries, corrections or tool errors in the record.
+- **Sad:** "Ship it" [08] has no follow-up in the record, so the task's end state (committed, pushed) is unknown. The quality gate that should guard that push exists only as prose (Finding 1).
+- **Glad:** The agent ran both documented commands before claiming completion. The claim in [07] matches `checks.json`, so it is not a success claim without a check (not A13). The prerequisite, "read `AGENTS.md` for the gate", was findable from the repo entry point.
+
+### Reusable-learning signals (B16–B21)
+
+No finding. I looked at the whole record:
+
+- No non-obvious technique was needed (B16) and no better approach turned up during the work (B17).
+- There was no review feedback (B18, B20) and no escaped defect after a push, because there was no push (B19).
+- No fact was dug out or supplied by a person (B21). `AGENTS.md` already named the validation location and the commands.
+
+### Deviations
+
+- **Phase 1:** `detect-mechanical.py` did not run, because shell commands were forbidden and the record is a plain-text `session.txt`, not a JSONL transcript. The mechanical signals are unknown, and I read the record by hand.
+- **Phase 1:** `collect-review-findings.py` did not run, for the same reason. There are no PRs in the record, so feedback coverage is unknown, not silent.
+- **Phase 3:** No prior-attempt or cross-session search was run, because nothing outside `inputs/` could be read. Recurrence is unknown.
+- **Phase 4:** `find-org-skills.py` and `verify-harness.sh` did not run, because there was no shell. The harness inspection was a manual read of the seven input files.
+- **Phase 6:** No skill matched (no catalogue), so no `evals/` were read. No eval stub is proposed, because the finding is a CI change and its check is the first CI run.
+- **Phase 9:** Nothing was materialized, because writes were forbidden in this run.
+- **Phase 11:** The self-check did not run as prescribed, because `detect-mechanical.py --since-command retro` could not run. Manually:
+  1. No retro script ran, so none failed.
+  2. The deviations are the ones listed here.
+  3. The invocation (`/retro` plus an inspection instruction) was a clear Sweep.
+
+  Nothing found beyond the deviations above.
+
+### Closing question
+
+One proposal is open: Finding 1, the CI job running `make test` and `make lint` in `build.yml`, plus parity in a pre-commit hook. The repo has no hook framework yet. Which framework (pre-commit, lefthook, or none, with CI-only stated as a half-materialization) is the repo owner's decision.
+
+How far should it be carried out? Answer with one word:
+
+- **`complete`**: create the PR against the signup repo, review and fix it until a round finds nothing new, and merge it once every gate is green.
+- **`noted`**: change nothing.
+- **`propose`**: create the PR, review and fix it, and leave it as a draft for you.

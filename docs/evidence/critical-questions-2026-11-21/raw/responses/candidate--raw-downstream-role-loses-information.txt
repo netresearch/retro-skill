@@ -1,0 +1,111 @@
+The session delivered a defect. The new `after/report.py` prints only `3 of 12 hosts failed`. The on-call runbook needs the host name and the error for each failed host, and the printed result is the only record of a rollout. The fix belongs in the code, not the runbook. On top of that I propose two learnings: a test that fails on the regression, and one skill guidance line.
+
+# Retro (Sweep): `/retro` over session.txt and the local inputs
+
+## Evidence read
+
+- `inputs/session.txt`: 8 turns.
+- `inputs/checks.json`: the recorded runs of both versions.
+- `inputs/results.json`.
+- `inputs/before/report.py` and `inputs/after/report.py`.
+- `inputs/docs/runbook.md`.
+- `inputs/AGENTS.md`.
+
+## Finding 1 (high): the delivered change removes what the on-call runbook needs
+
+**What happened.** The user asked for shorter output "when I check a rollout" (turn [01]). The agent read only `before/report.py` (turn [03]). It replaced the per-host output with one summary line (turn [05]). Its closing message said only "The exit code still signals a failed rollout" (turn [07]). The user approved with "looks good" (turn [08]).
+
+**What the files show.**
+
+- The new code drops the names and errors. `after/report.py` prints `f"{len(failed)} of {len(hosts)} hosts failed"` and nothing else. The recorded run in `checks.json` shows that output and exit code 1. None of `web-02`, `web-05`, `web-09` or their errors appear.
+- The runbook reads exactly that information. `docs/runbook.md` says: "For each failed host, read the error printed for that host and decide: `disk full` or `health check timeout`: retry that host once. any other error: roll that host back with `rollback.sh <host>`."
+- The loss cannot be recovered. The runbook also says: "The rollout keeps no log file; the printed result is the only record." `results.json` holds the data, but the runbook never tells on-call to read it.
+  - With the new output, on-call cannot tell which hosts to retry (`web-02` disk full, `web-05` health-check timeout) from the one to roll back (`web-09` package signature rejected).
+- The way to find this was written down. `AGENTS.md` names both `report.py` and "Operating procedures for on-call are in `docs/runbook.md`". The session never opened either file.
+- The old docstring states the intended behaviour. `before/report.py` says "one line per failed host with its error", but the code printed every host, including the `ok` ones. Printing only the failed hosts would have been the shorter output. It matches the docstring and keeps what the runbook reads.
+
+**Signal.** This is B22 (missed situational check), with A10/B13 as the cause: guidance existed and was not used.
+
+- Warning sign at turn [05]: the edit removes information from the output of a tool that `AGENTS.md` says has an on-call procedure built on it.
+- Proportionate check: read `docs/runbook.md` (one file) and confirm each failed host's name and error survive.
+- What the agent did instead: it checked the exit code only.
+- Consequence: shown by the recorded run in `checks.json`, not untested.
+
+**What speaks against it.**
+
+- The user asked for shorter output and approved the result.
+- But the approval was not informed. Turn [07] did not say that host names and errors were removed, and nothing shows the user had the runbook in mind.
+- "Shorter" can be read two ways: drop the `ok` lines, or collapse everything into a count. Only the first is compatible with the runbook. The agent picked the second without asking.
+
+**What to do (rework of the original task, not a retro destination).** Restore one line per failed host with its error. Leave out the `ok` lines. Optionally keep the count as a last line, for example:
+
+```
+web-02: FAILED: disk full on /var
+web-05: FAILED: health check timeout after migration
+web-09: FAILED: package signature rejected
+3 of 12 hosts failed
+```
+
+- Keep the exit code behaviour (1 when any host failed).
+- That brings the code in line with the old docstring and the runbook.
+- I did not run this; it follows from reading both files.
+
+**Question for the user.** Did you mean the one-line summary even though on-call loses the per-host errors?
+
+- If not, the fix above is the whole change.
+- If yes, that is a decision for the runbook's owner (on-call). The runbook would need another source for per-host errors (a log file, or a documented `results.json` lookup) in the same change. Without one it can no longer be followed.
+
+## Proposals (2, each to a destination)
+
+**P1. A test on the output contract, as a `harness-artefact` in this repository.** Paired with a gate recipe only if a skill turns out to own one (see P2).
+
+- Why: a written rule only works if someone reads it. Here the reader skipped the guidance in `AGENTS.md`. A test fails whatever the agent reads.
+- How:
+  - Add a test that runs `report.py` on a fixture like `results.json`.
+  - It asserts that every host with `"ok": false` appears in stdout with its `error` string.
+  - It asserts exit code 1 when any host failed and 0 when all are ok.
+  - Wire it into whatever check entry point the repository has.
+- Calibration, by reading code and `checks.json`, not by running:
+  - It fails on `after/report.py`: no host name in the output.
+  - It passes on `before/report.py`.
+  - Must-not-fire control: it passes on the failures-only version above, so a legitimate shortening stays green.
+- **ASSUMPTION:** the inputs show no tests, CI or hook config. I take it the repository has none yet, so the test needs a place to run. The inputs may be incomplete.
+
+**P2. One line of rule text, plus its eval stub (`project-rule` or `skill-update`, depending on what P2a finds).**
+
+- Why: the same mistake fits any change to the output of a tool a person or procedure reads.
+- P2a, `project-rule` in `AGENTS.md`. Append: "`report.py` output is read by on-call per `docs/runbook.md` (host name and error per failed host). An output change keeps those fields or updates the runbook in the same change."
+  - This turns the existing pointer into a stated dependency.
+  - If P1 lands, the prose shrinks to "the test in `<path>` guards the runbook's contract".
+- P2b, `skill-update` to the skill that owns changes to existing behaviour or interfaces.
+  - Warning sign and check: "before removing or merging fields from a program's output, find who reads it (docs, runbooks, scripts named in `AGENTS.md`) and confirm each still gets what it reads."
+  - Candidates from the session's skill list, all unverified: `api-and-interface-design`, `code-simplification`, `incremental-implementation`.
+  - Eval stub:
+    - Case one is this session: the shorten request, with a runbook that reads per-host errors.
+    - A held-out variant: a script whose stdout is parsed by another script.
+    - Control: an output with no documented reader, where a plain summary stays correct.
+
+## Glad
+
+- The agent ran both versions against the same input before claiming success, and kept the exit-code contract.
+- The recorded runs in `checks.json` are what made the defect provable without re-running anything.
+
+## Deviations
+
+- **Phase 1:** `detect-mechanical.py` and `collect-review-findings.py` were not run. The eval forbids shell commands. Signals come from reading `session.txt` and `checks.json`.
+- **Phase 2 / B22 probe:** the changed code was not run or probed in a copy, for the same reason. The recorded runs in `checks.json` stand in for the probe.
+- **Phase 3:** no cross-session or prior-attempt sources were available, so recurrence is unknown.
+- **Phase 4:** `find-org-skills.py` was not run, so the owner of P2b is a candidate, not a discovered fact.
+  - Phase 4c searched only `AGENTS.md` and `docs/runbook.md`.
+  - The runbook is `found-correct` for the intended behaviour. It is broken only by the new code, so it gets no edit unless the user picks the summary-only reading.
+- **Phase 6:** no skill's `evals/` were read; the eval stub in P2b is new.
+- **Phase 9:** nothing was written. Writes were forbidden here, and no answer has been given yet.
+- **Phase 11:** no transcript of this retro run exists, so the self-check was skipped.
+
+## Closing question
+
+How far should the open items go: the report.py fix, P1 and P2? Answer with one word.
+
+- `complete`: create the PRs, review and fix them until a round finds nothing new, then merge in repositories the team owns.
+- `propose`: the same, but leave them as drafts for you.
+- `noted`: change nothing.

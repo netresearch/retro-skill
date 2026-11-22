@@ -1,0 +1,44 @@
+[01] USER
+The rollout report is too noisy when I check a rollout. Make report.py print something shorter.
+
+[02] ASSISTANT
+I will shorten the output of report.py.
+
+[03] TOOL Read
+before/report.py
+
+[04] TOOL Run
+python3 before/report.py results.json
+exit_code: 1
+stdout:
+web-01: ok
+web-02: FAILED: disk full on /var
+web-03: ok
+web-04: ok
+web-05: FAILED: health check timeout after migration
+web-06: ok
+web-07: ok
+web-08: ok
+web-09: FAILED: package signature rejected
+web-10: ok
+web-11: ok
+web-12: ok
+stderr:
+
+
+[05] TOOL Write
+after/report.py
+
+[06] TOOL Run
+python3 after/report.py results.json
+exit_code: 1
+stdout:
+3 of 12 hosts failed
+stderr:
+
+
+[07] ASSISTANT
+report.py now prints one summary line. The exit code still signals a failed rollout.
+
+[08] USER
+looks good
