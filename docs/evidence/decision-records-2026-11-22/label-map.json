@@ -1,0 +1,38 @@
+[
+  {
+    "label": "r3",
+    "arm": "baseline",
+    "case": "decision-policy-undefined",
+    "bytes": 3498
+  },
+  {
+    "label": "r2",
+    "arm": "candidate",
+    "case": "decision-policy-undefined",
+    "bytes": 3417
+  },
+  {
+    "label": "r5",
+    "arm": "baseline",
+    "case": "decision-record-crossed",
+    "bytes": 3721
+  },
+  {
+    "label": "r6",
+    "arm": "candidate",
+    "case": "decision-record-crossed",
+    "bytes": 3723
+  },
+  {
+    "label": "r4",
+    "arm": "baseline",
+    "case": "decision-record-superseded-with-reason",
+    "bytes": 3662
+  },
+  {
+    "label": "r1",
+    "arm": "candidate",
+    "case": "decision-record-superseded-with-reason",
+    "bytes": 3230
+  }
+]

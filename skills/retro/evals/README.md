@@ -193,3 +193,16 @@ their commands are reproduced by `tests/test_critical_question_fixtures.py`.
 [raw-downstream-runbook-not-referenced](raw-downstream-runbook-not-referenced.md)
 repeats the downstream session in a fixture of 39 files in which no file
 points to the on-call procedure.
+
+Three described cases cover decision records (E1, E7 and E8 in
+[`../references/friction-catalog.md`](../references/friction-catalog.md)):
+a decision with no declared place
+([decision-policy-undefined](decision-policy-undefined.md)), an accepted
+decision that a change crossed unknowingly
+([decision-record-crossed](decision-record-crossed.md)) and its control, a
+change that a superseding record states
+([decision-record-superseded-with-reason](decision-record-superseded-with-reason.md)).
+Each trigger quotes the output of `check-decision-records.py`, so the cases test
+the classification of that output, not its discovery. The
+[2026-11-22 run](../../../docs/evidence/decision-records-2026-11-22/README.md)
+compares the unchanged and the revised skill text on them.

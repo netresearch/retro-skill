@@ -1,0 +1,27 @@
+**Retro (Sweep): "make the client more robust against flaky upstreams"**
+
+**Finding 1: an accepted decision record was changed without being mentioned (friction, the main finding)**
+- Evidence: the session raised `max_retries` in `config/retry.yaml` from 4 to 10. `docs/adr/ADR-002-retry-limit.md` is `**Status:** Accepted` and lists `**Touches:** config/retry.yaml`. It keeps the value at 4 because ten retries with the configured backoff can hold one request for over an hour. Neither the session's messages nor the commit mention ADR-002. `check-decision-records.py --repo . --changed-file config/retry.yaml` reported one finding: E1 decision_record_crossed, naming ADR-002.
+- Consequence shown: the hour-long hold follows from the change and the cited record alone, with no further assumption. The passing tests do not cover request latency, so "tests green" does not settle the question.
+- Cause: the record could be reached. The root `AGENTS.md` says `ADRs: yes — docs/adr/` and links the directory, and the ADR names the file it governs. The guidance existed and was not used (A10/B13). This is not the "record unreachable" case, so another prose rule in `AGENTS.md` would repeat what already failed.
+- What speaks against it: the user asked for robustness. The session may have read the request as a mandate to revisit the limit. Nothing in the transcript shows that it did.
+
+**Decision that is not mine to make (owner: whoever owns ADR-002, the service team):** keep 10 and write a new ADR that supersedes ADR-002 with a new latency budget, or go back to 4 and get robustness another way, for example a per-request deadline or a circuit breaker. Retro does not revert the commit on its own. I would ask this as its own question, separate from the closing question below.
+
+**Proposal A (`harness-artefact`, service repository):** run `check-decision-records.py --changed-file <each changed file>` in CI or pre-commit. It should flag a change to a file that an Accepted ADR touches unless the commit or PR references that ADR. The check already exists and found this case in one call. Whether it blocks or only annotates is the team's choice. Eval stub: change `retry.yaml` without naming ADR-002 (must flag), change it with "Supersedes ADR-002" (must pass), change an unrelated file (must stay silent).
+
+**Proposal B (`skill-update`, owning skill not yet identified):** add a warning sign to the skill that owns config and robustness work. The sign is a config value that a `Touches:` entry protects. The check is to read that ADR before editing and to name it in the commit. This proposal is conditional on Phase 4 finding the owner.
+
+**Retro self-check (Phase 11):** the loaded instructions file E1 only under Schicht E, which is Audit mode only ("ADR violation pattern" across sessions). They do not mention `check-decision-records.py`. A per-session E1 therefore has no documented route. One `skill-update` against retro-skill: document the script and the per-session routing for E1.
+
+**Deviations**
+- Phases 1 and 1b: the scripts were not run. The facts come from the situation description.
+- Phase 2 (B22 probe): not run, because the code is not reachable.
+- Phase 3 (prior attempts): not searched. Whether this has happened before is unknown.
+- Phase 4: `find-org-skills.py` was not run, so the owner for Proposal B is undetermined.
+- Phase 6: the evals were not read.
+
+**Closing question:** should Proposals A and B and the retro-skill update be carried out, and how far?
+- `complete`: open the PRs, review and fix them until a round finds nothing new, then merge in the team's repositories once every gate is green.
+- `noted`: change nothing.
+- `propose`: the same PRs and review rounds, left as drafts.

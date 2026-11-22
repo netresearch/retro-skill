@@ -1,0 +1,40 @@
+**Retro: Sweep, retry limit raised to 10 (ADR-002 superseded by ADR-007)**
+
+**Result:** no proposals. The session handled the decision record correctly, and nothing remains to carry out.
+
+**Findings**
+
+1. **What worked: the decision record was found and superseded with its reason.** Kind: observation.
+   - Evidence: the root `AGENTS.md` says ADRs live in `docs/adr/`. ADR-002 declares `**Touches:** config/retry.yaml` and justified `max_retries: 4` by the backoff. The user then supplied a new fact: the backoff was replaced by capped jitter of at most 30 seconds in total. The agent did four things:
+     - changed the value to 10;
+     - set ADR-002 to `Superseded by ADR-007`;
+     - wrote ADR-007 (Accepted, same Touches) with the new reason;
+     - named both records in the commit message.
+   - Prerequisite that made it work: the record was reachable from the repository's entry point (the `AGENTS.md` line plus the `Touches` field). Another executor would find it the same way.
+   - Destination: none needed. The record already exists in the right place.
+
+2. **The user-supplied fact is already written down.** This was a B21 candidate (knowledge a person had to supply).
+   - Evidence: the jitter change came from the user. It is now the stated reason in ADR-007, which is the team record that owns this decision.
+   - Destination: `canonical-source`, done in the session. No further text is needed.
+
+3. **The checker's E1 finding is not a violation, but its meaning is unverified.** Kind: hypothesis.
+   - Evidence: `check-decision-records.py --changed-file config/retry.yaml` printed one finding, E1, naming ADR-007.
+   - The skill as loaded does not document this script or its finding codes. In the friction catalog, E1 means "ADR violation pattern" in Audit mode. That is a different namespace and needs a cross-session history, so I do not map the script's E1 onto it.
+   - My likely reading: E1 names the active record that touches the changed file. ADR-007 is Accepted, matches the new value of 10, and was written in the same change. ADR-002 is no longer active.
+   - Before classifying it, I would read the script's own documentation and the full text of the finding. I would not ask the user about it.
+   - If E1 turns out to flag a change that follows its own new record, that would be a defect in the checker. It would go to its owner as a `skill-update`, with this session as the test case. That is not established, so I make no proposal.
+
+**Mad / Sad / Glad**
+- Mad: no friction described.
+- Sad: no unmet goal.
+- Glad: finding 1.
+
+**Deviations**
+- Phase 1 (mechanical pre-pass): did not run `detect-mechanical.py` or `collect-review-findings.py`. No transcript was available, only the described facts. Review feedback from after the session is therefore unknown.
+- Phase 2 (warning-sign check, B22): no bounded probe was run. The changed code could not be reached.
+- Phase 3 (prior attempts): no recurring problem, so nothing to look up.
+- Phase 4 (skill discovery): `find-org-skills.py` did not run, so the owner of `check-decision-records.py` was not identified. Harness inspection used only the described `AGENTS.md` line and ADR fields. The records search (Phase 4c) was limited to `docs/adr/`.
+- Phase 6 (evals): no matched skill's `evals/` were read.
+- Phase 11 (self-check): the mechanical run with `--since-command retro` did not happen, because there was no transcript. One unverified point: the loaded references do not explain the checker's finding codes. They may be documented in a reference that was not loaded, so this is not a finding against retro-skill.
+
+There are no open proposals, so there is no closing question.

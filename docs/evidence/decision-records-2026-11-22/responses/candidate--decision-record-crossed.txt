@@ -1,0 +1,32 @@
+**Retro: sweep of the "make the client more robust against flaky upstreams" session**
+
+**Finding 1: E1, the change contradicts accepted ADR-002 (architectural)**
+- **Evidence:** `check-decision-records.py --repo . --changed-file config/retry.yaml` reported one E1 `decision_record_crossed`, naming ADR-002. The reading pass confirms it contradicts the decision, not just shares a path. ADR-002 is Accepted, has `**Touches:** config/retry.yaml`, and sets `max_retries: 4`. Its reason: ten retries with the configured backoff can hold one request for over an hour. The session raised the value from 4 to exactly 10.
+- **Reachability:** the record was within reach. The root `AGENTS.md` declares `ADRs: yes — docs/adr/` and links the directory, and the ADR is anchored to the file that was changed. The session's messages and commit never mention ADR-002, and no reason for overriding it was given. So this is an unknowing crossing, not a deliberate decision. The passing tests only show that they do not cover the latency limit.
+- **Destination:** `harness-artefact` in this service repository. That is a CI check that runs `check-decision-records.py` against the records on the target branch for every changed path, and fails or flags until the record is cited or superseded. Owner: `agent-harness-skill`. Whether sibling repositories need the same gate (which would make it a gate+propagation pair) was not measured, so I propose only the single-repository half.
+- **Not proposed:** editing ADR-002. An accepted record is never edited.
+
+**Finding 2: the delivered change is open and needs the project owner's decision**
+The commit currently breaks a recorded decision. Two valid ways out, and the project owner decides which, not retro:
+1. Revert to `max_retries: 4`, and look for robustness that keeps within ADR-002's latency limit, for example a circuit breaker or a different backoff.
+2. Write a new ADR in `docs/adr/` that supersedes ADR-002. It must state why the one-hour hold is now acceptable, follow the directory's own `AGENTS.md`, and carry `**Touches:** config/retry.yaml`.
+
+What I would ask: "Was raising retries to 10 meant to override ADR-002? If not, revert. If so, who writes the superseding record?" I would also ask whether the commit is already pushed or merged. The description does not say.
+
+**Not raised**
+- E7: the declaration exists and the script reported no inconsistency.
+- E8: no anchor is gone.
+- No B22 is claimed. The description shows no warning sign that was visible at the time beyond the ADR itself, and Finding 1 already covers that.
+
+**Deviation lines** (I could only read the situation as described; nothing was run):
+- Phase 1: `detect-mechanical.py` and `collect-review-findings.py` did not run. No transcript was available, so other signals are unknown.
+- Phase 3: prior-attempt history was not searched, so whether this recurs is unknown.
+- Phase 4: `find-org-skills.py` and the harness inspection did not run. The described `check-decision-records.py` output is the only part of this phase used. The skill that owned the work is not identified.
+- Phase 6: no evals were read and no TDD stub was drafted.
+- Phase 11: the self-check did not run.
+
+**Closing question** (one proposal open: the CI decision-record check, owner `agent-harness-skill`. The revert or superseding ADR in Finding 2 stays with the project owner and is not part of this question.)
+Should the proposal be carried out? Answer with one word:
+- `complete`: open the PR, review and fix until a round finds nothing new, then merge it once every gate is green, because the team owns this repository.
+- `noted`: change nothing.
+- `propose`: open the PR, run the same review rounds, and leave it as a draft for you.

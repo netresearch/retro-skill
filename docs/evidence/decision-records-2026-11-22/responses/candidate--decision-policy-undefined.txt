@@ -1,0 +1,41 @@
+**Retro: HTTP retry cap session (`max_retries = 4` in `src/client.py`)**
+
+**Findings**
+
+1. **E7: no decision-record policy (finding, project-rule)**
+   - *Evidence:* I ran `check-decision-records.py --repo . --changed-file src/client.py`. It printed policy status `undefined` and one finding, E7 `decision_policy_undefined`. The root `AGENTS.md` has commands and a file map. It has no `ADRs:` line, and the repository has no `docs/adr/` or similar directory.
+   - *Consequence:* the session made a real decision. It chose 4 retries and ruled out 10, because with the configured backoff one call could then block for more than an hour. That reasoning exists only in the agent's final chat reply, and the user approved it there. The next session that touches `src/client.py` will see the number without its reason. It may raise the number to 10 again.
+   - *Destination:* `project-rule`, a declaration line in the root `AGENTS.md`. Retro does not pick a place for decisions. The project owner decides yes or no.
+
+2. **The retry decision is not recorded (held until finding 1 is decided)**
+   - This is a decision, not a fact somebody had to dig out, so it is not a B21 item.
+   - The policy is undefined, so I write it nowhere for now.
+   - Once the owner has declared a place, the record should say: chosen value 4; 10 ruled out because of the blocking time over an hour with the configured backoff; approved by the user in this session; `**Touches:** src/client.py`. The `**Touches:**` field lets E1 catch a later change that crosses the decision, and E8 catch it if the file goes away.
+
+3. **E1 and E8: no finding.** The repository has no records, so no anchor was crossed and none is missing.
+
+**Proposal**
+
+- **Add the policy line to the root `AGENTS.md` (project-rule).**
+  - *Why:* decisions currently land in no agreed place, so a later session cannot find them. The retry cap is the first case of this.
+  - *How to apply:* the owner adds one of these two lines:
+    - `ADRs: yes — <directory>`, with that directory and its own `AGENTS.md`;
+    - `ADRs: no — <where decisions are recorded instead>`.
+  - The owner chooses yes or no and the location. After that, the retry decision from finding 2 goes into the declared place.
+  - **Decision owner:** the project owner. The described facts do not say who that is, so I would ask: "Who owns this repository's `AGENTS.md`, and does the project keep ADRs, and if so where?"
+
+**Deviations**
+
+- Phases 1–3 (mechanical pre-pass, review findings, prior attempts): not run. I only have a description of the session, not the transcript.
+- Phase 4 (skill discovery): the decision-record check ran, as described above. `find-org-skills.py` and the harness inspection were not run.
+- Phase 4c (documentation lookup): no B21 candidate, so not needed.
+- Phase 6 (evals): not run, because no skill was matched.
+- Phase 11 (self-check): not run on a transcript. From the facts given: nothing found.
+
+**Closing question**
+
+One proposal is open. Its content, yes or no and the location, belongs to the project owner and is not covered by this question. How far should I carry it out?
+
+- `complete`: create the PR with the declaration line as soon as the owner has decided. Then review and fix it until a round finds nothing new, and merge it once every gate is green.
+- `propose`: create the same PR, review and fix it, and leave it as a draft for you.
+- `noted`: change nothing.

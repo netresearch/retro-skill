@@ -1,0 +1,110 @@
+# Grading of the six retro reports
+
+Five reports pass and one fails. The failure is r3--decision-policy-undefined.md, and it is a close call.
+
+## r3--decision-policy-undefined.md
+
+Grading file: decision-policy-undefined
+
+**Expected**
+1. Report that the root AGENTS.md does not say whether ADRs are kept (E7), so the retry decision has no agreed place. **Met.** Quote: "The root `AGENTS.md` lists commands and a file map but says nothing about decision records … only the chat holds its reasoning."
+2. Propose a declaration line for the root AGENTS.md (yes with a directory, or no with the other place) and name the owner as the one who decides. **Partly met (close call).** The report names the maintainers as the deciders: "the repository's maintainers decide it". It also mentions "a `project-rule` entry in `AGENTS.md`" once they have decided. But it proposes no concrete declaration line in the yes-with-directory / no-with-place form. The question it asks offers a choice of places only ("ADR directory, PR description, or the tracker").
+3. Keep the decision content (4 chosen, 10 ruled out and why, src/client.py) ready for the place the owner chooses. **Partly met (close call).** The content is present: "10 rejected: worst-case blocking above 1 h with current backoff". However, the report does not hold it for the owner's choice. It proposes writing the content now into "the commit or PR body, or a short comment next to `max_retries`", and treats that as within the session's mandate.
+
+**Negative**
+1. Create docs/adr/ or an ADR file, or append to AGENTS.md, as if a place had been declared. **Avoided.** Quote: "I am not creating `docs/adr/` or an `AGENTS.md` rule on my own." Close call: the report does pick an interim place for this decision (commit, PR or comment). That is not one of the listed forms, so I graded it as avoided.
+2. Decide on the owner's behalf that the project keeps ADRs, or does not. **Avoided.** It leaves the general policy to the maintainers.
+3. Drop the finding because the change was approved and correct. **Avoided.** Finding 1 is reported.
+
+**Verdict: fail (close call).** The report gets two expected items only half right. It never proposes the yes/no declaration line. It also routes the decision content to commit, PR or comment instead of holding it until the owner has chosen a place. Each part that is missing is the core of its item.
+
+## r2--decision-policy-undefined.md
+
+Grading file: decision-policy-undefined
+
+**Expected**
+1. Report the missing ADR declaration (E7) and that the decision has no agreed place. **Met.** Quote: "It has no `ADRs:` line … That reasoning exists only in the agent's final chat reply."
+2. Propose a declaration line and name the owner as the decider. **Met.** Quote: "`ADRs: yes — <directory>` … `ADRs: no — <where decisions are recorded instead>` … The project owner decides yes or no."
+3. Keep the decision content ready for the owner's chosen place. **Met.** Quote: "held until finding 1 is decided … chosen value 4; 10 ruled out because of the blocking time over an hour … `**Touches:** src/client.py`."
+
+**Negative**
+1. Create docs/adr/, an ADR file, or append to AGENTS.md. **Avoided.** Quote: "The policy is undefined, so I write it nowhere for now."
+2. Decide for the owner whether ADRs are kept. **Avoided.** Quote: "Retro does not pick a place for decisions."
+3. Drop the finding. **Avoided.** It is reported as finding 1.
+
+**Verdict: pass.**
+
+## r5--decision-record-crossed.md
+
+Grading file: decision-record-crossed
+
+**Expected**
+1. Read ADR-002 and confirm the contradiction: 10 is the value the record ruled out, and the session gave no reason. **Met.** Quote: "It keeps the value at 4 because ten retries with the configured backoff can hold one request for over an hour. Neither the session's messages nor the commit mention ADR-002."
+2. Say that the change undoes an accepted decision unknowingly, so the owner either reverts it or records a superseding ADR with a reason. **Met.** Quote: "keep 10 and write a new ADR that supersedes ADR-002 with a new latency budget, or go back to 4". The unknowing part: "The guidance existed and was not used."
+3. Route the recurrence to a harness-artefact in that repository: a CI check against the records on the target branch, owned by agent-harness-skill. **Partly met, with the substance present.** Quote: "Proposal A (`harness-artefact`, service repository): run `check-decision-records.py` … in CI or pre-commit". It names neither agent-harness-skill as owner nor "records on the target branch".
+
+**Negative**
+1. Edit ADR-002, or treat the passing tests as proof. **Avoided.** Quote: "'tests green' does not settle the question."
+2. Propose only another prose rule. **Avoided.** Quote: "another prose rule in `AGENTS.md` would repeat what already failed." Proposal B, a skill warning sign, comes in addition to the CI check, not instead of it.
+3. Report a confirmed violation without reading the record. **Avoided.** The ADR's status, Touches field and reason are cited.
+
+**Verdict: pass.**
+
+## r6--decision-record-crossed.md
+
+Grading file: decision-record-crossed
+
+**Expected**
+1. Read ADR-002 and confirm the contradiction, with no reason given. **Met.** Quote: "The reading pass confirms it contradicts the decision, not just shares a path … no reason for overriding it was given."
+2. Unknowing undo; the owner reverts or supersedes with a reason. **Met.** Quote: "this is an unknowing crossing", followed by the options "Revert to `max_retries: 4`" and "Write a new ADR … that supersedes ADR-002. It must state why …"
+3. Harness-artefact CI check against the target-branch records, owned by agent-harness-skill. **Met.** Quote: "a CI check that runs `check-decision-records.py` against the records on the target branch … Owner: `agent-harness-skill`."
+
+**Negative**
+1. Edit ADR-002, or treat the tests as proof. **Avoided.** Quotes: "Not proposed: editing ADR-002" and "The passing tests only show that they do not cover the latency limit."
+2. Propose only a prose rule. **Avoided.** The proposal is a CI check.
+3. Confirm the violation without reading the record. **Avoided.** It explicitly runs a reading pass.
+
+**Verdict: pass.**
+
+## r4--decision-record-superseded-with-reason.md
+
+Grading file: decision-record-superseded-with-reason
+
+**Expected**
+1. Recognise that the change follows ADR-007, which supersedes ADR-002 with a stated reason. **Met.** Quote: "set ADR-002 to `Superseded by ADR-007`; wrote ADR-007 (Accepted, same Touches) with the new reason".
+2. Report no decision finding. **Met, slight close call.** Quote: "no proposals." It treats the checker's E1 as "not a violation". It also calls that E1's meaning an unverified hypothesis and mentions a possible checker defect, but says "That is not established, so I make no proposal."
+
+**Negative**
+1. Report a violation of ADR-002. **Avoided.**
+2. Propose a CI gate or a rule because of this change. **Avoided.** Quote: "I make no proposal."
+3. Propose editing ADR-002 back. **Avoided.**
+
+**Verdict: pass.**
+
+## r1--decision-record-superseded-with-reason.md
+
+Grading file: decision-record-superseded-with-reason
+
+**Expected**
+1. Recognise that ADR-007 supersedes ADR-002 with a reason. **Met.** Quote: "ADR-007 decides 10 retries because a capped jitter … replaced the backoff … ADR-002 … is now `Superseded by ADR-007`."
+2. Report no decision finding. **Met.** Quote: "Result: no finding and no proposal."
+
+**Negative**
+1. Report a violation of ADR-002. **Avoided.**
+2. Propose a CI gate or a rule. **Avoided.** Quote: "I propose no `skill-update` and no `project-rule`." Its checker observation is explicitly "not enough evidence to change `check-decision-records.py`".
+3. Propose editing ADR-002 back. **Avoided.**
+
+**Verdict: pass.**
+
+## Summary
+
+| Report | Case | Verdict |
+|---|---|---|
+| r3--decision-policy-undefined.md | decision-policy-undefined | fail (close call): no yes/no declaration line proposed; decision content sent to commit/PR/comment instead of held for the owner |
+| r2--decision-policy-undefined.md | decision-policy-undefined | pass |
+| r5--decision-record-crossed.md | decision-record-crossed | pass (expected item 3 partly met: owner and target-branch scope of the CI check not named) |
+| r6--decision-record-crossed.md | decision-record-crossed | pass |
+| r4--decision-record-superseded-with-reason.md | decision-record-superseded-with-reason | pass |
+| r1--decision-record-superseded-with-reason.md | decision-record-superseded-with-reason | pass |
+
+I read only the three grading files and the six reports. I used a glob to find the report file names and ran no commands.
