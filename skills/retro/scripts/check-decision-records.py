@@ -423,6 +423,16 @@ def _text(report: dict) -> str:
     return "\n".join(out)
 
 
+def _read_changed_list(source: str) -> str:
+    """The changed-path list named by --changed-files-from, or stdin for "-"."""
+    if source == "-":
+        return sys.stdin.read()
+    # S8707: an explicit caller-selected list, read-only at the caller's
+    # privilege; no path read from repository content is opened here.
+    # See docs/SECURITY-ASSURANCE.md.
+    return Path(source).read_text(encoding="utf-8")  # NOSONAR
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         description="Read the decision-record declaration and anchors of a repository."
@@ -452,16 +462,7 @@ def main(argv: list[str] | None = None) -> int:
     changed = list(args.changed_file)
     if args.changed_files_from:
         try:
-            src = (
-                sys.stdin.read()
-                if args.changed_files_from == "-"
-                # S8707: an explicit caller-selected list, read-only at the
-                # caller's privilege; no path read from repository content is
-                # opened. See docs/SECURITY-ASSURANCE.md.
-                else Path(args.changed_files_from).read_text(
-                    encoding="utf-8"
-                )  # NOSONAR
-            )
+            src = _read_changed_list(args.changed_files_from)
         except OSError as e:
             print(
                 f"check-decision-records.py: cannot read {args.changed_files_from}: {e}",
