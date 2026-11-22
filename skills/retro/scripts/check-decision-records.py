@@ -252,7 +252,7 @@ def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
     return status, touches
 
 
-_LIST_ITEM = re.compile(r"^\s*[-*+]\s+")
+_LIST_ITEM = re.compile(r"^\s*(?:[-*+]|\d+\.)\s+")
 _ANY_FIELD = re.compile(r"^(?:\*\*|__)?[\w -]+(?:\*\*|__)?\s*:")
 
 
@@ -261,7 +261,10 @@ def _touches_continuation(raw: str, mode: str) -> bool:
     items continue it ("list"); after a value ending in a comma, one indented
     or code-span line does ("wrap"). A line that is itself a field ends it."""
     item = _plain(raw)
-    if not raw.strip() or raw.startswith("#") or _ANY_FIELD.match(item):
+    if not raw.strip():
+        # A formatter puts a blank line between a field and its list (MD032).
+        return mode == "list"
+    if raw.startswith("#") or _ANY_FIELD.match(item):
         return False
     if mode == "list":
         return _LIST_ITEM.match(raw) is not None
@@ -279,6 +282,8 @@ def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
     for raw in _unfenced(lines):
         if touches_mode:
             if _touches_continuation(raw, touches_mode):
+                if not raw.strip():
+                    continue
                 line = _plain(raw)
                 touches += _split_paths(line)
                 touches_mode = (

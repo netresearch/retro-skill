@@ -437,6 +437,24 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(recs[("src/AGENTS.md", "Retries")]["touches"], ["src/a.py"])
         self.assertEqual(self.repo.report()["findings"], [])
 
+    def test_formatted_touches_list_with_blank_lines_and_numbers(self):
+        self.repo.write("src/a.py", "")
+        self.repo.write(
+            "docs/adr/ADR-024.md",
+            "# ADR-024\n\n**Status:** Accepted\n**Touches:**\n\n- `src/a.py`\n\n- `src/gone.py`\n\nProse after the list.\n",
+        )
+        self.repo.write(
+            "docs/adr/ADR-025.md",
+            "# ADR-025\n\n**Status:** Accepted\n**Touches:**\n1. src/a.py\n2. src/gone.py\n",
+        )
+        recs = {r["path"]: r for r in self.repo.report()["records"]}
+        self.assertEqual(
+            recs["docs/adr/ADR-024.md"]["touches"], ["src/a.py", "src/gone.py"]
+        )
+        self.assertEqual(
+            recs["docs/adr/ADR-025.md"]["touches"], ["src/a.py", "src/gone.py"]
+        )
+
     def test_glob_anchor(self):
         self.repo.write("src/a_test.py", "")
         self.repo.write(
