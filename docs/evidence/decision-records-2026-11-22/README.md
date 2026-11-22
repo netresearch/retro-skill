@@ -64,6 +64,11 @@ reported no finding. Reports are in `responses/`, the grading in
   `destination-taxonomy.md`), so its hashes match no commit. The candidate arm
   was run again on the final text after review; see below.
 
+One report misstates the script: `responses/candidate--decision-record-superseded-with-reason.txt`
+says the checker "reports E7 every time it runs". The script reports E7 only
+when the declaration is undefined or inconsistent; the response is kept as
+returned.
+
 ## Re-run on the final text
 
 After four review rounds, the three cases ran once more against the skill

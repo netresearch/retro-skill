@@ -411,7 +411,7 @@ def anchor_covers(touch: str, changed: str) -> bool:
     directory its glob names."""
     p = _anchor_path(touch).rstrip("/")
     c = _strip_dot_slash(changed)
-    if c == p or c.startswith(p + "/"):
+    if p in ("", ".") or c == p or c.startswith(p + "/"):
         return True
     if not any(ch in p for ch in GLOB_CHARS):
         return False

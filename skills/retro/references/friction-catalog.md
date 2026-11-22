@@ -522,9 +522,11 @@ E mode is best for **monthly or quarterly reviews**, with tech-lead-level actor 
 E1, E7 and E8 also run in a sweep when the session changed files in a
 repository, or when retro is about to write a decision there: run
 `check-decision-records.py --repo <repo>` with each changed path as
-`--changed-file` (`git diff --name-only <base>...HEAD` of the session's
-branch). An undefined or inconsistent declaration (E7) is reported whenever
-the script runs; the project owner decides yes or no, never retro. A record
+`--changed-file`. The changed paths are the session's committed and
+uncommitted ones: `git -C <repo> diff --name-only <base>` (commits since the
+base plus the working tree) and `git -C <repo> ls-files --others
+--exclude-standard` (new files). Each run reports E7 when the declaration is
+undefined or inconsistent; the project owner decides yes or no, never retro. A record
 without a `**Touches:**` field is reported as unanchored, not as a finding.
 A record binds unless its status starts with superseded, deprecated, rejected,
 withdrawn, retired, proposed or draft, or their German forms (abgelöst,

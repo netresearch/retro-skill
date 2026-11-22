@@ -455,6 +455,25 @@ class RecordTest(unittest.TestCase):
             recs["docs/adr/ADR-025.md"]["touches"], ["src/a.py", "src/gone.py"]
         )
 
+    def test_repository_root_anchor_covers_every_change(self):
+        self.repo.write(
+            "docs/adr/ADR-026.md",
+            "# ADR-026\n\n**Status:** Accepted\n**Touches:** `.`, `./`\n",
+        )
+        r = self.repo.report(changed=["src/client.py"])
+        self.assertEqual(r["records"][0]["missing"], [])
+        self.assertEqual(len(r["changed_hits"]), 1)
+
+    def test_absolute_glob_anchor_is_read_from_the_root(self):
+        self.repo.write("tmp/a.py", "")
+        self.repo.write(
+            "docs/adr/ADR-027.md",
+            "# ADR-027\n\n**Status:** Accepted\n**Touches:** `/tmp/*.py`\n",
+        )
+        r = self.repo.report(changed=["tmp/a.py"])
+        self.assertEqual(r["records"][0]["missing"], [])
+        self.assertEqual(len(r["changed_hits"]), 1)
+
     def test_glob_anchor(self):
         self.repo.write("src/a_test.py", "")
         self.repo.write(
