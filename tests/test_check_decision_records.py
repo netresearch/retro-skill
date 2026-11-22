@@ -220,6 +220,53 @@ class RecordTest(unittest.TestCase):
         self.assertEqual(r["records"][0]["missing"], [])
 
 
+class ConfinementTest(unittest.TestCase):
+    def setUp(self):
+        self.repo = Repo()
+
+    def tearDown(self):
+        self.repo.close()
+
+    def test_adr_directory_outside_the_repository_is_inconsistent(self):
+        self.repo.write("AGENTS.md", "ADRs: yes — `../elsewhere/`\n")
+        r = self.repo.report()
+        self.assertEqual(r["policy"]["status"], "inconsistent")
+        self.assertIn("outside the repository", r["policy"]["problems"][0])
+        self.assertEqual(r["records"], [])
+
+    def test_anchor_outside_the_repository_counts_as_gone(self):
+        outside = self.repo.root.parent / "check-decision-records-outside.txt"
+        outside.write_text("x", encoding="utf-8")
+        self.addCleanup(outside.unlink)
+        self.repo.write(
+            "AGENTS.md",
+            "ADRs: no — PR descriptions\n\n## A rule\n\n**Touches:** `../check-decision-records-outside.txt`, `../*.txt`\n",
+        )
+        r = self.repo.report()
+        self.assertEqual(
+            r["records"][0]["missing"],
+            ["../check-decision-records-outside.txt", "../*.txt"],
+        )
+
+    def test_dotfile_anchor_keeps_its_leading_dot(self):
+        self.repo.write(".github/workflows/ci.yml", "on: push\n")
+        self.repo.write(
+            "AGENTS.md",
+            "ADRs: no — PR descriptions\n\n## CI\n\n**Touches:** `.github/workflows/ci.yml`, `./.github/`\n",
+        )
+        r = self.repo.report(
+            changed=[".github/workflows/ci.yml", "github/workflows/ci.yml"]
+        )
+        self.assertEqual(r["records"][0]["missing"], [])
+        self.assertEqual(
+            [h["file"] for h in r["changed_hits"]], [".github/workflows/ci.yml"]
+        )
+
+    def test_long_separator_run_is_read_in_linear_time(self):
+        self.repo.write("AGENTS.md", "ADRs: no " + "-" * 50000 + " PR descriptions\n")
+        self.assertEqual(self.repo.report()["policy"]["alternative"], "PR descriptions")
+
+
 class RuleAnchorTest(unittest.TestCase):
     def test_agents_md_rule_with_touches_is_a_record(self):
         repo = Repo()

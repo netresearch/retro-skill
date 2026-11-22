@@ -61,19 +61,61 @@ import re
 import sys
 from pathlib import Path
 
+AGENTS_MD = "AGENTS.md"
 INACTIVE_STATUSES = ("superseded", "deprecated", "rejected", "withdrawn", "retired")
 NON_RECORD_NAMES = {"agents.md", "readme.md", "index.md", "claude.md"}
+GLOB_CHARS = "*?["
 
-_DECL = re.compile(r"^ADRs?\s*:\s*(yes|no|ja|nein)\b\s*[—–:-]?\s*(.*)$", re.IGNORECASE)
-_FIELD = re.compile(r"^(status|touches)\s*:\s*(.*)$", re.IGNORECASE)
+# Each pattern has one unbounded group at its end, so no input backtracks
+# super-linearly; separators after it are stripped in Python.
+_DECL = re.compile(r"^ADRs?\s*:\s*(yes|no|ja|nein)\b(.*)$", re.IGNORECASE)
+_FIELD = re.compile(r"^(status|touches)\s*:(.*)$", re.IGNORECASE)
 _BACKTICK = re.compile(r"`([^`]+)`")
+_LIST_MARKER = re.compile(r"^(?:[-*+]|\d+\.)\s+")
+_SEPARATORS = " \t—–:-"
 
 
 def _plain(line: str) -> str:
     """A line without list markers, bold markers and surrounding space."""
-    s = line.strip()
-    s = re.sub(r"^(?:[-*+]|\d+\.)\s+", "", s)
+    s = _LIST_MARKER.sub("", line.strip())
     return s.replace("**", "").replace("__", "").strip()
+
+
+def _inside(repo: Path, rel: str) -> Path | None:
+    """The path below the repository root, or None when it leaves the root."""
+    p = (repo / rel).resolve()
+    return p if p == repo or p.is_relative_to(repo) else None
+
+
+def _declarations(text: str) -> list[tuple[int, str, str]]:
+    decls = []
+    for n, line in enumerate(text.splitlines(), 1):
+        m = _DECL.match(_plain(line))
+        if m:
+            answer = "yes" if m.group(1).lower() in ("yes", "ja") else "no"
+            decls.append((n, answer, m.group(2).strip(_SEPARATORS)))
+    return decls
+
+
+def _check_adr_dir(rest: str, repo: Path) -> tuple[str | None, list[str]]:
+    """The directory a yes-declaration names, and what the repository says about it."""
+    ticks = _BACKTICK.findall(rest)
+    target = (ticks[0] if ticks else (rest.split() or [""])[0]).strip().rstrip(".,;")
+    if not target:
+        return None, ["'ADRs: yes' names no directory"]
+    adr_dir = target.rstrip("/") + "/"
+    d = _inside(repo, target)
+    if d is None:
+        return adr_dir, [
+            f"the declared ADR directory {adr_dir} lies outside the repository"
+        ]
+    if not d.is_dir():
+        return adr_dir, [f"the declared ADR directory {adr_dir} does not exist"]
+    if not any(p.name.lower() == "agents.md" for p in d.iterdir()):
+        return adr_dir, [
+            f"the declared ADR directory {adr_dir} has no {AGENTS_MD} of its own"
+        ]
+    return adr_dir, []
 
 
 def read_policy(text: str | None, repo: Path) -> dict:
@@ -86,27 +128,20 @@ def read_policy(text: str | None, repo: Path) -> dict:
         "problems": [],
     }
     if text is None:
-        policy["problems"].append("the repository has no root AGENTS.md")
+        policy["problems"].append(f"the repository has no root {AGENTS_MD}")
         return policy
-    decls = []
-    for n, line in enumerate(text.splitlines(), 1):
-        m = _DECL.match(_plain(line))
-        if m:
-            answer = "yes" if m.group(1).lower() in ("yes", "ja") else "no"
-            decls.append((n, answer, m.group(2).strip()))
+    decls = _declarations(text)
     if not decls:
         policy["problems"].append(
-            "AGENTS.md does not say whether the project keeps ADRs"
+            f"{AGENTS_MD} does not say whether the project keeps ADRs"
         )
         return policy
     policy["lines"] = [n for n, _, _ in decls]
-    answers = {a for _, a, _ in decls}
-    if len(answers) > 1:
+    if len({a for _, a, _ in decls}) > 1:
         policy["status"] = "inconsistent"
+        lines = ", ".join(str(n) for n, _, _ in decls)
         policy["problems"].append(
-            "AGENTS.md answers both yes and no (lines {})".format(
-                ", ".join(str(n) for n, _, _ in decls)
-            )
+            f"{AGENTS_MD} answers both yes and no (lines {lines})"
         )
         return policy
     _, answer, rest = decls[0]
@@ -118,27 +153,8 @@ def read_policy(text: str | None, repo: Path) -> dict:
                 "'ADRs: no' names no place where decisions are recorded instead"
             )
     else:
-        ticks = _BACKTICK.findall(rest)
-        target = (
-            (ticks[0] if ticks else (rest.split() or [""])[0]).strip().rstrip(".,;")
-        )
-        if not target:
-            policy["problems"].append("'ADRs: yes' names no directory")
-        else:
-            policy["adr_dir"] = target.rstrip("/") + "/"
-            d = repo / target
-            if not d.is_dir():
-                policy["problems"].append(
-                    "the declared ADR directory {} does not exist".format(
-                        policy["adr_dir"]
-                    )
-                )
-            elif not any(p.name.lower() == "agents.md" for p in d.iterdir()):
-                policy["problems"].append(
-                    "the declared ADR directory {} has no AGENTS.md of its own".format(
-                        policy["adr_dir"]
-                    )
-                )
+        policy["adr_dir"], problems = _check_adr_dir(rest, repo)
+        policy["problems"] += problems
     if policy["problems"]:
         policy["status"] = "inconsistent"
     return policy
@@ -150,33 +166,39 @@ def _split_paths(value: str) -> list[str]:
     return [i.strip().strip("'\"") for i in items if i.strip().strip("'\"")]
 
 
-def parse_record(text: str) -> dict:
-    """Title, status and Touches of one record (frontmatter or bold fields)."""
-    status, touches, title = None, [], None
-    lines = text.splitlines()
-    body_start = 0
-    if lines and lines[0].strip() == "---":
-        for i in range(1, len(lines)):
-            if lines[i].strip() == "---":
-                body_start = i + 1
-                break
-        fm = lines[1 : body_start - 1] if body_start else []
-        current = None
-        for raw in fm:
-            m = _FIELD.match(raw.strip())
-            if m and not raw.startswith((" ", "\t")):
-                current = m.group(1).lower()
-                val = m.group(2).strip()
-                if current == "status" and val:
-                    status = val.strip("'\"")
-                elif current == "touches" and val:
-                    touches += _split_paths(val)
-                continue
-            if not raw.startswith((" ", "\t")):
-                current = None
-            elif current == "touches" and raw.strip().startswith("- "):
-                touches += _split_paths(raw.strip()[2:])
-    for raw in lines[body_start:]:
+def _frontmatter_end(lines: list[str]) -> int:
+    """Index of the first body line; 0 when the text has no frontmatter."""
+    if not lines or lines[0].strip() != "---":
+        return 0
+    for i in range(1, len(lines)):
+        if lines[i].strip() == "---":
+            return i + 1
+    return 0
+
+
+def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
+    """status and touches from YAML-like frontmatter lines (no YAML loader)."""
+    status, touches, current = None, [], None
+    for raw in lines:
+        indented = raw.startswith((" ", "\t"))
+        m = None if indented else _FIELD.match(raw.strip())
+        if m:
+            current, val = m.group(1).lower(), m.group(2).strip()
+            if current == "status" and val:
+                status = val.strip("'\"")
+            elif current == "touches" and val:
+                touches += _split_paths(val)
+        elif not indented:
+            current = None
+        elif current == "touches" and raw.strip().startswith("- "):
+            touches += _split_paths(raw.strip()[2:])
+    return status, touches
+
+
+def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
+    """title, status and touches from a record body with bold fields."""
+    title, status, touches = None, None, []
+    for raw in lines:
         if title is None and raw.startswith("# "):
             title = raw[2:].strip()
         m = _FIELD.match(_plain(raw))
@@ -187,28 +209,50 @@ def parse_record(text: str) -> dict:
             status = val
         elif key == "touches" and val:
             touches += _split_paths(val)
-    return {"title": title, "status": status, "touches": list(dict.fromkeys(touches))}
+    return title, status, touches
+
+
+def parse_record(text: str) -> dict:
+    """Title, status and Touches of one record (frontmatter or bold fields)."""
+    lines = text.splitlines()
+    start = _frontmatter_end(lines)
+    fm_status, fm_touches = _frontmatter_fields(lines[1 : start - 1] if start else [])
+    title, body_status, body_touches = _body_fields(lines[start:])
+    return {
+        "title": title,
+        "status": fm_status or body_status,
+        "touches": list(dict.fromkeys(fm_touches + body_touches)),
+    }
 
 
 def _is_active(status: str | None) -> bool:
     return not (status and status.strip().lower().startswith(INACTIVE_STATUSES))
 
 
+def _strip_dot_slash(path: str) -> str:
+    """The path without leading "./" segments; "../" and dotfiles stay as written."""
+    while path.startswith("./"):
+        path = path[2:]
+    return path
+
+
 def _anchor_path(touch: str) -> str:
-    return touch.split("#", 1)[0].strip().lstrip("./") or touch
+    return _strip_dot_slash(touch.split("#", 1)[0].strip()) or touch
 
 
 def anchor_exists(repo: Path, touch: str) -> bool:
+    """Whether the anchored path exists below the root; an anchor outside it counts as gone."""
     p = _anchor_path(touch)
-    if any(c in p for c in "*?["):
-        return any(True for _ in repo.glob(p))
-    return (repo / p).exists()
+    if any(c in p for c in GLOB_CHARS):
+        return ".." not in Path(p).parts and any(True for _ in repo.glob(p))
+    target = _inside(repo, p)
+    return target is not None and target.exists()
 
 
 def anchor_covers(touch: str, changed: str) -> bool:
     p = _anchor_path(touch).rstrip("/")
-    c = changed.lstrip("./")
-    if any(ch in p for ch in "*?["):
+    c = _strip_dot_slash(changed)
+    if any(ch in p for ch in GLOB_CHARS):
         return fnmatch.fnmatch(c, p)
     return c == p or c.startswith(p + "/")
 
@@ -228,65 +272,50 @@ def agents_sections(text: str) -> list[tuple[str, str]]:
     return sections
 
 
-def collect_records(repo: Path, agents_text: str | None, policy: dict) -> list[dict]:
+def _rule_records(agents_text: str | None) -> list[dict]:
     records = []
-    if agents_text:
-        for head, body in agents_sections(agents_text):
-            rec = parse_record(body)
-            if rec["touches"]:
-                records.append(
-                    {"path": "AGENTS.md", "kind": "rule", "title": head, **rec}
-                )
-    if policy["status"] == "yes" and policy["adr_dir"]:
-        d = repo / policy["adr_dir"]
-        if d.is_dir():
-            for f in sorted(d.iterdir()):
-                if (
-                    f.suffix.lower() != ".md"
-                    or f.name.lower() in NON_RECORD_NAMES
-                    or f.name.lower().startswith("template")
-                ):
-                    continue
-                rec = parse_record(f.read_text(encoding="utf-8", errors="replace"))
-                records.append(
-                    {"path": f.relative_to(repo).as_posix(), "kind": "adr", **rec}
-                )
+    for head, body in agents_sections(agents_text or ""):
+        rec = parse_record(body)
+        if rec["touches"]:
+            records.append({"path": AGENTS_MD, "kind": "rule", **rec, "title": head})
+    return records
+
+
+def _is_record_file(f: Path) -> bool:
+    name = f.name.lower()
+    return (
+        f.suffix.lower() == ".md"
+        and name not in NON_RECORD_NAMES
+        and not name.startswith("template")
+    )
+
+
+def _adr_records(repo: Path, policy: dict) -> list[dict]:
+    if policy["status"] != "yes" or not policy["adr_dir"]:
+        return []
+    d = _inside(repo, policy["adr_dir"])
+    if d is None or not d.is_dir():
+        return []
+    return [
+        {
+            "path": f.relative_to(repo).as_posix(),
+            "kind": "adr",
+            **parse_record(f.read_text(encoding="utf-8", errors="replace")),
+        }
+        for f in sorted(d.iterdir())
+        if f.is_file() and _is_record_file(f)
+    ]
+
+
+def collect_records(repo: Path, agents_text: str | None, policy: dict) -> list[dict]:
+    records = _rule_records(agents_text) + _adr_records(repo, policy)
     for rec in records:
         rec["active"] = _is_active(rec["status"])
         rec["missing"] = [t for t in rec["touches"] if not anchor_exists(repo, t)]
     return records
 
 
-def build_report(repo: Path, changed: list[str]) -> dict:
-    agents = repo / "AGENTS.md"
-    agents_text = (
-        agents.read_text(encoding="utf-8", errors="replace")
-        if agents.is_file()
-        else None
-    )
-    policy = read_policy(agents_text, repo)
-    records = collect_records(repo, agents_text, policy)
-    findings = []
-    if policy["status"] in ("undefined", "inconsistent"):
-        findings.append(
-            {
-                "signal": "E7",
-                "name": "decision_policy_undefined",
-                "status": policy["status"],
-                "problems": policy["problems"],
-            }
-        )
-    for rec in records:
-        if rec["active"] and rec["missing"]:
-            findings.append(
-                {
-                    "signal": "E8",
-                    "name": "decision_anchor_missing",
-                    "record": rec["path"],
-                    "title": rec["title"],
-                    "missing": rec["missing"],
-                }
-            )
+def changed_hits(records: list[dict], changed: list[str]) -> list[dict]:
     hits = []
     for c in changed:
         hit = [
@@ -304,35 +333,65 @@ def build_report(repo: Path, changed: list[str]) -> dict:
                     ],
                 }
             )
-    for h in hits:
+    return hits
+
+
+def findings_for(policy: dict, records: list[dict], hits: list[dict]) -> list[dict]:
+    findings = []
+    if policy["status"] in ("undefined", "inconsistent"):
         findings.append(
             {
-                "signal": "E1",
-                "name": "decision_record_crossed",
-                "file": h["file"],
-                "records": h["records"],
-                "candidate": True,
+                "signal": "E7",
+                "name": "decision_policy_undefined",
+                "status": policy["status"],
+                "problems": policy["problems"],
             }
         )
-    anchored = [r for r in records if r["touches"]]
-    adr_files = 0
-    if (
-        policy["status"] == "yes"
-        and policy["adr_dir"]
-        and (repo / policy["adr_dir"]).is_dir()
-    ):
-        adr_files = sum(1 for r in records if r["kind"] == "adr")
+    findings += [
+        {
+            "signal": "E8",
+            "name": "decision_anchor_missing",
+            "record": r["path"],
+            "title": r["title"],
+            "missing": r["missing"],
+        }
+        for r in records
+        if r["active"] and r["missing"]
+    ]
+    findings += [
+        {
+            "signal": "E1",
+            "name": "decision_record_crossed",
+            "file": h["file"],
+            "records": h["records"],
+            "candidate": True,
+        }
+        for h in hits
+    ]
+    return findings
+
+
+def build_report(repo: Path, changed: list[str]) -> dict:
+    agents = repo / AGENTS_MD
+    agents_text = (
+        agents.read_text(encoding="utf-8", errors="replace")
+        if agents.is_file()
+        else None
+    )
+    policy = read_policy(agents_text, repo)
+    records = collect_records(repo, agents_text, policy)
+    hits = changed_hits(records, changed)
+    findings = findings_for(policy, records, hits)
+    adr = [r for r in records if r["kind"] == "adr"]
     return {
         "script": "check-decision-records.py",
         "repo": str(repo),
-        "agents_md": "AGENTS.md" if agents_text is not None else None,
+        "agents_md": AGENTS_MD if agents_text is not None else None,
         "policy": policy,
         "summary": {
-            "adr_records": adr_files,
-            "anchored_records": len(anchored),
-            "unanchored_adr_records": sum(
-                1 for r in records if r["kind"] == "adr" and not r["touches"]
-            ),
+            "adr_records": len(adr),
+            "anchored_records": sum(1 for r in records if r["touches"]),
+            "unanchored_adr_records": sum(1 for r in adr if not r["touches"]),
             "records_with_missing_anchors": sum(
                 1 for r in records if r["active"] and r["missing"]
             ),
@@ -396,7 +455,12 @@ def main(argv: list[str] | None = None) -> int:
             src = (
                 sys.stdin.read()
                 if args.changed_files_from == "-"
-                else Path(args.changed_files_from).read_text(encoding="utf-8")
+                # S8707: an explicit caller-selected list, read-only at the
+                # caller's privilege; no path read from repository content is
+                # opened. See docs/SECURITY-ASSURANCE.md.
+                else Path(args.changed_files_from).read_text(
+                    encoding="utf-8"
+                )  # NOSONAR
             )
         except OSError as e:
             print(

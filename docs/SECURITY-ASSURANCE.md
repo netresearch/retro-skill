@@ -45,7 +45,7 @@ The repository ships no server component, no container image and no library for 
 | `find-org-skills.py` | `~/.claude/plugins/` marketplace and plugin manifests, installed `SKILL.md` files | nothing | nothing |
 | `find-installed-skills.sh` | installed skill directories, their manifests and `git config remote.origin.url` | nothing | nothing |
 | `check-upstream-sources.py` | a skill's `SKILL.md`, `references/*.md`, `checkpoints.yaml` | nothing | an HTTPS `HEAD` (or `GET` after 405) to each linked `https` URL whose host resolves only to public addresses, with a fixed User-Agent and without a proxy; no body is read; `--offline` sends nothing |
-| `check-decision-records.py` | the root `AGENTS.md` of `--repo`, the `*.md` files of the ADR directory it declares, whether each anchored path exists, and an optional list of changed paths (`--changed-files-from`) | nothing | nothing |
+| `check-decision-records.py` | the root `AGENTS.md` of `--repo`, the `*.md` files of the ADR directory it declares, whether each anchored path exists, and an optional list of changed paths (`--changed-files-from`); a declared directory or an anchor that resolves outside `--repo` is reported, not read or tested | nothing | nothing |
 | `check-eval-samples.py` | named `evals.json` files and their base version via `git show` | nothing | nothing |
 | `validate-evals.py` | `skills/retro/evals/*.md` | nothing | nothing |
 | `materialize-pr.sh` | git refs, the body file, the named files | a worktree and branch (`start`); a signed commit (`finish`) | `git fetch` and `git push` to `origin`; `gh pr create` with the title and body file |
