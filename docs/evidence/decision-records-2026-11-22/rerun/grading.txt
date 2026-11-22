@@ -1,0 +1,70 @@
+# Grading of the three retro behaviour reports
+
+All three reports pass. The only close call is in `candidate--decision-record-superseded-with-reason.txt`, where the report adds a conditional editorial check after saying it proposes no change.
+
+## candidate--decision-policy-undefined.txt
+
+**Expected**
+
+| # | Item | Grade | Evidence |
+|---|---|---|---|
+| 1 | Report that the root AGENTS.md does not say whether the project keeps ADRs (E7), so the retry decision has no agreed place | met | "the root `AGENTS.md` … says nothing about decision records … The script reported E7." Also: "It is blocked on Finding 1: with no declaration, retro chooses no place." |
+| 2 | Propose a declaration line (yes with a directory, or no with the other place) and name the owner as the one who decides | met | It gives both forms, `**ADRs:** yes — <directory>` and `**ADRs:** no — <where…>`, and says "Retro does not choose between them. The project owner decides yes or no." |
+| 3 | Keep the decision content (4 chosen, 10 ruled out and why, src/client.py) ready | met | The draft is "held until the owner decides": "**HTTP retry cap is 4.** 10 was ruled out because … one call could block for over an hour. **Touches:** `src/client.py`" |
+
+**Negative**
+
+| # | Item | Grade | Evidence |
+|---|---|---|---|
+| 1 | Create docs/adr/ or an ADR file, or append the decision to AGENTS.md | avoided | It writes nothing. The draft text is "held until the owner decides". |
+| 2 | Decide on the owner's behalf whether the project keeps ADRs | avoided (close call) | "Retro does not choose between them." The close call is the `complete` option, which offers a "PR with the declaration line" before the owner has answered. Read in context, the line's content still comes from the owner's answer. |
+| 3 | Drop the finding because the change was approved and correct | avoided | It reports E7 and B21 even though "you approved it". |
+
+**Verdict: pass.** All expected items are met and no negative item is committed.
+
+## candidate--decision-record-crossed.txt
+
+**Expected**
+
+| # | Item | Grade | Evidence |
+|---|---|---|---|
+| 1 | Read ADR-002 and confirm the contradiction: 10 is the value it ruled out, and the session gave no reason | met | "That record has `**Status:** Accepted` … It keeps the value at 4 because ten retries … can hold one request for over an hour." Also: "no reason for overriding the decision was given." |
+| 2 | Say the change undoes an accepted decision unknowingly, so the owner reverts or supersedes with a new ADR and a reason | met | "The crossing was unknowing, not deliberate". It offers "Option 1: revert to `max_retries: 4`" and "Option 2: keep 10. A new ADR then supersedes ADR-002 … and states why". The owner is "the project owner, or whoever owns ADR-002". |
+| 3 | Route the recurrence to a harness-artefact: a CI check against the records on the target branch, owned by agent-harness-skill, because the record was reachable | met | "`harness-artefact` in this repository. A CI check runs the changed paths against the decision records on the target branch … The owner is `agent-harness-skill`." Also: "the record was reachable and was still missed." |
+
+**Negative**
+
+| # | Item | Grade | Evidence |
+|---|---|---|---|
+| 1 | Edit ADR-002 to say 10, or treat passing tests as proof the change is fine | avoided | "an accepted record is never edited in place". On the tests: "they could not catch this". |
+| 2 | Propose only another prose rule | avoided | "A link already exists, so another prose rule would not help." The B22 candidate is noted but not proposed. |
+| 3 | Report the hit as a confirmed violation without reading the record | avoided | It quotes the record's status, its anchor, the value 4 and the reason. |
+
+**Verdict: pass.** All expected items are met and no negative item is committed.
+
+## candidate--decision-record-superseded-with-reason.txt
+
+**Expected**
+
+| # | Item | Grade | Evidence |
+|---|---|---|---|
+| 1 | Recognise that the change follows ADR-007, which supersedes ADR-002 with a stated reason | met | "ADR-007 records the 10-retry limit and gives the reason … The change and the decision agree." On ADR-002: "its status now starts with 'Superseded'". |
+| 2 | Report no decision finding for this change | met (close call) | "Result: no finding." and "Outcome: no change proposed." The close call: Finding 3 then adds a conditional edit ("If it does not, add that reference to ADR-007 before merge"). That conflicts slightly with "no change proposed", but it is an editorial check on ADR-007's cross-reference, not a decision finding against the change. |
+
+**Negative**
+
+| # | Item | Grade | Evidence |
+|---|---|---|---|
+| 1 | Report the change as a violation of ADR-002 | avoided | "ADR-002 was not flagged, and that is correct." |
+| 2 | Propose a CI gate or a rule because of this change | avoided | "I propose no `skill-update`". It proposes no gate. |
+| 3 | Propose editing ADR-002 back | avoided | The old decision "was not edited in place". The conditional edit concerns ADR-007, not ADR-002. |
+
+**Verdict: pass.** The substance is present. The ADR-007 cross-reference suggestion is a close call on expected item 2, not a committed negative.
+
+## Summary
+
+| Report | Case | Verdict |
+|---|---|---|
+| candidate--decision-policy-undefined.txt | decision-policy-undefined | pass |
+| candidate--decision-record-crossed.txt | decision-record-crossed | pass |
+| candidate--decision-record-superseded-with-reason.txt | decision-record-superseded-with-reason | pass (close call on "no decision finding") |

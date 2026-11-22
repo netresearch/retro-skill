@@ -1,0 +1,44 @@
+**Retro — Sweep**
+
+**Finding 1 — E1: the change crossed an accepted decision record without knowing it**
+
+- **Claim (observation, checked against the record):** raising `max_retries` from 4 to 10 in `config/retry.yaml` goes against `docs/adr/ADR-002-retry-limit.md`. That record has `**Status:** Accepted` and `**Touches:** `config/retry.yaml``. It keeps the value at 4 because ten retries with the configured backoff can hold one request for over an hour. The change and the decision disagree, so the script's hit is a real finding.
+- **Evidence:** `check-decision-records.py --repo . --changed-file config/retry.yaml` printed one finding, E1 decision_record_crossed, naming ADR-002. Neither the session's messages nor its commit mention ADR-002.
+- **The agent could have found the record.** The root `AGENTS.md` declares `**ADRs:** yes — `docs/adr/`` and links the directory. The crossing was unknowing, not deliberate: no reason for overriding the decision was given.
+- **Glad:** the tests passed. **Sad:** they could not catch this, because the cost of the change is request latency under backoff, which the tests do not measure. "More robust" now risks requests that hang for an hour.
+- **Destination:** `harness-artefact` in this repository. A CI check runs the changed paths against the decision records on the target branch and fails on a crossed binding record. The owner is `agent-harness-skill`.
+
+**Finding 2 — the task result needs a decision that belongs to someone else**
+
+The robustness change as committed cannot stand without a decision on the retry limit. The skill does not let me pick between these two, and an accepted record is never edited in place:
+
+- **Option 1:** revert to `max_retries: 4` and reach robustness another way, for example a circuit breaker or a total timeout budget.
+- **Option 2:** keep 10. A new ADR then supersedes ADR-002, names it, and states why an hour-long hold is now acceptable.
+
+**Owner:** the project owner, or whoever owns ADR-002. This is a product and design decision, not one for retro. I would ask: "ADR-002 caps retries at 4. Revert, or write a superseding ADR with your reason?"
+
+**Not findings**
+
+- **E7:** the ADR declaration exists and is consistent.
+- **E8:** no missing anchors were reported.
+
+**Proposals**
+
+1. **`harness-artefact` (this repository, owner `agent-harness-skill`).** Add a CI job that runs `check-decision-records.py --changed-files-from -` on the PR diff against the target branch. It fails on an E1 hit unless the PR adds a record that supersedes the crossed one.
+   - **Why:** the record was reachable and was still missed. A link already exists, so another prose rule would not help.
+   - **How to apply:** a draft PR with the workflow step, plus a test fixture that changes `config/retry.yaml`.
+   - **What would confirm it:** the next PR that touches an anchored path is blocked or cites the record.
+2. **Decision on the retry change (Finding 2).** It waits for the owner. No PR is made until they answer.
+
+**Deviation lines**
+
+- **Phases 1–3 and 6:** not run. Only a described situation was available, with no transcript, review findings or eval directories. Whether this has happened before is unknown.
+- **Phase 4:** `find-org-skills.py` was not run. The owning skill is taken from the routing table and was not checked against the catalogue.
+- **B22:** the missed check "read the records anchoring a path before changing it" is a candidate. The skill that owned the work was not discovered, so no `skill-update` is proposed.
+- **Phase 11:** the self-check was not run, because no transcript was available.
+
+**Closing question** (for Proposal 1). Reply with one word:
+
+- `complete`: create the PR, review it until nothing new turns up, and merge it when every gate is green.
+- `noted`: change nothing.
+- `propose`: create the PR, review it, and leave it as a draft.

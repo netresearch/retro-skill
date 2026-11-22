@@ -59,7 +59,16 @@ reported no finding. Reports are in `responses/`, the grading in
   output; the unchanged text has no instruction to run the script at all.
 - The cases were written together with the change and are development data,
   not a held-out test.
-- The 15 ADRs read for the record format (five in
-  netresearch/agent-harness-skill, ten in netresearch/coding_agent_cli_toolset)
-  carry no `Touches` field. E8 and E1 find nothing in existing records until
-  records name their paths.
+- The candidate context of the first run predates two later edits (the audit
+  pipe in `workflow.md` and the Key Decisions wording in
+  `destination-taxonomy.md`), so its hashes match no commit. The candidate arm
+  was run again on the final text after review; see below.
+
+## Re-run on the final text
+
+After four review rounds, the three cases ran once more against the skill
+text as shipped; the context hashes in `rerun/manifest.json` match the files
+of the merged change. Same context files, same executor brief, one execution
+per case, graded by a separate agent. All three passed; two items were graded
+as close calls on wording. The reports are in `rerun/responses/`, the grading
+in `rerun/grading.txt`.

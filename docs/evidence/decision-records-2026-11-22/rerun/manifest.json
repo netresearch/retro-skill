@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "status": "prepared_not_executed",
+  "adapter_sha256": "d8686403b23975c96d3f0c1eeb9c97dee37974928eb848aea8a43f15e69a5713",
+  "target": {
+    "label": "decision-records-2026-11-22-final",
+    "execution_model": "claude-opus-5-5",
+    "resolved_model_version": null,
+    "review_model": null,
+    "judge_model": null,
+    "runtime": "Claude Code subagent",
+    "reasoning_budget": null,
+    "tool_environment": null,
+    "samples_per_arm": 1
+  },
+  "contexts": {
+    "candidate": {
+      "sha256": "e8d65592e325e8836fae26c16f91828afebcc6e39b676105a75ab625d4bc9d49",
+      "sources": [
+        {
+          "path": "SKILL.md",
+          "sha256": "3d140464984781b027e3c00dcc86b2b1857092b49c4385fb52c8522fc6c23952"
+        },
+        {
+          "path": "references/workflow.md",
+          "sha256": "4803eaea9221edf72cdb0d19ae93ae0314074d7251cf907c9bc7e9845ec1eea5"
+        },
+        {
+          "path": "references/friction-catalog.md",
+          "sha256": "70eeb96e575315ea3b72c0173908c618ac518622203a977a7d4573abe632b5b0"
+        },
+        {
+          "path": "references/classification-heuristic.md",
+          "sha256": "38b0c1070eaef7999e6d678a1b9a95253d4e6f6a8402a84160208259773b25fe"
+        },
+        {
+          "path": "references/destination-taxonomy.md",
+          "sha256": "f1f1f1a4cbcef81eb572bbd4cd43e192c30159ac96eef100c86db9e7b380f017"
+        },
+        {
+          "path": "references/project-harness-inspection.md",
+          "sha256": "f7ff3d49932a76ff3b89d1bc9e0b5a8628175f86103f61f0cbdfacae6923c2cc"
+        },
+        {
+          "path": "references/promote-mode.md",
+          "sha256": "ecdc34fe297f3c1c5fd109e2d7435f1ea6b6f8ae2e67ab3586e7e3efab9e9361"
+        },
+        {
+          "path": "references/learning-contract.md",
+          "sha256": "e67f45ceb441e28e174ec10ac97dccebc82158e1dd682dcd3794dd01d5c4a97b"
+        }
+      ]
+    }
+  },
+  "cases": [
+    {
+      "id": "decision-policy-undefined",
+      "source_sha256": "3f45b24b2e057572d63f25fd15f4537866089204fefcd3da2fe7d0fd4268cb7d",
+      "fixture": null,
+      "candidate_path": "execution/decision-policy-undefined",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "a6a8c3e97a03330ebaa513b08c342e1c821f9e8910bfca56b59e61c673bfad49"
+        }
+      ]
+    },
+    {
+      "id": "decision-record-crossed",
+      "source_sha256": "d7882e7b4b59a71160a93c7e264d91b33ac203ddd493742589b9dddf6aafbafc",
+      "fixture": null,
+      "candidate_path": "execution/decision-record-crossed",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "aab9b26a7d6afe95465ef4d6e4c90306944f5fbcb3d387402ed628eea05bda10"
+        }
+      ]
+    },
+    {
+      "id": "decision-record-superseded-with-reason",
+      "source_sha256": "7491275f7cd598c5fa17ff44f8dc34c239f0c6dce2f7cff8583e49c838a02ee0",
+      "fixture": null,
+      "candidate_path": "execution/decision-record-superseded-with-reason",
+      "baseline_path": null,
+      "inputs": [
+        {
+          "path": "prompt.txt",
+          "sha256": "deb08a115c57bf6a8e3443688c1a51e72c6435617b290f22003b97a9e9b475da"
+        }
+      ]
+    }
+  ],
+  "shared_runner": {
+    "executes_tools": false,
+    "model_configuration": "Read effective models from the selected runner's result provenance; preparation does not configure that runner."
+  }
+}

@@ -1,0 +1,32 @@
+**Retro: Sweep of the service-repository session (retry cap)**
+
+**Scope.** The task was to cap HTTP retries. `max_retries = 4` is set in `src/client.py` and you approved it. I ran `check-decision-records.py --repo . --changed-file src/client.py`. It reported policy status `undefined` and one finding, E7.
+
+**Finding 1: the project has no rule for where decisions are kept (E7 decision_policy_undefined)**
+- Evidence: the root `AGENTS.md` lists commands and a file map but says nothing about decision records. There is no `docs/adr/` or similar directory. The script reported E7.
+- Destination: `project-rule`, a declaration line in the Key Decisions section of the root `AGENTS.md`. It takes one of two forms:
+  - `**ADRs:** yes — <directory>`
+  - `**ADRs:** no — <where decisions are recorded instead>`
+- Retro does not choose between them. The project owner decides yes or no. The described facts don't say who owns the project. I would ask: "Who owns this repository's conventions, and does the project keep ADRs (yes, and in which directory) or record decisions somewhere else (no, and where)?"
+- The fallback route (a harness check that fails when the declaration is missing) does not apply. Nothing shows that a declaration existed and was lost.
+
+**Finding 2: the retry-cap decision exists only in a chat reply (B21, a reusable decision)**
+- Evidence: the final reply says 4 was chosen and 10 was ruled out. With the configured backoff, 10 retries could block one call for over an hour. You approved the change. That reasoning appears in no repository file.
+- Why it matters: a later session that raises the cap can't see why 10 was rejected. It could repeat the analysis or bring back the hour-long block.
+- What I searched: the root `AGENTS.md`, and the repository for an ADR directory (none). I did not search a tracker or wiki, so whether the decision is recorded elsewhere is unknown, not absent.
+- Destination: `project-rule`, a decision record anchored with `**Touches:** src/client.py` so that a later change to that file shows up as an E1 candidate. It is blocked on Finding 1: with no declaration, retro chooses no place. Draft text, held until the owner decides:
+  > **HTTP retry cap is 4.** 10 was ruled out because, with the configured backoff, one call could block for over an hour.
+  > **Touches:** `src/client.py`
+
+**Glad.** The agent named the alternative it rejected and the reason in its reply. That made the decision recordable in the first place.
+
+**Deviations.** The situation describes no output from these phases, so I can't report on them:
+- Phase 1 (`detect-mechanical.py`, `collect-review-findings.py`)
+- Phase 3 (prior attempts)
+- Phase 4 (`find-org-skills.py`, harness inspection beyond `AGENTS.md`)
+- Phase 6 (evals)
+- Phase 11 (self-check): unknown, not "nothing found".
+
+**Open decisions**
+1. For the project owner (not decided by retro): ADRs yes or no, and where.
+2. For you, covering both proposals: `complete` (PR with the declaration line, plus the decision record once the owner's answer names the place, reviewed until clean, then merged), `propose` (the same, left as a draft) or `noted` (nothing is written)?
