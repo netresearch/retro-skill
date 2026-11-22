@@ -1620,7 +1620,9 @@ def _items_from_args(
 def _scan_cutoff(parser: argparse.ArgumentParser, args) -> datetime | None:
     """`--scan-since` as a time; a parser error when unreadable or when there
     is no transcript to bound."""
-    if not args.scan_since:
+    # `is None`: an empty value is given, not omitted, and must not widen the
+    # scan to the whole session.
+    if args.scan_since is None:
         return None
     cutoff = parse_time(args.scan_since)
     if cutoff is None:

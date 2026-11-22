@@ -5,7 +5,7 @@
 
 **Status:** Accepted
 **Date:** 2026-11-22
-**Touches:** `skills/retro/scripts/collect-review-findings.py`, `skills/retro/references/workflow.md`
+**Touches:** `skills/retro/scripts/collect-review-findings.py`, `skills/retro/scripts/derive-session-scope.py`, `skills/retro/references/workflow.md`
 
 ## Context
 

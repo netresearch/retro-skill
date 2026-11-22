@@ -3415,6 +3415,8 @@ class ScanSinceTest(unittest.TestCase):
         for argv in (
             ["x", "--ref", "NRS-1", "--scan-since", self.CUT],
             ["x", "--transcript-file", "t.jsonl", "--scan-since", "30.09.2026"],
+            # Given but empty is not omitted: it would read the whole session.
+            ["x", "--transcript-file", "t.jsonl", "--scan-since", ""],
         ):
             with (
                 self.subTest(argv=argv),
