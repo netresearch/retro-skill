@@ -171,6 +171,13 @@ class PolicyTest(unittest.TestCase):
         p = self.repo.report()["policy"]
         self.assertEqual((p["status"], p["adr_dir"]), ("yes", "docs/über/"))
 
+    def test_link_target_survives_a_code_span_across_a_line(self):
+        self.repo.write("docs/adr/AGENTS.md", "")
+        for tail in ("", "See `a\nb`.\n"):
+            self.repo.write("AGENTS.md", "ADRs: yes — [records](docs/adr/)\n" + tail)
+            p = self.repo.report()["policy"]
+            self.assertEqual((p["status"], p["adr_dir"]), ("yes", "docs/adr/"))
+
     def test_fence_with_info_string_does_not_close_a_fence(self):
         self.repo.write(
             "AGENTS.md",

@@ -123,6 +123,7 @@ def _lines(inline: Token) -> list[Line]:
     raw = inline.content.split("\n")
     groups: list[tuple[list[str], list[str]]] = [([], [])]
     codes: list[str] = []
+    links: list[tuple[str, str]] = []
     for child in inline.children or []:
         if child.type in ("softbreak", "hardbreak"):
             groups.append(([], []))
@@ -130,15 +131,21 @@ def _lines(inline: Token) -> list[Line]:
             groups[-1][0].append(child.content)
             codes.append(child.content)
         elif child.type == "link_open":
-            groups[-1][1].append(unquote(str(child.attrs.get("href", ""))))
+            href = str(child.attrs.get("href", ""))
+            groups[-1][1].append(unquote(href))
+            links.append((href, unquote(href)))
     if len(groups) != len(raw):
-        # A code span runs across a line break: give each line the spans
-        # written whole on it, and no link targets.
-        groups = [([c for c in codes if f"`{c}`" in r], []) for r in raw]
-    return [
-        (r.strip(), c, links, r[:1] in (" ", "\t"))
-        for r, (c, links) in zip(raw, groups)
-    ]
+        # A code span runs across a line break, so the breaks no longer
+        # number the lines: give each line the spans and link targets
+        # written whole on it.
+        groups = [
+            (
+                [c for c in codes if f"`{c}`" in r],
+                [u for h, u in links if f"]({h}" in r or f"]({u}" in r],
+            )
+            for r in raw
+        ]
+    return [(r.strip(), c, ls, r[:1] in (" ", "\t")) for r, (c, ls) in zip(raw, groups)]
 
 
 def _inside(repo: Path, rel: str) -> Path | None:
