@@ -1,0 +1,69 @@
+{
+  "report": {
+    "script": "check-decision-records.py",
+    "agents_md": "AGENTS.md",
+    "policy": {
+      "status": "yes",
+      "adr_dir": "docs/adr/",
+      "alternative": null,
+      "lines": [
+        60
+      ],
+      "problems": []
+    },
+    "summary": {
+      "adr_records": 1,
+      "anchored_records": 1,
+      "unanchored_adr_records": 0,
+      "records_with_missing_anchors": 1,
+      "changed_files": 0
+    },
+    "records": [
+      {
+        "path": "docs/adr/ADR-001-decision-records.md",
+        "kind": "adr",
+        "title": "ADR-001: Declare decision records in AGENTS.md and anchor them by path",
+        "status": "Accepted",
+        "touches": [
+          "skills/retro/scripts/check-decision-records.py",
+          "skills/retro/references/destination-taxonomy.md",
+          "AGENTS.md"
+        ],
+        "active": true,
+        "missing": [
+          "skills/retro/scripts/check-decision-records.py",
+          "skills/retro/references/destination-taxonomy.md"
+        ],
+        "literal": [
+          "AGENTS.md"
+        ]
+      }
+    ],
+    "changed_hits": [],
+    "ignored_changed_files": [],
+    "findings_total": 1,
+    "findings": [
+      {
+        "signal": "E8",
+        "name": "decision_anchor_missing",
+        "record": "docs/adr/ADR-001-decision-records.md",
+        "title": "ADR-001: Declare decision records in AGENTS.md and anchor them by path",
+        "missing": [
+          "skills/retro/scripts/check-decision-records.py",
+          "skills/retro/references/destination-taxonomy.md"
+        ]
+      }
+    ]
+  },
+  "records": {
+    "docs/adr/ADR-001-decision-records.md": {
+      "title": "ADR-001: Declare decision records in AGENTS.md and anchor them by path",
+      "status": "Accepted",
+      "touches": [
+        "skills/retro/scripts/check-decision-records.py",
+        "skills/retro/references/destination-taxonomy.md",
+        "AGENTS.md"
+      ]
+    }
+  }
+}

@@ -1,0 +1,58 @@
+{
+  "report": {
+    "script": "check-decision-records.py",
+    "agents_md": "AGENTS.md",
+    "policy": {
+      "status": "undefined",
+      "adr_dir": null,
+      "alternative": null,
+      "lines": [],
+      "problems": [
+        "AGENTS.md does not say whether the project keeps ADRs"
+      ]
+    },
+    "summary": {
+      "adr_records": 0,
+      "anchored_records": 0,
+      "unanchored_adr_records": 0,
+      "records_with_missing_anchors": 0,
+      "changed_files": 0
+    },
+    "records": [],
+    "changed_hits": [],
+    "ignored_changed_files": [],
+    "findings_total": 1,
+    "findings": [
+      {
+        "signal": "E7",
+        "name": "decision_policy_undefined",
+        "status": "undefined",
+        "problems": [
+          "AGENTS.md does not say whether the project keeps ADRs"
+        ]
+      }
+    ]
+  },
+  "records": {
+    "docs/adr/0001-frontend-stack-without-a-node-build.md": {
+      "title": "1. Frontend stack without a Node build step",
+      "status": "Accepted. Implemented in the UI revamp, Phase 1 slices 1–8.",
+      "touches": []
+    },
+    "docs/adr/0002-command-first-information-architecture.md": {
+      "title": "2. Command-first information architecture",
+      "status": "Accepted. Implemented in the UI revamp, Phase 1.",
+      "touches": []
+    },
+    "docs/adr/0003-strict-csp-without-unsafe-inline-or-unsafe-eval.md": {
+      "title": "3. Strict CSP without unsafe-inline or unsafe-eval",
+      "status": "Accepted. Enforced by the helmet middleware in `internal/web/server.go`.",
+      "touches": []
+    },
+    "docs/adr/0004-wcag-aaa-target-with-text-equivalents.md": {
+      "title": "4. WCAG 2.2 AAA target, with a text equivalent for every graphical view",
+      "status": "Accepted. Enforced in CI by `internal/web/contrast_test.go` and the axe-core pass in",
+      "touches": []
+    }
+  }
+}
