@@ -209,6 +209,9 @@ Three checks run at Phase 7, before a note enters a proposal:
   enters a proposal, and know which of two kinds of claim it makes:
   - **Existence** — a path, flag, endpoint or version. Check that it still
     exists.
+    When the note becomes a project rule or a decision about specific code,
+    give the written rule a `**Touches:**` field, so that the existence check
+    repeats mechanically later (E8, `check-decision-records.py`).
   - **State** — something is still open, not yet done, unreleased, waiting on
     someone. This kind turns false the moment the thing happens, without a
     word of the note changing, and an existence check passes it. The scanner

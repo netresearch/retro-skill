@@ -70,6 +70,9 @@ failure; a hypothesis remains a hypothesis. A justified no-op is valid.
 | **C3** memory drift | `skill-update` (skill should reference memory; also the signal `/retro promote` emits per stock memory file) | `project-rule`/`personal-rule` (LLM picks from `current_location` + content) |
 | **C4** skill update ineffective | `skill-update` (previous fix was wrong) | — |
 | **C6** written rule violated repeatedly | `harness-artefact` (hook/checkpoint that makes the violation impossible) — but where the finding says `gate_observed: true` the artefact exists, and the route is `skill-update` against the detector or the gate, never a second gate | never another prose rule — that is what already failed |
+| **E1** decision record crossed | `harness-artefact` in that repository: a CI check of the change against the records on the target branch, with `agent-harness-skill` as owner, when the record was reachable and the change still crossed it unknowingly | `project-rule` linking the record from `AGENTS.md` when the session could not reach it / a new record that supersedes the old one when the change was deliberate and its reason is stated (an accepted record is never edited) / no finding when the change agrees with the decision |
+| **E7** decision-record policy undefined | `project-rule`: propose the declaration line for the root `AGENTS.md` and name the project owner, who decides yes or no; retro never picks a place for the decisions | `harness-artefact` (a check that fails on a missing declaration) when a declaration existed and was lost |
+| **E8** decision anchor gone | `project-rule`: a new record that supersedes the old one, or a corrected `**Touches:**` path when only the code moved (an `AGENTS.md` rule may be edited; an accepted ADR is superseded) | retire the rule when the decision no longer applies |
 
 ## Routing — authority first, then enforceability, then reach
 

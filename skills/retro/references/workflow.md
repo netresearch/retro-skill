@@ -122,6 +122,12 @@ read every transcript in the window, which is why they belong here and not in
 the per-session sweep. Read the sessions a hit names before calling it a
 finding.
 
+With `--scope project` or `--scope repo`, also run
+`scripts/check-decision-records.py --repo <repo>` for the declaration (E7) and
+the anchors that are gone (E8). Pipe the paths changed in the audit window into
+it to list the records those changes crossed (E1 candidates):
+`git log --since=<date> --name-only --format= | uv run scripts/check-decision-records.py --repo <repo> --changed-files-from -`.
+
 With `--scope skill`, run the mechanical drift pre-pass first:
 `scripts/check-upstream-sources.py --skill-dir <repo>` probes every
 `[upstream]`-labelled link and every checkpoint `source:` URL (dead links →

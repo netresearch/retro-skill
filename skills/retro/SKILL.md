@@ -91,7 +91,7 @@ decisions. Process critique grants no new authority.
    leads at the original and use the evidence to keep, revise or retire the
    earlier approach. Follow `references/prior-attempts.md`. Other cross-session
    enrichment is optional (`scripts/scan-cross-session.py`).
-4. Discover skills — always run `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py`, also when the owning skill seems obvious (opening it by path is a skip that needs a deviation line) — and the repo's harness (`project-harness-inspection.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
+4. Discover skills — always run `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py`, also when the owning skill seems obvious (opening it by path is a skip that needs a deviation line) — and the repo's harness (`project-harness-inspection.md`). When the session changed files in a repository or a decision will be written there, run `uv run ${CLAUDE_SKILL_DIR}/scripts/check-decision-records.py --repo <repo>` with each changed path as `--changed-file` (E1, E7, E8 in `friction-catalog.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
 5. Classify (`classification-heuristic.md`) — authority and rule purpose before
    enforcement and reach; consider simplification, tools or environment changes;
    never project-local memory.
