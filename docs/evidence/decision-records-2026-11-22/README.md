@@ -71,9 +71,9 @@ returned.
 
 ## Re-run on the final text
 
-After four review rounds, the three cases ran once more against the skill
+After the review rounds, the three cases ran once more against the skill
 text as shipped; the context hashes in `rerun/manifest.json` match the files
 of this change at its final commit. Same context files, same executor brief, one execution
-per case, graded by a separate agent. All three passed; two items, in two
-different reports, were graded as close calls. The reports are in `rerun/responses/`, the grading
+per case, graded by a separate agent. All three passed, with no item graded as a
+close call. The reports are in `rerun/responses/`, the grading
 in `rerun/grading.txt`.

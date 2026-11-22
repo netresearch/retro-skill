@@ -1,32 +1,35 @@
-**Retro: Sweep of the service-repository session (retry cap)**
+I could not run any of the retro scripts. The skill text and the situation were the only inputs, so this report covers only what the session description supports.
 
-**Scope.** The task was to cap HTTP retries. `max_retries = 4` is set in `src/client.py` and you approved it. I ran `check-decision-records.py --repo . --changed-file src/client.py`. It reported policy status `undefined` and one finding, E7.
+**Finding 1: the retry decision is recorded only in the chat.**
+- **Kind:** decision. The user approved `max_retries = 4` in `src/client.py`. The agent ruled out 10 because one call could then block for more than an hour with the configured backoff.
+- **Evidence:** the agent's final reply and the user's approval. The "over an hour" figure is the agent's own calculation from the backoff settings. Nothing in the situation shows that it was checked, so I treat it as unverified.
+- **Problem:** the code now holds the 4, but the reason for it and the rejected 10 exist only in the transcript. A later session that raises the limit will not find the reason.
+- **Destination:** `project-rule`, as a decision record. Where it goes depends on the repository's declaration, and that declaration is missing (Finding 2). So I write it nowhere for now. The text is ready for whichever place the owner picks:
 
-**Finding 1: the project has no rule for where decisions are kept (E7 decision_policy_undefined)**
-- Evidence: the root `AGENTS.md` lists commands and a file map but says nothing about decision records. There is no `docs/adr/` or similar directory. The script reported E7.
-- Destination: `project-rule`, a declaration line in the Key Decisions section of the root `AGENTS.md`. It takes one of two forms:
+  ```markdown
+  ## HTTP retry cap is 4
+  Retries are capped at 4. 10 was ruled out because, with the configured backoff, one call could block for over an hour (agent's calculation, not re-measured).
+  **Touches:** `src/client.py`
+  ```
+
+**Finding 2: E7, the repository has no decision-record policy.**
+- **Evidence:** `check-decision-records.py --repo . --changed-file src/client.py` printed policy status `undefined` and one finding, E7 `decision_policy_undefined`. The root `AGENTS.md` lists commands and a file map but says nothing about decision records. There is no `docs/adr/` or similar directory.
+- **Destination:** `project-rule`. The fix is one line under Key Decisions in the root `AGENTS.md`, in one of two forms:
   - `**ADRs:** yes — <directory>`
   - `**ADRs:** no — <where decisions are recorded instead>`
-- Retro does not choose between them. The project owner decides yes or no. The described facts don't say who owns the project. I would ask: "Who owns this repository's conventions, and does the project keep ADRs (yes, and in which directory) or record decisions somewhere else (no, and where)?"
-- The fallback route (a harness check that fails when the declaration is missing) does not apply. Nothing shows that a declaration existed and was lost.
+- **Who decides:** the project owner, not retro. The skill forbids retro from choosing a place for decisions. The owner is not named in the situation.
+- **What I would ask:** "Who owns this repository's conventions? Should the project keep ADRs, and if so in which directory? If not, where should decisions like the retry cap go?" Once that is answered, the record from Finding 1 goes to the declared place.
 
-**Finding 2: the retry-cap decision exists only in a chat reply (B21, a reusable decision)**
-- Evidence: the final reply says 4 was chosen and 10 was ruled out. With the configured backoff, 10 retries could block one call for over an hour. You approved the change. That reasoning appears in no repository file.
-- Why it matters: a later session that raises the cap can't see why 10 was rejected. It could repeat the analysis or bring back the hour-long block.
-- What I searched: the root `AGENTS.md`, and the repository for an ADR directory (none). I did not search a tracker or wiki, so whether the decision is recorded elsewhere is unknown, not absent.
-- Destination: `project-rule`, a decision record anchored with `**Touches:** src/client.py` so that a later change to that file shows up as an E1 candidate. It is blocked on Finding 1: with no declaration, retro chooses no place. Draft text, held until the owner decides:
-  > **HTTP retry cap is 4.** 10 was ruled out because, with the configured backoff, one call could block for over an hour.
-  > **Touches:** `src/client.py`
+**Glad: what worked**
+- The agent wrote down the alternative it rejected and why, not just the value it chose. That is what makes the decision recordable now.
+- Running the decision-record check against the changed path brought the gap to light instead of letting the decision vanish.
 
-**Glad.** The agent named the alternative it rejected and the reason in its reply. That made the decision recordable in the first place.
+**Deviations**
+- Phase 1 (mechanical pre-pass, review findings): not run here, so no tool or review signals were examined.
+- Phase 3 (earlier attempts): not searched, so whether retries were capped before is unknown.
+- Phase 4 (skill discovery): `find-org-skills.py` was not run, so no owning skill was checked. The decision-record check is the only part of this phase that ran.
+- Phase 6 (evals): not checked, because no skill was matched.
+- Phase 11 (self-check): `detect-mechanical.py --since-command retro` was not run. Of the self-check questions, only the reading of the invocation was answered: `/retro` with no argument is a Sweep. No defect in retro itself was found.
 
-**Deviations.** The situation describes no output from these phases, so I can't report on them:
-- Phase 1 (`detect-mechanical.py`, `collect-review-findings.py`)
-- Phase 3 (prior attempts)
-- Phase 4 (`find-org-skills.py`, harness inspection beyond `AGENTS.md`)
-- Phase 6 (evals)
-- Phase 11 (self-check): unknown, not "nothing found".
-
-**Open decisions**
-1. For the project owner (not decided by retro): ADRs yes or no, and where.
-2. For you, covering both proposals: `complete` (PR with the declaration line, plus the decision record once the owner's answer names the place, reviewed until clean, then merged), `propose` (the same, left as a draft) or `noted` (nothing is written)?
+**Closing question**
+There is nothing open to carry out yet. Both proposals wait on the project owner's ADR decision. When the owner has decided, the run ends with the one-word question: `complete`, `noted` or `propose`.

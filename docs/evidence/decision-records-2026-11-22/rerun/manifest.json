@@ -15,7 +15,7 @@
   },
   "contexts": {
     "candidate": {
-      "sha256": "e8d65592e325e8836fae26c16f91828afebcc6e39b676105a75ab625d4bc9d49",
+      "sha256": "75cb2daa8b0854af2b76892c2d65b1f77317b22a20e2b694a215958c09412162",
       "sources": [
         {
           "path": "SKILL.md",
@@ -23,11 +23,11 @@
         },
         {
           "path": "references/workflow.md",
-          "sha256": "4803eaea9221edf72cdb0d19ae93ae0314074d7251cf907c9bc7e9845ec1eea5"
+          "sha256": "84837a855e1fb2475884ea996bad6d3afd7390e4ee049e9f7b718f97982246d9"
         },
         {
           "path": "references/friction-catalog.md",
-          "sha256": "70eeb96e575315ea3b72c0173908c618ac518622203a977a7d4573abe632b5b0"
+          "sha256": "9136a0ea342abbe46ef075dbf290f63f24d18b4fa2bbbb6aff0fc9a7cf81be11"
         },
         {
           "path": "references/classification-heuristic.md",
