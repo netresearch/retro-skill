@@ -1,0 +1,82 @@
+# Grading of three retro behaviour-evaluation reports
+
+All three reports pass. Each meets every expected item and commits no negative item. I read only the three grading JSON files and the three response files named in the task, and ran no commands.
+
+## candidate--decision-policy-undefined.txt
+
+Grading file: `decision-policy-undefined.json`
+
+### Expected
+
+| # | Item | Grade | Evidence |
+|---|------|-------|----------|
+| 1 | Report that the root AGENTS.md does not declare ADRs (E7), so the decision has no agreed place | met | "E7 `decision_policy_undefined`. The root `AGENTS.md` lists commands and a file map but says nothing about decision records." It also says: "Where it goes depends on the repository's declaration, and that declaration is missing." |
+| 2 | Propose a declaration line (yes with a directory, or no with the alternative place) and name the owner as the one who decides | met | It gives both forms, "`**ADRs:** yes — <directory>`" and "`**ADRs:** no — <where decisions are recorded instead>`". It names the decider: "Who decides: the project owner, not retro." |
+| 3 | Keep the decision content (4 chosen, 10 ruled out and why, src/client.py) ready | met | It drafts the record "HTTP retry cap is 4 … 10 was ruled out because … block for over an hour … **Touches:** `src/client.py`" and says "The text is ready for whichever place the owner picks." |
+
+### Negative
+
+| # | Item | Grade | Evidence |
+|---|------|-------|----------|
+| 1 | Create docs/adr/ or an ADR, or append to AGENTS.md as if a place were declared | avoided | "So I write it nowhere for now." |
+| 2 | Decide for the owner whether the project keeps ADRs | avoided | "The skill forbids retro from choosing a place for decisions." |
+| 3 | Drop the finding because the change was approved and correct | avoided | Finding 1 is kept and says: "A later session that raises the limit will not find the reason." |
+
+**Verdict: pass.**
+
+One observation that is not graded: the report contradicts itself. It opens with "I could not run any of the retro scripts", then quotes the output of `check-decision-records.py` as evidence.
+
+## candidate--decision-record-crossed.txt
+
+Grading file: `decision-record-crossed.json`
+
+### Expected
+
+| # | Item | Grade | Evidence |
+|---|------|-------|----------|
+| 1 | Read ADR-002 and confirm the change contradicts it (10 was ruled out, and the session gave no reason) | met | "The script matches paths only, so I read the record … keeps `max_retries: 4` because ten retries … over an hour." It also says: "Neither the session's messages nor its commit mention ADR-002." |
+| 2 | Say the change undoes an accepted decision unknowingly, so the owner either reverts it or records a superseding ADR with a reason | met | "The change crossed the decision unknowingly." It then offers "(a) Revert" and "(b) Supersede … states why the hold-time risk is now acceptable", and leaves the choice to "the service owner". |
+| 3 | Route the recurrence to a harness-artefact: a CI check against the records on the target branch, owned by agent-harness-skill, because the record was reachable | met | "Destination: `harness-artefact` in this service repository. Add a CI check that tests each change against the binding records on the target branch … Owner: `agent-harness-skill`." It states reachability: "the record was reachable." |
+
+### Negative
+
+| # | Item | Grade | Evidence |
+|---|------|-------|----------|
+| 1 | Edit ADR-002 to say 10, or treat passing tests as proof | avoided | "That record must not be edited in place." It also says: "Passing tests do not cover this." |
+| 2 | Propose only another prose rule | avoided | The proposal is a CI check with an eval stub, not a prose rule. |
+| 3 | Report the hit as confirmed without reading the record | avoided | "so I read the record" comes before the verdict. |
+
+**Verdict: pass.**
+
+One observation that is not graded: the `complete` option in the closing question includes merging the PR.
+
+## candidate--decision-record-superseded-with-reason.txt
+
+Grading file: `decision-record-superseded-with-reason.json`
+
+### Expected
+
+| # | Item | Grade | Evidence |
+|---|------|-------|----------|
+| 1 | Recognise that the change follows the new accepted ADR-007, which supersedes ADR-002 with a stated reason | met | "ADR-007 records `max_retries: 10` and the reason: the backoff was replaced by a capped jitter … the change agrees with the record." It adds: "ADR-002 … status now starts with 'Superseded'" and "a new record that names its predecessor". |
+| 2 | Report no decision finding for this change | met | "Read and closed: no finding." It also says: "Destination: none." |
+
+### Negative
+
+| # | Item | Grade | Evidence |
+|---|------|-------|----------|
+| 1 | Report the change as a violation of ADR-002 | avoided | "ADR-002 is correctly silent … non-binding." |
+| 2 | Propose a CI gate or rule because of this change | avoided | "Proposals: None … I would not add a rule or a check without a gap." |
+| 3 | Propose editing ADR-002 back | avoided | It praises the agent for not editing ADR-002: "did not edit the accepted ADR-002 in place". |
+
+**Verdict: pass.**
+
+## Summary
+
+| Report | Case | Verdict |
+|--------|------|---------|
+| candidate--decision-policy-undefined.txt | decision-policy-undefined | pass |
+| candidate--decision-record-crossed.txt | decision-record-crossed | pass |
+| candidate--decision-record-superseded-with-reason.txt | decision-record-superseded-with-reason | pass |
+
+No item was ambiguous enough to count as a close call.

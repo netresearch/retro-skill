@@ -502,20 +502,41 @@ and is in fact the finish line waiting on a cutover.
 
 D mode is best for **monthly retros over a 30-day window**, not real-time.
 
-## Schicht E — Constitutional (Audit mode only)
+## Schicht E — Constitutional (Audit mode; E1, E7 and E8 also in a sweep)
 
 Cross-session architectural patterns. Detectable only with longer horizon (weeks/months). Output class is "architectural finding", not "friction finding" — different severity logic, different destinations (often `project-rule` + ADR update, not `skill-update`).
 
 | # | Signal | Detection | Hint at |
 |---|---|---|---|
-| E1 | ADR violation pattern | Active ADRs declare X; recent N sessions violated X | Design erosion |
+| E1 | ADR violation pattern | An accepted decision record — an ADR, or an `AGENTS.md` rule with a `**Touches:**` field — anchors a path that a change crossed. `check-decision-records.py --changed-file …` lists the records whose anchors the change lies under. It matches paths only, so each hit is a candidate until the reading pass shows that the change contradicts the decision | Design erosion, or a decision the agent could not reach |
 | E2 | AGENTS.md rule compliance trend | Rules in `AGENTS.md` (or legacy `feedback_*.md` memories) exist but sessions repeatedly violate them | Rules aren't reaching the agent |
 | E3 | Test coverage trend | Coverage over recent commits trending down | Regression in quality discipline |
 | E4 | Skill-inventory drift | Skill count growing without corresponding scope; redundant skills present | Bloat / fragmentation |
 | E5 | Dependency staleness trend | Outdated-tool warnings (A16) recurring across sessions | Library maintenance gap |
 | E6 | Convention divergence | Style/naming patterns diverging across recent commits | Onboarding or review gap |
+| E7 | Decision-record policy undefined | The root `AGENTS.md` does not say whether the project keeps ADRs, or says it inconsistently: the declared directory is missing or has no `AGENTS.md` of its own, `no` names no other place for decisions, or two lines disagree (`check-decision-records.py`) | Decisions land in no agreed place, so a later session cannot find them |
+| E8 | Decision anchor gone | A binding record names a path in its `**Touches:**` field that no longer exists (`check-decision-records.py`) | The decision may describe code that moved or went; a missing path does not prove the decision wrong |
 
 E mode is best for **monthly or quarterly reviews**, with tech-lead-level actor and ADR-style output (not per-developer per-session).
+
+E1, E7 and E8 also run in a sweep when the session changed files in a
+repository, or when retro is about to write a decision there: run
+`check-decision-records.py --repo <repo>` with each changed path as
+`--changed-file`. The changed paths are the session's committed and
+uncommitted ones: `git -C <repo> diff --name-only <base>` (commits since the
+base plus the working tree) and `git -C <repo> ls-files --others
+--exclude-standard` (new files). Each run reports E7 when the declaration is
+undefined or inconsistent; the project owner decides yes or no, never retro. A record
+without a `**Touches:**` field is reported as unanchored, not as a finding.
+A record binds unless its status starts with superseded, deprecated, rejected,
+withdrawn, retired, proposed or draft, or their German forms (abgelöst,
+ersetzt, verworfen, zurückgezogen, vorgeschlagen, Entwurf); E1 and E8 consider
+binding records only. The script reads the records in the declared directory
+and the rules with a `**Touches:**` field in every `AGENTS.md` of the
+repository; anchors in other linked documents are not checked.
+The script compares paths only. Names in a record's prose are not matched
+against the code, because that approach flagged 9 false hits in 10 when
+Trail-Code measured it (trailhq/Trail-Code, learning `l-3cfeb3b1`).
 
 ## Future directions (not implemented)
 

@@ -1,0 +1,36 @@
+Retro report (Sweep, `/retro`)
+
+**Result: no finding and no proposal. The session handled the retry-limit decision the way the decision-record rules ask, so nothing in the session needs fixing.**
+
+**Decision records (E7, E1, E8)**
+
+- **E7 (whether the project keeps ADRs):** no finding. The root `AGENTS.md` says `**ADRs:** yes — docs/adr/`. The checker did not report E7, and it reports E7 every time it runs. I cannot check whether `docs/adr/` has its own `AGENTS.md`, because I have no access to the repository. The checker's silence on E7 points to yes.
+- **E1 (a change crossed an accepted decision):** no finding. The checker reported one candidate, ADR-007, for `config/retry.yaml`. E1 compares paths only, so I read the change against the decision. ADR-007 decides 10 retries because a capped jitter of at most 30 seconds replaced the backoff, and the change sets `max_retries: 10`. The change matches the decision, and the skill says a matching change is not a finding. ADR-002 was not reported because it is now `Superseded by ADR-007`.
+- **E8 (a decision's path no longer exists):** no finding. `config/retry.yaml` still exists.
+
+**What worked (Glad)**
+
+The decision changed on purpose, for a stated reason. The session followed every step the skill requires for that case:
+- It did not rewrite the accepted record ADR-002. It set ADR-002's status to superseded instead.
+- It added ADR-007 with the reason (the backoff was replaced by a capped jitter) and the same `**Touches:**` path.
+- The commit message names both records.
+- It ran the checker on the changed path.
+
+This is the procedure the skill already prescribes, so it is not a new reusable learning. I propose no `skill-update` and no `project-rule`.
+
+**Observation, no proposal**
+
+The only E1 candidate was ADR-007, the record this same change created. That is expected, because the new record anchors the path the change touched. Even so, it means a correct supersession still produces one E1 candidate, and the reading pass has to dismiss it. This is one case, and the candidate was easy to dismiss. That is not enough evidence to change `check-decision-records.py`. If later sweeps show the same pattern, the change to consider is a note in the output: "record added in this diff".
+
+**Deviations from the prescribed phases**
+
+- **Phase 1 (mechanical pre-pass):** I cannot say whether `detect-mechanical.py` or `collect-review-findings.py` ran. The situation does not describe them, so friction from the transcript and from review comments is unknown. It is not zero.
+- **Phase 3 (earlier attempts):** not run. Nothing came up again, and no earlier measure was revisited.
+- **Phase 4 (skill discovery):** I cannot confirm that `find-org-skills.py` ran or that the repository's harness was inspected. Only `check-decision-records.py` is described.
+- **Phase 6 (evals):** skipped, because no proposal exists.
+- **Phase 9 (writing changes):** nothing to write.
+- **Phase 11 (retro self-check):** I would run `detect-mechanical.py --since-command retro`. Its result is not described, so the only self-check finding is the observation above.
+
+**Closing question**
+
+None. No proposal is open, so there is nothing to decide with `complete`, `noted` or `propose`.

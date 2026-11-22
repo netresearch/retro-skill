@@ -267,6 +267,7 @@ retro-skill/
 │       ├── find-org-skills.py        # runtime skill discovery (catalogue + installed)
 │       ├── find-installed-skills.sh  # installed-only detail (paths, remotes)
 │       ├── check-upstream-sources.py # canonical-source drift check
+│       ├── check-decision-records.py # ADR declaration and decision anchors (E1, E7, E8)
 │       ├── materialize-pr.sh         # skill-update PR helper
 │       ├── check-eval-samples.py     # refuses a new or tightened eval without samples
 │       └── validate-evals.py         # validates retro's own evals (RT-40..42)

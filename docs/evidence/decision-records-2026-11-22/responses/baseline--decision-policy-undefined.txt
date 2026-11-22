@@ -1,0 +1,29 @@
+Retro report: Sweep over the HTTP retry-cap session
+
+**Result:** One finding about where decisions get recorded, and one gap in the retro skill itself. The decision on the retry cap is sound, but only the chat holds its reasoning. Where such reasoning belongs in this repository is a decision for the repository's maintainers, not for me.
+
+**What went well**
+The agent did more than set `max_retries = 4` in `src/client.py`. It also named the alternative it rejected (10) and gave the reason: with the configured backoff, one call could block for over an hour. The user approved the change on that basis. Naming the rejected value and its cost is a habit worth keeping.
+Limit: nothing described shows that the "over an hour" figure was calculated from the backoff configuration. It stays a hypothesis until someone checks it.
+
+**Finding 1: the reason for the decision is only in the chat (E7 `decision_policy_undefined`)**
+- Evidence: `check-decision-records.py --repo . --changed-file src/client.py` reported policy status `undefined` and finding E7. The root `AGENTS.md` lists commands and a file map but says nothing about decision records. The repository has no `docs/adr/` or similar directory. The reason for 4 and against 10 appears only in the agent's final reply.
+- Effect: a later agent or developer who sees `4` cannot tell that 10 was rejected, or why. They may raise it again.
+- Who owns this: two separate questions.
+  1. **This decision.** It belongs with the change. Proposal (`canonical-source`, inside the session's mandate): put one sentence in the commit or PR body, or a short comment next to `max_retries`, saying "10 rejected: worst-case blocking above 1 h with current backoff". That sentence needs the backoff figure checked first.
+  2. **Where decisions go in general** (ADR directory, PR body or ticket). That is a team rule, and the repository's maintainers decide it. I am not creating `docs/adr/` or an `AGENTS.md` rule on my own. Once they decide, a `project-rule` entry in `AGENTS.md` makes the place findable for agents.
+- Question for the maintainers: "Where should a rejected alternative and its reason be recorded in this repo: ADR directory, PR description, or the tracker?"
+
+**Finding 2 (self-check): E7 is not in the loaded skill**
+- Evidence: the loaded friction catalogue stops at E6 and lists Schicht E as Audit mode only. There, `check-decision-records.py` is not part of any phase. In this Sweep, the script still emitted E7. That leaves the signal without a documented meaning, routing or authority rule.
+- Destination: `skill-update` against the retro skill. Document E7 and `check-decision-records.py` in `friction-catalog.md` and in the Sweep pipeline. Route E7 by Axis 0 (case decision → the change or its ticket; policy → the repository owner), with an eval stub based on this case.
+
+**Deviation lines**
+- Phases 1, 3 and 4: the description says nothing about `detect-mechanical.py`, the prior-attempt search or `find-org-skills.py`. Whether they ran is unknown. Recurrence and any second owning skill are therefore unknown.
+- Phase 6: no evals for a matching skill are described.
+
+**Closing question**
+Should the open proposals be carried out: the decision note in the commit or PR, and the retro-skill update for E7? The policy question goes to the repository's maintainers either way.
+- `complete`: create the PRs, review them, and merge once every gate is green.
+- `propose`: create the PRs and leave them as drafts.
+- `noted`: change nothing.

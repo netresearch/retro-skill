@@ -1,0 +1,34 @@
+## Retro: Sweep over the retry-limit session
+
+**Result:** nothing to change. The only mechanical hit, E1 naming ADR-007, is not a violation: the change matches that decision. No proposals are open, so I am not asking the closing question.
+
+### Findings
+
+**E1: decision record crossed. Read and closed: no finding.**
+- **Evidence:** `check-decision-records.py --repo . --changed-file config/retry.yaml` printed one E1 hit, naming `docs/adr/ADR-007-retry-limit-after-capped-jitter.md`. That record is Accepted and has `**Touches:** `config/retry.yaml``.
+- **Reading pass:** the script compares paths only, so a hit is a candidate until it is read. ADR-007 records `max_retries: 10` and the reason: the backoff was replaced by a capped jitter of at most 30 seconds in total. The file now says 10, so the change agrees with the record. The routing table says "no finding when the change agrees with the decision."
+- **ADR-002 is correctly silent.** Its status now starts with "Superseded", so the script treats it as non-binding. That is why it does not appear as a second hit, and this is the intended behaviour.
+- **Destination:** none.
+
+**E7: decision-record policy. Not reported.** The root `AGENTS.md` declares `**ADRs:** yes — `docs/adr/``, and the run printed no E7. I did not check separately whether `docs/adr/` has its own `AGENTS.md`. I am relying on the script reporting nothing.
+
+**E8: decision anchor gone. Not reported.** `config/retry.yaml` exists, and both records anchor that path.
+
+### Glad: what worked
+- The agent did not edit the accepted ADR-002 in place. It wrote a new record that names its predecessor, and changed only ADR-002's status line. The skill prescribes exactly this.
+- The reason for the change comes from the user's own statement about the new backoff. ADR-007 and the commit message both carry it, so a later session can follow the chain.
+- The decision to raise the limit was the user's, and the user made it in the session, so it was within the agent's mandate.
+
+This is a bounded success in one session. It is not evidence for a new rule, because the skill already states this procedure.
+
+### Proposals
+None. Required quality was met and no friction was observed. I would not add a rule or a check without a gap.
+
+### Deviations
+- **Phase 1:** the situation does not describe the `detect-mechanical.py` or `collect-review-findings.py` runs. I would run both on the transcript, found by content. Until then, the other signal classes (A/B/C) and review feedback are not covered. That means unknown, not "no findings".
+- **Phase 3:** no prior attempts were consulted, because no recurring problem or earlier fix is involved.
+- **Phase 4:** the situation does not describe a `find-org-skills.py` run, so skill discovery is not covered.
+- **Phase 6:** no evals, because no skill was matched for change.
+
+### Self-check
+Nothing found against retro itself. The E1 hit was read before it was classified. This is consistent with the skill's own note that path matching alone produces candidates, not findings.

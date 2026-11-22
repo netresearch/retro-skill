@@ -48,6 +48,7 @@ this session, not a checklist to fill in.
 | Dev environment (`.ddev`, containers, `.Build`, lockfiles) | Did the session lose time to environment shape rather than to the problem? |
 | Setup and test prerequisites | Did each agent independently discover a required service or dependency? Can the existing setup or test command expose or prepare it reliably? |
 | Tool inputs, errors and outputs | Could a validated argument, actionable error or structured result avoid repeated attempts and oversized output? |
+| Decision records | Did the session make, need or change a decision? Does the root `AGENTS.md` say whether the project keeps ADRs and where (`check-decision-records.py`, E7)? Did a changed path lie under the anchor of an accepted record (E1)? |
 | Context retention and entry points | Were decisions lost during compaction, or correct knowledge unreachable from the documented starting point? |
 | Templates (PR/MR, issue) | Did a review round ask for something a template could have prompted? |
 

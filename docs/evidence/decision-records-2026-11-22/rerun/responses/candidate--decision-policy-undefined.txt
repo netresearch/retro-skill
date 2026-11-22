@@ -1,0 +1,35 @@
+I could not run any of the retro scripts. The skill text and the situation were the only inputs, so this report covers only what the session description supports.
+
+**Finding 1: the retry decision is recorded only in the chat.**
+- **Kind:** decision. The user approved `max_retries = 4` in `src/client.py`. The agent ruled out 10 because one call could then block for more than an hour with the configured backoff.
+- **Evidence:** the agent's final reply and the user's approval. The "over an hour" figure is the agent's own calculation from the backoff settings. Nothing in the situation shows that it was checked, so I treat it as unverified.
+- **Problem:** the code now holds the 4, but the reason for it and the rejected 10 exist only in the transcript. A later session that raises the limit will not find the reason.
+- **Destination:** `project-rule`, as a decision record. Where it goes depends on the repository's declaration, and that declaration is missing (Finding 2). So I write it nowhere for now. The text is ready for whichever place the owner picks:
+
+  ```markdown
+  ## HTTP retry cap is 4
+  Retries are capped at 4. 10 was ruled out because, with the configured backoff, one call could block for over an hour (agent's calculation, not re-measured).
+  **Touches:** `src/client.py`
+  ```
+
+**Finding 2: E7, the repository has no decision-record policy.**
+- **Evidence:** `check-decision-records.py --repo . --changed-file src/client.py` printed policy status `undefined` and one finding, E7 `decision_policy_undefined`. The root `AGENTS.md` lists commands and a file map but says nothing about decision records. There is no `docs/adr/` or similar directory.
+- **Destination:** `project-rule`. The fix is one line under Key Decisions in the root `AGENTS.md`, in one of two forms:
+  - `**ADRs:** yes — <directory>`
+  - `**ADRs:** no — <where decisions are recorded instead>`
+- **Who decides:** the project owner, not retro. The skill forbids retro from choosing a place for decisions. The owner is not named in the situation.
+- **What I would ask:** "Who owns this repository's conventions? Should the project keep ADRs, and if so in which directory? If not, where should decisions like the retry cap go?" Once that is answered, the record from Finding 1 goes to the declared place.
+
+**Glad: what worked**
+- The agent wrote down the alternative it rejected and why, not just the value it chose. That is what makes the decision recordable now.
+- Running the decision-record check against the changed path brought the gap to light instead of letting the decision vanish.
+
+**Deviations**
+- Phase 1 (mechanical pre-pass, review findings): not run here, so no tool or review signals were examined.
+- Phase 3 (earlier attempts): not searched, so whether retries were capped before is unknown.
+- Phase 4 (skill discovery): `find-org-skills.py` was not run, so no owning skill was checked. The decision-record check is the only part of this phase that ran.
+- Phase 6 (evals): not checked, because no skill was matched.
+- Phase 11 (self-check): `detect-mechanical.py --since-command retro` was not run. Of the self-check questions, only the reading of the invocation was answered: `/retro` with no argument is a Sweep. No defect in retro itself was found.
+
+**Closing question**
+There is nothing open to carry out yet. Both proposals wait on the project owner's ADR decision. When the owner has decided, the run ends with the one-word question: `complete`, `noted` or `propose`.

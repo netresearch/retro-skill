@@ -26,6 +26,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/scripts/feedback-contract.py` — Validates local, tracker-neutral feedback; no discovery or execution
 - `skills/retro/scripts/scan-memory-inventory.py` — Promote-mode pre-pass over the memory backlog
 - `skills/retro/scripts/check-upstream-sources.py` — Drift check against canonical sources
+- `skills/retro/scripts/check-decision-records.py` — Reads the ADR declaration of a root `AGENTS.md` and the `Touches` anchors of decision records (E1, E7, E8)
 - `skills/retro/scripts/materialize-pr.sh` — Opens the skill-update PR against the source repo
 - `skills/retro/scripts/validate-evals.py` — Validates retro's own eval scenarios (RT-40..42)
 - `skills/retro/scripts/prepare-behavior-evals.py` — Freezes selected Markdown scenarios for native execution or the shared runner, with private grading inputs and isolated old/new fixtures
@@ -53,6 +54,10 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - No auto-merge; no continuous background hooks (except optional SessionEnd)
 - Tracker-neutral core: no implicit tracker, external CLI discovery or organization billing policy; see `skills/retro/references/feedback-contract.md`
 - A transcript adapter (`*-transcript.py`) is checked against sessions a real CLI wrote, not only hand-built rows: its docstring names the CLI versions measured, and either its tests carry a redacted excerpt of a real session or a `docs/` page records the live check, as [opencode live test](docs/opencode-live-test.md) does. Hand-built rows for one shape left every tool call of the other shapes unconverted in #168
+
+## Key Decisions
+
+- **ADRs:** yes — `docs/adr/` ([how to write one](docs/adr/AGENTS.md))
 
 ## Relationships
 

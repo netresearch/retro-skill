@@ -1,0 +1,34 @@
+**Retro: Sweep of the "flaky upstreams" session**
+
+**Finding 1: E1, decision record crossed. Accepted ADR-002 contradicted (friction, high).**
+
+- **Evidence:** `check-decision-records.py --repo . --changed-file config/retry.yaml` reported one E1 hit, `decision_record_crossed`, naming `docs/adr/ADR-002-retry-limit.md`. The script matches paths only, so I read the record. ADR-002 has `**Status:** Accepted` and `**Touches:** `config/retry.yaml``. It keeps `max_retries: 4` because ten retries with the configured backoff can hold one request for over an hour. The session raised the value from 4 to 10. The change therefore contradicts the decision, and the hit is a real finding.
+- **Reachability:** the record was reachable. The root `AGENTS.md` declares `**ADRs:** yes — `docs/adr/`` and links the directory. Neither the session's messages nor its commit mention ADR-002. The change crossed the decision unknowingly. It was not a deliberate supersession with a stated reason.
+- **Passing tests do not cover this.** The tests passed, but nothing shown checks the worst-case hold time that ADR-002 guards against. Unverified: whether any test covers that time at all.
+- **Destination:** `harness-artefact` in this service repository. Add a CI check that tests each change against the binding records on the target branch, and fails or warns when a changed path lies under an accepted record's `**Touches:**` anchor and the change does not name that record. Owner: `agent-harness-skill`. The repository's existing CI gets this check, and its local hook gets the same check in the same PR (CI/hook parity). Eval stub: a change to `config/retry.yaml` that does not name ADR-002 must fail. A control change to an unanchored file must pass.
+
+**Finding 2: the committed change itself needs a decision (open question, not mine to make).**
+
+The commit now contradicts an accepted record. That record must not be edited in place. Two ways forward:
+
+- **(a) Revert** `max_retries` to 4. If robustness is still wanted, meet it another way that respects the hour-long hold limit. That way has not been designed or measured here.
+- **(b) Supersede.** Write a new ADR that supersedes ADR-002, names it, and states why the hold-time risk is now acceptable.
+
+Choosing between them is a product or team decision for the service owner. Until it is made, the commit should not be merged as is. **ASSUMPTION:** the commit is not yet merged. The described facts do not say.
+
+**No other findings.** E7 does not fire, because the declaration is present and consistent. E8 does not fire, because the anchor path exists. No learning candidate goes beyond Finding 1.
+
+**Deviations (one line each)**
+
+- Phases 1 and 3: the results of `detect-mechanical.py`, `collect-review-findings.py` and the prior-attempts search were not part of the described facts, so they were not evaluated.
+- Phase 4: the output of `find-org-skills.py` was not available. The owner `agent-harness-skill` comes from the classification heuristic, not from a discovery run.
+- Phase 6: the matched skill's `evals/` was not read. The eval stub above is proposed only.
+- Phase 11: the self-check was not run. Nothing was found against retro itself.
+
+**Closing question**
+
+Two items are open. One is the CI check PR in the service repository (Finding 1). The other is the revert or superseding ADR (Finding 2), which goes to the service owner and is not covered by this question. How far should the proposals be carried out?
+
+- `complete`: create the PR, review and fix it until a round finds nothing new, then merge it once every gate is green.
+- `propose`: create the PR, review and fix it, and leave it as a draft for you.
+- `noted`: change nothing.
