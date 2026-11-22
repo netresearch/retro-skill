@@ -1,0 +1,57 @@
+All three reports pass. The one close call is in promotion-pr-rejected (expected item 2), where the report prepared the handoff-status update but did not apply it.
+
+## reader-and-timing-of-moved-rules: pass
+
+**Expected**
+1. **met.** Finding 1 moves the roughly 120 lines to `docs/review-guide.md` because "The review agent is configured to load `docs/review-guide.md` for every review."
+2. **met.** Finding 2 is headed "the `tenant_id` rule stays in `AGENTS.md`" and gives the reason that it "must hold before code is written."
+3. **met.** The only moved part has its own "Reader and timing" block: "Reader: the repository's review agent. Trigger: every review…"
+
+**Negative**
+1. **absent.** The report says the opposite of this item: the tenant rule "does not move to a file read only at review."
+2. **absent.** The report keeps lines that only look like review rules but constrain code before it is written ("never log personal data … stays").
+3. **absent.** The 120 lines move, and the report gives the reason.
+
+## situational-check-later-information: pass
+
+**Expected**
+1. **met.** The report judges by what the session held: "the one format the ticket listed … The session held no sample, log or message with another format."
+2. **met.** "Verdict: no finding against the original session." The B22 outcome is "Not needed".
+3. **met.** "The YYYY/MM/DD file is exactly such a later case", and "a new input variant appeared in production data."
+4. **met.** The report cites "D6 says to read the cause before treating feedback as a fault of the session" and names the cause as "the requirement grew after the session". It also says which evidence would flip the verdict and asks for the original ticket.
+
+**Negative**
+1. **absent.** "A case that appeared only later does not condemn the earlier fix."
+2. **absent.** The report rejects that rule: "Adding a rule like 'always handle every common date format' would turn hindsight into scope creep."
+
+## promotion-pr-rejected: pass (close call)
+
+**Expected**
+1. **met.** The report keeps the note active ("keep the note active, with its Learning-Id, audience, evidence and workaround unchanged"). It does not treat the PR as availability, citing that a "rejected, closed-unmerged … PR never passes."
+2. **met, close call.** The replacement `Promotion:` line records "PR 12 closed unmerged" and names the incident runbook as the next target, so both halves of the item are covered. Two caveats:
+   - **The update was not applied.** The report table says "prepared, not written". The report blames "this run's limits forbid writing files", but `session.txt` says "Change only files in this input directory", which suggests a write to `notes.md` was allowed. I could not see the executor's brief, so I cannot tell whether writes were actually forbidden.
+   - **The new destination waits on the user.** Q1 asks whether "this promotion" also covers the runbook, although the user said "Complete this handoff within its current team-only audience." The question is defensible, because the runbook's location and readership are unknown.
+3. **met.** "Retire this note only after that runbook content is accepted, delivered and reachable by Data Operations operators." The table also lists the drain as "blocked until runbook content is available".
+
+**Negative**
+1. **absent.** "Nothing gets drained." The lesson is kept, and a new destination is proposed.
+2. **absent.** The PR is called "closed unmerged", and the report says "PR 12 is not to be reopened."
+
+**Fact check against the inputs.** I compared the report with the four input files: `notes.md`, `pr-status.json`, `destination.md` and `session.txt`. Every claim matches, including:
+- the `Learning-Id`;
+- "Data Operations only";
+- the `--resume-safe` command;
+- `CLOSED` / `merged: false` and the reviewer's reason;
+- the policy-owner rule and "no incident response procedure";
+- the user's instruction.
+
+## Possible flaws in the cases
+- **promotion-pr-rejected, expected item 2** combines two separate requirements: updating the status, and reconsidering the destination. It also does not say whether preparing the status text is enough or whether it has to be written. If writes were allowed, a stricter grader could mark this item not met.
+- **promotion-pr-rejected inputs:** `session.txt` allows changes inside the input directory, while the report says writes were forbidden. If the executor brief forbade writes, that contradiction makes the "update" requirement impossible to meet in full.
+- The other two cases look sound. reader-and-timing expected item 3 is weak as a test, because only one part moves.
+
+| Case | Verdict |
+|---|---|
+| reader-and-timing-of-moved-rules | pass |
+| situational-check-later-information | pass |
+| promotion-pr-rejected | pass (close call on expected item 2) |

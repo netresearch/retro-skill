@@ -47,8 +47,9 @@ enumerated in the first place): `<project>/AGENTS.md` (a correct
 *destination* — re-promoting it by default loops), and `.serena/memories/*.md`
 (project-overview context, not behaviour rules — would pollute global memory).
 A request to slim `<project>/AGENTS.md` itself is therefore no scan: apply the
-three rules below to its sections by hand, and name for each moved part which
-agent reads the destination and what triggers that read.
+three rules below to its sections by hand (rule 1 then keeps what every agent
+working the repository needs in every turn), and name for each moved part
+which agent reads the destination and what triggers that read.
 
 `--project=<slug>` narrows only the memory stores. The global rules file is
 not tied to a slug, so its sections appear in a narrowed run too; pass
@@ -89,7 +90,12 @@ findings reappear on every run. Three binding rules:
    refuses paths outside `<slug>/memory/` by design. Only after the destination
    is accepted, available and reliably discoverable when needed, remove the
    section within the authorized scope, re-checking the scan's `content_sha256` against the
-   section text first (same race-check semantics). One section per edit.
+   section text first (same race-check semantics). On the by-hand `AGENTS.md`
+   path there is no scan: take the sha256 of each section's text when reading
+   it, with section boundaries found fence-aware as below, and compare that
+   hash with the section's current text immediately before removing it. A
+   section that changed is classified again before anything is removed. One
+   section per edit.
    Section-removal is markdown surgery and boundary regexes are FENCE-BLIND: a
    `#`-anchored section-heading boundary also matches `#` comment lines inside code
    fences, leaving orphaned section tails (observed live). Remove sections
