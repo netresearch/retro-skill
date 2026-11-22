@@ -663,8 +663,13 @@ def _git_unquote(path: str) -> str:
     """A path as git prints it with core.quotePath: "src/\\303\\274ber.py" -> src/über.py."""
     if not (len(path) >= 2 and path[0] == path[-1] == '"'):
         return path
-    raw = path[1:-1].encode("latin-1", "backslashreplace").decode("unicode_escape")
-    return raw.encode("latin-1").decode("utf-8", errors="replace")
+    inner = path[1:-1]
+    try:
+        raw = inner.encode("ascii").decode("unicode_escape")
+        return raw.encode("latin-1").decode("utf-8")
+    except UnicodeError:
+        # Not git's escaped ASCII form (quotePath=false leaves UTF-8 as is).
+        return inner
 
 
 def _relative_changes(repo: Path, changed: list[str]) -> tuple[list[str], list[str]]:

@@ -509,6 +509,15 @@ class RecordTest(unittest.TestCase):
         r = self.repo.report(changed=['"src/\\303\\274ber.py"'])
         self.assertEqual([h["file"] for h in r["changed_hits"]], ["src/über.py"])
 
+    def test_quoted_path_with_raw_utf8_is_kept(self):
+        self.repo.write("docs/日本.md", "")
+        self.repo.write(
+            "docs/adr/ADR-031.md",
+            "# ADR-031\n\n**Status:** Accepted\n**Touches:** `docs/`\n",
+        )
+        r = self.repo.report(changed=['"docs/日本.md"'])
+        self.assertEqual([h["file"] for h in r["changed_hits"]], ["docs/日本.md"])
+
     def test_glob_anchor(self):
         self.repo.write("src/a_test.py", "")
         self.repo.write(
