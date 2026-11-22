@@ -252,28 +252,42 @@ def _frontmatter_fields(lines: list[str]) -> tuple[str | None, list[str]]:
     return status, touches
 
 
-_CONTINUATION = re.compile(r"^(?:[-*+]\s+`?|`|\s+[^\s*_])")
+_LIST_ITEM = re.compile(r"^\s*[-*+]\s+")
+_ANY_FIELD = re.compile(r"^(?:\*\*|__)?[\w -]+(?:\*\*|__)?\s*:")
 
 
-def _touches_continuation(raw: str) -> bool:
-    """Whether a line continues a Touches field: a list item, a code span, or
-    an indented wrapped line; another bold field or a heading ends it."""
-    if not raw.strip() or raw.startswith("#"):
+def _touches_continuation(raw: str, mode: str) -> bool:
+    """Whether a line continues a Touches field. After an empty value, list
+    items continue it ("list"); after a value ending in a comma, one indented
+    or code-span line does ("wrap"). A line that is itself a field ends it."""
+    item = _plain(raw)
+    if not raw.strip() or raw.startswith("#") or _ANY_FIELD.match(item):
         return False
-    return _CONTINUATION.match(raw) is not None
+    if mode == "list":
+        return _LIST_ITEM.match(raw) is not None
+    return mode == "wrap" and (
+        raw.startswith((" ", "\t")) or raw.lstrip().startswith("`")
+    )
 
 
 def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
     """title, status and touches from a record body: bold fields, or a
     "## Status" heading followed by its value (the adr-tools layout)."""
     title, status, touches = None, None, []
-    status_next = in_touches = False
+    status_next = False
+    touches_mode = ""
     for raw in _unfenced(lines):
-        if in_touches:
-            if _touches_continuation(raw):
-                touches += _split_paths(_plain(raw))
+        if touches_mode:
+            if _touches_continuation(raw, touches_mode):
+                line = _plain(raw)
+                touches += _split_paths(line)
+                touches_mode = (
+                    "wrap"
+                    if line.rstrip().endswith(",")
+                    else ("list" if touches_mode == "list" else "")
+                )
                 continue
-            in_touches = False
+            touches_mode = ""
         if title is None and raw.startswith("# "):
             title = raw[2:].strip()
         if _STATUS_HEADING.match(raw.strip()):
@@ -292,9 +306,7 @@ def _body_fields(lines: list[str]) -> tuple[str | None, str | None, list[str]]:
             status = val
         elif key == "touches":
             touches += _split_paths(val)
-            in_touches = True
-            continue
-        in_touches = False
+            touches_mode = "list" if not val else "wrap" if val.endswith(",") else ""
     return title, status, touches
 
 

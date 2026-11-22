@@ -414,6 +414,29 @@ class RecordTest(unittest.TestCase):
         )
         self.assertEqual(len(r["changed_hits"]), 1)
 
+    def test_list_items_after_a_filled_touches_field_are_not_anchors(self):
+        self.repo.write("src/a.py", "")
+        self.repo.write(
+            "docs/adr/0001-madr.md",
+            "# Use X\n\n* Status: accepted\n* Touches: `src/a.py`\n* Deciders: Alice, Bob\n* Date: 2026-01-01\n",
+        )
+        self.repo.write(
+            "docs/adr/ADR-022.md",
+            "# ADR-022\n\n- **Touches:** `src/a.py`\n- **Status:** Superseded by ADR-023\n",
+        )
+        self.repo.write(
+            "src/AGENTS.md",
+            "## Retries\n\n**Touches:** `src/a.py`\n- Always retry three times\n- Never retry on 4xx\n",
+        )
+        recs = {(r["path"], r["title"]): r for r in self.repo.report()["records"]}
+        self.assertEqual(
+            recs[("docs/adr/0001-madr.md", "Use X")]["touches"], ["src/a.py"]
+        )
+        self.assertEqual(recs[("docs/adr/0001-madr.md", "Use X")]["status"], "accepted")
+        self.assertFalse(recs[("docs/adr/ADR-022.md", "ADR-022")]["active"])
+        self.assertEqual(recs[("src/AGENTS.md", "Retries")]["touches"], ["src/a.py"])
+        self.assertEqual(self.repo.report()["findings"], [])
+
     def test_glob_anchor(self):
         self.repo.write("src/a_test.py", "")
         self.repo.write(
