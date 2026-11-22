@@ -9,15 +9,17 @@ decision-record files of one public Netresearch repository, copied at the
 commit named in its "source" block. The three repositories write records in
 three ways: a "## Status" heading (ldap-manager), bold fields
 (composer-agent-skill-plugin), and bold fields with Touches under an ADR
-declaration in AGENTS.md (retro-skill). <repo>.expected.json holds what the script
-reads from them: the report, and every record file parsed on its own,
-whether or not the AGENTS.md of that repository declares an ADR directory.
+declaration in AGENTS.md (retro-skill).
+
+<repo>.expected.json holds what the script reads from them: the report, and
+every record file parsed on its own, whether or not the AGENTS.md of that
+repository declares an ADR directory.
 
 The unit tests cover the edge cases. This test covers files people actually
 wrote, so a change that breaks a common format shows up here. It does not
 replace a differential run over more files: the pre-markdown-it parser gives
-the same output on this corpus. When a change is intended, regenerate the expected files and
-explain each difference in the pull request:
+the same output on this corpus. When a change is intended, regenerate the
+expected files and explain each difference in the pull request:
 
     uv run --with markdown-it-py==4.3.0 --with mdit-py-plugins==0.7.0 \\
         --with PyYAML==6.0.4 python tests/test_decision_record_corpus.py --update
