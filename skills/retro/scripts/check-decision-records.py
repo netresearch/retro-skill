@@ -78,6 +78,7 @@ import os
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 import yaml
 from markdown_it import MarkdownIt
@@ -112,25 +113,32 @@ _SEPARATORS = " \t—–:-"
 NON_BINDING_STATUSES = ("proposed", "draft", "vorgeschlagen", "entwurf")
 _MD = MarkdownIt("commonmark").use(front_matter_plugin)
 
-Line = tuple[str, list[str], list[str]]
+Line = tuple[str, list[str], list[str], bool]
 
 
 def _lines(inline: Token) -> list[Line]:
-    """The source lines of a block's text, each with its code spans and link
-    targets. The text is taken as written, so a path keeps its __ and **."""
+    """The source lines of a block's text, each with its code spans, link
+    targets and whether it is indented. The text is taken as written, so a
+    path keeps its __ and **."""
     raw = inline.content.split("\n")
     groups: list[tuple[list[str], list[str]]] = [([], [])]
+    codes: list[str] = []
     for child in inline.children or []:
         if child.type in ("softbreak", "hardbreak"):
             groups.append(([], []))
         elif child.type == "code_inline":
             groups[-1][0].append(child.content)
+            codes.append(child.content)
         elif child.type == "link_open":
-            groups[-1][1].append(str(child.attrs.get("href", "")))
+            groups[-1][1].append(unquote(str(child.attrs.get("href", ""))))
     if len(groups) != len(raw):
-        # A code span runs across a line break: keep the text, drop the spans.
-        groups = [([], []) for _ in raw]
-    return [(r.strip(), c, links) for r, (c, links) in zip(raw, groups)]
+        # A code span runs across a line break: give each line the spans
+        # written whole on it, and no link targets.
+        groups = [([c for c in codes if f"`{c}`" in r], []) for r in raw]
+    return [
+        (r.strip(), c, links, r[:1] in (" ", "\t"))
+        for r, (c, links) in zip(raw, groups)
+    ]
 
 
 def _inside(repo: Path, rel: str) -> Path | None:
@@ -146,7 +154,7 @@ def _declarations(text: str) -> list[tuple[int, str, str, str]]:
     for tok in _MD.parse(text):
         if tok.type != "inline" or not tok.map:
             continue
-        for n, (line, codes, links) in enumerate(_lines(tok), tok.map[0] + 1):
+        for n, (line, codes, links, _) in enumerate(_lines(tok), tok.map[0] + 1):
             m = _DECL.match(line)
             if m:
                 answer = "yes" if m.group(1).lower() in ("yes", "ja") else "no"
@@ -235,27 +243,42 @@ def _split_paths(value: str, codes: list[str]) -> list[str]:
     return [i.strip().strip("'\"`") for i in items if i.strip().strip("'\"`")]
 
 
+class _StrictLoader(yaml.BaseLoader):
+    """A YAML loader that keeps every scalar as written (no dates, no numbers,
+    so 001 stays 001) and rejects a repeated key."""
+
+    def construct_mapping(self, node, deep=False):
+        seen: set[str] = set()
+        for key_node, _ in node.value:
+            key = str(self.construct_scalar(key_node)).lower()
+            if key in seen:
+                raise yaml.constructor.ConstructorError(
+                    None, None, f"repeated key {key!r}", key_node.start_mark
+                )
+            seen.add(key)
+        return super().construct_mapping(node, deep)
+
+
 def _frontmatter(tokens: list[Token]) -> tuple[str | None, list[str], str | None]:
     """status, touches and a parse error from a record's YAML frontmatter."""
     if not tokens or tokens[0].type != "front_matter":
         return None, [], None
     try:
-        data = yaml.safe_load(tokens[0].content)
+        # BaseLoader builds strings, lists and mappings only; it resolves no tag
+        # to a Python object, so this is no less safe than safe_load.
+        data = yaml.load(tokens[0].content, Loader=_StrictLoader)  # NOSONAR
     except yaml.YAMLError as e:
-        return (
-            None,
-            [],
-            f"frontmatter is not valid YAML: {getattr(e, 'problem', None) or e}",
-        )
+        problem = getattr(e, "problem", None) or e
+        return None, [], f"frontmatter is not valid YAML: {problem}"
     if not isinstance(data, dict):
         return None, [], None
     fields = {str(k).lower(): v for k, v in data.items()}
     status, touches = fields.get("status"), fields.get("touches") or []
     if isinstance(touches, list):
-        paths = [str(t).strip() for t in touches if t is not None and str(t).strip()]
+        paths = [t.strip() for t in touches if isinstance(t, str) and t.strip()]
     else:
         paths = _split_paths(str(touches), [])
-    return (None if status is None else str(status)), paths, None
+    return (status if isinstance(status, str) and status else None), paths, None
 
 
 class _RecordReader:
@@ -288,14 +311,20 @@ class _RecordReader:
                 i += 1
 
     def _list(self, tokens: list[Token], start: int) -> int:
-        """Read the list that starts at tokens[start]; the index after it."""
+        """Read the list that starts at tokens[start]; the index after it. An
+        item that is a field ends the paths; it and the rest are read as text."""
         self.await_list = False
-        depth = 0
+        depth, paths = 0, True
         for j in range(start, len(tokens)):
             depth += tokens[j].nesting
             if tokens[j].type == "inline":
-                for text, codes, _ in _lines(tokens[j]):
-                    self.touches += _split_paths(text, codes)
+                lines = _lines(tokens[j])
+                paths = paths and not _ANY_FIELD.match(lines[0][0])
+                if paths:
+                    for text, codes, _, _ in lines:
+                        self.touches += _split_paths(text, codes)
+                else:
+                    self._text(tokens[j])
             if depth == 0:
                 return j + 1
         return len(tokens)
@@ -312,11 +341,12 @@ class _RecordReader:
             self.status_next = False
             if self.status is None and lines[0][0]:
                 self.status = lines[0][0]
-            return
+            lines = lines[1:]
         wrap = False
-        for text, codes, _ in lines:
+        for text, codes, _, indented in lines:
             self.await_list = False
-            if wrap and not _ANY_FIELD.match(text):
+            continued = indented or text.startswith("`")
+            if wrap and continued and not _ANY_FIELD.match(text):
                 self.touches += _split_paths(text, codes)
                 wrap = text.endswith(",")
                 continue
@@ -468,7 +498,7 @@ def agents_sections(text: str) -> list[tuple[str, list[Token]]]:
     sections: list[tuple[str, list[Token]]] = []
     head, start = None, 0
     for i, tok in enumerate(tokens):
-        if tok.type == "heading_open" and tok.tag in ("h2", "h3"):
+        if tok.type == "heading_open" and tok.level == 0 and tok.tag in ("h2", "h3"):
             if head is not None:
                 sections.append((head, tokens[start:i]))
             head, start = tokens[i + 1].content.strip(), i + 3
