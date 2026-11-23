@@ -320,6 +320,12 @@ class ParseRulesTest(unittest.TestCase):
         self.assertEqual(rules[0]["keywords"], ["cmd", "gh issue delete"])
         self.assertEqual(rules[1]["keywords"], [])
 
+    def test_frontmatter_is_not_read_as_rules(self) -> None:
+        text = "---\nname: x\nallowed-tools:\n  - Read\n---\n\n- `uv run` only\n"
+        rules = scs.parse_rules(text)["rules"]
+        self.assertEqual([r["keywords"] for r in rules], [["uv run"]])
+        self.assertEqual(rules[0]["line"], 7)
+
     def test_a_placeholder_with_spaces_is_cut_too(self) -> None:
         rules = scs.parse_rules("- `git add <only its files>` [→A146]\n")["rules"]
         self.assertEqual(rules[0]["keywords"], ["git add"])

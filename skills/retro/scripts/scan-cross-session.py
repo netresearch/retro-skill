@@ -936,9 +936,20 @@ def _rule_id(source: str, flat: str, seen: Counter[str]) -> str:
     return f"{rule_id}#{seen[rule_id]}" if seen[rule_id] > 1 else rule_id
 
 
+def _blank_frontmatter(text: str) -> str:
+    """Blank a leading YAML frontmatter block, keeping line numbers."""
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return text
+    for end in range(1, len(lines)):
+        if lines[end].strip() in ("---", "..."):
+            return "\n" * (end + 1) + "\n".join(lines[end + 1 :])
+    return text
+
+
 def parse_rules(text: str) -> dict[str, Any]:
     """Top-level list items of a Markdown file, each with an id, line and keywords."""
-    items, outside = _list_items(text)
+    items, outside = _list_items(_blank_frontmatter(text))
     rules, seen = [], Counter()
     for item in items:
         flat = _flat(item["source"])
