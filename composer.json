@@ -2,7 +2,7 @@
   "name": "netresearch/retro-skill",
   "description": "LLM-driven session retrospection skill: detects friction in agent sessions and materializes learnings into correct destinations",
   "type": "ai-agent-skill",
-  "keywords": ["ai-agent", "skill", "retro", "retrospective", "session-review", "learning"],
+  "keywords": ["ai-agent", "skill", "agent-skills", "retro", "retrospective", "postmortem", "session-review", "learning", "claude-code", "codex", "opencode", "coding-agent", "harness-engineering", "context-engineering", "self-improving", "agents-md", "claude-md"],
   "license": "(MIT AND CC-BY-SA-4.0)",
   "authors": [
     {

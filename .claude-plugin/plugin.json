@@ -15,7 +15,16 @@
     "skill-improvement",
     "friction-detection",
     "learning",
-    "meta"
+    "meta",
+    "postmortem",
+    "claude-code",
+    "codex",
+    "opencode",
+    "coding-agent",
+    "harness-engineering",
+    "context-engineering",
+    "self-improving",
+    "agents-md"
   ],
   "skills": [
     "./skills/retro"
