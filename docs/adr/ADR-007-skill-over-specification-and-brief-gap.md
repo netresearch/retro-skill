@@ -11,8 +11,9 @@
 
 Schicht B judged an instruction only in one direction. B3 finds guidance a
 skill lacked; nothing found guidance that was too much for the work it
-governed. Pruning existed as an action (*Instruction pruning* in
-`classification-heuristic.md`), but no signal fed it from a session.
+governed. *Instruction pruning* in `classification-heuristic.md` is fed by
+signals for wrong or misplaced instructions (B14, B8, C4), but no signal fed it
+for a procedure that was correct and too heavy for the work.
 
 Subagent transcripts were already read (`SKILL.md`, Phase 1), but only for the
 subagent's own friction. A subagent that lost time because its brief lacked a
@@ -49,7 +50,8 @@ brief with a subagent error is no B24.
 
 ## Consequences
 
-- Instruction pruning now has a session-level inlet besides audit mode.
+- Instruction pruning gets an inlet for correct but disproportionate
+  procedures.
 - A user remark about duration alone does not make B23; the control evals
   check that.
 - Both signals depend on reading subagent transcripts. A missing subagent

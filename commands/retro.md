@@ -127,7 +127,10 @@ inferential findings the pre-pass cannot catch — in **both** classes below.
 - **Brief gap (B24):** a subagent's brief lacked a path, constraint, stop
   condition, result format or scope that the caller held. Judge it from the
   subagent's transcript (clarifying turns, searches for known files, work
-  outside the scope), and route it to whatever wrote the brief.
+  outside the scope), and route it to whatever wrote the brief. File it instead
+  of B13 for the subagent's search, and instead of B3 for a brief template that
+  lacks a field. Without a subagent transcript, write one line:
+  `B24 not assessable: <agent> — <missing transcript>`.
 
 ### Reusable-learning findings (scan even when nothing went wrong)
 

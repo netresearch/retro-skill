@@ -116,6 +116,7 @@ Two cases each cover skill over-specification (B23) and the brief gap (B24):
 [skill-procedure-guarded-real-risk](skill-procedure-guarded-real-risk.md), and
 [subagent-brief-gap](subagent-brief-gap.md) with its control
 [subagent-erred-despite-complete-brief](subagent-erred-despite-complete-brief.md).
+Score the substantive finding and evidence equally under any signal ID.
 
 ### Raw session reconciliation
 

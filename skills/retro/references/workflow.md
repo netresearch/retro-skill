@@ -37,7 +37,8 @@ accumulated. The sweep captures **both** classes: friction *and* reusable
 learnings (hard-won techniques, proactive improvements, code-review lessons;
 Schicht B, B16–B21). A session that went smoothly is not exempt — it still owes
 its learnings, and a chain of fixes that stayed green can still hold a missed
-situational check (B22).
+situational check (B22), a procedure too heavy for the work (B23) or a brief
+that lacked what the caller knew (B24).
 
 ```
 Input: entire current session transcript
