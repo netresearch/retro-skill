@@ -4,7 +4,9 @@
 #
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = [
+#     "markdown-it-py==4.3.0",
+# ]
 # ///
 
 """
@@ -43,10 +45,12 @@ import shlex
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from markdown_it import MarkdownIt
 
 
 def _load_masking():
@@ -255,8 +259,13 @@ def extract_user_texts(path: Path, gaps: Counter[str] | None = None) -> list[str
     hook's `Stop …` feedback, repeated in every session, as a correction."""
     if gaps is None:
         gaps = Counter()
+    return user_texts_of(load_events(path, gaps) or [], gaps)
+
+
+def user_texts_of(events: list[dict[str, Any]], gaps: Counter[str]) -> list[str]:
+    """extract_user_texts for events already read."""
     texts = []
-    for ev in load_events(path, gaps) or []:
+    for ev in events:
         if ev.get("type") in (
             "response_item",
             "event_msg",
@@ -861,112 +870,199 @@ def cmd_follow_up_sessions(args, files) -> int:
 
 # --- C7: per-rule tally ---------------------------------------------------------
 
-# A rule's identity: its `[→A123]` anchor where the file has one, else a hash of
+# A rule's identity: its [→A123] anchors where the file has them, else a hash of
 # its text, which changes when the rule's wording does.
-ANCHOR_RE = re.compile(r"\[→\s*(A\d+)")
-LIST_ITEM_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(?P<text>.*)")
-BACKTICK_RE = re.compile(r"`([^`\n]+)`")
+ANCHOR_RE = re.compile(r"\[→\s*(A\d+(?:\s*,\s*A\d+)*)")
+LIST_MARKER_RE = re.compile(r"\A\s*(?:[-*+]|\d+[.)])\s+")
+# A placeholder or an ellipsis never appears in a real command; only the literal
+# text before it can.
+KEYWORD_GAP_RE = re.compile(r"<[^<>\s]*>|…|\.\.\.")
 MIN_KEYWORD_CHARS = 3
 # A chunk that quotes the rule's opening is the rule being read, not its topic.
 QUOTE_CHARS = 40
-# Chosen, not measured: below this many sessions a zero says little.
+# Chosen, not measured: below this many scanned sessions a zero says little.
 DEFAULT_MIN_SESSIONS = 30
-TALLY_MARKER = '"mode": "rule-tally"'
+# Tally output read back, indented or compact (jq -c), is not a use.
+TALLY_OUTPUT_RE = re.compile(r'"mode":\s*"rule-tally"|"violation_candidate_sessions"')
+_MD = MarkdownIt("commonmark")
 
 
 def _flat(text: str) -> str:
     return " ".join(text.split()).lower()
 
 
+def _keyword(span: str) -> str | None:
+    literal = KEYWORD_GAP_RE.split(span, maxsplit=1)[0].strip()
+    return literal if len(literal) >= MIN_KEYWORD_CHARS else None
+
+
 def parse_rules(text: str) -> dict[str, Any]:
-    """Top-level list items of a Markdown file, each with an id and keywords."""
-    rules, heading, current, fenced, outside = [], "", None, False, 0
-    for line in text.splitlines():
-        if line.lstrip().startswith("```"):
-            fenced, current = not fenced, None
-            continue
-        if fenced:
-            continue
-        item = LIST_ITEM_RE.match(line)
-        if line.startswith("#"):
-            heading, current = line.lstrip("#").strip(), None
-        elif item:
-            current = {"heading": heading, "text": item["text"]}
-            rules.append(current)
-        elif not line.strip():
-            current = None
-        elif current is not None:
-            current["text"] += " " + line.strip()
-        else:
-            outside += 1
-    for rule in rules:
-        anchor = ANCHOR_RE.search(rule["text"])
-        digest = hashlib.sha256(_flat(rule["text"]).encode()).hexdigest()[:10]
-        rule["id"] = anchor[1] if anchor else f"h:{digest}"
-        spans = {s.strip() for s in BACKTICK_RE.findall(rule["text"])}
-        rule["keywords"] = sorted(s for s in spans if len(s) >= MIN_KEYWORD_CHARS)
-        rule["quote"] = _flat(rule.pop("text"))[:QUOTE_CHARS]
+    """Top-level list items of a Markdown file, each with an id, line and keywords."""
+    lines = text.splitlines()
+    tokens = _MD.parse(text)
+    items, heading, depth, outside = [], "", 0, 0
+    for index, tok in enumerate(tokens):
+        if tok.type in ("bullet_list_open", "ordered_list_open"):
+            depth += 1
+        elif tok.type in ("bullet_list_close", "ordered_list_close"):
+            depth -= 1
+        elif tok.type == "heading_open":
+            heading = tokens[index + 1].content
+        elif tok.type == "list_item_open" and depth == 1:
+            start, end = tok.map
+            source = LIST_MARKER_RE.sub("", "\n".join(lines[start:end]), count=1)
+            items.append({"line": start + 1, "heading": heading, "source": source})
+            items[-1]["spans"] = []
+        elif tok.type == "inline" and depth and items:
+            items[-1]["spans"] += [
+                c.content for c in tok.children or () if c.type == "code_inline"
+            ]
+        elif tok.type == "paragraph_open" and not depth:
+            outside += tok.map[1] - tok.map[0]
+    rules, seen = [], Counter()
+    for item in items:
+        flat = _flat(item["source"])
+        anchor = ANCHOR_RE.search(item["source"])
+        rule_id = (
+            re.sub(r"\s", "", anchor[1])
+            if anchor
+            else "h:" + hashlib.sha256(flat.encode()).hexdigest()[:10]
+        )
+        seen[rule_id] += 1
+        if seen[rule_id] > 1:
+            rule_id = f"{rule_id}#{seen[rule_id]}"
+        keywords = {k for k in map(_keyword, item["spans"]) if k}
+        rules.append(
+            {
+                "id": rule_id,
+                "line": item["line"],
+                "heading": item["heading"],
+                "keywords": sorted(keywords),
+                "quote": flat[:QUOTE_CHARS],
+            }
+        )
     return {"rules": rules, "lines_outside_rules": outside}
 
 
+def _strings(value: Any) -> Iterator[str]:
+    """The string values of a tool input, unescaped, at any depth."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+
+
 def _chunks(session: dict[str, Any]) -> Iterator[tuple[str, bool]]:
-    """Each text a session saw, flattened, and whether it reads as a failure."""
+    """Each text a session saw, flattened, and whether it reads as a failure.
+
+    A refused call is a gate doing its job, not a violation (see C6)."""
     for call in session["calls"]:
-        failed = call["is_error"]
-        yield _flat(json.dumps(call["input"], ensure_ascii=False)), failed
+        failed = call["is_error"] and not is_refusal(call["name"], call["result"])
+        yield _flat(" ".join(_strings(call["input"]))), failed
         yield _flat(call["result"]), failed
     for text in session["user_texts"]:
         yield _flat(text), bool(CORRECTION_PATTERNS.search(text))
 
 
 def ran_tally(calls: list[dict[str, Any]]) -> bool:
-    return any("--rule-tally" in json.dumps(c["input"]) for c in calls)
+    return any("--rule-tally" in " ".join(_strings(c["input"])) for c in calls)
+
+
+class _KeywordMatcher:
+    """Each distinct keyword tested once per chunk, for every rule that has it.
+
+    A substring test per keyword measured about five times faster than one
+    alternation regex over all of them, and it finds overlapping keywords."""
+
+    def __init__(self, rules: list[dict[str, Any]]) -> None:
+        self.rules_of: dict[str, list[int]] = defaultdict(list)
+        for index, rule in enumerate(rules):
+            for keyword in rule["keywords"]:
+                self.rules_of[keyword.lower()].append(index)
+
+    def rules_in(self, chunk: str) -> set[int]:
+        return {i for k, rules in self.rules_of.items() if k in chunk for i in rules}
 
 
 def rule_tally(
-    rules: list[dict[str, Any]], sessions: list[dict[str, Any]], limit: int
-) -> list[dict[str, Any]]:
+    rules: list[dict[str, Any]], sessions: Iterable[dict[str, Any]], limit: int
+) -> dict[str, Any]:
     """Per rule: sessions whose text names a keyword, and those where it failed."""
-    # A session that ran a tally reads its candidates back; they are not uses.
-    texts = {s["id"]: list(_chunks(s)) for s in sessions if not s["ran_tally"]}
-    out = []
-    for rule in rules:
-        keywords = [k.lower() for k in rule["keywords"]]
-        hits, flagged = set(), set()
-        for sid, chunks in texts.items() if keywords else ():
-            for chunk, failed in chunks:
-                if rule["quote"] in chunk or TALLY_MARKER in chunk:
-                    continue
-                if any(k in chunk for k in keywords):
-                    hits.add(sid)
-                    if failed:
-                        flagged.add(sid)
-        out.append(
-            {
-                "id": rule["id"],
-                "heading": mask(rule["heading"]),
-                "keywords": [mask(k) for k in rule["keywords"]],
-                "state": "measured" if keywords else "not_measurable",
-                "applicable_sessions": len(hits),
-                "violation_candidate_sessions": len(flagged),
-                "sessions": sorted(hits)[:limit],
-                "violation_candidates": sorted(flagged)[:limit],
-            }
-        )
-    return out
-
-
-def cmd_rule_tally(args, files) -> int:
-    parsed = parse_rules(args.rule_tally.read_text(encoding="utf-8"))
-    sessions, skipped = read_sessions(files)
-    paths = {(path.stem, project): path for path, project in files}
+    matcher = _KeywordMatcher(rules)
+    hits = [set() for _ in rules]
+    flagged = [set() for _ in rules]
+    counts = Counter()
     for session in sessions:
-        session["user_texts"] = extract_user_texts(
-            paths[(session["id"], session["project"])]
-        )
-        session["ran_tally"] = ran_tally(session["calls"])
-    tally = rule_tally(parsed["rules"], sessions, args.limit)
-    enough = len(sessions) >= args.min_sessions
+        # A session that ran a tally reads its candidates back; they are not uses.
+        if session["ran_tally"]:
+            counts["ran_a_tally"] += 1
+            continue
+        if not session["calls"] and not session["user_texts"]:
+            counts["empty"] += 1
+            continue
+        counts["scanned"] += 1
+        for chunk, failed in _chunks(session):
+            if TALLY_OUTPUT_RE.search(chunk):
+                continue
+            for index in matcher.rules_in(chunk):
+                if rules[index]["quote"] in chunk:
+                    continue
+                hits[index].add(session["id"])
+                if failed:
+                    flagged[index].add(session["id"])
+    tally = [
+        {
+            "id": rule["id"],
+            "line": rule["line"],
+            "heading": mask(rule["heading"]),
+            "keywords": [mask(k) for k in rule["keywords"]],
+            "state": "measured" if rule["keywords"] else "not_measurable",
+            "applicable_sessions": len(hit),
+            "violation_candidate_sessions": len(flag),
+            "sessions": sorted(hit)[:limit],
+            "violation_candidates": sorted(flag)[:limit],
+        }
+        for rule, hit, flag in zip(rules, hits, flagged, strict=True)
+    ]
+    return {
+        "rules": tally,
+        "sessions_scanned": counts["scanned"],
+        "sessions_that_ran_a_tally": counts["ran_a_tally"],
+        "sessions_empty": counts["empty"],
+        "truncated": any(len(h) > limit for h in hits),
+    }
+
+
+def _tally_sessions(
+    files: list[tuple[Path, str]], gaps: Counter[str], skipped: list[str]
+) -> Iterator[dict[str, Any]]:
+    """Each transcript read once and released after its turn in the tally."""
+    for path, _project in files:
+        events = load_events(path, gaps)
+        if not events:
+            skipped.append(str(path))
+            continue
+        calls = tool_calls(events)
+        yield {
+            "id": path.stem,
+            "calls": calls,
+            "user_texts": user_texts_of(events, gaps),
+            "ran_tally": ran_tally(calls),
+        }
+
+
+def cmd_rule_tally(args, files, text: str, gaps: Counter[str]) -> int:
+    parsed = parse_rules(text)
+    skipped: list[str] = []
+    found = rule_tally(
+        parsed["rules"], _tally_sessions(files, gaps, skipped), args.limit
+    )
+    tally = found.pop("rules")
+    enough = found["sessions_scanned"] >= args.min_sessions
     print(
         json.dumps(
             {
@@ -974,9 +1070,9 @@ def cmd_rule_tally(args, files) -> int:
                 "signal": "C7",
                 "rules_file": str(args.rule_tally),
                 "days": args.days,
-                "sessions_read": len(sessions),
+                **found,
                 "sessions_skipped": skipped,
-                "sessions_that_ran_a_tally": sum(s["ran_tally"] for s in sessions),
+                "gaps": dict(gaps),
                 "min_sessions": args.min_sessions,
                 "window_sufficient": enough,
                 "rules_total": len(tally),
@@ -1151,6 +1247,13 @@ def main() -> int:
             parser.exit(2, f"scan-cross-session: {error}\n")
         return 0
 
+    rules_text = None
+    if args.rule_tally is not None:
+        try:
+            rules_text = args.rule_tally.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError) as error:
+            parser.exit(2, f"scan-cross-session: {error}\n")
+
     if args.project is not None and (
         args.project in ("", ".", "..") or Path(args.project).name != args.project
     ):
@@ -1179,8 +1282,8 @@ def main() -> int:
         return cmd_recurring_failures(args, files)
     if args.follow_up_sessions:
         return cmd_follow_up_sessions(args, files)
-    if args.rule_tally is not None:
-        return cmd_rule_tally(args, files)
+    if rules_text is not None:
+        return cmd_rule_tally(args, files, rules_text, gaps)
     parser.print_help()
     return 1
 

@@ -15,6 +15,7 @@ import sys
 import tempfile
 import time
 import unittest
+from collections import Counter
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from unittest import mock
@@ -267,32 +268,65 @@ RULES = """# Rules
   `pip install` for Python.
 - Be kind.
 
-```
+~~~
 - `not a rule` inside a fence
-```
+~~~
 """
 
 
-class RuleTallyTest(TempDirCase):
-    def _tally(self, limit: int = 20) -> dict:
-        parsed = scs.parse_rules(RULES)
-        sessions = _sessions(self.root)
-        for s in sessions:
-            s["user_texts"] = scs.extract_user_texts(
-                self.root / s["project"] / f"{s['id']}.jsonl"
-            )
-            s["ran_tally"] = scs.ran_tally(s["calls"])
-        return {r["id"]: r for r in scs.rule_tally(parsed["rules"], sessions, limit)}
+def _tally(root: Path, rules_text: str = RULES, limit: int = 20) -> dict:
+    parsed = scs.parse_rules(rules_text)
+    sessions = []
+    for s in _sessions(root):
+        events = scs.load_events(root / s["project"] / f"{s['id']}.jsonl")
+        s["user_texts"] = scs.user_texts_of(events, Counter())
+        s["ran_tally"] = scs.ran_tally(s["calls"])
+        sessions.append(s)
+    return scs.rule_tally(parsed["rules"], sessions, limit)
 
+
+def _by_id(found: dict) -> dict:
+    return {r["id"]: r for r in found["rules"]}
+
+
+class ParseRulesTest(unittest.TestCase):
     def test_rules_take_the_anchor_or_a_text_hash(self) -> None:
         rules = scs.parse_rules(RULES)["rules"]
         self.assertEqual(len(rules), 3)
-        self.assertEqual(rules[0]["id"], "A12")
+        self.assertEqual((rules[0]["id"], rules[0]["line"]), ("A12", 3))
         self.assertEqual(rules[0]["keywords"], ["gh pr merge"])
         self.assertTrue(rules[1]["id"].startswith("h:"))
         self.assertEqual(rules[1]["keywords"], ["pip install", "uv run"])
         self.assertEqual(rules[2]["keywords"], [])
 
+    def test_markdown_structure_is_read_by_a_parser(self) -> None:
+        text = (
+            "- a rule with `one` and\n#123 `kept after hash`\n\n"
+            "  a second paragraph with `later span`\n\n"
+            "* * *\n\n"
+            "~~~\n- `tilde`\n~~~\n\n"
+            "````\n```\n- `fenced`\n```\n````\n\n"
+            "- double ``two ` ticks``\n"
+        )
+        rules = scs.parse_rules(text)["rules"]
+        self.assertEqual(
+            [r["keywords"] for r in rules],
+            [["kept after hash", "later span", "one"], ["two ` ticks"]],
+        )
+
+    def test_placeholders_leave_only_their_literal_prefix(self) -> None:
+        text = "- `gh issue delete <n>` and `<sha>` and `cmd ...`\n- only `<sha>`\n"
+        rules = scs.parse_rules(text)["rules"]
+        self.assertEqual(rules[0]["keywords"], ["cmd", "gh issue delete"])
+        self.assertEqual(rules[1]["keywords"], [])
+
+    def test_duplicate_ids_are_suffixed_and_every_anchor_kept(self) -> None:
+        text = "- x [→A16,A373]\n- y [→A1]\n- z [→A1]\n"
+        ids = [r["id"] for r in scs.parse_rules(text)["rules"]]
+        self.assertEqual(ids, ["A16,A373", "A1", "A1#2"])
+
+
+class RuleTallyTest(TempDirCase):
     def test_hits_failures_and_corrections_are_counted_per_session(self) -> None:
         Transcript().call("Bash", {"command": "uv run x.py"}, "ok").write(
             self.root, "-p", "a"
@@ -303,7 +337,7 @@ class RuleTallyTest(TempDirCase):
         Transcript().user("no, use gh pr merge only when told").write(
             self.root, "-p", "c"
         )
-        tally = self._tally()
+        tally = _by_id(_tally(self.root))
         self.assertEqual(tally["A12"]["sessions"], ["c"])
         self.assertEqual(tally["A12"]["violation_candidates"], ["c"])
         uv = next(r for k, r in tally.items() if k.startswith("h:") and r["keywords"])
@@ -313,33 +347,103 @@ class RuleTallyTest(TempDirCase):
         kind = next(r for r in tally.values() if not r["keywords"])
         self.assertEqual(kind["state"], "not_measurable")
 
+    def test_a_refusal_is_not_a_violation_candidate(self) -> None:
+        Transcript().call(
+            "Bash", {"command": "pip install x"}, "Use uv, not pip.", True
+        ).write(self.root, "-p", "a")
+        uv = next(r for r in _tally(self.root)["rules"] if "uv run" in r["keywords"])
+        self.assertEqual((uv["sessions"], uv["violation_candidates"]), (["a"], []))
+
+    def test_a_shorter_keyword_inside_a_longer_one_still_hits(self) -> None:
+        rules = "- `git add -A` never\n- `git` always\n"
+        Transcript().call("Bash", {"command": "git add -A"}, "ok").write(
+            self.root, "-p", "a"
+        )
+        found = _tally(self.root, rules)
+        self.assertEqual([r["sessions"] for r in found["rules"]], [["a"], ["a"]])
+
+    def test_quotes_in_a_command_match_unescaped(self) -> None:
+        rules = '- count with `grep -c "foo"` before you claim one\n'
+        Transcript().call("Bash", {"command": 'grep -c "foo" f'}, "3").write(
+            self.root, "-p", "a"
+        )
+        Transcript().call(
+            "Write",
+            {"file_path": "CLAUDE.md", "content": rules},
+            "File written",
+        ).write(self.root, "-p", "b")
+        [rule] = _tally(self.root, rules)["rules"]
+        self.assertEqual(rule["sessions"], ["a"])
+
     def test_reading_the_rules_file_is_not_an_occurrence(self) -> None:
         Transcript().call("Read", {"file_path": "/x/CLAUDE.md"}, RULES).write(
             self.root, "-p", "a"
         )
         Transcript().call(
-            "Bash", {"command": "x"}, '{"mode": "rule-tally", "keywords": ["uv run"]}'
+            "Bash", {"command": "x"}, '{"mode":"rule-tally","keywords":["uv run"]}'
         ).write(self.root, "-p", "b")
+        Transcript().call(
+            "Bash",
+            {"command": "cat out.json"},
+            '{"violation_candidate_sessions": 0, "k": "uv run"}',
+        ).write(self.root, "-p", "d")
         Transcript().call(
             "Bash",
             {"command": "jq .never_applicable out.json  # --rule-tally"},
             "uv run",
         ).write(self.root, "-p", "c")
-        tally = self._tally()
-        self.assertEqual([r["applicable_sessions"] for r in tally.values()], [0, 0, 0])
+        found = _tally(self.root)
+        self.assertEqual([r["applicable_sessions"] for r in found["rules"]], [0, 0, 0])
+        self.assertEqual(found["sessions_that_ran_a_tally"], 1)
+
+    def _rules_file(self) -> Path:
+        rules = self.root / "CLAUDE.md"
+        rules.write_text(RULES, encoding="utf-8")
+        return rules
 
     def test_never_applicable_is_withheld_below_the_window(self) -> None:
         Transcript().call("Bash", {"command": "uv run x"}, "ok").write(
             self.root, "-p", "a"
         )
-        rules = self.root / "CLAUDE.md"
-        rules.write_text(RULES, encoding="utf-8")
+        rules = self._rules_file()
         out = _run(self.root, "--rule-tally", str(rules), "--min-sessions", "2")
         self.assertIsNone(out["never_applicable"])
         self.assertFalse(out["window_sufficient"])
         out = _run(self.root, "--rule-tally", str(rules), "--min-sessions", "1")
         self.assertEqual(out["never_applicable"], ["A12"])
         self.assertEqual(out["rules_not_measurable"], 1)
+        self.assertIn("gaps", out)
+
+    def test_the_window_counts_only_scanned_sessions(self) -> None:
+        Transcript().call("Bash", {"command": "uv run x"}, "ok").write(
+            self.root, "-p", "a"
+        )
+        Transcript().call(
+            "Bash", {"command": "scan-cross-session.py --rule-tally CLAUDE.md"}, "{}"
+        ).write(self.root, "-p", "b")
+        out = _run(
+            self.root, "--rule-tally", str(self._rules_file()), "--min-sessions", "2"
+        )
+        self.assertEqual(out["sessions_scanned"], 1)
+        self.assertFalse(out["window_sufficient"])
+
+    def test_an_unreadable_rules_file_exits_2_without_a_traceback(self) -> None:
+        for path in (self.root / "missing.md", self.root):
+            run = subprocess.run(
+                [
+                    sys.executable,
+                    str(SCRIPT),
+                    "--projects-dir",
+                    str(self.root),
+                    "--rule-tally",
+                    str(path),
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(run.returncode, 2)
+            self.assertNotIn("Traceback", run.stderr)
 
 
 class LoadEventsTest(TempDirCase):

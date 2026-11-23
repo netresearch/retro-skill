@@ -5,7 +5,7 @@
 
 **Status:** Proposed
 **Date:** 2026-11-23
-**Touches:** `skills/retro/scripts/scan-cross-session.py`, `skills/retro/references/friction-catalog.md`, `skills/retro/references/learning-contract.md`
+**Touches:** `skills/retro/scripts/scan-cross-session.py`, `skills/retro/references/friction-catalog.md`, `skills/retro/references/learning-contract.md`, `skills/retro/references/classification-heuristic.md`, `skills/retro/references/workflow.md`, `commands/retro.md`
 
 ## Context
 
@@ -20,15 +20,17 @@ record.
 ## Decision
 
 `scan-cross-session.py --rule-tally <file>` (C7) computes the tally on each
-audit run and stores nothing. A rule is a top-level list item. Its id is its
-`[→A123]` anchor, else a hash of its text. Its keywords are its backticked
-spans. The script counts, per rule, the sessions whose tool calls, tool
-results or user turns name a keyword, and marks those where such a text was a
-failed call or a user correction. Texts quoting the rule's opening or an
-earlier tally are skipped. Below `--min-sessions` (30) sessions read,
-`never_applicable` is `null`. The model reads the sessions and judges
-followed or violated. A never-applicable rule is a candidate for the existing
-pruning path and its bounded comparison, never a removal.
+audit run and stores nothing. markdown-it-py parses the file; a rule is a
+top-level list item. Its id is its `[→A123]` anchors, else a hash of its
+text. Its keywords are its code spans, cut before a placeholder. The script
+counts, per rule, the sessions whose tool-call inputs (their string values),
+tool results or user turns name a keyword, and marks those where such a text
+was a failed call that was not a refusal, or a user correction. Texts quoting
+the rule's opening, tally output, and whole sessions that ran a tally are
+skipped. Below `--min-sessions` (30) scanned sessions, `never_applicable`
+is `null`. The model reads the sessions and judges followed or violated. A
+never-applicable rule is a candidate for the existing pruning path
+(`classification-heuristic.md`), never a removal.
 
 ## Ruled out
 
@@ -43,9 +45,11 @@ pruning path and its bounded comparison, never a removal.
 ## Consequences
 
 The threshold of 30 sessions is a choice, not a measurement. Rules without
-backticked spans are `not_measurable`: 164 of 356 items in one real
-`CLAUDE.md`. Over 30 real sessions of three days the run took 68 s and
-reported 28 rules never applicable. A backticked example output is a quote,
-not a topic, and makes a rule look unused. Subagent transcripts are not read. A rule that
-prevents its mistake silently also looks unused, which is why a hit only
+code spans are `not_measurable`: 167 of 356 items in one real
+`CLAUDE.md`. Over 30 scanned real sessions of three days one run took 28 s
+and reported 25 rules never applicable; one alternation regex over all
+keywords took 111 s on the same data, so each keyword is tested as a
+substring. A backticked example output is a quote,
+not a topic, and makes a rule look unused. Subagent transcripts are not read.
+A rule that prevents its mistake silently also looks unused, which is why a hit only
 starts the pruning comparison.

@@ -4,7 +4,7 @@
 id: rule-tally-window-too-small
 skill_under_test: retro
 mode: audit
-trigger: "`/retro audit --scope project` ran `scan-cross-session.py --rule-tally AGENTS.md --days 7`: sessions_read 6, window_sufficient false, never_applicable null, and 11 measured rules show applicable_sessions 0."
+trigger: "`/retro audit --scope project` ran `scan-cross-session.py --rule-tally AGENTS.md --project=<slug> --days 7`: sessions_scanned 6, window_sufficient false, never_applicable null, and 11 measured rules show applicable_sessions 0."
 expected:
   - "propose no removal candidate from this run, because the window is below --min-sessions"
   - "say that a longer window is needed before C7 can name candidates"
