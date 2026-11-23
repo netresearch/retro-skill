@@ -92,21 +92,26 @@ was honest and each was short, because the instrument was memory.
 
 **Touched is not the same as made.** The script lists every repository the
 session entered, including ones it only read. The sweep *inspects* all of them
-and *removes* only what this session created: a worktree it added, a branch it
-pushed, a process it started. A stale branch from July in a repository you only
+and *removes* what this session created: a worktree it added, a branch it
+pushed, a process it started. The one addition is the next paragraph: in the
+repository the session worked in, an ended session's leftover goes after the
+person approves its removal. A stale branch from July in a repository you only
 grepped belongs to whoever left it — report it in the table and leave it, as
 the Boundaries section requires.
 
 **In the repository the session worked in, a leftover from an earlier session is
 reported with a recommendation, not only listed.** This covers a session that
-has ended; a worktree a running session still uses stays untouched, as the
-Boundaries section requires. Read each one the way the
-removal checks below read your own (`git status --porcelain`, `git cherry`
-against the base, the remote branch and its PR's state) and give it a verdict in
+has ended; a worktree a running session still uses stays untouched. Read each
+one the way the removal checks below read your own (`git status --porcelain`,
+`git cherry` against the base, the remote branch and its PR's state), and check
+that no process works in it: neither `lsof -a -d cwd -Fn 2>/dev/null` nor the
+`/proc/*/cwd` links name a path inside the worktree. Then give it a verdict in
 the table: *remove* (content on the base, PR merged or closed as superseded, no
-uncommitted work) or *keep, because …* (unpushed commits, a dirty tree, an open
-PR). Close the report with one question that removes every *remove* row at once.
-Remove nothing before the answer. A bare "left in place" makes the person ask
+uncommitted work, no process inside) or *keep, because …* (unpushed commits, a
+dirty tree, an open PR, a process inside, or a process check that could not
+run). When the table holds *remove* rows, close the report with one question
+that removes all of them at once; with none, ask nothing. Remove nothing before
+the answer. A bare "left in place" makes the person ask
 for the cleanup in a second turn; observed 2026-11-23 on
 `t3x-rte_ckeditor_image`, where three such worktrees showed up in the
 person's workspace list and drew "aufräumen!".
@@ -291,7 +296,8 @@ is not an answer.
 ## Boundaries
 
 **Never:** stop or remove a container, process or worktree belonging to another
-session; mark a structurally impossible row ⏸ instead of N/A; merge, tag or
+session, except an ended session's leftover in the session's own repository
+that the person approved for removal (gate 4); mark a structurally impossible row ⏸ instead of N/A; merge, tag or
 deploy from Done mode (those are the task's own,
 explicitly authorized steps; a `complete` answer to the closing question is that
 authorization for the merges of the retro's own PRs); book time without approval or required policy context; dismiss a scanner
