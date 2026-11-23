@@ -447,7 +447,8 @@ For **skill-update** proposals, also include a **Skill instruction delta**:
 For an edit to a steering file that loads in every turn (the repository's root
 `AGENTS.md` or `CLAUDE.md`, `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`),
 write the whole proposed file to a scratch path and state the current size and
-the delta from `steering-size.py --repo <repo> --proposed <file>=<scratch file>`.
+the delta from
+`uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/steering-size.py --repo <repo> --proposed <file>=<scratch file>`.
 A proposal that adds lines says why the content cannot live in a linked
 document or a skill
 (`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/project-harness-inspection.md`

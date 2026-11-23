@@ -57,8 +57,9 @@ this session, not a checklist to fill in.
 ## Size of the steering files
 
 The files that load in every turn are the repository's root `AGENTS.md` and
-`CLAUDE.md` (a `CLAUDE.md` line `@AGENTS.md` loads `AGENTS.md` for Claude
-Code too), `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`. State their size
+`CLAUDE.md` (an `@AGENTS.md` import in `CLAUDE.md` loads `AGENTS.md` for
+Claude Code too, and so does a missing `CLAUDE.md`), `~/.claude/CLAUDE.md`
+and `~/.codex/AGENTS.md`. State their size
 in this phase, and whenever a proposal edits one of them:
 
 ```bash

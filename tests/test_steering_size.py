@@ -84,9 +84,26 @@ class SteeringSizeTest(unittest.TestCase):
         r = self.run_main("--repo", str(self.repo))
         self.assertTrue(self.entry(r, self.repo / "AGENTS.md")["imported_by_claude_md"])
 
-    def test_mention_of_agents_md_is_no_import(self):
+    def test_import_inside_a_sentence(self):
         self.write(self.repo / "AGENTS.md", "rules\n")
-        self.write(self.repo / "CLAUDE.md", "See @AGENTS.md for rules.\n")
+        self.write(self.repo / "CLAUDE.md", "See @AGENTS.md for rules\n")
+        r = self.run_main("--repo", str(self.repo))
+        self.assertTrue(self.entry(r, self.repo / "AGENTS.md")["imported_by_claude_md"])
+
+    def test_code_span_or_fence_is_no_import(self):
+        self.write(self.repo / "AGENTS.md", "rules\n")
+        for text in (
+            "Write `x @AGENTS.md y` to import.\n",
+            "~~~text\n@AGENTS.md\n~~~\n",
+        ):
+            self.write(self.repo / "CLAUDE.md", text)
+            r = self.run_main("--repo", str(self.repo))
+            entry = self.entry(r, self.repo / "AGENTS.md")
+            self.assertFalse(entry["imported_by_claude_md"], text)
+
+    def test_other_import_is_not_agents_md(self):
+        self.write(self.repo / "AGENTS.md", "rules\n")
+        self.write(self.repo / "CLAUDE.md", "@AGENTS.md.bak and @docs/AGENTS.md\n")
         r = self.run_main("--repo", str(self.repo))
         self.assertFalse(
             self.entry(r, self.repo / "AGENTS.md")["imported_by_claude_md"]

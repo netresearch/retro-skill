@@ -13,8 +13,7 @@ The files that load in every turn (the repository's root `AGENTS.md` and
 `CLAUDE.md`, `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`) cost context in
 every turn. `project-harness-inspection.md` said so but measured nothing, and
 retro's own `personal-rule` and `project-rule` proposals add lines to these
-files. On the day of this record the global rules file of the maintainer had
-414 lines and 127,756 bytes. OpenAI describes keeping its repository
+files. OpenAI describes keeping its repository
 `AGENTS.md` at about 100 lines, as a map to other documents ("Harness
 engineering: leveraging Codex in an agent-first world").
 
@@ -22,8 +21,8 @@ engineering: leveraging Codex in an agent-first world").
 
 1. `scripts/steering-size.py` prints, as JSON, lines, bytes and
    `approx_tokens` (bytes / 4, labelled approximate; no tokenizer dependency)
-   for each of these files, marks a repository `AGENTS.md` that a
-   `CLAUDE.md` line `@AGENTS.md` imports, and with `--proposed` adds the
+   for each of these files, marks a repository `AGENTS.md` that the
+   `CLAUDE.md` imports with `@AGENTS.md` outside code, and with `--proposed` adds the
    signed delta of a proposed whole file. It exits 0 whatever the sizes.
 2. Phase 4b states the sizes. Phase 7 states the delta of every proposal that
    edits one of these files, and a proposal that adds lines says why the

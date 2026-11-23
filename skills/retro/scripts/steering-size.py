@@ -17,9 +17,11 @@ Files read (a missing one is listed with "exists": false):
 - <home>/.claude/CLAUDE.md, the global rules file of Claude Code
 - <home>/.codex/AGENTS.md, the global instructions of Codex
 
-A CLAUDE.md line that is only "@AGENTS.md" imports that file, so the repo
-AGENTS.md then loads for Claude Code too ("imported_by_claude_md": true).
-Other imports are not followed.
+An "@AGENTS.md" or "@./AGENTS.md" token in the repo CLAUDE.md, outside code
+spans and fenced blocks, imports that file, so it loads for Claude Code too
+("imported_by_claude_md": true). Other imports are not followed. Without a
+CLAUDE.md, Claude Code 2.1.277 or later reads AGENTS.md directly
+(code.claude.com/docs/en/memory, read 2026-11-23).
 
 approx_tokens is bytes / 4, a rough figure for English text and no
 tokenizer's count. With --proposed TARGET=FILE, where FILE holds the whole
@@ -31,7 +33,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
+
+FENCE = re.compile(r"(?ms)^\s*(```|~~~).*?^\s*\1")
+CODE_SPAN = re.compile(r"(`+).*?\1", re.DOTALL)
+IMPORT = re.compile(r"(?<!\S)@(?:\./)?AGENTS\.md(?![^\s])")
 
 
 def measure(path: Path) -> dict:
@@ -50,8 +57,8 @@ def measure(path: Path) -> dict:
 def imports_agents_md(claude_md: Path) -> bool:
     if not claude_md.is_file():
         return False
-    lines = claude_md.read_text(encoding="utf-8", errors="replace").splitlines()
-    return any(line.strip() in ("@AGENTS.md", "@./AGENTS.md") for line in lines)
+    text = claude_md.read_text(encoding="utf-8", errors="replace")
+    return bool(IMPORT.search(CODE_SPAN.sub("", FENCE.sub("", text))))
 
 
 def build_report(repo: Path | None, home: Path, proposed: dict[str, Path]) -> dict:
