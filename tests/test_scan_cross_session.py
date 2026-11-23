@@ -281,6 +281,7 @@ class RuleTallyTest(TempDirCase):
             s["user_texts"] = scs.extract_user_texts(
                 self.root / s["project"] / f"{s['id']}.jsonl"
             )
+            s["ran_tally"] = scs.ran_tally(s["calls"])
         return {r["id"]: r for r in scs.rule_tally(parsed["rules"], sessions, limit)}
 
     def test_rules_take_the_anchor_or_a_text_hash(self) -> None:
@@ -319,6 +320,11 @@ class RuleTallyTest(TempDirCase):
         Transcript().call(
             "Bash", {"command": "x"}, '{"mode": "rule-tally", "keywords": ["uv run"]}'
         ).write(self.root, "-p", "b")
+        Transcript().call(
+            "Bash",
+            {"command": "jq .never_applicable out.json  # --rule-tally"},
+            "uv run",
+        ).write(self.root, "-p", "c")
         tally = self._tally()
         self.assertEqual([r["applicable_sessions"] for r in tally.values()], [0, 0, 0])
 

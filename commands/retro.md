@@ -603,7 +603,7 @@ Requires latency. Don't run within 24h of the session — most D signals (includ
 
 - Skip Phases 1 and 1b; Phase 2 runs over cross-session prose, and Phase 2b (trigger coverage) is exhaustive
 - **Phase 3c is the primary detection step:** ADR adherence, AGENTS.md rule compliance trends, coverage trends, skill-inventory drift
-- For an always-loaded instruction file or a skill, `scan-cross-session.py --rule-tally <file>` (C7) counts per rule the sessions its keywords appear in. A `never_applicable` rule is a removal candidate for "Instruction pruning", not a removal; read the violation candidates before calling a rule followed or violated
+- For an always-loaded instruction file or a skill, `scan-cross-session.py --rule-tally <file>` (C7) counts per rule the sessions its keywords appear in. A `never_applicable` rule is a removal candidate for "Instruction pruning", not a removal; write the output to a file and query it, since it lists every rule. Report applicable, followed and violated for each rule you judged, name the sessions you read, and leave the other rules unjudged
 - Output class is "architectural finding", not friction
 - Destinations skew toward `project-rule` (new ADR or AGENTS.md update) and `harness-artefact` (enforcement hook)
 - Cadence: monthly or quarterly. Tech-lead actor.

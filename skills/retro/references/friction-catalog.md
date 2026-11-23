@@ -438,8 +438,9 @@ finding.
   are its backticked spans; a rule without one is `not_measurable`. Per rule
   it lists the sessions where a tool call, tool result or user turn names a
   keyword (`applicable`), and among them the failed calls and user corrections
-  (`violation_candidates`). A text that quotes the rule's opening, or an earlier
-  tally, does not count. `never_applicable` stays `null` below
+  (`violation_candidates`). A text that quotes the rule's opening, an earlier
+  tally, or a session that ran one does not count. Subagent transcripts are not
+  read, which errs toward "never applicable". `never_applicable` stays `null` below
   `--min-sessions` (30). Whether a session followed or violated the rule is
   read, not counted. A rule that prevents its mistake silently also looks
   never applicable, so a C7 hit only starts "Instruction pruning"

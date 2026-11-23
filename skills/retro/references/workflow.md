@@ -155,8 +155,10 @@ finding.
 
 For the rules of one always-loaded instruction file or one skill, run
 `scripts/scan-cross-session.py --rule-tally <file>` (C7) over a window of at
-least `--min-sessions` sessions. Read the violation candidates to judge
-followed or violated. Each `never_applicable` rule is a removal candidate for
+least `--min-sessions` sessions; it lists every rule, so write its output to
+a file and query it. Read the violation candidates to judge followed or
+violated. The report gives applicable, followed and violated per rule judged,
+names the sessions read, and leaves the other rules unjudged. Each `never_applicable` rule is a removal candidate for
 "Instruction pruning" in `classification-heuristic.md`, never a removal.
 
 With `--scope project` or `--scope repo`, also run

@@ -23,10 +23,11 @@ Usage:
     uv run scan-cross-session.py --learning-observations observations.json
 
 The C1, C5 and C7 modes read every tool call of every transcript in the window, so
-they run on demand (an audit), not per event. Each reports only what recurs in
-at least two sessions, names the sessions it was computed from, and caps its
-lists at --limit. Their output is a candidate list for the model to read, not a
-verdict: a hit says where to look.
+they run on demand (an audit), not per event. The C1 and C5 modes report only
+what recurs in at least two sessions. Each names the sessions it was computed
+from and caps its session lists at --limit; --rule-tally lists every rule, so
+write its output to a file and query it. Their output is a candidate list for
+the model to read, not a verdict: a hit says where to look.
 """
 
 from __future__ import annotations
@@ -900,7 +901,7 @@ def parse_rules(text: str) -> dict[str, Any]:
             outside += 1
     for rule in rules:
         anchor = ANCHOR_RE.search(rule["text"])
-        digest = hashlib.sha1(_flat(rule["text"]).encode()).hexdigest()[:10]
+        digest = hashlib.sha256(_flat(rule["text"]).encode()).hexdigest()[:10]
         rule["id"] = anchor[1] if anchor else f"h:{digest}"
         spans = {s.strip() for s in BACKTICK_RE.findall(rule["text"])}
         rule["keywords"] = sorted(s for s in spans if len(s) >= MIN_KEYWORD_CHARS)
@@ -918,16 +919,21 @@ def _chunks(session: dict[str, Any]) -> Iterator[tuple[str, bool]]:
         yield _flat(text), bool(CORRECTION_PATTERNS.search(text))
 
 
+def ran_tally(calls: list[dict[str, Any]]) -> bool:
+    return any("--rule-tally" in json.dumps(c["input"]) for c in calls)
+
+
 def rule_tally(
     rules: list[dict[str, Any]], sessions: list[dict[str, Any]], limit: int
 ) -> list[dict[str, Any]]:
     """Per rule: sessions whose text names a keyword, and those where it failed."""
-    texts = {s["id"]: list(_chunks(s)) for s in sessions}
+    # A session that ran a tally reads its candidates back; they are not uses.
+    texts = {s["id"]: list(_chunks(s)) for s in sessions if not s["ran_tally"]}
     out = []
     for rule in rules:
         keywords = [k.lower() for k in rule["keywords"]]
         hits, flagged = set(), set()
-        for sid, chunks in texts.items():
+        for sid, chunks in texts.items() if keywords else ():
             for chunk, failed in chunks:
                 if rule["quote"] in chunk or TALLY_MARKER in chunk:
                     continue
@@ -938,7 +944,7 @@ def rule_tally(
         out.append(
             {
                 "id": rule["id"],
-                "heading": rule["heading"],
+                "heading": mask(rule["heading"]),
                 "keywords": [mask(k) for k in rule["keywords"]],
                 "state": "measured" if keywords else "not_measurable",
                 "applicable_sessions": len(hits),
@@ -958,6 +964,7 @@ def cmd_rule_tally(args, files) -> int:
         session["user_texts"] = extract_user_texts(
             paths[(session["id"], session["project"])]
         )
+        session["ran_tally"] = ran_tally(session["calls"])
     tally = rule_tally(parsed["rules"], sessions, args.limit)
     enough = len(sessions) >= args.min_sessions
     print(
@@ -969,6 +976,7 @@ def cmd_rule_tally(args, files) -> int:
                 "days": args.days,
                 "sessions_read": len(sessions),
                 "sessions_skipped": skipped,
+                "sessions_that_ran_a_tally": sum(s["ran_tally"] for s in sessions),
                 "min_sessions": args.min_sessions,
                 "window_sufficient": enough,
                 "rules_total": len(tally),

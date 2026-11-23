@@ -45,7 +45,7 @@ pruning path and its bounded comparison, never a removal.
 The threshold of 30 sessions is a choice, not a measurement. Rules without
 backticked spans are `not_measurable`: 164 of 356 items in one real
 `CLAUDE.md`. Over 30 real sessions of three days the run took 68 s and
-reported 28 rules never applicable. Backticked examples (`oom 5/10 at cap
-3072`) are quotes, not topics, and make a rule look unused. A rule that
+reported 28 rules never applicable. A backticked example output is a quote,
+not a topic, and makes a rule look unused. Subagent transcripts are not read. A rule that
 prevents its mistake silently also looks unused, which is why a hit only
 starts the pruning comparison.
