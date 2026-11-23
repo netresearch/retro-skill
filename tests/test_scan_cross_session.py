@@ -320,6 +320,10 @@ class ParseRulesTest(unittest.TestCase):
         self.assertEqual(rules[0]["keywords"], ["cmd", "gh issue delete"])
         self.assertEqual(rules[1]["keywords"], [])
 
+    def test_a_placeholder_with_spaces_is_cut_too(self) -> None:
+        rules = scs.parse_rules("- `git add <only its files>` [→A146]\n")["rules"]
+        self.assertEqual(rules[0]["keywords"], ["git add"])
+
     def test_duplicate_ids_are_suffixed_and_every_anchor_kept(self) -> None:
         text = "- x [→A16,A373]\n- y [→A1]\n- z [→A1]\n"
         ids = [r["id"] for r in scs.parse_rules(text)["rules"]]

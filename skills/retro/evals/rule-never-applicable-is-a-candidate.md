@@ -4,7 +4,7 @@
 id: rule-never-applicable-is-a-candidate
 skill_under_test: retro
 mode: audit
-trigger: "`/retro audit` ran `scan-cross-session.py --rule-tally ~/.claude/CLAUDE.md --days 90`: sessions_read 140, window_sufficient true, and never_applicable lists A204, a rule whose only keyword is `make deploy-legacy`."
+trigger: "`/retro audit` ran `scan-cross-session.py --rule-tally ~/.claude/CLAUDE.md --days 90`: sessions_scanned 140, window_sufficient true, and never_applicable lists A204, a rule whose only keyword is `make deploy-legacy`."
 expected:
   - "report A204 as a removal candidate under C7 and route it to 'Instruction pruning', with the bounded comparison and the file owner's approval"
   - "check whether a hook, checkpoint or CI rule already prevents the mistake, because a rule that works silently also has zero hits"
