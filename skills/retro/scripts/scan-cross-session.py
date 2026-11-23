@@ -877,6 +877,7 @@ LIST_MARKER_RE = re.compile(r"\A\s*(?:[-*+]|\d+[.)])\s+")
 # A placeholder or an ellipsis never appears in a real command; only the literal
 # text before it can.
 KEYWORD_GAP_RE = re.compile(r"<[^<>]*>|\{[^{}]*\}|…|\.\.\.|\*")
+BARE_WORD_RE = re.compile(r"[\w-]{1,5}")
 MIN_KEYWORD_CHARS = 3
 # A chunk that quotes the rule's opening is the rule being read, not its topic.
 QUOTE_CHARS = 40
@@ -892,7 +893,12 @@ def _flat(text: str) -> str:
 
 
 def _keyword(span: str) -> str | None:
-    literal = KEYWORD_GAP_RE.split(span, maxsplit=1)[0].strip()
+    parts = KEYWORD_GAP_RE.split(span, maxsplit=1)
+    literal = parts[0].strip()
+    if len(parts) > 1 and BARE_WORD_RE.fullmatch(literal):
+        # A short word left before a cut (`try {...}`, `OPS{X}`) is too
+        # common to stand for the rule: it would hit in most sessions.
+        return None
     return literal if len(literal) >= MIN_KEYWORD_CHARS else None
 
 

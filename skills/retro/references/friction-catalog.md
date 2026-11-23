@@ -437,7 +437,7 @@ session to read.
   top-level list item as a rule; prose outside list items is not tallied
   (`lines_outside_rules`). A rule's id is its `[→A123]` anchors, else a hash
   of its text, with `line` giving its place. Its keywords are its code spans,
-  cut before a placeholder (`<n>`, `{X}`, `*`, `…`); a rule without one is
+  cut before a placeholder (`<n>`, `{X}`, `*`, `…`), and a short bare word left before a cut (`try {…}`) is dropped; a rule without one is
   `not_measurable`. Per rule it counts the sessions where a tool-call input,
   tool result or user turn names a keyword (`applicable_sessions`, ids in
   `sessions`) and, among them, failed calls that were not refusals and user

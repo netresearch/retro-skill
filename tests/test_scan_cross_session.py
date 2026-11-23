@@ -317,7 +317,8 @@ class ParseRulesTest(unittest.TestCase):
     def test_placeholders_leave_only_their_literal_prefix(self) -> None:
         text = "- `gh issue delete <n>` and `<sha>` and `cmd ...`\n- only `<sha>`\n"
         rules = scs.parse_rules(text)["rules"]
-        self.assertEqual(rules[0]["keywords"], ["cmd", "gh issue delete"])
+        # `cmd ...` leaves only a short bare word, too common to count.
+        self.assertEqual(rules[0]["keywords"], ["gh issue delete"])
         self.assertEqual(rules[1]["keywords"], [])
 
     def test_frontmatter_is_not_read_as_rules(self) -> None:
@@ -329,7 +330,11 @@ class ParseRulesTest(unittest.TestCase):
     def test_glob_and_brace_placeholders_are_cut(self) -> None:
         text = "- `mcp__package-version__*` and `OPS{CUSTOMER}-board`\n"
         rules = scs.parse_rules(text)["rules"]
-        self.assertEqual(rules[0]["keywords"], ["OPS", "mcp__package-version__"])
+        self.assertEqual(rules[0]["keywords"], ["mcp__package-version__"])
+
+    def test_a_short_word_before_a_cut_is_dropped(self) -> None:
+        text = "- `try { work; commit } catch { rollBack }` and `array{key: int}`\n"
+        self.assertEqual(scs.parse_rules(text)["rules"][0]["keywords"], [])
 
     def test_a_placeholder_with_spaces_is_cut_too(self) -> None:
         rules = scs.parse_rules("- `git add <only its files>` [→A146]\n")["rules"]
