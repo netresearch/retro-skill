@@ -30,9 +30,9 @@ Ingestion of error trackers, monitoring and chat is out of scope — see "Future
 |---|---|---|
 | A — Mechanical | 21 | 21 (all of A1–A21) |
 | B — LLM inference | 24 | LLM-driven; B16–B21 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py`, B22 judges one decision point, B23 and B24 judge an instruction against the work it governed |
-| C — Cross-session | 6 | Partial (script `scan-cross-session.py`: C1, C2, C5) |
+| C — Cross-session | 7 | Partial (script `scan-cross-session.py`: C1, C2, C5, C7) |
 | D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
-| E — Constitutional (audit) | 6 | LLM-driven in `/retro audit`; no signal-specific script. The audit pre-passes are `scan-cross-session.py` (C1, C5) and `check-upstream-sources.py` (skill drift) |
+| E — Constitutional (audit) | 6 | LLM-driven in `/retro audit`; no signal-specific script. The audit pre-passes are `scan-cross-session.py` (C1, C5, C7) and `check-upstream-sources.py` (skill drift) |
 
 Schicht A is feature-complete. See `references/destination-taxonomy.md` for what each signal class routes to.
 
@@ -411,10 +411,12 @@ Not detectable from a single session. Session-file scan across projects.
 | C4 | Prior measure needs an application check | Same problem after a prior change is a candidate; verify adoption, availability, loaded version, applicability, actual application and outcome | Evidence-backed Learning-Id/opportunity observations, not git history alone |
 | C6 | Written rule violated repeatedly | A signal fired >=3x while a matching rule already exists in the always-loaded instructions | Prose has demonstrably failed — needs a mechanical gate, unless one is already deployed (see below) |
 | C5 | Follow-up-fix session | A later session exists primarily to fix what an earlier session broke (mentions earlier commits, works on same files within 7 days with reverting edits, or `git revert` of earlier commits) | `scan-cross-session.py --follow-up-sessions`; the "mentions earlier commits" part stays model-read |
+| C7 | Rule never applicable | A rule of one always-loaded instruction file or skill whose keywords no session in a large window touched | `scan-cross-session.py --rule-tally <file>`; a removal candidate for "Instruction pruning", never removal evidence |
 
-The three C1/C5 modes read every tool call in the window, so they run on
-demand (`/retro audit`), not per event. Each reports only what recurs in at
-least two sessions, names the sessions, and caps its lists at `--limit`. A hit
+The C1, C5 and C7 modes read every tool call in the window, so they run on
+demand (`/retro audit`), not per event. The C1 and C5 modes report only what
+recurs in at least two sessions; each names the sessions and caps its lists at
+`--limit`. A hit
 says where to look; the model still reads the two sessions before calling it a
 finding.
 
@@ -431,6 +433,17 @@ finding.
   Files are keyed by repository and path inside it, so the worktrees of one
   repository — removed ones included — share a key. Edits made through Bash are
   not counted yet.
+- `--rule-tally <file>` (C7) reads each top-level list item of the file as a
+  rule. Its id is its `[→A123]` anchor, else a hash of its text. Its keywords
+  are its backticked spans; a rule without one is `not_measurable`. Per rule
+  it lists the sessions where a tool call, tool result or user turn names a
+  keyword (`applicable`), and among them the failed calls and user corrections
+  (`violation_candidates`). A text that quotes the rule's opening, or an earlier
+  tally, does not count. `never_applicable` stays `null` below
+  `--min-sessions` (30). Whether a session followed or violated the rule is
+  read, not counted. A rule that prevents its mistake silently also looks
+  never applicable, so a C7 hit only starts "Instruction pruning"
+  (`classification-heuristic.md`) and its bounded comparison.
 
 A C6 finding carries `gate_observed`. It is true when a PreToolUse hook denied
 a call in this same session for the rule C6 is escalating — the denial reaches

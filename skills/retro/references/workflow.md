@@ -153,6 +153,12 @@ read every transcript in the window, which is why they belong here and not in
 the per-session sweep. Read the sessions a hit names before calling it a
 finding.
 
+For the rules of one always-loaded instruction file or one skill, run
+`scripts/scan-cross-session.py --rule-tally <file>` (C7) over a window of at
+least `--min-sessions` sessions. Read the violation candidates to judge
+followed or violated. Each `never_applicable` rule is a removal candidate for
+"Instruction pruning" in `classification-heuristic.md`, never a removal.
+
 With `--scope project` or `--scope repo`, also run
 `scripts/check-decision-records.py --repo <repo>` for the declaration (E7) and
 the anchors that are gone (E8). Pipe the paths changed in the audit window into

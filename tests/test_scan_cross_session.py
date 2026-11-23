@@ -260,6 +260,82 @@ class UserTurnCoverageTest(TempDirCase):
         self.assertIn("[REDACTED]", result["pattern"])
 
 
+RULES = """# Rules
+
+- **Never merge.** No `gh pr merge` without a per-PR instruction. [→A12]
+- Prefer `uv run` over a bare
+  `pip install` for Python.
+- Be kind.
+
+```
+- `not a rule` inside a fence
+```
+"""
+
+
+class RuleTallyTest(TempDirCase):
+    def _tally(self, limit: int = 20) -> dict:
+        parsed = scs.parse_rules(RULES)
+        sessions = _sessions(self.root)
+        for s in sessions:
+            s["user_texts"] = scs.extract_user_texts(
+                self.root / s["project"] / f"{s['id']}.jsonl"
+            )
+        return {r["id"]: r for r in scs.rule_tally(parsed["rules"], sessions, limit)}
+
+    def test_rules_take_the_anchor_or_a_text_hash(self) -> None:
+        rules = scs.parse_rules(RULES)["rules"]
+        self.assertEqual(len(rules), 3)
+        self.assertEqual(rules[0]["id"], "A12")
+        self.assertEqual(rules[0]["keywords"], ["gh pr merge"])
+        self.assertTrue(rules[1]["id"].startswith("h:"))
+        self.assertEqual(rules[1]["keywords"], ["pip install", "uv run"])
+        self.assertEqual(rules[2]["keywords"], [])
+
+    def test_hits_failures_and_corrections_are_counted_per_session(self) -> None:
+        Transcript().call("Bash", {"command": "uv run x.py"}, "ok").write(
+            self.root, "-p", "a"
+        )
+        Transcript().call(
+            "Bash", {"command": "pip install x"}, "Exit code 1\nerror", True
+        ).write(self.root, "-p", "b")
+        Transcript().user("no, use gh pr merge only when told").write(
+            self.root, "-p", "c"
+        )
+        tally = self._tally()
+        self.assertEqual(tally["A12"]["sessions"], ["c"])
+        self.assertEqual(tally["A12"]["violation_candidates"], ["c"])
+        uv = next(r for k, r in tally.items() if k.startswith("h:") and r["keywords"])
+        self.assertEqual(uv["sessions"], ["a", "b"])
+        self.assertEqual(uv["violation_candidates"], ["b"])
+        self.assertEqual(uv["state"], "measured")
+        kind = next(r for r in tally.values() if not r["keywords"])
+        self.assertEqual(kind["state"], "not_measurable")
+
+    def test_reading_the_rules_file_is_not_an_occurrence(self) -> None:
+        Transcript().call("Read", {"file_path": "/x/CLAUDE.md"}, RULES).write(
+            self.root, "-p", "a"
+        )
+        Transcript().call(
+            "Bash", {"command": "x"}, '{"mode": "rule-tally", "keywords": ["uv run"]}'
+        ).write(self.root, "-p", "b")
+        tally = self._tally()
+        self.assertEqual([r["applicable_sessions"] for r in tally.values()], [0, 0, 0])
+
+    def test_never_applicable_is_withheld_below_the_window(self) -> None:
+        Transcript().call("Bash", {"command": "uv run x"}, "ok").write(
+            self.root, "-p", "a"
+        )
+        rules = self.root / "CLAUDE.md"
+        rules.write_text(RULES, encoding="utf-8")
+        out = _run(self.root, "--rule-tally", str(rules), "--min-sessions", "2")
+        self.assertIsNone(out["never_applicable"])
+        self.assertFalse(out["window_sufficient"])
+        out = _run(self.root, "--rule-tally", str(rules), "--min-sessions", "1")
+        self.assertEqual(out["never_applicable"], ["A12"])
+        self.assertEqual(out["rules_not_measurable"], 1)
+
+
 class LoadEventsTest(TempDirCase):
     def test_skips_lines_that_are_not_objects(self) -> None:
         path = self.root / "s.jsonl"

@@ -363,7 +363,8 @@ that file's owner.
 Signals that often resolve to a prune rather than an add: **B14** (doc drift —
 the instruction references something gone), **C4** (a prior skill update was
 itself wrong), **B8** (a rule lives in the wrong place), **B23** (a correct
-procedure that is too heavy for the work it governs). When two instructions
+procedure that is too heavy for the work it governs), **C7** (no session in
+the audit window touched the rule; a candidate only). When two instructions
 conflict, reconcile by removing/superseding the stale side; if the conflict spans
 reference files, propose the reference/taxonomy cleanup first.
 

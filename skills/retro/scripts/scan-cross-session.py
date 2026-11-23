@@ -12,16 +12,17 @@ scan-cross-session.py — Schicht-C cross-session data source.
 
 Scans Claude Code session JSONL files across projects to find similar friction
 patterns. Used to detect "same friction again" (C1), "cross-project pattern"
-(C2) and "follow-up-fix session" (C5) signals.
+(C2), "follow-up-fix session" (C5) and "rule never applicable" (C7) signals.
 
 Usage:
     uv run scan-cross-session.py --pattern="<keyword or phrase>" [--days 30] [--project=<slug>]
     uv run scan-cross-session.py --user-correction-summary [--days 7]
     uv run scan-cross-session.py --recurring-failures [--days 30] [--limit 20] [--include-refusals]
     uv run scan-cross-session.py --follow-up-sessions [--days 30] [--window-days 7] [--limit 20]
+    uv run scan-cross-session.py --rule-tally CLAUDE.md [--days 90] [--min-sessions 30]
     uv run scan-cross-session.py --learning-observations observations.json
 
-The last two modes read every tool call of every transcript in the window, so
+The C1, C5 and C7 modes read every tool call of every transcript in the window, so
 they run on demand (an audit), not per event. Each reports only what recurs in
 at least two sessions, names the sessions it was computed from, and caps its
 lists at --limit. Their output is a candidate list for the model to read, not a
@@ -32,6 +33,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import hashlib
 import importlib.util
 import json
 import os
@@ -856,6 +858,143 @@ def cmd_follow_up_sessions(args, files) -> int:
     return 0
 
 
+# --- C7: per-rule tally ---------------------------------------------------------
+
+# A rule's identity: its `[→A123]` anchor where the file has one, else a hash of
+# its text, which changes when the rule's wording does.
+ANCHOR_RE = re.compile(r"\[→\s*(A\d+)")
+LIST_ITEM_RE = re.compile(r"^(?:[-*+]|\d+[.)])\s+(?P<text>.*)")
+BACKTICK_RE = re.compile(r"`([^`\n]+)`")
+MIN_KEYWORD_CHARS = 3
+# A chunk that quotes the rule's opening is the rule being read, not its topic.
+QUOTE_CHARS = 40
+# Chosen, not measured: below this many sessions a zero says little.
+DEFAULT_MIN_SESSIONS = 30
+TALLY_MARKER = '"mode": "rule-tally"'
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split()).lower()
+
+
+def parse_rules(text: str) -> dict[str, Any]:
+    """Top-level list items of a Markdown file, each with an id and keywords."""
+    rules, heading, current, fenced, outside = [], "", None, False, 0
+    for line in text.splitlines():
+        if line.lstrip().startswith("```"):
+            fenced, current = not fenced, None
+            continue
+        if fenced:
+            continue
+        item = LIST_ITEM_RE.match(line)
+        if line.startswith("#"):
+            heading, current = line.lstrip("#").strip(), None
+        elif item:
+            current = {"heading": heading, "text": item["text"]}
+            rules.append(current)
+        elif not line.strip():
+            current = None
+        elif current is not None:
+            current["text"] += " " + line.strip()
+        else:
+            outside += 1
+    for rule in rules:
+        anchor = ANCHOR_RE.search(rule["text"])
+        digest = hashlib.sha1(_flat(rule["text"]).encode()).hexdigest()[:10]
+        rule["id"] = anchor[1] if anchor else f"h:{digest}"
+        spans = {s.strip() for s in BACKTICK_RE.findall(rule["text"])}
+        rule["keywords"] = sorted(s for s in spans if len(s) >= MIN_KEYWORD_CHARS)
+        rule["quote"] = _flat(rule.pop("text"))[:QUOTE_CHARS]
+    return {"rules": rules, "lines_outside_rules": outside}
+
+
+def _chunks(session: dict[str, Any]) -> Iterator[tuple[str, bool]]:
+    """Each text a session saw, flattened, and whether it reads as a failure."""
+    for call in session["calls"]:
+        failed = call["is_error"]
+        yield _flat(json.dumps(call["input"], ensure_ascii=False)), failed
+        yield _flat(call["result"]), failed
+    for text in session["user_texts"]:
+        yield _flat(text), bool(CORRECTION_PATTERNS.search(text))
+
+
+def rule_tally(
+    rules: list[dict[str, Any]], sessions: list[dict[str, Any]], limit: int
+) -> list[dict[str, Any]]:
+    """Per rule: sessions whose text names a keyword, and those where it failed."""
+    texts = {s["id"]: list(_chunks(s)) for s in sessions}
+    out = []
+    for rule in rules:
+        keywords = [k.lower() for k in rule["keywords"]]
+        hits, flagged = set(), set()
+        for sid, chunks in texts.items():
+            for chunk, failed in chunks:
+                if rule["quote"] in chunk or TALLY_MARKER in chunk:
+                    continue
+                if any(k in chunk for k in keywords):
+                    hits.add(sid)
+                    if failed:
+                        flagged.add(sid)
+        out.append(
+            {
+                "id": rule["id"],
+                "heading": rule["heading"],
+                "keywords": [mask(k) for k in rule["keywords"]],
+                "state": "measured" if keywords else "not_measurable",
+                "applicable_sessions": len(hits),
+                "violation_candidate_sessions": len(flagged),
+                "sessions": sorted(hits)[:limit],
+                "violation_candidates": sorted(flagged)[:limit],
+            }
+        )
+    return out
+
+
+def cmd_rule_tally(args, files) -> int:
+    parsed = parse_rules(args.rule_tally.read_text(encoding="utf-8"))
+    sessions, skipped = read_sessions(files)
+    paths = {(path.stem, project): path for path, project in files}
+    for session in sessions:
+        session["user_texts"] = extract_user_texts(
+            paths[(session["id"], session["project"])]
+        )
+    tally = rule_tally(parsed["rules"], sessions, args.limit)
+    enough = len(sessions) >= args.min_sessions
+    print(
+        json.dumps(
+            {
+                "mode": "rule-tally",
+                "signal": "C7",
+                "rules_file": str(args.rule_tally),
+                "days": args.days,
+                "sessions_read": len(sessions),
+                "sessions_skipped": skipped,
+                "min_sessions": args.min_sessions,
+                "window_sufficient": enough,
+                "rules_total": len(tally),
+                "rules_not_measurable": sum(
+                    r["state"] == "not_measurable" for r in tally
+                ),
+                "lines_outside_rules": parsed["lines_outside_rules"],
+                "never_applicable": [
+                    r["id"]
+                    for r in tally
+                    if r["state"] == "measured" and not r["applicable_sessions"]
+                ]
+                if enough
+                else None,
+                "rules": tally,
+                "interpretation": "Keyword hits are candidates; followed or violated "
+                "is judged by reading the sessions. Zero hits can mean the rule "
+                "prevents its mistake silently.",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 def learning_effectiveness(observations: Any) -> dict[str, Any]:
     """C4: summarize explicit later opportunities, not inferred non-use.
 
@@ -968,6 +1107,17 @@ def main() -> int:
         default=7,
         help="With --follow-up-sessions: the most days between the two sessions",
     )
+    parser.add_argument(
+        "--rule-tally",
+        type=Path,
+        help="C7: per rule of this instruction file, the sessions its keywords appear in",
+    )
+    parser.add_argument(
+        "--min-sessions",
+        type=int,
+        default=DEFAULT_MIN_SESSIONS,
+        help="With --rule-tally: fewer sessions read withholds never_applicable",
+    )
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument(
         "--learning-observations",
@@ -1021,6 +1171,8 @@ def main() -> int:
         return cmd_recurring_failures(args, files)
     if args.follow_up_sessions:
         return cmd_follow_up_sessions(args, files)
+    if args.rule_tally is not None:
+        return cmd_rule_tally(args, files)
     parser.print_help()
     return 1
 
