@@ -97,6 +97,20 @@ pushed, a process it started. A stale branch from July in a repository you only
 grepped belongs to whoever left it — report it in the table and leave it, as
 the Boundaries section requires.
 
+**In the repository the session worked in, a leftover from an earlier session is
+reported with a recommendation, not only listed.** This covers a session that
+has ended; a worktree a running session still uses stays untouched, as the
+Boundaries section requires. Read each one the way the
+removal checks below read your own (`git status --porcelain`, `git cherry`
+against the base, the remote branch and its PR's state) and give it a verdict in
+the table: *remove* (content on the base, PR merged or closed as superseded, no
+uncommitted work) or *keep, because …* (unpushed commits, a dirty tree, an open
+PR). Close the report with one question that removes every *remove* row at once.
+Remove nothing before the answer. A bare "left in place" makes the person ask
+for the cleanup in a second turn; observed 2026-11-23 on
+`t3x-rte_ckeditor_image`, where three such worktrees showed up in the
+person's workspace list and drew "aufräumen!".
+
 ```bash
 # $SCRATCH is the scratchpad path from the system prompt — it is NOT in the
 # environment, and unset it would expand to `du -sh /*`, walking the root
