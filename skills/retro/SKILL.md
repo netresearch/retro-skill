@@ -31,7 +31,9 @@ decisions. Process critique grants no new authority.
 
 ## Modes
 
-- **`/retro`** — Sweep: the whole current session.
+- **`/retro`** — Sweep: the whole current session. A short session with no
+  pre-pass or review finding takes the fast exit after Phase 1b;
+  `/retro --full` runs the full Sweep (`references/workflow.md` § Sweep).
 - **`/retro "<problem>"`** — Spotlight: one described issue. A short or
   question-shaped argument naming retro itself (`/retro zur retro?`) reads
   two ways — the work since the last retro, or that retro run: ask one

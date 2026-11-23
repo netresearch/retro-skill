@@ -14,7 +14,7 @@ for BOTH:
 2. **Reusable knowledge that went RIGHT but is not captured anywhere yet** — a
    learning worth propagating so nobody re-derives it. It leaves no error signal,
    so you must look for it deliberately; a smooth session is **not** an empty
-   retro.
+   retro. The one bounded exception is the fast exit in Phase 1b.
 
 Improve accepted task completion at the required quality within economically
 feasible time and cost. Analyze both classes using the claim kinds,
@@ -27,6 +27,7 @@ a reasoned no-op needs no invented rule. Missing evidence remains unknown.
 
 ```
 /retro                                Sweep — full current session
+/retro --full                         Sweep without the fast exit (Phase 1b)
 /retro "<problem description>"        Spotlight — focus on one issue
 /retro outcome [session-id|--since N] Outcome — post-hoc review of past session(s)
 /retro audit [--scope X]              Audit — cross-session architectural review
@@ -91,6 +92,35 @@ HTTP write outside the forge CLIs, for example a ticket created in another
 tracker: read what it created and supply that tracker's feedback with
 `--feedback-file`. Field meanings and how to read them:
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` § Feedback from outside the transcript.
+
+### Fast exit (Sweep only)
+
+Stop the Sweep here when all of these hold for the whole transcript (on a
+repeat `/retro` too):
+
+- Phase 1 exited 0 with `coverage.status` `supported` and `findings_total` 0;
+- this collector exited 0 with `complete: true`, empty `findings`, empty
+  `unresolved_forge_commands` and exactly one entry in `transcripts`;
+- `user_messages` ≤ 3 and `tool_uses` ≤ 10 in the Phase 1 output;
+- the transcript is not a Codex rollout with incomplete coverage
+  (`references/workflow.md` § Codex rollout).
+
+Then skip Phases 2–9, run Phase 11, and report only:
+
+```
+Fast exit: <each condition with its measured value>. Run /retro --full for the full Sweep.
+Phases 2–9: skipped — fast exit (ADR-004).
+B21: none (fast exit)
+Phase 11 (self-check): <its line>
+```
+
+This skips the learning scan (B16–B21) only because a session this short
+rarely holds one. A convention stated in a single message, or a technique
+found without a failed call, can still be missed: run `/retro --full` when
+the session held one. `--full` is no Spotlight problem and combines with an
+answer word (`/retro --full komplett`). Never take the fast exit in
+Spotlight, Outcome, Audit, Promote or Done mode, or in a Sweep that Done
+chains for gate 3.
 
 ## Phase 2: LLM Enrichment
 
@@ -617,7 +647,7 @@ rejected (reason the user has seen) — each ✅ / ⏸ / ❌ with its evidence. 
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/done-mode.md`.
 
 - Phases 1–3 are skipped (announce it) unless gate 3 finds no Sweep has run —
-  then run the Sweep in full first. Gate 8 runs Phase 2 for B21 alone on a report
+  then run the Sweep in full first, without the fast exit. Gate 8 runs Phase 2 for B21 alone on a report
   that holds neither a B21 table nor `B21: none`
 - Phase 8 checks existing authorization for every write the gate proposes: time entries in the
   project's configured system (read before writing to prevent duplicates),

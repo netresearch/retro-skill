@@ -38,7 +38,8 @@ learnings (hard-won techniques, proactive improvements, code-review lessons;
 Schicht B, B16–B21). A session that went smoothly is not exempt — it still owes
 its learnings, and a chain of fixes that stayed green can still hold a missed
 situational check (B22), a procedure too heavy for the work (B23) or a brief
-that lacked what the caller knew (B24).
+that lacked what the caller knew (B24). The fast exit below is the one bounded
+exception.
 
 ```
 Input: entire current session transcript
@@ -47,6 +48,30 @@ Output: ≤10 actionable proposals grouped by destination
 Use case: explicit end-of-session retrospective
 Token cost: highest (full transcript pass)
 ```
+
+**Fast exit (ADR-004).** After Phase 1b, the Sweep stops when all of these
+hold:
+
+- `detect-mechanical.py` exited 0 with `coverage.status` `supported` and
+  `findings_total` 0;
+- `collect-review-findings.py` exited 0 with `complete: true`, empty
+  `findings`, empty `unresolved_forge_commands` and exactly one entry in
+  `transcripts` (no subagent transcript);
+- `user_messages` is at most 3 and `tool_uses` at most 10;
+- the transcript is not a Codex rollout whose coverage the Codex section
+  below calls incomplete.
+
+The counts and findings are those of the whole transcript, also on a repeat
+`/retro` in one session; that only makes the exit rarer. The report is then
+the line `Fast exit: <reasons with the measured values>`, one deviation line
+for the skipped Phases 2–9, `B21: none (fast exit)`, and the Phase 11 line;
+Phase 11 still runs. The fast exit skips the B16–B21 learning scan only
+because a session this short rarely holds one; a convention the user stated
+in one message, or a technique found without a failed call, is the residual
+risk. `/retro --full` runs the full Sweep. Like an answer word, `--full` is
+no Spotlight problem, and it combines with one (`/retro --full komplett`).
+The fast exit never applies in Spotlight, Outcome, Audit, Promote or Done
+mode, nor in a Sweep that Done chains for its retro gate.
 
 ### Spotlight — `/retro "<problem>"`
 
@@ -437,7 +462,7 @@ must verify the latter. Keep the active note/index and bridge until then. The
 Phase-10 report gains availability and "Source drained?" columns.
 
 **Done** skips Phases 1–3 (announce it) unless its retro gate finds no Sweep
-for this session; then the Sweep runs in full first. Gate 8 runs Phase 2 for B21
+for this session; then the Sweep runs in full first, without the fast exit. Gate 8 runs Phase 2 for B21
 alone on a report without a B21 statement. Phase 8 checks authority for each
 write Done proposes (a booking, ticket comment, removing anything unpushed), and the
 Phase-10 report is the scope line plus the eight-gate table. See
