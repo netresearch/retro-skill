@@ -38,6 +38,9 @@ from pathlib import Path
 
 CLAUDE_MD = "CLAUDE.md"
 CODE_SPAN = re.compile(r"(`+).*?\1", re.DOTALL)
+# A code span never crosses a blank line (CommonMark), so spans are stripped
+# per paragraph: a lone backtick cannot swallow an import further down.
+PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n")
 IMPORT = re.compile(r"(?<!\S)@(?:\./)?AGENTS\.md(?![^\s])")
 
 
@@ -73,7 +76,8 @@ def imports_agents_md(claude_md: Path) -> bool:
     if not claude_md.is_file():
         return False
     text = claude_md.read_text(encoding="utf-8", errors="replace")
-    return bool(IMPORT.search(CODE_SPAN.sub("", strip_fences(text))))
+    paragraphs = PARAGRAPH_BREAK.split(strip_fences(text))
+    return any(IMPORT.search(CODE_SPAN.sub("", p)) for p in paragraphs)
 
 
 def build_report(repo: Path | None, home: Path, proposed: dict[str, Path]) -> dict:

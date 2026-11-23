@@ -102,6 +102,14 @@ class SteeringSizeTest(unittest.TestCase):
             entry = self.entry(r, self.repo / "AGENTS.md")
             self.assertFalse(entry["imported_by_claude_md"], text)
 
+    def test_lone_backtick_does_not_hide_a_later_import(self):
+        self.write(self.repo / "AGENTS.md", "rules\n")
+        self.write(
+            self.repo / "CLAUDE.md", "Don't use the ` key.\n\n@AGENTS.md\n\nUse `x`.\n"
+        )
+        r = self.run_main("--repo", str(self.repo))
+        self.assertTrue(self.entry(r, self.repo / "AGENTS.md")["imported_by_claude_md"])
+
     def test_import_after_a_closed_fence_counts(self):
         self.write(self.repo / "AGENTS.md", "rules\n")
         self.write(self.repo / "CLAUDE.md", "```\ncode\n```\n@AGENTS.md\n")

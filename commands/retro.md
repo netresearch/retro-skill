@@ -359,7 +359,8 @@ file, or a rule removed. Read three surfaces:
   that named no cause, so the agent drew a wrong conclusion.
 
 The report carries one line: `Phase 4b (harness): <n> findings` or
-`Phase 4b (harness): nothing — <surfaces read>`.
+`Phase 4b (harness): nothing — <surfaces read>`, followed on the same line by
+the steering sizes, e.g. `; steering: AGENTS.md 73 lines / 6,421 bytes`.
 
 ## Phase 4c: Documentation Lookup
 
