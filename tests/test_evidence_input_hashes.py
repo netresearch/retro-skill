@@ -25,7 +25,9 @@ import hashlib
 import json
 import os
 import subprocess
+import tempfile
 import unittest
+import unittest.mock
 from collections import Counter
 from pathlib import Path
 
@@ -177,12 +179,12 @@ class EvidenceInputHashes(unittest.TestCase):
 
 class GitEnvTest(unittest.TestCase):
     def test_a_foreign_git_dir_does_not_change_the_listing(self) -> None:
-        import tempfile
-        from unittest import mock
 
         with tempfile.TemporaryDirectory() as other:
             subprocess.run(["git", "init", "-q", other], check=True)
-            with mock.patch.dict(os.environ, {"GIT_DIR": os.path.join(other, ".git")}):
+            with unittest.mock.patch.dict(
+                os.environ, {"GIT_DIR": os.path.join(other, ".git")}
+            ):
                 self.assertIn("AGENTS.md", tracked_files())
 
 
