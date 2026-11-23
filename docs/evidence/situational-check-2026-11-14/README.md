@@ -19,6 +19,16 @@
 > from this repository. The records the inputs were
 > built from are in `runs/`; [grading-map.json](grading-map.json) maps each item
 > to its run.
+>
+> **Note, 2026-11-23 ([#277](https://github.com/netresearch/retro-skill/issues/277)):** measured at `42d632d`, none of the
+> eleven `final_input_sha256` values in [grades.json](grades.json) matches a
+> file tracked in the repository or a blob in its history. Its
+> `corrected_packaging_issue` field says the packet was regenerated before
+> grading; the regenerated files were not kept. A reader can trace each grade
+> to its run through [grading-map.json](grading-map.json) and `runs/`, but
+> cannot check that the grader's inputs were exactly those runs after
+> anonymization. `tests/test_evidence_input_hashes.py` lists this record as a
+> documented gap.
 
 **Decision: keep PR #232 in draft. No additional detection or repair success
 was observed in this experiment.** The revised procedure is executable, but
