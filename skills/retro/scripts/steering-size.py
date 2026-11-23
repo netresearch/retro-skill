@@ -93,10 +93,15 @@ def build_report(repo: Path | None, home: Path, proposed: dict[str, Path]) -> di
             f["same_file_as"] = same[0]["path"]
         same.append(f)
     for target, new_file in proposed.items():
-        entries = by_path.get(str(Path(target).expanduser().resolve()))
+        path = Path(target).expanduser()
+        if not path.is_absolute() and repo is not None:
+            path = repo / path  # relative to the repository, not the cwd
+        entries = by_path.get(str(path.resolve()))
         if not entries:
+            known = ", ".join(sorted({f["path"] for f in files}))
             raise SystemExit(
                 f"--proposed target is not an always-loaded file: {target}"
+                f" (known: {known})"
             )
         new = measure(new_file)
         if not new["exists"]:

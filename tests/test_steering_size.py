@@ -142,6 +142,15 @@ class SteeringSizeTest(unittest.TestCase):
         self.assertEqual(claude["proposed_delta"], delta)
         self.assertEqual(claude["same_file_as"], str(agents))
 
+    def test_relative_target_is_read_against_the_repo(self):
+        self.write(self.repo / "AGENTS.md", "a\n")
+        grown = self.write(self.repo.parent / "grown2.md", "a\nb\n")
+        r = self.run_main("--repo", str(self.repo), "--proposed", f"AGENTS.md={grown}")
+        self.assertEqual(
+            self.entry(r, self.repo / "AGENTS.md")["proposed_delta"],
+            {"lines": 1, "bytes": 2},
+        )
+
     def test_proposed_delta_for_a_new_file(self):
         new = self.write(self.repo.parent / "new.md", "a\nb\n")
         target = self.home / ".codex" / "AGENTS.md"
