@@ -111,6 +111,13 @@ retro cannot read, and a fix whose edit is itself the check
 These are described classification cases. Score the substantive finding and
 evidence equally under any signal ID; they do not measure unaided discovery.
 
+Two cases each cover skill over-specification (B23) and the brief gap (B24):
+[skill-over-specification](skill-over-specification.md) with its control
+[skill-procedure-guarded-real-risk](skill-procedure-guarded-real-risk.md), and
+[subagent-brief-gap](subagent-brief-gap.md) with its control
+[subagent-erred-despite-complete-brief](subagent-erred-despite-complete-brief.md).
+Score the substantive finding and evidence equally under any signal ID.
+
 ### Raw session reconciliation
 
 The `session-reconciliation-*` cases contain **synthetic sessions with executable

@@ -83,7 +83,9 @@ decisions. Process critique grants no new authority.
 2. LLM enrichment — Mad/Sad/Glad perspectives, both classes (friction +
    learnings B16–B21); check each visible warning sign for the check it called
    for (B22), with the changed code's tests and one bounded probe run in a copy,
-   offline, when that code is reachable (or skipped, with the reason); distinguish observations, hypotheses and decisions;
+   offline, when that code is reachable (or skipped, with the reason); judge each
+   loaded procedure against the work it governed (B23) and each subagent brief
+   against the subagent's transcript (B24); distinguish observations, hypotheses and decisions;
    filter false positives. A prior failure is not required for a learning.
 3. Before proposing another fix for a recurring problem, a prior measure or a
    changed configuration, consult the existing attempt history. Search scoped
