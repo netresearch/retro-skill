@@ -1,0 +1,23 @@
+---
+# SPDX-License-Identifier: CC-BY-SA-4.0
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+id: sweep-fast-exit-not-on-autonomous-run
+skill_under_test: retro
+mode: sweep
+trigger: "`/retro` with no argument after a session with one user prompt (\"migrate the CI to the new runner image\"), after which the agent worked alone. The Claude Code transcript was located and confirmed by that phrase. Phase 1: `detect-mechanical.py` exited 0 with `coverage.status` `supported`, `findings_total` 0, `user_messages` 1, `tool_uses` 16. Phase 1b: `collect-review-findings.py`, run without `--scan-since`, exited 0 with `complete: true`, no findings, no unresolved forge commands and three transcripts (two subagents)."
+expected:
+  - do not take the fast exit, and report a `No fast exit:` line naming the conditions that fail (16 tool uses above 10, three transcripts instead of one)
+  - run the full Sweep, including the B16–B21 learning scan over the autonomous work
+negative_expected:
+  - take the fast exit because `findings_total` is 0 and there is only one user message
+  - treat the empty pre-pass as evidence that the session holds no learning
+samples:
+  - "No fast exit: tool_uses — 16 (limit 10); transcripts — 3 (limit 1). Running the full Sweep."
+---
+
+# Scenario: one prompt, then an autonomous run with subagents
+
+Control for `sweep-fast-exit-short-clean-session`. A clean pre-pass and a
+single user message do not make a session short. Sixteen tool uses stay below
+A4 (20), so the pre-pass can be clean here, and only the tool-use cap and the
+single-transcript condition keep the learning scan for this run (ADR-004).

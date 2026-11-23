@@ -228,3 +228,10 @@ Each trigger quotes the output of `check-decision-records.py`, so the cases test
 the classification of that output, not its discovery. The
 [2026-11-22 run](../../../docs/evidence/decision-records-2026-11-22/README.md)
 compares the unchanged and the revised skill text on them.
+
+Two described cases cover the Sweep's fast exit (ADR-004): a short session
+with no finding that stops after Phase 1b
+([sweep-fast-exit-short-clean-session](sweep-fast-exit-short-clean-session.md))
+and its control, one prompt followed by a long autonomous run that must get
+the full Sweep
+([sweep-fast-exit-not-on-autonomous-run](sweep-fast-exit-not-on-autonomous-run.md)).
