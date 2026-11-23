@@ -3,7 +3,7 @@
 
 # retro — session retrospectives for agent systems
 
-**LLM-driven session retrospection for Claude Code and Codex.** Improve accepted task completion at the required quality within economically feasible time and cost. `/retro` examines friction, unmet goals and reusable successes across instructions, knowledge, tools, environment and collaboration, then routes useful measures to seven destinations.
+**LLM-driven session retrospection for AI coding agents: runs in Claude Code and Codex, and reads opencode sessions through a transcript adapter.** Improve accepted task completion at the required quality within economically feasible time and cost. `/retro` examines friction, unmet goals and reusable successes across instructions, knowledge, tools, environment and collaboration, then routes useful measures to seven destinations.
 
 [![License: MIT AND CC-BY-SA-4.0](https://img.shields.io/badge/License-MIT%20AND%20CC--BY--SA--4.0-blue.svg)](LICENSE-MIT)
 [![lint](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml/badge.svg)](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml)
@@ -37,6 +37,8 @@
 `/retro` analyzes the current session from its transcript without continuous background hooks. It classifies useful findings into seven destinations, asking first who owns the truth and whether a rule still serves its purpose. It checks the existing mandate for each target, action and audience, executes covered changes and asks only for uncovered decisions.
 
 A single sweep returns at most ten actionable proposals, grouped by destination, each with a short *why* and a *how-to-apply*.
+
+In the terms used elsewhere: `/retro` is a blameless postmortem and lessons-learned loop for agentic coding sessions. It is **harness engineering** with a human in the loop: it turns session transcripts into changes to the agent harness (`AGENTS.md` and `CLAUDE.md` rules, Agent Skills, hooks, linters, CI guardrails, documentation and memory). It practices **context engineering** by routing each learning to the file that owns it instead of growing one instruction file, and by proposing removal of instructions that no longer serve their purpose. The result is a self-improving agent setup through continual learning in text, with no fine-tuning: before each change, `/retro` checks that an existing mandate covers the target, action and audience, and asks the person for every decision that is not covered.
 
 The [learning contract](skills/retro/references/learning-contract.md) distinguishes
 observations, facts, decisions, preferences and hypotheses. Mad/Sad/Glad are
@@ -294,6 +296,19 @@ retro-skill/
 | [agent-rules-skill](https://github.com/netresearch/agent-rules-skill) | Feedback-memory schema for `project-rule` materialization |
 | [skill-repo-skill](https://github.com/netresearch/skill-repo-skill) | PR/branch convention for `skill-update`; scaffolding for `new-skill` |
 | [automated-assessment-skill](https://github.com/netresearch/automated-assessment-skill) | Checkpoint YAML schema for `checkpoint` materialization |
+
+### Related research
+
+`/retro` shares ideas with published work on agents that learn from their own trajectories. It differs in that every change needs an existing mandate or the person's decision, and lands in the file that owns it.
+
+| Work | Shared idea |
+|---|---|
+| [Reflexion](https://arxiv.org/abs/2303.11366) | Verbal self-reflection on failures instead of weight updates |
+| [ExpeL](https://arxiv.org/abs/2308.10144) | Distilling reusable insights from successes and failures, and removing insights that stop helping |
+| [Agentic Context Engineering (ACE)](https://arxiv.org/abs/2510.04618) | Incremental edits to an instruction playbook instead of full rewrites, to avoid context collapse |
+| [Agentic Harness Engineering](https://arxiv.org/abs/2604.25850) | Each harness edit carries a prediction that a later run checks |
+| [Retrospective Harness Optimization (RHO)](https://arxiv.org/abs/2606.05922) | Improving skills and tools from past, unlabeled sessions |
+| [Why Do Multi-Agent LLM Systems Fail? (MAST)](https://arxiv.org/abs/2503.13657) | A failure taxonomy for agent traces |
 
 Deeper reading: the [`skills/retro/references/`](skills/retro/references/) docs, [`AGENTS.md`](AGENTS.md), and the original spec at [`docs/specs/retro-skill.md`](docs/specs/retro-skill.md), which is superseded and kept as a historical record.
 
