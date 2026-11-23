@@ -448,7 +448,10 @@ what was searched, state, action (`documentation-lookup.md`). A report with no B
 states `B21: none` instead of the table. Gate 8 of Done mode reads either form.
 
 A B22 decision point that could not be assessed gets one line:
-`B22 not assessable: <decision point> — <missing evidence>`.
+`B22 not assessable: <decision point> — <missing evidence>`. A subagent
+whose transcript is missing gets
+`B24 not assessable: <agent> — <missing transcript>`. Both are stated
+coverage limits; Done mode gate 3 does not hold on them.
 
 Go through the phases of this mode before writing the report: each one ran as
 prescribed or gets one deviation line with its reason, e.g.
