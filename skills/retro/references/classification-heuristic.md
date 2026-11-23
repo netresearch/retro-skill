@@ -296,6 +296,29 @@ doesn't generalize (purely personal → user-rule) or is truly repo-specific
 (→ AGENTS.md). Ask the user only when the *fit* is genuinely ambiguous, not to
 avoid choosing the more-shareable option.
 
+## An existing control does not close a friction
+
+When a friction happened although a rule, a document or a gate exists,
+"already covered" is no disposition. The control existed and the cost occurred,
+so the report names what the control left open, with its evidence:
+
+| What happened | Disposition |
+|---|---|
+| A gate refused a correct action (false positive) | Fix the gate → `harness-artefact` |
+| A gate refused correctly, prose that loads in every turn states the same rule, and no call of that rule got past the gate | Removal of the prose by its owner → `personal-rule` or `project-rule` removal ("Instruction pruning" below). If C6 shows calls that got past the gate, run C6's investigation first |
+| A document or skill reference warned, and the cost occurred anyway | A warning is no control: change the tool that produced the cost → `harness-artefact` or `skill-update` of the tool's owner |
+| A review round, a scanner or later CI found the defect | Name the earlier check that is missing → B19. A CI job or hook of the repository (for example a release target no pull-request job tests) is a `harness-artefact` against that repository; otherwise B19's primary route, `skill-update` of the skill that owns the check |
+| A retro or skill script failed on the input it exists for | Defect of that script, also for an unusually large input → `skill-update` of its owner |
+| A correct document was out of the agent's reach | Link from the entry point → B21 `found-unreachable` |
+
+"No action" stays valid when the cost was negligible; the report states the
+cost. Observed failure (2026-11-22, two sweeps): one closed 17 GitHub
+rate-limit failures as "the limit is documented in the watcher reference", 16
+hook refusals as "the gates worked" and a Windows-only defect found in the
+fourth review round as "no missed check"; another closed its own script
+time-out as "the session is too long". A second retrospective that asked for
+environment changes turned each of them into a proposal.
+
 ## Instruction pruning — removal is a valid skill-update
 
 `skill-update` covers three edit shapes, not two: **add**, **replace**, and
@@ -309,6 +332,7 @@ Prefer removal when the desired behaviour is already covered by:
 - another instruction in the same skill,
 - a reference file,
 - a mechanical `checkpoint`,
+- a deployed hook that refused the action in this session,
 - repo-local `AGENTS.md`.
 
 Prefer **replace** (not remove) only when deletion would open a real capability
@@ -329,7 +353,10 @@ document; the user overrode it.) retro prepares a bounded removal, checks the
 existing mandate and asks only for an uncovered decision; source-repo review
 still applies. A pruning proposal
 materializes as an ordinary `skill-update` PR whose diff happens to be a deletion
-(see `patch-workflow.md`).
+(see `patch-workflow.md`). The same add, replace and remove shapes apply to
+`personal-rule` and `project-rule`: a removal deletes the rule from the file it
+lives in (`~/.claude/CLAUDE.md` or the repository's `AGENTS.md`), approved by
+that file's owner.
 
 Signals that often resolve to a prune rather than an add: **B14** (doc drift —
 the instruction references something gone), **C4** (a prior skill update was

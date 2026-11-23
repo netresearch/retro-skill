@@ -415,8 +415,10 @@ finding.
 
 - `--recurring-failures` groups failed tool calls by tool plus the line that
   names the failure, with paths, hashes and numbers dropped. Calls a hook or
-  the harness refused are left out and counted — a refusal is a deployed gate
-  working, and C6 already reads it; `--include-refusals` lists them anyway.
+  the harness refused are left out and counted — a refusal shows that a
+  deployed gate fired; C6 reads it, and classification asks whether the
+  refusal was right (`classification-heuristic.md` § An existing control);
+  `--include-refusals` lists them anyway.
 - `--follow-up-sessions` reports `reverted_commits` (a `git revert` of a commit
   an earlier session wrote, matched through `git commit` output) and
   `rewritten_edits` (a later `Edit`/`MultiEdit` whose `old_string` holds text an

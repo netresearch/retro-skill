@@ -155,6 +155,19 @@ the team's records.
 
 See `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
+## Phase 2b: Trigger Coverage (B15)
+
+List every installed skill with its `description`:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-installed-skills.sh
+```
+
+Given what this session did, name the skills that should have triggered and
+were never invoked. A miss whose cause is weak or missing trigger words in the
+description is a `skill-update` to that description. Without a miss, the
+report carries `Phase 2b (trigger coverage): nothing — <n> descriptions read`.
+
 ## Phase 3: Cross-Session
 
 For a recurring problem, a prior intervention, or a proposed transfer across
@@ -270,6 +283,31 @@ narrower destination) correct.
 For installed skills' on-disk paths / git remotes when patching, also:
 `bash ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-installed-skills.sh`.
 
+## Phase 4b: Project Harness and Steering Files
+
+Read the repository the session worked in and the instructions that load in
+every turn, against what the session did
+(`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/project-harness-inspection.md`).
+For each friction cost, ask which change to the environment would have
+prevented it: a check, a tool's output or error message, a pointer in an entry
+file, or a rule removed. Read three surfaces:
+
+- **Guardrails.** A review round, a scanner or CI found a defect after the
+  push: name the local or CI check that would have found it first. A platform
+  or target that the release builds and no pull-request job tests is such a
+  gap.
+- **Steering files that load in every turn** (the global rules file, the
+  repository's `AGENTS.md` or `CLAUDE.md`): a rule that a hook already
+  enforces, a statement the session found wrong, a value copied from a config
+  file, or a repository with no entry file that points to the procedure the
+  session needed. Their size costs context in every turn of every session.
+- **Tool output and errors.** A tool printed the same notice on every call,
+  returned markup that the agent stripped by hand, or failed with a message
+  that named no cause, so the agent drew a wrong conclusion.
+
+The report carries one line: `Phase 4b (harness): <n> findings` or
+`Phase 4b (harness): nothing — <surfaces read>`.
+
 ## Phase 4c: Documentation Lookup
 
 For every B21 candidate, search the team's records before proposing anything:
@@ -296,6 +334,31 @@ owned by an artefact outside the agent system (upstream docs, code, schema, a
 team record: inventory, ticket, repository docs, runbook, wiki last) routes to
 `canonical-source`, not into a skill — then check the catalogue for
 an owning skill before any narrower destination. When uncertain, ask the user.
+
+**An existing control does not close a friction.** When a friction happened
+although a rule, a document or a gate exists, "already covered" is no
+disposition. Name what the control left open, with its evidence:
+
+- The gate refused a correct action: fix the gate (`harness-artefact`).
+- The gate refused correctly, prose that loads in every turn states the same
+  rule, and no call of that rule got past the gate: propose removing the
+  prose, as a `personal-rule` or `project-rule` removal by the prose's owner
+  ("Instruction pruning"). If C6 shows calls that got past the gate, run C6's
+  investigation first.
+- A document or a skill reference warned, and the cost occurred anyway: a
+  warning is no control. Propose the change in the tool that produced the
+  cost (`harness-artefact`, or `skill-update` of the tool's owner).
+- A review round, a scanner or later CI found the defect: name the earlier
+  check that is missing (B19). When that check is a CI job or hook of the
+  repository (for example a release target no pull-request job tests), it is
+  a `harness-artefact` against that repository; otherwise B19's route
+  applies, a `skill-update` to the skill that owns the check.
+- A retro or skill script failed on the input it exists for: that is a defect
+  of the script, also when the input is unusually large.
+- A correct document was out of the agent's reach: link it from the entry
+  point (B21 `found-unreachable`).
+
+"No action" stays valid when the cost was negligible. State the cost.
 
 `user-memory` is a deprecated alias of `personal-rule`. Accept it wherever a
 destination arrives as input — the user's phrasing, an older proposal, an
@@ -417,6 +480,8 @@ When invoked with a `"<problem description>"` argument:
 - Run LLM enrichment on those turns only
 - Run Phase 3 (cross-session) in filtered mode (same friction signature)
 - Skip Phases 3b and 3c
+- Run Phase 2b only for the argument's skill area and Phase 4b only for the
+  argument's surface
 - Proceed with Phases 4–11
 
 Faster and uses fewer tokens than a full sweep.
@@ -450,7 +515,7 @@ only. It has two jobs, co-equal:
 
 Steps:
 
-- Skip Phase 1 (the session is in the past; mechanical pre-pass on a stale transcript is low value) and Phase 2b; Phase 2 reads only the past session's highlights
+- Skip Phase 1 (the session is in the past; mechanical pre-pass on a stale transcript is low value), Phase 2b and Phase 4b; Phase 2 reads only the past session's highlights
 - Phase 3 runs against the target session(s)
 - **Phase 3b is the primary detection step:** walk forward from session end with `collect-review-findings.py --transcript-file <past session> --since <session end>` (reviews, issue and ticket feedback that arrived later, GitHub and GitLab), `git log`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the candidate adverse outcomes, the durable successes, and superseded temporary copies (D12: a tracked canonical-source change accepted, delivered and reachable by its intended reader → propose pruning the skill's labelled copy; a merge alone is not enough).
 - Phase 3c may also fire if the window is large
@@ -500,7 +565,7 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
   file is not tied to a slug, so its sections appear in a narrowed run too;
   pass `--exclude-global-rules` only when the user asks to leave it out.
 
-- Skip Phases 1b, 2, 2b, 3, 3b, 3c (no transcript) — announce the skip in one line
+- Skip Phases 1b, 2, 2b, 3, 3b, 3c and 4b (no transcript) — announce the skip in one line
 - Phases 4–11 run verbatim; destination skew is **upward** per scope-escalation
   (skill-update › project-rule › personal-rule), **never** project-local memory
 - Phase 8 verifies whether the existing mandate covers the target and audience

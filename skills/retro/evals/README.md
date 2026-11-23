@@ -194,6 +194,21 @@ their commands are reproduced by `tests/test_critical_question_fixtures.py`.
 repeats the downstream session in a fixture of 39 files in which no file
 points to the on-call procedure.
 
+Five described cases cover a friction that happened although a control
+existed (`classification-heuristic.md` § An existing control): a warning in a
+reference ([existing-control-warning-recurred](existing-control-warning-recurred.md)),
+a correct gate next to always-loaded prose
+([existing-control-gate-duplicates-prose](existing-control-gate-duplicates-prose.md)),
+a defect review found on an untested release platform
+([existing-control-review-found-untested-platform](existing-control-review-found-untested-platform.md)),
+a gate that fired on the wrong input
+([existing-control-gate-false-positive](existing-control-gate-false-positive.md))
+and the control, a correct refusal of negligible cost
+([existing-control-negligible-refusal](existing-control-negligible-refusal.md)).
+The unchanged text already passes all five; they pin the classification. The
+comparison that separates the texts used a real session
+([2026-11-23 run](../../../docs/evidence/existing-control-2026-11-23/README.md)).
+
 Three described cases cover decision records (E1, E7 and E8 in
 [`../references/friction-catalog.md`](../references/friction-catalog.md)):
 a decision with no declared place

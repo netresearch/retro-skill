@@ -426,7 +426,7 @@ Differences between modes:
 
 **Promote** substitutes Phase 1 with `${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py` (a
 filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
-1b/2/2b/3/3b/3c, runs Phases 4–11 (4c for notes holding a fact about the team's
+1b/2/2b/3/3b/3c/4b, runs Phases 4 and 4c–11 (4c for notes holding a fact about the team's
 own systems), and adds a verified **materialize-then-drain**
 post-step to Phase 9 — drain via `scan-memory-inventory.py drain <path>` only
 after actual target availability is confirmed (tombstone move, never `rm`; an

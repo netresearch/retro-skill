@@ -34,7 +34,7 @@ uncovered decisions.
 
 ## Format details
 
-### 1. `personal-rule` — append a rule to `~/.claude/CLAUDE.md`
+### 1. `personal-rule` — add or remove a rule in `~/.claude/CLAUDE.md`
 
 > Renamed from `user-memory`. That name is a **deprecated alias**: accept it
 > wherever a destination is read (a user's phrasing, an older proposal, an
@@ -63,7 +63,7 @@ projects (the failure this skill exists to surface). Global rules go in
 cwd-scoped location upward into the correct destination — see
 `references/promote-mode.md`.
 
-### 2. `project-rule` — append a rule to `<project>/AGENTS.md`
+### 2. `project-rule` — add or remove a rule in `<project>/AGENTS.md`
 
 A project-specific convention belongs in that repo's `AGENTS.md` (committed,
 versioned, loaded for everyone working the repo). Append a titled rule in the
