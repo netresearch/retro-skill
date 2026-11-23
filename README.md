@@ -3,7 +3,7 @@
 
 # retro — session retrospectives for agent systems
 
-**LLM-driven session retrospection for AI coding agents: Claude Code, Codex and opencode.** Improve accepted task completion at the required quality within economically feasible time and cost. `/retro` examines friction, unmet goals and reusable successes across instructions, knowledge, tools, environment and collaboration, then routes useful measures to seven destinations.
+**LLM-driven session retrospection for AI coding agents: runs in Claude Code and Codex, and reads opencode sessions through a transcript adapter.** Improve accepted task completion at the required quality within economically feasible time and cost. `/retro` examines friction, unmet goals and reusable successes across instructions, knowledge, tools, environment and collaboration, then routes useful measures to seven destinations.
 
 [![License: MIT AND CC-BY-SA-4.0](https://img.shields.io/badge/License-MIT%20AND%20CC--BY--SA--4.0-blue.svg)](LICENSE-MIT)
 [![lint](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml/badge.svg)](https://github.com/netresearch/retro-skill/actions/workflows/lint.yml)
@@ -38,7 +38,7 @@
 
 A single sweep returns at most ten actionable proposals, grouped by destination, each with a short *why* and a *how-to-apply*.
 
-In the terms used elsewhere: `/retro` is a blameless postmortem and lessons-learned loop for agentic coding sessions. It is **harness engineering** with a human in the loop: it turns session transcripts into changes to the agent harness (`AGENTS.md` and `CLAUDE.md` rules, Agent Skills, hooks, linters, CI guardrails, documentation and memory). It practices **context engineering** by routing each learning to the file that owns it instead of growing one instruction file, and by proposing removal of instructions that no longer serve their purpose. The result is a self-improving agent setup through continual learning in text, with no fine-tuning: every change is a reviewed pull request or an approved edit.
+In the terms used elsewhere: `/retro` is a blameless postmortem and lessons-learned loop for agentic coding sessions. It is **harness engineering** with a human in the loop: it turns session transcripts into changes to the agent harness (`AGENTS.md` and `CLAUDE.md` rules, Agent Skills, hooks, linters, CI guardrails, documentation and memory). It practices **context engineering** by routing each learning to the file that owns it instead of growing one instruction file, and by proposing removal of instructions that no longer serve their purpose. The result is a self-improving agent setup through continual learning in text, with no fine-tuning: before each change, `/retro` checks that an existing mandate covers the target, action and audience, and asks the person for every decision that is not covered.
 
 The [learning contract](skills/retro/references/learning-contract.md) distinguishes
 observations, facts, decisions, preferences and hypotheses. Mad/Sad/Glad are
@@ -299,7 +299,7 @@ retro-skill/
 
 ### Related research
 
-`/retro` shares ideas with published work on agents that learn from their own trajectories. It differs in that every change is reviewed by a person and lands in the file that owns it.
+`/retro` shares ideas with published work on agents that learn from their own trajectories. It differs in that every change needs an existing mandate or the person's decision, and lands in the file that owns it.
 
 | Work | Shared idea |
 |---|---|
