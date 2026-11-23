@@ -12,7 +12,8 @@ rule from a *going-forward* policy into an action you can run on the backlog.
 
 It is a new **front-end** for the existing pipeline, not a new pipeline: it
 replaces Phases 1–3 (transcript detection) with a filesystem inventory and
-reuses Phases 4–10 (classify → check mandate → materialize → report).
+reuses Phases 4–10 (classify → check mandate → materialize → report), except
+Phase 4b, which reads what a session did.
 
 ## Why this mode exists
 

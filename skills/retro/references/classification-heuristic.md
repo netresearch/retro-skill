@@ -307,7 +307,7 @@ so the report names what the control left open, with its evidence:
 | A gate refused a correct action (false positive) | Fix the gate → `harness-artefact` |
 | A gate refused correctly, prose that loads in every turn states the same rule, and no call of that rule got past the gate | Removal of the prose by its owner → `personal-rule` or `project-rule` removal ("Instruction pruning" below). If C6 shows calls that got past the gate, run C6's investigation first |
 | A document or skill reference warned, and the cost occurred anyway | A warning is no control: change the tool that produced the cost → `harness-artefact` or `skill-update` of the tool's owner |
-| A review round, a scanner or later CI found the defect | Name the earlier check that is missing → B19, as a `harness-artefact` against the repository that lacks it |
+| A review round, a scanner or later CI found the defect | Name the earlier check that is missing → B19. A CI job or hook of the repository (for example a release target no pull-request job tests) is a `harness-artefact` against that repository; otherwise B19's primary route, `skill-update` of the skill that owns the check |
 | A retro or skill script failed on the input it exists for | Defect of that script, also for an unusually large input → `skill-update` of its owner |
 | A correct document was out of the agent's reach | Link from the entry point → B21 `found-unreachable` |
 
@@ -353,7 +353,10 @@ document; the user overrode it.) retro prepares a bounded removal, checks the
 existing mandate and asks only for an uncovered decision; source-repo review
 still applies. A pruning proposal
 materializes as an ordinary `skill-update` PR whose diff happens to be a deletion
-(see `patch-workflow.md`).
+(see `patch-workflow.md`). The same add, replace and remove shapes apply to
+`personal-rule` and `project-rule`: a removal deletes the rule from the file it
+lives in (`~/.claude/CLAUDE.md` or the repository's `AGENTS.md`), approved by
+that file's owner.
 
 Signals that often resolve to a prune rather than an add: **B14** (doc drift —
 the instruction references something gone), **C4** (a prior skill update was

@@ -4,7 +4,7 @@
 # Existing controls: unchanged and revised command text
 
 On 2026-11-23 the unchanged `commands/retro.md` (`origin/main` 1f6da03) and
-the revised text of this change ran on the same evidence. On five described
+the revised text of commit 943a15e ran on the same evidence. On five described
 cases both texts gave the expected answer. On one case built from a real
 session, the revised text scored 6.0 of 9 points and the unchanged text 2.0,
 under an independent grader. ADR-003 records the decision.
@@ -22,8 +22,9 @@ close a friction) change that?
 The `existing-control-*` cases in `skills/retro/evals/` ran once per case
 and arm. Inputs were frozen with `prepare-behavior-evals.py`; the context
 held `SKILL.md` plus the command copied into the skill directory, each from
-its own arm: the baseline arm `origin/main` 1f6da03, the revised arm this
-change. All ten reports gave the expected disposition, so no grader ran. Each trigger states
+its own arm: the baseline arm `origin/main` 1f6da03, the revised arm the
+command of commit 943a15e. All ten reports gave the expected disposition, so
+no grader ran. Each trigger states
 the decisive facts already sorted (for example the release targets next to
 the PR runners), so the cases test classification, not whether the run looks.
 They stay in the corpus as pins.
@@ -61,6 +62,10 @@ Context hashes (sha256, first 16 characters):
 - `session.txt`: `e54c8a08a243d553`
 
 ## Limits
+
+- Both runs measured the revised command at 943a15e. The review fixes in
+  5bd7dc7 and later (destinations of the rule, the C6 condition on removing
+  prose, mode scoping of Phase 4b) were not re-measured.
 
 - Three samples per arm, one model, one session. The revised text improves
   the result; it does not make it reliable (one revised run still failed the

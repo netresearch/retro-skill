@@ -349,8 +349,10 @@ disposition. Name what the control left open, with its evidence:
   warning is no control. Propose the change in the tool that produced the
   cost (`harness-artefact`, or `skill-update` of the tool's owner).
 - A review round, a scanner or later CI found the defect: name the earlier
-  check that is missing (B19), as a `harness-artefact` against the
-  repository that lacks it.
+  check that is missing (B19). When that check is a CI job or hook of the
+  repository (for example a release target no pull-request job tests), it is
+  a `harness-artefact` against that repository; otherwise B19's route
+  applies, a `skill-update` to the skill that owns the check.
 - A retro or skill script failed on the input it exists for: that is a defect
   of the script, also when the input is unusually large.
 - A correct document was out of the agent's reach: link it from the entry
