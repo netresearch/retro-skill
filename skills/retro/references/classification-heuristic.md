@@ -296,6 +296,29 @@ doesn't generalize (purely personal → user-rule) or is truly repo-specific
 (→ AGENTS.md). Ask the user only when the *fit* is genuinely ambiguous, not to
 avoid choosing the more-shareable option.
 
+## An existing control does not close a friction
+
+When a friction happened although a rule, a document or a gate exists,
+"already covered" is no disposition. The control existed and the cost occurred,
+so the report names what the control left open, with its evidence:
+
+| What happened | Disposition |
+|---|---|
+| A gate refused a correct action (false positive) | Fix the gate → `harness-artefact` |
+| A gate refused correctly, and prose that loads in every turn states the same rule | Removal candidate for the prose → "Instruction pruning" below |
+| A document or skill reference warned, and the cost occurred anyway | A warning is no control: change the tool that produced the cost → `harness-artefact` or `skill-update` of the tool's owner |
+| A review round, a scanner or later CI found the defect | Name the earlier check that is missing → B19 |
+| A retro or skill script failed on the input it exists for | Defect of that script, also for an unusually large input → `skill-update` of its owner |
+| A correct document was out of the agent's reach | Link from the entry point → B21 `found-unreachable` |
+
+"No action" stays valid when the cost was negligible; the report states the
+cost. Observed failure (2026-11-22, two sweeps): one closed 17 GitHub
+rate-limit failures as "the limit is documented in the watcher reference", 16
+hook refusals as "the gates worked" and a Windows-only defect found in the
+fourth review round as "no missed check"; another closed its own script
+time-out as "the session is too long". A second retrospective that asked for
+environment changes turned each of them into a proposal.
+
 ## Instruction pruning — removal is a valid skill-update
 
 `skill-update` covers three edit shapes, not two: **add**, **replace**, and

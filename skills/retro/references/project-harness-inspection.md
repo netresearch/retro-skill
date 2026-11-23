@@ -41,6 +41,8 @@ this session, not a checklist to fill in.
 | Surface | The question |
 |---|---|
 | `AGENTS.md` / `CLAUDE.md` | Did the agent re-derive something already true but unwritten? Did it follow a rule that is stated in **more than one place, differently**? |
+| Steering files that load in every turn (global rules file, repo `AGENTS.md`) | Does a rule restate what a hook already enforces? Did the session find a statement wrong, or a value that is copied from a config file? Does the repository lack an entry file that points to the procedure the session needed? Their size costs context in every turn. |
+| Review rounds, scanners, release targets | Did a review round, a scanner or CI after the push find a defect that an earlier check would have found? Does the release build a platform or target that no pull-request job tests? |
 | One-command entry points (`Makefile`, `composer.json` scripts, `package.json`) | Did the session run a documented sequence by hand? A gate described as a list is a gate whose last two steps get skipped. |
 | Hook config (lefthook, captainhook, husky, pre-commit) | Did something reach CI that a sub-second local check would have caught? |
 | CI workflows | Is the failing check **repo-local and missing**, rather than a skill gap? Does a fast check exist in CI but not as a hook (parity)? |

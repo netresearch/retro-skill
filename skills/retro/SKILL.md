@@ -94,7 +94,8 @@ decisions. Process critique grants no new authority.
 4. Discover skills — always run `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py`, also when the owning skill seems obvious (opening it by path is a skip that needs a deviation line) — and the repo's harness (`project-harness-inspection.md`). When the session changed files in a repository or a decision will be written there, run `uv run ${CLAUDE_SKILL_DIR}/scripts/check-decision-records.py --repo <repo>` with each changed path, relative to the repository root, as `--changed-file` (E1, E7, E8 in `friction-catalog.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
 5. Classify (`classification-heuristic.md`) — authority and rule purpose before
    enforcement and reach; consider simplification, tools or environment changes;
-   never project-local memory.
+   never project-local memory. A rule, document or gate that existed does not
+   close a friction that happened anyway (§ An existing control).
 6. Evals — read a matched skill's `evals/`; propose a TDD stub.
    For targeted native or shared-runner comparisons, prepare isolated inputs
    with `scripts/prepare-behavior-evals.py`; follow `references/eval-integration.md`.

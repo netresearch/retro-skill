@@ -155,6 +155,19 @@ the team's records.
 
 See `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/friction-catalog.md` Schicht B for the full list.
 
+## Phase 2b: Trigger Coverage (B15)
+
+List every installed skill with its `description`:
+
+```bash
+bash ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-installed-skills.sh
+```
+
+Given what this session did, name the skills that should have triggered and
+were never invoked. A miss whose cause is weak or missing trigger words in the
+description is a `skill-update` to that description. Without a miss, the
+report carries `Phase 2b (trigger coverage): nothing — <n> descriptions read`.
+
 ## Phase 3: Cross-Session
 
 For a recurring problem, a prior intervention, or a proposed transfer across
@@ -270,6 +283,31 @@ narrower destination) correct.
 For installed skills' on-disk paths / git remotes when patching, also:
 `bash ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/find-installed-skills.sh`.
 
+## Phase 4b: Project Harness and Steering Files
+
+Read the repository the session worked in and the instructions that load in
+every turn, against what the session did
+(`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/project-harness-inspection.md`).
+For each friction cost, ask which change to the environment would have
+prevented it: a check, a tool's output or error message, a pointer in an entry
+file, or a rule removed. Read three surfaces:
+
+- **Guardrails.** A review round, a scanner or CI found a defect after the
+  push: name the local or CI check that would have found it first. A platform
+  or target that the release builds and no pull-request job tests is such a
+  gap.
+- **Steering files that load in every turn** (the global rules file, the
+  repository's `AGENTS.md` or `CLAUDE.md`): a rule that a hook already
+  enforces, a statement the session found wrong, a value copied from a config
+  file, or a repository with no entry file that points to the procedure the
+  session needed. Their size costs context in every turn of every session.
+- **Tool output and errors.** A tool printed the same notice on every call,
+  returned markup that the agent stripped by hand, or failed with a message
+  that named no cause, so the agent drew a wrong conclusion.
+
+The report carries one line: `Phase 4b (harness): <n> findings` or
+`Phase 4b (harness): nothing — <surfaces read>`.
+
 ## Phase 4c: Documentation Lookup
 
 For every B21 candidate, search the team's records before proposing anything:
@@ -296,6 +334,25 @@ owned by an artefact outside the agent system (upstream docs, code, schema, a
 team record: inventory, ticket, repository docs, runbook, wiki last) routes to
 `canonical-source`, not into a skill — then check the catalogue for
 an owning skill before any narrower destination. When uncertain, ask the user.
+
+**An existing control does not close a friction.** When a friction happened
+although a rule, a document or a gate exists, "already covered" is no
+disposition. Name what the control left open, with its evidence:
+
+- The gate refused a correct action: fix the gate (`harness-artefact`).
+- The gate refused correctly, and prose that loads in every turn states the
+  same rule: propose removing the prose ("Instruction pruning").
+- A document or a skill reference warned, and the cost occurred anyway: a
+  warning is no control. Propose the change in the tool that produced the
+  cost.
+- A review round, a scanner or later CI found the defect: name the earlier
+  check that is missing (B19).
+- A retro or skill script failed on the input it exists for: that is a defect
+  of the script, also when the input is unusually large.
+- A correct document was out of the agent's reach: link it from the entry
+  point (B21 `found-unreachable`).
+
+"No action" stays valid when the cost was negligible. State the cost.
 
 `user-memory` is a deprecated alias of `personal-rule`. Accept it wherever a
 destination arrives as input — the user's phrasing, an older proposal, an
