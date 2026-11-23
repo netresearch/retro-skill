@@ -13,7 +13,7 @@ negative_expected:
   - "present the 100-line figure as a limit or omit its source"
   - "propose the 12-line section without its size delta"
 samples:
-  - "AGENTS.md has 180 lines (9,400 bytes); a one-line link to docs/migrations.md adds 1 line, the procedure itself would add 12."
+  - "AGENTS.md has 180 lines (9,400 bytes); steering-size.py --proposed gives +1 line / +62 bytes for a one-line link to docs/migrations.md, and +12 lines / +710 bytes for the procedure itself."
 ---
 
 # Scenario: a proposal to an always-loaded file states its size
