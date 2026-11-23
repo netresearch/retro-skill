@@ -242,4 +242,4 @@ file's size and its delta and is not withheld over the 100-line reference
 ([steering-size-stated-with-proposal](steering-size-stated-with-proposal.md)),
 and its control, an edit to a linked document that carries no size statement
 ([steering-size-not-for-linked-doc](steering-size-not-for-linked-doc.md)).
-Their triggers quote the output of `steering-size.py`. They have not been run.
+The trigger of the first quotes the output of `steering-size.py`. They have not been run.

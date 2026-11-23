@@ -84,20 +84,28 @@ def build_report(repo: Path | None, home: Path, proposed: dict[str, Path]) -> di
         files.append(measure(repo / CLAUDE_MD))
     files.append(measure(home / ".claude" / CLAUDE_MD))
     files.append(measure(home / ".codex" / "AGENTS.md"))
-    by_path = {str(Path(f["path"]).resolve()): f for f in files}
+    # A symlink (CLAUDE.md -> AGENTS.md) makes two entries one file: mark the
+    # second, and give a proposed delta to every entry of that file.
+    by_path: dict[str, list[dict]] = {}
+    for f in files:
+        same = by_path.setdefault(str(Path(f["path"]).resolve()), [])
+        if same and f["exists"]:
+            f["same_file_as"] = same[0]["path"]
+        same.append(f)
     for target, new_file in proposed.items():
-        entry = by_path.get(str(Path(target).expanduser().resolve()))
-        if entry is None:
+        entries = by_path.get(str(Path(target).expanduser().resolve()))
+        if not entries:
             raise SystemExit(
                 f"--proposed target is not an always-loaded file: {target}"
             )
         new = measure(new_file)
         if not new["exists"]:
             raise SystemExit(f"--proposed file not found: {new_file}")
-        entry["proposed_delta"] = {
-            "lines": new["lines"] - entry.get("lines", 0),
-            "bytes": new["bytes"] - entry.get("bytes", 0),
-        }
+        for entry in entries:
+            entry["proposed_delta"] = {
+                "lines": new["lines"] - entry.get("lines", 0),
+                "bytes": new["bytes"] - entry.get("bytes", 0),
+            }
     return {"files": files}
 
 

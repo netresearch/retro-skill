@@ -131,6 +131,17 @@ class SteeringSizeTest(unittest.TestCase):
             self.entry(r, target)["proposed_delta"], {"lines": -2, "bytes": -10}
         )
 
+    def test_symlinked_claude_md_gets_the_agents_md_delta(self):
+        agents = self.write(self.repo / "AGENTS.md", "a\nb\n")
+        (self.repo / "CLAUDE.md").symlink_to("AGENTS.md")
+        grown = self.write(self.repo.parent / "grown.md", "a\nb\nc\n")
+        r = self.run_main("--repo", str(self.repo), "--proposed", f"{agents}={grown}")
+        delta = {"lines": 1, "bytes": 2}
+        self.assertEqual(self.entry(r, agents)["proposed_delta"], delta)
+        claude = self.entry(r, self.repo / "CLAUDE.md")
+        self.assertEqual(claude["proposed_delta"], delta)
+        self.assertEqual(claude["same_file_as"], str(agents))
+
     def test_proposed_delta_for_a_new_file(self):
         new = self.write(self.repo.parent / "new.md", "a\nb\n")
         target = self.home / ".codex" / "AGENTS.md"
