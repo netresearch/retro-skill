@@ -10,7 +10,7 @@ This test walks every JSON file there and collects each value under a key
 ending in ``input_sha256`` (today ``final_input_sha256`` and
 ``grading_input_sha256``). Each value must equal the sha256 of a file that
 ``git ls-files`` lists, or the record must be in DOCUMENTED_GAPS with the
-exact number of unresolved values and the place where it states the loss.
+exact number of unresolved values and where the loss is stated.
 
 Other ``*sha256`` keys are out of scope: ``sources``, ``contexts``,
 ``source_sha256``, ``files_sha256``, ``tested_sha256``, ``final_sha256`` and
@@ -44,7 +44,10 @@ DOCUMENTED_GAPS = {
     ),
     ("docs/evidence/prior-attempts-2026-11-18.json", "grading_input_sha256"): (
         9,
-        "its input_retention field, added 2026-11-23",
+        (
+            "not stated in the record, which is left as written; measured "
+            "2026-11-23 in issue 277: none matches a tracked file or a blob in history"
+        ),
     ),
 }
 
