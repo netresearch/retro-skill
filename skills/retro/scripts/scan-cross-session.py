@@ -876,7 +876,7 @@ ANCHOR_RE = re.compile(r"\[→\s*(A\d+(?:\s*,\s*A\d+)*)")
 LIST_MARKER_RE = re.compile(r"\A\s*(?:[-*+]|\d+[.)])\s+")
 # A placeholder or an ellipsis never appears in a real command; only the literal
 # text before it can.
-KEYWORD_GAP_RE = re.compile(r"<[^<>]*>|…|\.\.\.")
+KEYWORD_GAP_RE = re.compile(r"<[^<>]*>|\{[^{}]*\}|…|\.\.\.|\*")
 MIN_KEYWORD_CHARS = 3
 # A chunk that quotes the rule's opening is the rule being read, not its topic.
 QUOTE_CHARS = 40

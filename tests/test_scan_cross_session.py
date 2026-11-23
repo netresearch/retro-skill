@@ -326,6 +326,11 @@ class ParseRulesTest(unittest.TestCase):
         self.assertEqual([r["keywords"] for r in rules], [["uv run"]])
         self.assertEqual(rules[0]["line"], 7)
 
+    def test_glob_and_brace_placeholders_are_cut(self) -> None:
+        text = "- `mcp__package-version__*` and `OPS{CUSTOMER}-board`\n"
+        rules = scs.parse_rules(text)["rules"]
+        self.assertEqual(rules[0]["keywords"], ["OPS", "mcp__package-version__"])
+
     def test_a_placeholder_with_spaces_is_cut_too(self) -> None:
         rules = scs.parse_rules("- `git add <only its files>` [→A146]\n")["rules"]
         self.assertEqual(rules[0]["keywords"], ["git add"])
