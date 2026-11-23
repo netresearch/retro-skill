@@ -15,9 +15,11 @@ governed. *Instruction pruning* in `classification-heuristic.md` is fed by
 signals for wrong or misplaced instructions (B14, B8, C4), but no signal fed it
 for a procedure that was correct and too heavy for the work.
 
-Subagent transcripts were already read (`SKILL.md`, Phase 1), but only for the
-subagent's own friction. A subagent that lost time because its brief lacked a
-fact the caller held was reported, if at all, as the subagent's error.
+Subagent transcripts were already read in Phase 1 (`SKILL.md`), but only by
+`collect-review-findings.py` and `derive-session-scope.py`, to find the PRs a
+session wrote to; `detect-mechanical.py` does not open them. A subagent that
+lost time because its brief lacked a fact the caller held was reported, if at
+all, as the subagent's error.
 
 Two published retro skills name these cases: `giannimassi/agent-retro` lists
 over-specification ("too rigid") among skill issues, and
