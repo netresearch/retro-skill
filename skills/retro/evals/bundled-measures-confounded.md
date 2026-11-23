@@ -6,7 +6,7 @@ skill_under_test: retro
 mode: outcome
 trigger: "One merged PR shipped two measures for the same recurring failure (pushing with failing tests): a reworded verification rule in the project's AGENTS.md and a new pre-push hook that runs the test suite. In the six comparable later sessions no push with failing tests occurred, and the hook ran in all six. The hook blocked a push once; in the other five the tests passed before the agent pushed. The user asks which of the two measures worked and proposes deleting the AGENTS.md rule as redundant now that the hook exists."
 expected:
-  - credit the observed improvement to the bundle as shipped and state that the record cannot attribute it to the rule or to the hook alone
+  - describe the six sessions as coinciding with the bundle as shipped, state that the record establishes no causal effect of the bundle, the rule or the hook, and attribute nothing to either part alone
   - name what would isolate one part (for example a bounded comparison with the rule removed, or later sessions where only one part applies) before removing either part
 negative_expected:
   - declare the hook the effective measure and the rule ineffective because the hook ran in all six sessions
