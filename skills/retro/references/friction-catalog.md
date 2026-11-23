@@ -411,7 +411,7 @@ Not detectable from a single session. Session-file scan across projects.
 | C4 | Prior measure needs an application check | Same problem after a prior change is a candidate; verify adoption, availability, loaded version, applicability, actual application and outcome | Evidence-backed Learning-Id/opportunity observations, not git history alone |
 | C6 | Written rule violated repeatedly | A signal fired >=3x while a matching rule already exists in the always-loaded instructions | Prose has demonstrably failed — needs a mechanical gate, unless one is already deployed (see below) |
 | C5 | Follow-up-fix session | A later session exists primarily to fix what an earlier session broke (mentions earlier commits, works on same files within 7 days with reverting edits, or `git revert` of earlier commits) | `scan-cross-session.py --follow-up-sessions`; the "mentions earlier commits" part stays model-read |
-| C7 | Rule never applicable | A rule of one always-loaded instruction file, or of a skill's `SKILL.md` or reference file, whose keywords no session in a large window touched | `scan-cross-session.py --rule-tally <file>`; a removal candidate for "Instruction pruning", never removal evidence |
+| C7 | Rule never applicable | A rule of one always-loaded instruction file, or of a skill's `SKILL.md` or reference file, whose keywords no session in a large window matched | `scan-cross-session.py --rule-tally <file>`; a removal candidate for "Instruction pruning", never removal evidence |
 
 The C1, C5 and C7 modes read every tool call in the window, so they run on
 demand (`/retro audit`), not per event. The C1 and C5 modes report only what

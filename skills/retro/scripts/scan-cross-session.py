@@ -1010,7 +1010,7 @@ class _KeywordMatcher:
         self.rules_of: dict[str, list[int]] = defaultdict(list)
         for index, rule in enumerate(rules):
             for keyword in rule["keywords"]:
-                self.rules_of[keyword.lower()].append(index)
+                self.rules_of[_flat(keyword).lower()].append(index)
 
     def rules_in(self, chunk: str) -> set[int]:
         return {i for k, rules in self.rules_of.items() if k in chunk for i in rules}

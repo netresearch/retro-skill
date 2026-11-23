@@ -374,6 +374,14 @@ class RuleTallyTest(TempDirCase):
         uv = next(r for r in _tally(self.root)["rules"] if "uv run" in r["keywords"])
         self.assertEqual((uv["sessions"], uv["violation_candidates"]), (["a"], []))
 
+    def test_interior_spaces_of_a_keyword_still_match(self) -> None:
+        rules = "- run `git  status` first\n"
+        Transcript().call("Bash", {"command": "git  status"}, "ok").write(
+            self.root, "-p", "a"
+        )
+        found = _tally(self.root, rules)
+        self.assertEqual([r["sessions"] for r in found["rules"]], [["a"]])
+
     def test_a_shorter_keyword_inside_a_longer_one_still_hits(self) -> None:
         rules = "- `git add -A` never\n- `git` always\n"
         Transcript().call("Bash", {"command": "git add -A"}, "ok").write(

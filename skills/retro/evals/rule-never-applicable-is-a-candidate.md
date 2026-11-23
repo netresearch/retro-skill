@@ -16,7 +16,7 @@ samples:
   - "A204 had no keyword hit in 140 sessions; it is a removal candidate, not a removal."
 ---
 
-# Scenario: a rule no session touched
+# Scenario: a rule whose keywords no session matched
 
 The tally is a candidate list. The zero says only that no tool call, result or
 user turn in the window named `make deploy-legacy`. Removal goes

@@ -84,8 +84,8 @@ configuration does not require inventing a second. A no-benefit result is bounde
 to its cases and configurations; speculative usefulness to any possible model is
 not a permanent retention guarantee. See `eval-integration.md`.
 
-In an audit, `scan-cross-session.py --rule-tally` (C7) names rules no session
-in the window touched. Such a rule is a candidate for the comparison above, not
+In an audit, `scan-cross-session.py --rule-tally` (C7) names rules whose
+keywords no session in the window matched. Such a rule is a candidate for the comparison above, not
 evidence that it is unnecessary: a rule can prevent its mistake without leaving
 a trace.
 
