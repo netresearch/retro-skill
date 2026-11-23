@@ -429,12 +429,14 @@ uv run "${CLAUDE_SKILL_DIR}/scripts/collect-review-findings.py" --transcript-fil
 3. Consult prior attempts for recurrence, transfer or a previous measure
    (prior-attempts.md); other Schicht C enrichment is optional.
 4. Skill discovery (full catalogue, input to classification)
-4b. Project-harness inspection (for project-rule / harness-artefact)
+4b. Project-harness inspection (for project-rule / harness-artefact; states the
+    size of the steering files with steering-size.py)
 4c. Documentation lookup (B21 candidates: inventory, repo docs, runbooks, wiki,
     tickets; states what it searched)
 5. Classification → 7 destinations (authority first)
 6. Eval consultation (when present)
-7. Proposal generation (prose Why + How-to-apply)
+7. Proposal generation (prose Why + How-to-apply; an edit to a steering file
+   states its size delta)
 8. Authorization (reuse existing mandate; grouped uncovered decisions)
 9. Materialization per destination convention
 10. Report

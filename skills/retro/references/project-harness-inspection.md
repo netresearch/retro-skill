@@ -41,7 +41,7 @@ this session, not a checklist to fill in.
 | Surface | The question |
 |---|---|
 | `AGENTS.md` / `CLAUDE.md` | Did the agent re-derive something already true but unwritten? Did it follow a rule that is stated in **more than one place, differently**? |
-| Steering files that load in every turn (global rules file, repo `AGENTS.md`) | Does a rule restate what a hook already enforces? Did the session find a statement wrong, or a value that is copied from a config file? Does the repository lack an entry file that points to the procedure the session needed? Their size costs context in every turn. |
+| Steering files that load in every turn (global rules file, repo `AGENTS.md`) | Does a rule restate what a hook already enforces? Did the session find a statement wrong, or a value that is copied from a config file? Does the repository lack an entry file that points to the procedure the session needed? Their size costs context in every turn; state it (below). |
 | Review rounds, scanners, release targets | Did a review round, a scanner or CI after the push find a defect that an earlier check would have found? Does the release build a platform or target that no pull-request job tests? |
 | One-command entry points (`Makefile`, `composer.json` scripts, `package.json`) | Did the session run a documented sequence by hand? A gate described as a list is a gate whose last two steps get skipped. |
 | Hook config (lefthook, captainhook, husky, pre-commit) | Did something reach CI that a sub-second local check would have caught? |
@@ -53,6 +53,30 @@ this session, not a checklist to fill in.
 | Decision records | Did the session make, need or change a decision? Does the root `AGENTS.md` say whether the project keeps ADRs and where (`check-decision-records.py`, E7)? Did a changed path lie under the anchor of an accepted record (E1)? |
 | Context retention and entry points | Were decisions lost during compaction, or correct knowledge unreachable from the documented starting point? |
 | Templates (PR/MR, issue) | Did a review round ask for something a template could have prompted? |
+
+## Size of the steering files
+
+The files that load in every turn are the repository's root `AGENTS.md` and
+`CLAUDE.md` (a `CLAUDE.md` line `@AGENTS.md` loads `AGENTS.md` for Claude
+Code too), `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md`. State their size
+in this phase, and whenever a proposal edits one of them:
+
+```bash
+uv run ${CLAUDE_SKILL_DIR}/scripts/steering-size.py --repo <repo> [--proposed <file>=<whole proposed file>]
+```
+
+It prints lines, bytes, `approx_tokens` (bytes / 4, approximate, no
+tokenizer) and, with `--proposed`, the signed delta the proposal adds. Quote
+the numbers; retro's own proposals are one way these files grow.
+
+The size is a report, never a gate: no threshold withholds a proposal. As a
+reference, not a limit: OpenAI keeps its repository `AGENTS.md` at about 100
+lines, as a map to other documents ("Harness engineering: leveraging Codex in
+an agent-first world"). A proposal that adds lines to one of these files says
+why the content cannot live in a document the file links or in a skill. The
+criteria exist: a linked document is part of the project rule store
+(`destination-taxonomy.md` § `project-rule`), and the two-direction test
+in `promote-mode.md` decides what may leave always-loaded context.
 
 ## Two traps
 
