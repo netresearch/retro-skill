@@ -36,7 +36,7 @@ import json
 import re
 from pathlib import Path
 
-FENCE = re.compile(r"(?ms)^\s*(```|~~~).*?^\s*\1")
+CLAUDE_MD = "CLAUDE.md"
 CODE_SPAN = re.compile(r"(`+).*?\1", re.DOTALL)
 IMPORT = re.compile(r"(?<!\S)@(?:\./)?AGENTS\.md(?![^\s])")
 
@@ -54,20 +54,35 @@ def measure(path: Path) -> dict:
     }
 
 
+def strip_fences(text: str) -> str:
+    """Drop fenced code blocks line by line (a regex here backtracks)."""
+    kept, fence = [], None
+    for line in text.splitlines():
+        stripped = line.lstrip()
+        if fence is None and stripped.startswith(("```", "~~~")):
+            fence = stripped[: len(stripped) - len(stripped.lstrip(stripped[0]))]
+        elif fence is not None and stripped.startswith(fence):
+            if not stripped.rstrip().strip(fence[0]):
+                fence = None
+        elif fence is None:
+            kept.append(line)
+    return "\n".join(kept)
+
+
 def imports_agents_md(claude_md: Path) -> bool:
     if not claude_md.is_file():
         return False
     text = claude_md.read_text(encoding="utf-8", errors="replace")
-    return bool(IMPORT.search(CODE_SPAN.sub("", FENCE.sub("", text))))
+    return bool(IMPORT.search(CODE_SPAN.sub("", strip_fences(text))))
 
 
 def build_report(repo: Path | None, home: Path, proposed: dict[str, Path]) -> dict:
     files = []
     if repo is not None:
         files.append(measure(repo / "AGENTS.md"))
-        files[0]["imported_by_claude_md"] = imports_agents_md(repo / "CLAUDE.md")
-        files.append(measure(repo / "CLAUDE.md"))
-    files.append(measure(home / ".claude" / "CLAUDE.md"))
+        files[0]["imported_by_claude_md"] = imports_agents_md(repo / CLAUDE_MD)
+        files.append(measure(repo / CLAUDE_MD))
+    files.append(measure(home / ".claude" / CLAUDE_MD))
     files.append(measure(home / ".codex" / "AGENTS.md"))
     by_path = {str(Path(f["path"]).resolve()): f for f in files}
     for target, new_file in proposed.items():

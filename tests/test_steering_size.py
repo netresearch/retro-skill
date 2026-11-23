@@ -95,11 +95,18 @@ class SteeringSizeTest(unittest.TestCase):
         for text in (
             "Write `x @AGENTS.md y` to import.\n",
             "~~~text\n@AGENTS.md\n~~~\n",
+            "````md\n```\n@AGENTS.md\n```\n````\n",
         ):
             self.write(self.repo / "CLAUDE.md", text)
             r = self.run_main("--repo", str(self.repo))
             entry = self.entry(r, self.repo / "AGENTS.md")
             self.assertFalse(entry["imported_by_claude_md"], text)
+
+    def test_import_after_a_closed_fence_counts(self):
+        self.write(self.repo / "AGENTS.md", "rules\n")
+        self.write(self.repo / "CLAUDE.md", "```\ncode\n```\n@AGENTS.md\n")
+        r = self.run_main("--repo", str(self.repo))
+        self.assertTrue(self.entry(r, self.repo / "AGENTS.md")["imported_by_claude_md"])
 
     def test_other_import_is_not_agents_md(self):
         self.write(self.repo / "AGENTS.md", "rules\n")
