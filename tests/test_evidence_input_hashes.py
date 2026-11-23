@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
 
@@ -148,7 +147,7 @@ class EvidenceInputHashes(unittest.TestCase):
 
     def test_records_are_found(self):
         self.assertGreater(len(self.records), 0)
-        self.assertTrue(set(DOCUMENTED_GAPS) <= set(self.counts))
+        self.assertLessEqual(set(DOCUMENTED_GAPS), set(self.counts))
 
     def test_input_hashes_resolve_or_are_documented(self):
         for (path, key), count in sorted(self.counts.items()):
