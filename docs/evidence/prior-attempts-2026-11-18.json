@@ -3,6 +3,7 @@
   "baseline_commit": "a871759a450355412fd72402c8c4693776e05a89",
   "method": "Nine fresh ChatGPT Work executors (one per case and instruction set) received only the frozen selected guidance, the trigger and read-only synthetic inputs. A separate agent graded anonymized answers against the matching rubric. Effective model version, cost and execution time were not recorded. These were explicit-reference runs, not automatic skill discovery, full retro sweeps or production sessions.",
   "interpretation": "All nine central recommendations were correct. A grade counts a compound expected item only if all its clauses are present. The first comparison motivated an instruction edit. The final three replays use the same cases, so their scores include tuning on this sample.",
+  "input_retention": "Added 2026-11-23 (https://github.com/netresearch/retro-skill/issues/277): the nine grading inputs whose hashes answers[].grading_input_sha256 lists were not committed. Measured at 42d632d, none of the nine matches a file tracked in the repository or a blob in its history, and the record does not say why. The answers below are the anonymized responses the grader read, but the hashed inputs are not reproduced from them, so the grades can be read and compared with the rubrics, not checked against the exact bytes the grader saw.",
   "cases": {
     "dispatch-history-a": {
       "source_sha256": "cc4097b0fb2203ad5597d85c2b9bacc99235d35f2f3613e048c59e092ef8ee4c",
