@@ -896,8 +896,8 @@ def _keyword(span: str) -> str | None:
     return literal if len(literal) >= MIN_KEYWORD_CHARS else None
 
 
-def parse_rules(text: str) -> dict[str, Any]:
-    """Top-level list items of a Markdown file, each with an id, line and keywords."""
+def _list_items(text: str) -> tuple[list[dict[str, Any]], int]:
+    """Top-level list items with their source and code spans, and prose lines."""
     lines = text.splitlines()
     tokens = _MD.parse(text)
     items, heading, depth, outside = [], "", 0, 0
@@ -911,30 +911,41 @@ def parse_rules(text: str) -> dict[str, Any]:
         elif tok.type == "list_item_open" and depth == 1:
             start, end = tok.map
             source = LIST_MARKER_RE.sub("", "\n".join(lines[start:end]), count=1)
-            items.append({"line": start + 1, "heading": heading, "source": source})
-            items[-1]["spans"] = []
+            items.append(
+                {"line": start + 1, "heading": heading, "source": source, "spans": []}
+            )
         elif tok.type == "inline" and depth and items:
-            items[-1]["spans"] += [
-                c.content for c in tok.children or () if c.type == "code_inline"
-            ]
+            items[-1]["spans"] += _code_spans(tok)
         elif tok.type == "paragraph_open" and not depth:
             outside += tok.map[1] - tok.map[0]
+    return items, outside
+
+
+def _code_spans(tok: Any) -> list[str]:
+    return [c.content for c in tok.children or () if c.type == "code_inline"]
+
+
+def _rule_id(source: str, flat: str, seen: Counter[str]) -> str:
+    """The anchors, else a text hash; a repeated id gets a #N suffix."""
+    anchor = ANCHOR_RE.search(source)
+    if anchor:
+        rule_id = re.sub(r"\s", "", anchor[1])
+    else:
+        rule_id = "h:" + hashlib.sha256(flat.encode()).hexdigest()[:10]
+    seen[rule_id] += 1
+    return f"{rule_id}#{seen[rule_id]}" if seen[rule_id] > 1 else rule_id
+
+
+def parse_rules(text: str) -> dict[str, Any]:
+    """Top-level list items of a Markdown file, each with an id, line and keywords."""
+    items, outside = _list_items(text)
     rules, seen = [], Counter()
     for item in items:
         flat = _flat(item["source"])
-        anchor = ANCHOR_RE.search(item["source"])
-        rule_id = (
-            re.sub(r"\s", "", anchor[1])
-            if anchor
-            else "h:" + hashlib.sha256(flat.encode()).hexdigest()[:10]
-        )
-        seen[rule_id] += 1
-        if seen[rule_id] > 1:
-            rule_id = f"{rule_id}#{seen[rule_id]}"
         keywords = {k for k in map(_keyword, item["spans"]) if k}
         rules.append(
             {
-                "id": rule_id,
+                "id": _rule_id(item["source"], flat, seen),
                 "line": item["line"],
                 "heading": item["heading"],
                 "keywords": sorted(keywords),
@@ -988,6 +999,49 @@ class _KeywordMatcher:
         return {i for k, rules in self.rules_of.items() if k in chunk for i in rules}
 
 
+def _scan_session(
+    session: dict[str, Any],
+    rules: list[dict[str, Any]],
+    matcher: _KeywordMatcher,
+    hits: list[set[str]],
+    flagged: list[set[str]],
+) -> None:
+    for chunk, failed in _chunks(session):
+        if TALLY_OUTPUT_RE.search(chunk):
+            continue
+        for index in matcher.rules_in(chunk):
+            if rules[index]["quote"] in chunk:
+                continue
+            hits[index].add(session["id"])
+            if failed:
+                flagged[index].add(session["id"])
+
+
+def _session_kind(session: dict[str, Any]) -> str:
+    # A session that ran a tally reads its candidates back; they are not uses.
+    if session["ran_tally"]:
+        return "ran_a_tally"
+    if not session["calls"] and not session["user_texts"]:
+        return "empty"
+    return "scanned"
+
+
+def _tally_row(
+    rule: dict[str, Any], hit: set[str], flag: set[str], limit: int
+) -> dict[str, Any]:
+    return {
+        "id": rule["id"],
+        "line": rule["line"],
+        "heading": mask(rule["heading"]),
+        "keywords": [mask(k) for k in rule["keywords"]],
+        "state": "measured" if rule["keywords"] else "not_measurable",
+        "applicable_sessions": len(hit),
+        "violation_candidate_sessions": len(flag),
+        "sessions": sorted(hit)[:limit],
+        "violation_candidates": sorted(flag)[:limit],
+    }
+
+
 def rule_tally(
     rules: list[dict[str, Any]], sessions: Iterable[dict[str, Any]], limit: int
 ) -> dict[str, Any]:
@@ -997,35 +1051,12 @@ def rule_tally(
     flagged = [set() for _ in rules]
     counts = Counter()
     for session in sessions:
-        # A session that ran a tally reads its candidates back; they are not uses.
-        if session["ran_tally"]:
-            counts["ran_a_tally"] += 1
-            continue
-        if not session["calls"] and not session["user_texts"]:
-            counts["empty"] += 1
-            continue
-        counts["scanned"] += 1
-        for chunk, failed in _chunks(session):
-            if TALLY_OUTPUT_RE.search(chunk):
-                continue
-            for index in matcher.rules_in(chunk):
-                if rules[index]["quote"] in chunk:
-                    continue
-                hits[index].add(session["id"])
-                if failed:
-                    flagged[index].add(session["id"])
+        kind = _session_kind(session)
+        counts[kind] += 1
+        if kind == "scanned":
+            _scan_session(session, rules, matcher, hits, flagged)
     tally = [
-        {
-            "id": rule["id"],
-            "line": rule["line"],
-            "heading": mask(rule["heading"]),
-            "keywords": [mask(k) for k in rule["keywords"]],
-            "state": "measured" if rule["keywords"] else "not_measurable",
-            "applicable_sessions": len(hit),
-            "violation_candidate_sessions": len(flag),
-            "sessions": sorted(hit)[:limit],
-            "violation_candidates": sorted(flag)[:limit],
-        }
+        _tally_row(rule, hit, flag, limit)
         for rule, hit, flag in zip(rules, hits, flagged, strict=True)
     ]
     return {
@@ -1250,7 +1281,9 @@ def main() -> int:
     rules_text = None
     if args.rule_tally is not None:
         try:
-            rules_text = args.rule_tally.read_text(encoding="utf-8")
+            # S8707: explicit caller-selected local instruction file, not a path
+            # from untrusted session content. No privilege boundary is crossed.
+            rules_text = args.rule_tally.read_text(encoding="utf-8")  # NOSONAR
         except (OSError, UnicodeDecodeError) as error:
             parser.exit(2, f"scan-cross-session: {error}\n")
 
