@@ -119,6 +119,15 @@ inferential findings the pre-pass cannot catch — in **both** classes below.
   probe against the property the change was meant to establish, in a copy and
   without network access or credentials; where they cannot run that way, skip
   them and say so (`friction-catalog.md` § Missed situational check).
+- **Skill over-specification (B23):** a loaded skill or rule prescribed a
+  procedure out of proportion to the work, and following it cost time, tokens
+  or quality, or the user had to tell the agent to skip it. Name the
+  instruction and the cost. Read the step's purpose first: a step that guarded
+  a risk present in this session is no finding.
+- **Brief gap (B24):** a subagent's brief lacked a path, constraint, stop
+  condition, result format or scope that the caller held. Judge it from the
+  subagent's transcript (clarifying turns, searches for known files, work
+  outside the scope), and route it to whatever wrote the brief.
 
 ### Reusable-learning findings (scan even when nothing went wrong)
 
