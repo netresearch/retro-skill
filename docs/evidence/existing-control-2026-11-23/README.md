@@ -21,8 +21,9 @@ close a friction) change that?
 
 The `existing-control-*` cases in `skills/retro/evals/` ran once per case
 and arm. Inputs were frozen with `prepare-behavior-evals.py`; the context
-held `SKILL.md` plus the command copied into the skill directory. All ten
-reports gave the expected disposition, so no grader ran. Each trigger states
+held `SKILL.md` plus the command copied into the skill directory, each from
+its own arm: the baseline arm `origin/main` 1f6da03, the revised arm this
+change. All ten reports gave the expected disposition, so no grader ran. Each trigger states
 the decisive facts already sorted (for example the release targets next to
 the PR runners), so the cases test classification, not whether the run looks.
 They stay in the corpus as pins.

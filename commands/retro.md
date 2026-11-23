@@ -340,13 +340,17 @@ although a rule, a document or a gate exists, "already covered" is no
 disposition. Name what the control left open, with its evidence:
 
 - The gate refused a correct action: fix the gate (`harness-artefact`).
-- The gate refused correctly, and prose that loads in every turn states the
-  same rule: propose removing the prose ("Instruction pruning").
+- The gate refused correctly, prose that loads in every turn states the same
+  rule, and no call of that rule got past the gate: propose removing the
+  prose, as a `personal-rule` or `project-rule` removal by the prose's owner
+  ("Instruction pruning"). If C6 shows calls that got past the gate, run C6's
+  investigation first.
 - A document or a skill reference warned, and the cost occurred anyway: a
   warning is no control. Propose the change in the tool that produced the
-  cost.
+  cost (`harness-artefact`, or `skill-update` of the tool's owner).
 - A review round, a scanner or later CI found the defect: name the earlier
-  check that is missing (B19).
+  check that is missing (B19), as a `harness-artefact` against the
+  repository that lacks it.
 - A retro or skill script failed on the input it exists for: that is a defect
   of the script, also when the input is unusually large.
 - A correct document was out of the agent's reach: link it from the entry
@@ -474,6 +478,8 @@ When invoked with a `"<problem description>"` argument:
 - Run LLM enrichment on those turns only
 - Run Phase 3 (cross-session) in filtered mode (same friction signature)
 - Skip Phases 3b and 3c
+- Run Phase 2b only for the argument's skill area and Phase 4b only for the
+  argument's surface
 - Proceed with Phases 4–11
 
 Faster and uses fewer tokens than a full sweep.
@@ -507,7 +513,7 @@ only. It has two jobs, co-equal:
 
 Steps:
 
-- Skip Phase 1 (the session is in the past; mechanical pre-pass on a stale transcript is low value) and Phase 2b; Phase 2 reads only the past session's highlights
+- Skip Phase 1 (the session is in the past; mechanical pre-pass on a stale transcript is low value), Phase 2b and Phase 4b; Phase 2 reads only the past session's highlights
 - Phase 3 runs against the target session(s)
 - **Phase 3b is the primary detection step:** walk forward from session end with `collect-review-findings.py --transcript-file <past session> --since <session end>` (reviews, issue and ticket feedback that arrived later, GitHub and GitLab), `git log`, `gh run list`, `gh issue list`. Detect Schicht D signals (D1–D12) — the candidate adverse outcomes, the durable successes, and superseded temporary copies (D12: a tracked canonical-source change accepted, delivered and reachable by its intended reader → propose pruning the skill's labelled copy; a merge alone is not enough).
 - Phase 3c may also fire if the window is large
@@ -557,7 +563,7 @@ is confirmed. Full detail in `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/prom
   file is not tied to a slug, so its sections appear in a narrowed run too;
   pass `--exclude-global-rules` only when the user asks to leave it out.
 
-- Skip Phases 1b, 2, 2b, 3, 3b, 3c (no transcript) — announce the skip in one line
+- Skip Phases 1b, 2, 2b, 3, 3b, 3c and 4b (no transcript) — announce the skip in one line
 - Phases 4–11 run verbatim; destination skew is **upward** per scope-escalation
   (skill-update › project-rule › personal-rule), **never** project-local memory
 - Phase 8 verifies whether the existing mandate covers the target and audience

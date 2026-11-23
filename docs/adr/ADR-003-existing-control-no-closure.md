@@ -5,7 +5,7 @@
 
 **Status:** Accepted
 **Date:** 2026-11-23
-**Touches:** `commands/retro.md`, `skills/retro/references/classification-heuristic.md`, `skills/retro/references/project-harness-inspection.md`, `tests/test_command_phase_parity.py`
+**Touches:** `commands/retro.md`, `skills/retro/SKILL.md`, `skills/retro/references/classification-heuristic.md`, `skills/retro/references/friction-catalog.md`, `skills/retro/references/project-harness-inspection.md`, `tests/test_command_phase_parity.py`
 
 ## Context
 

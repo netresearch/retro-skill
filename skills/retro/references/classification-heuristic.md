@@ -305,9 +305,9 @@ so the report names what the control left open, with its evidence:
 | What happened | Disposition |
 |---|---|
 | A gate refused a correct action (false positive) | Fix the gate → `harness-artefact` |
-| A gate refused correctly, and prose that loads in every turn states the same rule | Removal candidate for the prose → "Instruction pruning" below |
+| A gate refused correctly, prose that loads in every turn states the same rule, and no call of that rule got past the gate | Removal of the prose by its owner → `personal-rule` or `project-rule` removal ("Instruction pruning" below). If C6 shows calls that got past the gate, run C6's investigation first |
 | A document or skill reference warned, and the cost occurred anyway | A warning is no control: change the tool that produced the cost → `harness-artefact` or `skill-update` of the tool's owner |
-| A review round, a scanner or later CI found the defect | Name the earlier check that is missing → B19 |
+| A review round, a scanner or later CI found the defect | Name the earlier check that is missing → B19, as a `harness-artefact` against the repository that lacks it |
 | A retro or skill script failed on the input it exists for | Defect of that script, also for an unusually large input → `skill-update` of its owner |
 | A correct document was out of the agent's reach | Link from the entry point → B21 `found-unreachable` |
 
@@ -332,6 +332,7 @@ Prefer removal when the desired behaviour is already covered by:
 - another instruction in the same skill,
 - a reference file,
 - a mechanical `checkpoint`,
+- a deployed hook that refused the action in this session,
 - repo-local `AGENTS.md`.
 
 Prefer **replace** (not remove) only when deletion would open a real capability

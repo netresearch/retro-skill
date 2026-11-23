@@ -6,8 +6,10 @@
 `/retro` loads `commands/retro.md`, not `SKILL.md` or the references. A
 phase that the mode table in `references/workflow.md` lists for the Sweep,
 but that the command does not carry, never reaches the run: on 2026-11-22
-five Sweeps ran without Phase 4b (project-harness inspection) and closed the
-harness findings a second retrospective then proposed (ADR-003).
+Sweeps ran without Phase 4b (project-harness inspection) and closed the
+harness findings a second retrospective then proposed. In the four of those
+Sweeps whose reads are visible, no run opened project-harness-inspection.md
+(ADR-003).
 """
 
 from __future__ import annotations
@@ -41,8 +43,12 @@ def sweep_phases(table: str) -> list[str]:
     return phases
 
 
+FENCE = re.compile(r"(?ms)^```.*?^```")
+
+
 def command_phases(command: str) -> set[str]:
-    return set(re.findall(r"(?m)^## Phase ([0-9]+[a-z]?)\b", command))
+    """Phase ids with a level-2 heading outside fenced code blocks."""
+    return set(re.findall(r"(?m)^## Phase ([0-9]+[a-z]?)\b", FENCE.sub("", command)))
 
 
 class SweepPhasesInCommand(unittest.TestCase):
