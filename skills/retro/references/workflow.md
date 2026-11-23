@@ -61,11 +61,16 @@ hold:
 - the transcript is not a Codex rollout whose coverage the Codex section
   below calls incomplete.
 
+A transcript that could not be located or confirmed by its token is no clean
+pre-pass: there is no fast exit. On a repeat `/retro` with `--scan-since`,
+`transcripts_before_scan_since` must be empty too, since a subagent transcript
+left unread there is work the counts did not see.
+
 The counts and findings are those of the whole transcript, also on a repeat
 `/retro` in one session; that only makes the exit rarer. The report is then
 the line `Fast exit: <reasons with the measured values>`, one deviation line
 for the skipped Phases 2–9, `B21: none (fast exit)`, and the Phase 11 line;
-Phase 11 still runs. The fast exit skips the B16–B21 learning scan only
+Phase 11 still runs. Such a report is a reasoned no-op for Done gate 3. The fast exit skips the B16–B21 learning scan only
 because a session this short rarely holds one; a convention the user stated
 in one message, or a technique found without a failed call, is the residual
 risk. `/retro --full` runs the full Sweep. Like an answer word, `--full` is
@@ -560,7 +565,8 @@ Prefer the prescribed scripts (`find-org-skills.py`, `scan-cross-session.py`)
 over ad-hoc substitutes; reach for an ad-hoc step only when the script genuinely
 cannot serve, and announce it when you do.
 
-Phase 4 is not optional in any mode that runs it, and least of all when the
+Phase 4 is not optional in any mode that runs it (a Sweep that takes the fast
+exit does not), and least of all when the
 owning skill seems obvious: opening the skills you expect by path is a
 substitute for `find-org-skills.py`, not the phase, and needs its deviation
 line. The catalogue is what shows a second owner or a better-fitting skill;

@@ -5,7 +5,7 @@
 
 **Status:** Proposed
 **Date:** 2026-11-23
-**Touches:** `commands/retro.md`, `skills/retro/SKILL.md`, `skills/retro/references/workflow.md`, `skills/retro/evals/sweep-fast-exit-short-clean-session.md`, `skills/retro/evals/sweep-fast-exit-not-on-autonomous-run.md`
+**Touches:** `commands/retro.md`, `skills/retro/SKILL.md`, `skills/retro/references/done-mode.md`, `skills/retro/references/friction-catalog.md`, `skills/retro/references/workflow.md`, `skills/retro/evals/sweep-fast-exit-short-clean-session.md`, `skills/retro/evals/sweep-fast-exit-not-on-autonomous-run.md`
 
 ## Context
 
@@ -35,18 +35,20 @@ After Phase 1b, a Sweep reports one `Fast exit: …` line and skips Phases
 2. `collect-review-findings.py` exited 0 with `complete: true`, empty
    `findings`, empty `unresolved_forge_commands` and exactly one entry in
    `transcripts`. The detector reads only the main transcript; a subagent
-   transcript is work it did not measure.
+   transcript is work it did not measure. With `--scan-since`,
+   `transcripts_before_scan_since` must also be empty.
 3. `user_messages` is at most 3 and `tool_uses` at most 10, counted over the
    whole transcript, also on a repeat `/retro`.
 4. The transcript is not a Codex rollout whose coverage `workflow.md` calls
-   incomplete.
+   incomplete, and it was located and confirmed by its token.
 
 The report also carries one deviation line for the skipped phases,
 `B21: none (fast exit)` so that Done gate 8 does not re-run Phase 2, and the
 Phase 11 line; Phase 11 still runs. `/retro --full` forces the full Sweep;
 like an answer word, `--full` is not a Spotlight problem. The fast exit never
 applies in Spotlight, Outcome, Audit, Promote or Done mode, nor in a Sweep
-that Done chains for gate 3.
+that Done chains for gate 3; an earlier fast-exit report is a reasoned no-op
+for that gate.
 
 The thresholds are set below the detector's own line for a tiny session:
 A4 (`A4_MIN_TOOL_USES = 20`) does not fire below 20 tool uses, so below that
@@ -54,8 +56,11 @@ size the pre-pass is weakest at telling a long autonomous run from a short
 one. Ten tool uses is half that line. A hard-won technique (B16) usually takes
 retries or a search, and with a clean pre-pass and at most ten calls there is
 little room for either. Three user messages leave room for a request, one
-follow-up and one confirmation; a correction would show as A6 and block the
-exit. `user_messages` counts text blocks, which can only raise the count.
+follow-up and one confirmation. A correction that the A6 patterns recognize
+blocks the exit; one they miss is part of the residual risk. `user_messages`
+counts text blocks, which can only raise the count; the `/retro` invocation
+itself is a `<command-message>` turn and is not counted (checked on a
+three-event transcript: `user_messages` 1).
 
 These numbers are a judgment, not a measurement over recorded sessions. The
 signature that would expose them is a later `/retro --full` or Outcome run
@@ -80,5 +85,12 @@ on a fast-exited session that finds a B16–B21 learning.
 - Residual risk: a convention the user stated in a single message (B20), or a
   technique found without a failed call (B16), is not proposed. The fast-exit
   line names `/retro --full` for that case.
+- ADR-003 still holds: the command carries every Sweep phase. The fast exit
+  skips Phases 2–9, including 4b, only under the conditions above and with an
+  announced deviation line.
+- On the host where this was written, the seven smallest top-level
+  transcripts that ran `/retro` had 87 to 1,038 tool uses and 40 to 351
+  pre-pass findings; none would have taken the exit. It targets sessions that
+  rarely run a retro today.
 - The mode table keeps its Sweep cells; the exit lives in Phase 1b of
   `commands/retro.md`, so `tests/test_command_phase_parity.py` is unchanged.

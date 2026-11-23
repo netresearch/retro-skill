@@ -189,6 +189,9 @@ later benefit).
 
 ### Reusable-learning signals (B16–B21) — scan even when nothing went wrong
 
+The Sweep's fast exit (`workflow.md` § Sweep, ADR-004) is the one bounded
+exception: it skips this scan for a short session with no finding.
+
 Use `learning-contract.md` for Mad/Sad/Glad, statement kinds and configuration
 bounds. Include a successful procedure or prerequisite another intended executor
 would have to infer, even if the reviewer finds it obvious. Retain evidence and

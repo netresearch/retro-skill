@@ -100,10 +100,13 @@ repeat `/retro` too):
 
 - Phase 1 exited 0 with `coverage.status` `supported` and `findings_total` 0;
 - this collector exited 0 with `complete: true`, empty `findings`, empty
-  `unresolved_forge_commands` and exactly one entry in `transcripts`;
+  `unresolved_forge_commands` and exactly one entry in `transcripts` (with
+  `--scan-since`, also an empty `transcripts_before_scan_since`);
 - `user_messages` ≤ 3 and `tool_uses` ≤ 10 in the Phase 1 output;
 - the transcript is not a Codex rollout with incomplete coverage
   (`references/workflow.md` § Codex rollout).
+
+A transcript that was not located or not confirmed is never a fast exit.
 
 Then skip Phases 2–9, run Phase 11, and report only:
 
@@ -120,7 +123,7 @@ found without a failed call, can still be missed: run `/retro --full` when
 the session held one. `--full` is no Spotlight problem and combines with an
 answer word (`/retro --full komplett`). Never take the fast exit in
 Spotlight, Outcome, Audit, Promote or Done mode, or in a Sweep that Done
-chains for gate 3.
+chains for gate 3. A fast-exit report is a reasoned no-op for Done gate 3.
 
 ## Phase 2: LLM Enrichment
 
@@ -165,7 +168,8 @@ inferential findings the pre-pass cannot catch — in **both** classes below.
 ### Reusable-learning findings (scan even when nothing went wrong)
 
 The pre-pass is friction-only; these leave no error signal, so surface them here
-or they are lost. A clean session still owes these findings.
+or they are lost. A clean session still owes these findings; the fast exit in
+Phase 1b is the one bounded exception.
 
 - **Hard-won technique (B16):** a non-obvious command, flag, endpoint, or
   workflow the session figured out — even cleanly, first try — that is NOT in the
