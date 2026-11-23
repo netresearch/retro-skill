@@ -50,33 +50,33 @@ Token cost: highest (full transcript pass)
 ```
 
 **Fast exit (ADR-004).** After Phase 1b, the Sweep stops when all of these
-hold:
+hold, read from both scripts' `--output-format json`:
 
 - `detect-mechanical.py` exited 0 with `coverage.status` `supported` and
   `findings_total` 0;
-- `collect-review-findings.py` exited 0 with `complete: true`, empty
-  `findings`, empty `unresolved_forge_commands` and exactly one entry in
-  `transcripts` (no subagent transcript);
+- `collect-review-findings.py`, run without `--scan-since`, exited 0 with
+  `complete: true`, empty `findings`, empty `unresolved_forge_commands` and
+  exactly one entry in `transcripts` (no subagent transcript);
 - `user_messages` is at most 3 and `tool_uses` at most 10;
-- the transcript is not a Codex rollout whose coverage the Codex section
-  below calls incomplete.
-
-A transcript that could not be located or confirmed by its token is no clean
-pre-pass: there is no fast exit. On a repeat `/retro` with `--scan-since`,
-`transcripts_before_scan_since` must be empty too, since a subagent transcript
-left unread there is work the counts did not see.
+- the transcript is a Claude Code transcript, located and confirmed by its
+  token; never a Codex or opencode rollout, whose adapters hide subagent work
+  and incomplete coverage from these fields.
 
 The counts and findings are those of the whole transcript, also on a repeat
-`/retro` in one session; that only makes the exit rarer. The report is then
-the line `Fast exit: <reasons with the measured values>`, one deviation line
-for the skipped Phases 2–9, `B21: none (fast exit)`, and the Phase 11 line;
-Phase 11 still runs. Such a report is a reasoned no-op for Done gate 3. The fast exit skips the B16–B21 learning scan only
-because a session this short rarely holds one; a convention the user stated
-in one message, or a technique found without a failed call, is the residual
-risk. `/retro --full` runs the full Sweep. Like an answer word, `--full` is
-no Spotlight problem, and it combines with one (`/retro --full komplett`).
-The fast exit never applies in Spotlight, Outcome, Audit, Promote or Done
-mode, nor in a Sweep that Done chains for its retro gate.
+`/retro` in one session; that only makes the exit rarer. `tool_uses` includes
+the calls this run made to locate and confirm the transcript, and a retro
+started by a natural-language trigger adds its user message and Skill call.
+The report is then the line `Fast exit: <transcript path>; <each condition
+with its measured value>`, one deviation line for the skipped Phases 2–9,
+`B21: none (fast exit)`, and the Phase 11 line; Phase 11 still runs. Such a
+report is a reasoned no-op for Done gate 3. When a condition fails, one line
+names it (`No fast exit: <condition> — <measured value>`) and the Sweep
+continues. The fast exit skips the B16–B21 learning scan only because a
+session this short rarely holds one; a convention the user stated in one
+message, or a technique found without a failed call, is the residual risk.
+`/retro --full` runs the full Sweep over the whole session. The fast exit
+never applies in Spotlight, Outcome, Audit, Promote or Done mode, nor in a
+Sweep that Done chains for its retro gate.
 
 ### Spotlight — `/retro "<problem>"`
 
@@ -398,7 +398,8 @@ rollout whose tool calls all fail to render is refused with exit 2.
 
 On a repeat `/retro` within one session, filter findings to turns after the
 previous retro — earlier signals were already proposed and must not be
-re-presented.
+re-presented. A fast-exit report (§ Sweep) is no previous retro for this
+filter: it proposed nothing, so `/retro --full` after it reads the whole session.
 
 The review collector takes the same window: `--scan-since <time of the
 previous retro>` reads only the transcript events at or after it, so only the
@@ -454,6 +455,9 @@ Differences between modes:
 | 4c (documentation lookup) | Every B21 candidate | Only the argument's facts | B21 candidates, if any | B21 and team-record reconciliation candidates, if any | Yes |
 | 4-9 | Same | Same (fewer findings) | D-focused | E-focused | Same |
 | 10 (report) | Detailed | Targeted | Outcome-table | Architectural-table | Reminder only |
+
+A Sweep that takes the fast exit (§ Sweep, ADR-004) skips Phases 2–9 with one
+deviation line; the Sweep column holds for every other Sweep.
 
 **Promote** substitutes Phase 1 with `${CLAUDE_SKILL_DIR}/scripts/scan-memory-inventory.py` (a
 filesystem inventory of every slug's `memory/`, not a transcript), skips Phases
@@ -535,8 +539,10 @@ what each one does:
   `noted` nothing is written.
 - A word that the user already gave for this run (also as the argument, for
   example `/retro komplett`) is the answer. Apply it and do not ask. An answer
-  word as the only argument runs the Sweep and is no Spotlight problem: `/retro
-  komplett` is a Sweep answered with `complete`. A mode name is never an
+  word, `--full`, or both in either order as the only arguments run the Sweep
+  and are no Spotlight problem: `/retro komplett` is a Sweep answered with
+  `complete`, `/retro --full komplett` the same without the fast exit. With a
+  problem description or a mode name, `--full` has no effect. A mode name is never an
   answer: `/retro done` selects Done mode and still ends with the question,
   whereas `/retro done komplett` answers it.
 - With no open proposal there is no question. The report says that nothing

@@ -32,20 +32,26 @@ After Phase 1b, a Sweep reports one `Fast exit: …` line and skips Phases
 
 1. `detect-mechanical.py` exited 0, `coverage.status` is `supported` and
    `findings_total` is 0.
-2. `collect-review-findings.py` exited 0 with `complete: true`, empty
-   `findings`, empty `unresolved_forge_commands` and exactly one entry in
-   `transcripts`. The detector reads only the main transcript; a subagent
-   transcript is work it did not measure. With `--scan-since`,
-   `transcripts_before_scan_since` must also be empty.
+2. `collect-review-findings.py`, run without `--scan-since` and read as
+   JSON, exited 0 with `complete: true`, empty `findings`, empty
+   `unresolved_forge_commands` and exactly one entry in `transcripts`. The
+   detector reads only the main transcript; a subagent transcript is work it
+   did not measure. `--scan-since` would leave earlier events unread.
 3. `user_messages` is at most 3 and `tool_uses` at most 10, counted over the
    whole transcript, also on a repeat `/retro`.
-4. The transcript is not a Codex rollout whose coverage `workflow.md` calls
-   incomplete, and it was located and confirmed by its token.
+4. The transcript is a Claude Code transcript, located and confirmed by its
+   token. A Codex or opencode rollout never takes the exit: the converted file
+   has no subagent directory beside it, so `transcripts` always has one
+   entry, and the Codex adapter reports incomplete coverage only on stderr.
 
-The report also carries one deviation line for the skipped phases,
+The `Fast exit:` line names the transcript path, which gives Done gate 3 its
+scope. When a condition fails, one line names it and the Sweep continues. The
+report also carries one deviation line for the skipped phases,
 `B21: none (fast exit)` so that Done gate 8 does not re-run Phase 2, and the
 Phase 11 line; Phase 11 still runs. `/retro --full` forces the full Sweep;
-like an answer word, `--full` is not a Spotlight problem. The fast exit never
+like an answer word, `--full` is not a Spotlight problem, and with a problem
+or a mode name it has no effect. A fast-exit report is no previous retro for
+the repeat-run filter, so `--full` after it reads the whole session. The fast exit never
 applies in Spotlight, Outcome, Audit, Promote or Done mode, nor in a Sweep
 that Done chains for gate 3; an earlier fast-exit report is a reasoned no-op
 for that gate.
@@ -60,7 +66,10 @@ follow-up and one confirmation. A correction that the A6 patterns recognize
 blocks the exit; one they miss is part of the residual risk. `user_messages`
 counts text blocks, which can only raise the count; the `/retro` invocation
 itself is a `<command-message>` turn and is not counted (checked on a
-three-event transcript: `user_messages` 1).
+three-event transcript: `user_messages` 1). `tool_uses` does include the
+calls the running retro made to locate and confirm the transcript, and a
+retro started by a natural-language trigger adds its user message and Skill
+call; both make the exit rarer, never wrong.
 
 These numbers are a judgment, not a measurement over recorded sessions. The
 signature that would expose them is a later `/retro --full` or Outcome run

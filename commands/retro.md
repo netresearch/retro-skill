@@ -70,7 +70,7 @@ most of it never entered the transcript:
 
 ```bash
 uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/collect-review-findings.py \
-  --transcript-file <the transcript confirmed in Phase 1>
+  --transcript-file <the transcript confirmed in Phase 1> --output-format json
 ```
 
 The subagents' transcripts beside it (`<session id>/subagents/agent-*.jsonl`)
@@ -95,35 +95,40 @@ tracker: read what it created and supply that tracker's feedback with
 
 ### Fast exit (Sweep only)
 
-Stop the Sweep here when all of these hold for the whole transcript (on a
-repeat `/retro` too):
+Stop the Sweep here when all of these hold, read from the JSON of both
+scripts (`--output-format json`):
 
 - Phase 1 exited 0 with `coverage.status` `supported` and `findings_total` 0;
-- this collector exited 0 with `complete: true`, empty `findings`, empty
-  `unresolved_forge_commands` and exactly one entry in `transcripts` (with
-  `--scan-since`, also an empty `transcripts_before_scan_since`);
-- `user_messages` ≤ 3 and `tool_uses` ≤ 10 in the Phase 1 output;
-- the transcript is not a Codex rollout with incomplete coverage
-  (`references/workflow.md` § Codex rollout).
-
-A transcript that was not located or not confirmed is never a fast exit.
+- this collector, run without `--scan-since`, exited 0 with `complete: true`,
+  empty `findings`, empty `unresolved_forge_commands` and exactly one entry
+  in `transcripts`;
+- `user_messages` ≤ 3 and `tool_uses` ≤ 10 in the Phase 1 output (the calls
+  this run made to locate the transcript count too);
+- the transcript is a Claude Code transcript, located and confirmed by its
+  token; never a Codex or opencode rollout.
 
 Then skip Phases 2–9, run Phase 11, and report only:
 
 ```
-Fast exit: <each condition with its measured value>. Run /retro --full for the full Sweep.
+Fast exit: <transcript path>; <each condition with its measured value>. Run /retro --full for the full Sweep.
 Phases 2–9: skipped — fast exit (ADR-004).
 B21: none (fast exit)
 Phase 11 (self-check): <its line>
 ```
 
+Otherwise one line names the condition that failed
+(`No fast exit: <condition> — <measured value>`) and the Sweep continues.
+
 This skips the learning scan (B16–B21) only because a session this short
 rarely holds one. A convention stated in a single message, or a technique
 found without a failed call, can still be missed: run `/retro --full` when
-the session held one. `--full` is no Spotlight problem and combines with an
-answer word (`/retro --full komplett`). Never take the fast exit in
-Spotlight, Outcome, Audit, Promote or Done mode, or in a Sweep that Done
-chains for gate 3. A fast-exit report is a reasoned no-op for Done gate 3.
+the session held one. A fast-exit report is no previous retro for the
+repeat-run filter, so `--full` reads the whole session. `--full` and an
+answer word, in either order, as the only arguments run the Sweep
+(`/retro --full komplett`); with a problem description or a mode name,
+`--full` has no effect. Never take the fast exit in Spotlight, Outcome,
+Audit, Promote or Done mode, or in a Sweep that Done chains for gate 3. A
+fast-exit report is a reasoned no-op for Done gate 3.
 
 ## Phase 2: LLM Enrichment
 
@@ -146,7 +151,7 @@ inferential findings the pre-pass cannot catch — in **both** classes below.
   or a large rebuild from one isolated case — and the proportionate check did
   not run. Judge only by what was knowable then; a paragraph claiming the check
   is no evidence. Outcomes: performed, not needed, omitted (the only finding),
-  not assessable (one report line). Look for it in smooth sessions too. A
+  not assessable (one report line). Look for it in smooth sessions too (a fast exit skips Phase 2 whole). A
   pattern another signal already holds (A13, B5, B9, B12, B19) stays there.
   When the changed code is reachable, run the project's tests and one bounded
   probe against the property the change was meant to establish, in a copy and

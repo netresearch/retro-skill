@@ -95,7 +95,7 @@ decisions. Process critique grants no new authority.
    leads at the original and use the evidence to keep, revise or retire the
    earlier approach. Follow `references/prior-attempts.md`. Other cross-session
    enrichment is optional (`scripts/scan-cross-session.py`).
-4. Discover skills — always run `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py`, also when the owning skill seems obvious (opening it by path is a skip that needs a deviation line) — and the repo's harness (`project-harness-inspection.md`). When the session changed files in a repository or a decision will be written there, run `uv run ${CLAUDE_SKILL_DIR}/scripts/check-decision-records.py --repo <repo>` with each changed path, relative to the repository root, as `--changed-file` (E1, E7, E8 in `friction-catalog.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
+4. Discover skills — always run `${CLAUDE_SKILL_DIR}/scripts/find-org-skills.py` (not after a fast exit), also when the owning skill seems obvious (opening it by path is a skip that needs a deviation line) — and the repo's harness (`project-harness-inspection.md`). When the session changed files in a repository or a decision will be written there, run `uv run ${CLAUDE_SKILL_DIR}/scripts/check-decision-records.py --repo <repo>` with each changed path, relative to the repository root, as `--changed-file` (E1, E7, E8 in `friction-catalog.md`). For each B21 candidate, search the team's records and state what was searched (`documentation-lookup.md`): not searched is unknown, never absent.
 5. Classify (`classification-heuristic.md`) — authority and rule purpose before
    enforcement and reach; consider simplification, tools or environment changes;
    never project-local memory. A rule, document or gate that existed does not
@@ -115,7 +115,7 @@ decisions. Process critique grants no new authority.
    same permission again.
 9. Materialize per destination; for Promote, drain the source last (verified).
 10. Report — with one deviation line per phase of the mode table that did not
-    run as prescribed (`references/workflow.md` § Report deviations). When
+    run as prescribed (the fast exit's single line covers Phases 2–9) (`references/workflow.md` § Report deviations). When
     proposals remain open, end with one closing question that the user answers
     in one word: `complete`, `noted` or `propose` (`references/workflow.md`
     § Closing question).
