@@ -41,10 +41,10 @@ SCOPE = (
     "README.md",
     "AGENTS.md",
 )
-SIGNAL = re.compile(r"[A-E][0-9]{1,2}")
-PHASE = re.compile(r"[Pp]hase ([0-9]{1,2}[a-z])")
+SIGNAL = re.compile(r"[A-E]\d{1,2}")
+PHASE = re.compile(r"[Pp]hase (\d{1,2}[a-z])")
 # B16–B21, B16-B21, or one id.
-MENTION = re.compile(r"\b([A-E])([0-9]{1,2})(?:\s?[–-]\s?\1([0-9]{1,2}))?\b")
+MENTION = re.compile(r"\b([A-E])(\d{1,2})(?:\s?[–-]\s?\1(\d{1,2}))?\b")
 
 
 def signal_mentions(text: str) -> list[tuple[int, str]]:
