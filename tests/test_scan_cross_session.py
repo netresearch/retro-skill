@@ -410,6 +410,16 @@ class RuleTallyTest(TempDirCase):
                 hit = self._applicable(rules, "Bash", {"command": command}, "ok")
                 self.assertEqual(hit, expected)
 
+    def test_a_short_option_hits_the_bundle_it_opens(self) -> None:
+        rules = "- `set -e` first\n- never `tool --e`\n"
+        for command, expected in (
+            ("set -euo pipefail", [1, 0]),
+            ("tool --exit", [0, 0]),
+        ):
+            with self.subTest(command=command):
+                hit = self._applicable(rules, "Bash", {"command": command}, "ok")
+                self.assertEqual(hit, expected)
+
     def test_an_escaped_line_break_before_a_keyword_still_hits(self) -> None:
         result = '{"log": "one\\nmake unit"}'
         rules = "- run `make unit`\n"

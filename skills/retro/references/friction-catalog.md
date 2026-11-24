@@ -445,8 +445,9 @@ session to read.
   `violation_candidates`). A text that quotes the rule's opening, tally
   output, or a session that ran a tally does not count; query the output in
   the session that ran it. A keyword that is example output, a notation or
-  a letter placeholder cannot occur literally: report its rule as not
-  measurable. `never_applicable` stays `null` while fewer than
+  a letter placeholder cannot occur literally: ignore it, and report a rule
+  as not measurable when no keyword is left. A short option inside a bundle
+  (`ls -l` in `ls -al`) is missed. `never_applicable` stays `null` while fewer than
   `--min-sessions` (30) sessions were scanned. For a repository's
   `AGENTS.md`, pass `--project=<slug>`, or other projects' sessions fill the
   window. Subagent transcripts are not read, which errs toward "never

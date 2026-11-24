@@ -878,6 +878,8 @@ LIST_MARKER_RE = re.compile(r"\A\s*(?:[-*+]|\d+[.)])\s+")
 # text before it can.
 KEYWORD_GAP_RE = re.compile(r"<[^<>]*>|\{[^{}]*\}|…|\.\.\.|\*")
 BARE_WORD_RE = re.compile(r"[\w-]{1,5}")
+# A short option that ends a keyword also opens a bundle: `set -e`, `set -euo`.
+SHORT_OPTION_RE = re.compile(r"(?:\A|\s)-[A-Za-z]\Z")
 # What a Read (`12\t`, `12→`), a `grep -n` (`12:`) or a diff puts before a line.
 LINE_NUMBER_RE = re.compile(r"(?m)^[ \t]*\d+[\t→:]")
 DIFF_MARKER_RE = re.compile(r"(?m)^[+ -]")
@@ -1019,9 +1021,10 @@ def _names(chunk: str, keyword: str, prefix: bool) -> bool:
     """Whether the keyword stands as a word of its own: `pip`, not `pipeline`.
 
     An underscore separates words (`mcp__tt__get_day`), and so does an escaped
-    line break (a backslash and `n`) in a JSON result. After a prefix, a cut
-    keyword, the word may go on. A search loop, because a regular expression
+    line break (a backslash and `n`) in a JSON result. After a prefix (a cut
+    keyword) or a short option (`set -e` in `set -euo`) the word may go on. A search loop, because a regular expression
     that starts with a lookbehind is slower."""
+    open_end = prefix or bool(SHORT_OPTION_RE.search(keyword))
     at = chunk.find(keyword)
     while at >= 0:
         end = at + len(keyword)
@@ -1031,7 +1034,7 @@ def _names(chunk: str, keyword: str, prefix: bool) -> bool:
             or not before[-1:].isalnum()
             or before in (r"\n", r"\r", r"\t")
         )
-        if starts and (prefix or not keyword[-1].isalnum() or not after.isalnum()):
+        if starts and (open_end or not keyword[-1].isalnum() or not after.isalnum()):
             return True
         at = chunk.find(keyword, at + 1)
     return False
