@@ -878,6 +878,9 @@ LIST_MARKER_RE = re.compile(r"\A\s*(?:[-*+]|\d+[.)])\s+")
 # text before it can.
 KEYWORD_GAP_RE = re.compile(r"<[^<>]*>|\{[^{}]*\}|…|\.\.\.|\*")
 BARE_WORD_RE = re.compile(r"[\w-]{1,5}")
+# What a Read (`12\t`, `12→`), a `grep -n` (`12:`) or a diff puts before a line.
+LINE_NUMBER_RE = re.compile(r"(?m)^[ \t]*\d+[\t→:]")
+DIFF_MARKER_RE = re.compile(r"(?m)^[+ -]")
 MIN_KEYWORD_CHARS = 3
 # A chunk that quotes the rule's opening is the rule being read, not its topic.
 QUOTE_CHARS = 40
@@ -893,6 +896,7 @@ def _flat(text: str) -> str:
 
 
 def _keyword(span: str) -> str | None:
+    """The literal text of a code span that a session can contain."""
     parts = KEYWORD_GAP_RE.split(span, maxsplit=1)
     literal = parts[0].strip()
     if len(parts) > 1 and BARE_WORD_RE.fullmatch(literal):
@@ -900,6 +904,12 @@ def _keyword(span: str) -> str | None:
         # common to stand for the rule: it would hit in most sessions.
         return None
     return literal if len(literal) >= MIN_KEYWORD_CHARS else None
+
+
+def _continues(span: str) -> bool:
+    """Whether the cut fell inside a word, so any text may follow the keyword."""
+    parts = KEYWORD_GAP_RE.split(span, maxsplit=1)
+    return len(parts) > 1 and bool(re.search(r"\w\Z", parts[0]))
 
 
 def _list_items(text: str) -> tuple[list[dict[str, Any]], int]:
@@ -959,13 +969,18 @@ def parse_rules(text: str) -> dict[str, Any]:
     rules, seen = [], Counter()
     for item in items:
         flat = _flat(item["source"])
-        keywords = {k for k in map(_keyword, item["spans"]) if k}
+        spans = [(k, s) for s in item["spans"] if (k := _keyword(s))]
+        # The whole span is masked: a cut inside a credential would hide from
+        # the mask what makes it one.
+        shown = {k: mask(s) for k, s in spans if mask(s) != s}
         rules.append(
             {
                 "id": _rule_id(item["source"], flat, seen),
                 "line": item["line"],
                 "heading": item["heading"],
-                "keywords": sorted(keywords),
+                "keywords": sorted({k for k, _ in spans}),
+                "prefixes": sorted({k for k, s in spans if _continues(s)}),
+                "shown": shown,
                 "quote": flat[:QUOTE_CHARS],
             }
         )
@@ -985,19 +1000,47 @@ def _strings(value: Any) -> Iterator[str]:
 
 
 def _chunks(session: dict[str, Any]) -> Iterator[tuple[str, bool]]:
-    """Each text a session saw, flattened, and whether it reads as a failure.
+    """Each text a session saw and whether it reads as a failure.
 
     A refused call is a gate doing its job, not a violation (see C6)."""
     for call in session["calls"]:
         failed = call["is_error"] and not is_refusal(call["name"], call["result"])
-        yield _flat(" ".join(_strings(call["input"]))), failed
-        yield _flat(call["result"]), failed
+        yield " ".join(_strings(call["input"])), failed
+        yield call["result"], failed
     for text in session["user_texts"]:
-        yield _flat(text), bool(CORRECTION_PATTERNS.search(text))
+        yield text, bool(CORRECTION_PATTERNS.search(text))
 
 
 def ran_tally(calls: list[dict[str, Any]]) -> bool:
     return any("--rule-tally" in " ".join(_strings(c["input"])) for c in calls)
+
+
+def _names(chunk: str, keyword: str, prefix: bool) -> bool:
+    """Whether the keyword stands as a word of its own: `pip`, not `pipeline`.
+
+    An underscore separates words (`mcp__tt__get_day`), and so does an escaped
+    line break (a backslash and `n`) in a JSON result. After a prefix, a cut
+    keyword, the word may go on. A search loop, because a regular expression
+    that starts with a lookbehind is slower."""
+    at = chunk.find(keyword)
+    while at >= 0:
+        end = at + len(keyword)
+        before, after = chunk[max(at - 2, 0) : at], chunk[end : end + 1]
+        starts = (
+            not keyword[0].isalnum()
+            or not before[-1:].isalnum()
+            or before in (r"\n", r"\r", r"\t")
+        )
+        if starts and (prefix or not keyword[-1].isalnum() or not after.isalnum()):
+            return True
+        at = chunk.find(keyword, at + 1)
+    return False
+
+
+def _readings(text: str) -> list[str]:
+    """The text flat, and flat without its line numbers or its diff markers."""
+    markers = (LINE_NUMBER_RE, DIFF_MARKER_RE)
+    return [_flat(text), *(_flat(marker.sub("", text)) for marker in markers)]
 
 
 class _KeywordMatcher:
@@ -1007,13 +1050,19 @@ class _KeywordMatcher:
     alternation regex over all of them, and it finds overlapping keywords."""
 
     def __init__(self, rules: list[dict[str, Any]]) -> None:
-        self.rules_of: dict[str, list[int]] = defaultdict(list)
+        self.rules_of: dict[tuple[str, bool], list[int]] = defaultdict(list)
         for index, rule in enumerate(rules):
             for keyword in rule["keywords"]:
-                self.rules_of[_flat(keyword).lower()].append(index)
+                key = (_flat(keyword), keyword in rule["prefixes"])
+                self.rules_of[key].append(index)
 
     def rules_in(self, chunk: str) -> set[int]:
-        return {i for k, rules in self.rules_of.items() if k in chunk for i in rules}
+        return {
+            i
+            for key, rules in self.rules_of.items()
+            if _names(chunk, *key)
+            for i in rules
+        }
 
 
 def _scan_session(
@@ -1023,11 +1072,14 @@ def _scan_session(
     hits: list[set[str]],
     flagged: list[set[str]],
 ) -> None:
-    for chunk, failed in _chunks(session):
+    for text, failed in _chunks(session):
+        chunk = _flat(text)
         if TALLY_OUTPUT_RE.search(chunk):
             continue
-        for index in matcher.rules_in(chunk):
-            if rules[index]["quote"] in chunk:
+        found = matcher.rules_in(chunk)
+        readings = _readings(text) if found else []
+        for index in found:
+            if any(rules[index]["quote"] in reading for reading in readings):
                 continue
             hits[index].add(session["id"])
             if failed:
@@ -1050,7 +1102,7 @@ def _tally_row(
         "id": rule["id"],
         "line": rule["line"],
         "heading": mask(rule["heading"]),
-        "keywords": [mask(k) for k in rule["keywords"]],
+        "keywords": [rule["shown"].get(k) or mask(k) for k in rule["keywords"]],
         "state": "measured" if rule["keywords"] else "not_measurable",
         "applicable_sessions": len(hit),
         "violation_candidate_sessions": len(flag),
