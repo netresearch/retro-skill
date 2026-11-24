@@ -16,7 +16,8 @@ run this for its id or its wording and read each copy:
 
 A signal id (B19) is also found inside a range (B16–B21), a lettered phase
 (Phase 4b) also as its bare id in a list or table, and a phrase across a line
-break. Case is ignored for phrases. Whether a copy is out of date
+break. A phase without a letter (Phase 4) is a plain phrase: it also matches
+Phase 4b, and lists and ranges need a search for "Phases". Case is ignored for phrases. Whether a copy is out of date
 is the reader's judgement; the exit code says only that every term was found
 (0) or that one was not (1).
 """
