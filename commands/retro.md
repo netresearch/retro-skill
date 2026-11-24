@@ -351,13 +351,16 @@ file, or a rule removed. Read three surfaces:
   repository's `AGENTS.md` or `CLAUDE.md`): a rule that a hook already
   enforces, a statement the session found wrong, a value copied from a config
   file, or a repository with no entry file that points to the procedure the
-  session needed. Their size costs context in every turn of every session.
+  session needed. Their size costs context in every turn of every session:
+  state each file's lines and bytes from
+  `uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/steering-size.py --repo <repo>`.
 - **Tool output and errors.** A tool printed the same notice on every call,
   returned markup that the agent stripped by hand, or failed with a message
   that named no cause, so the agent drew a wrong conclusion.
 
 The report carries one line: `Phase 4b (harness): <n> findings` or
-`Phase 4b (harness): nothing — <surfaces read>`.
+`Phase 4b (harness): nothing — <surfaces read>`, followed on the same line by
+the steering sizes, e.g. `; steering: AGENTS.md 73 lines / 6,421 bytes`.
 
 ## Phase 4c: Documentation Lookup
 
@@ -441,6 +444,17 @@ For **skill-update** proposals, also include a **Skill instruction delta**:
 - **Proposed edit:** add / replace / **remove** (removal is valid — see
   `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/classification-heuristic.md` → "Instruction pruning").
 - **Why bounded:** what the edit does *not* touch.
+
+For an edit to a steering file that loads in every turn (the repository's root
+`AGENTS.md` or `CLAUDE.md`, `~/.claude/CLAUDE.md`, `~/.codex/AGENTS.md`),
+write the whole proposed file to a scratch path and state the current size and
+the delta from
+`uv run ${CLAUDE_PLUGIN_ROOT}/skills/retro/scripts/steering-size.py --repo <repo> --proposed <file>=<scratch file>`.
+A proposal that adds lines says why the content cannot live in a linked
+document or a skill
+(`${CLAUDE_PLUGIN_ROOT}/skills/retro/references/project-harness-inspection.md`
+→ "Size of the steering files"). The size is a report: it never withholds a
+proposal.
 
 Cite eval evidence only when an eval **already** covers the area (read, never a
 fabricated "without-skill / with-skill" comparison — retro runs one pass and does

@@ -235,3 +235,11 @@ with no finding that stops after Phase 1b
 and its control, one prompt followed by a long autonomous run that must get
 the full Sweep
 ([sweep-fast-exit-not-on-autonomous-run](sweep-fast-exit-not-on-autonomous-run.md)).
+
+Two described cases cover the size of the steering files that load in every
+turn (ADR-006): a proposal to the repository `AGENTS.md` that states the
+file's size and its delta and is not withheld over the 100-line reference
+([steering-size-stated-with-proposal](steering-size-stated-with-proposal.md)),
+and its control, an edit to a linked document that carries no size statement
+([steering-size-not-for-linked-doc](steering-size-not-for-linked-doc.md)).
+The trigger of the first quotes the output of `steering-size.py`. They have not been run.
