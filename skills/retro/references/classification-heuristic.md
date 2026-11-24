@@ -360,10 +360,17 @@ materializes as an ordinary `skill-update` PR whose diff happens to be a deletio
 lives in (`~/.claude/CLAUDE.md` or the repository's `AGENTS.md`), approved by
 that file's owner.
 
+A C7 candidate, a rule whose keywords no session in the audit window matched, has no
+friction to cite. Remove it only with a covering location as above, or after
+the comparison in `learning-contract.md` § Configuration bounds and pruning
+shows no difference; without either, keep the rule and report it as an open
+candidate.
+
 Signals that often resolve to a prune rather than an add: **B14** (doc drift —
 the instruction references something gone), **C4** (a prior skill update was
 itself wrong), **B8** (a rule lives in the wrong place), **B23** (a correct
-procedure that is too heavy for the work it governs). When two instructions
+procedure that is too heavy for the work it governs), **C7** (no session in
+the audit window matched the rule's keywords; a candidate only). When two instructions
 conflict, reconcile by removing/superseding the stale side; if the conflict spans
 reference files, propose the reference/taxonomy cleanup first.
 

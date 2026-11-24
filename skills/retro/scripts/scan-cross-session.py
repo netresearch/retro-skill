@@ -4,7 +4,9 @@
 #
 # /// script
 # requires-python = ">=3.11"
-# dependencies = []
+# dependencies = [
+#     "markdown-it-py==4.3.0",
+# ]
 # ///
 
 """
@@ -12,26 +14,29 @@ scan-cross-session.py — Schicht-C cross-session data source.
 
 Scans Claude Code session JSONL files across projects to find similar friction
 patterns. Used to detect "same friction again" (C1), "cross-project pattern"
-(C2) and "follow-up-fix session" (C5) signals.
+(C2), "follow-up-fix session" (C5) and "rule never applicable" (C7) signals.
 
 Usage:
     uv run scan-cross-session.py --pattern="<keyword or phrase>" [--days 30] [--project=<slug>]
     uv run scan-cross-session.py --user-correction-summary [--days 7]
     uv run scan-cross-session.py --recurring-failures [--days 30] [--limit 20] [--include-refusals]
     uv run scan-cross-session.py --follow-up-sessions [--days 30] [--window-days 7] [--limit 20]
+    uv run scan-cross-session.py --rule-tally CLAUDE.md [--days 90] [--min-sessions 30]
     uv run scan-cross-session.py --learning-observations observations.json
 
-The last two modes read every tool call of every transcript in the window, so
-they run on demand (an audit), not per event. Each reports only what recurs in
-at least two sessions, names the sessions it was computed from, and caps its
-lists at --limit. Their output is a candidate list for the model to read, not a
-verdict: a hit says where to look.
+The C1, C5 and C7 modes read every tool call of every transcript in the window, so
+they run on demand (an audit), not per event. The C1 and C5 modes report only
+what recurs in at least two sessions. Each names the sessions it was computed
+from and caps its session lists at --limit; --rule-tally lists every rule, so
+write its output to a file and query it. Their output is a candidate list for
+the model to read, not a verdict: a hit says where to look.
 """
 
 from __future__ import annotations
 
 import argparse
 import functools
+import hashlib
 import importlib.util
 import json
 import os
@@ -40,10 +45,12 @@ import shlex
 import subprocess
 import sys
 from collections import Counter, defaultdict
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from markdown_it import MarkdownIt
 
 
 def _load_masking():
@@ -252,8 +259,13 @@ def extract_user_texts(path: Path, gaps: Counter[str] | None = None) -> list[str
     hook's `Stop …` feedback, repeated in every session, as a correction."""
     if gaps is None:
         gaps = Counter()
+    return user_texts_of(load_events(path, gaps) or [], gaps)
+
+
+def user_texts_of(events: list[dict[str, Any]], gaps: Counter[str]) -> list[str]:
+    """extract_user_texts for events already read."""
     texts = []
-    for ev in load_events(path, gaps) or []:
+    for ev in events:
         if ev.get("type") in (
             "response_item",
             "event_msg",
@@ -856,6 +868,285 @@ def cmd_follow_up_sessions(args, files) -> int:
     return 0
 
 
+# --- C7: per-rule tally ---------------------------------------------------------
+
+# A rule's identity: its [→A123] anchors where the file has them, else a hash of
+# its text, which changes when the rule's wording does.
+ANCHOR_RE = re.compile(r"\[→\s*(A\d+(?:\s*,\s*A\d+)*)")
+LIST_MARKER_RE = re.compile(r"\A\s*(?:[-*+]|\d+[.)])\s+")
+# A placeholder or an ellipsis never appears in a real command; only the literal
+# text before it can.
+KEYWORD_GAP_RE = re.compile(r"<[^<>]*>|\{[^{}]*\}|…|\.\.\.|\*")
+BARE_WORD_RE = re.compile(r"[\w-]{1,5}")
+MIN_KEYWORD_CHARS = 3
+# A chunk that quotes the rule's opening is the rule being read, not its topic.
+QUOTE_CHARS = 40
+# Chosen, not measured: below this many scanned sessions a zero says little.
+DEFAULT_MIN_SESSIONS = 30
+# Tally output read back, indented or compact (jq -c), is not a use.
+TALLY_OUTPUT_RE = re.compile(r'"mode":\s*"rule-tally"|"violation_candidate_sessions"')
+_MD = MarkdownIt("commonmark")
+
+
+def _flat(text: str) -> str:
+    return " ".join(text.split()).lower()
+
+
+def _keyword(span: str) -> str | None:
+    parts = KEYWORD_GAP_RE.split(span, maxsplit=1)
+    literal = parts[0].strip()
+    if len(parts) > 1 and BARE_WORD_RE.fullmatch(literal):
+        # A short word left before a cut (`try {...}`, `OPS{X}`) is too
+        # common to stand for the rule: it would hit in most sessions.
+        return None
+    return literal if len(literal) >= MIN_KEYWORD_CHARS else None
+
+
+def _list_items(text: str) -> tuple[list[dict[str, Any]], int]:
+    """Top-level list items with their source and code spans, and prose lines."""
+    lines = text.splitlines()
+    tokens = _MD.parse(text)
+    items, heading, depth, outside = [], "", 0, 0
+    for index, tok in enumerate(tokens):
+        if tok.type in ("bullet_list_open", "ordered_list_open"):
+            depth += 1
+        elif tok.type in ("bullet_list_close", "ordered_list_close"):
+            depth -= 1
+        elif tok.type == "heading_open":
+            heading = tokens[index + 1].content
+        elif tok.type == "list_item_open" and depth == 1:
+            start, end = tok.map
+            source = LIST_MARKER_RE.sub("", "\n".join(lines[start:end]), count=1)
+            items.append(
+                {"line": start + 1, "heading": heading, "source": source, "spans": []}
+            )
+        elif tok.type == "inline" and depth and items:
+            items[-1]["spans"] += _code_spans(tok)
+        elif tok.type == "paragraph_open" and not depth:
+            outside += tok.map[1] - tok.map[0]
+    return items, outside
+
+
+def _code_spans(tok: Any) -> list[str]:
+    return [c.content for c in tok.children or () if c.type == "code_inline"]
+
+
+def _rule_id(source: str, flat: str, seen: Counter[str]) -> str:
+    """The anchors, else a text hash; a repeated id gets a #N suffix."""
+    anchor = ANCHOR_RE.search(source)
+    if anchor:
+        rule_id = re.sub(r"\s", "", anchor[1])
+    else:
+        rule_id = "h:" + hashlib.sha256(flat.encode()).hexdigest()[:10]
+    seen[rule_id] += 1
+    return f"{rule_id}#{seen[rule_id]}" if seen[rule_id] > 1 else rule_id
+
+
+def _blank_frontmatter(text: str) -> str:
+    """Blank a leading YAML frontmatter block, keeping line numbers."""
+    lines = text.split("\n")
+    if not lines or lines[0].strip() != "---":
+        return text
+    for end in range(1, len(lines)):
+        if lines[end].strip() in ("---", "..."):
+            return "\n" * (end + 1) + "\n".join(lines[end + 1 :])
+    return text
+
+
+def parse_rules(text: str) -> dict[str, Any]:
+    """Top-level list items of a Markdown file, each with an id, line and keywords."""
+    items, outside = _list_items(_blank_frontmatter(text))
+    rules, seen = [], Counter()
+    for item in items:
+        flat = _flat(item["source"])
+        keywords = {k for k in map(_keyword, item["spans"]) if k}
+        rules.append(
+            {
+                "id": _rule_id(item["source"], flat, seen),
+                "line": item["line"],
+                "heading": item["heading"],
+                "keywords": sorted(keywords),
+                "quote": flat[:QUOTE_CHARS],
+            }
+        )
+    return {"rules": rules, "lines_outside_rules": outside}
+
+
+def _strings(value: Any) -> Iterator[str]:
+    """The string values of a tool input, unescaped, at any depth."""
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _strings(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _strings(item)
+
+
+def _chunks(session: dict[str, Any]) -> Iterator[tuple[str, bool]]:
+    """Each text a session saw, flattened, and whether it reads as a failure.
+
+    A refused call is a gate doing its job, not a violation (see C6)."""
+    for call in session["calls"]:
+        failed = call["is_error"] and not is_refusal(call["name"], call["result"])
+        yield _flat(" ".join(_strings(call["input"]))), failed
+        yield _flat(call["result"]), failed
+    for text in session["user_texts"]:
+        yield _flat(text), bool(CORRECTION_PATTERNS.search(text))
+
+
+def ran_tally(calls: list[dict[str, Any]]) -> bool:
+    return any("--rule-tally" in " ".join(_strings(c["input"])) for c in calls)
+
+
+class _KeywordMatcher:
+    """Each distinct keyword tested once per chunk, for every rule that has it.
+
+    A substring test per keyword measured about five times faster than one
+    alternation regex over all of them, and it finds overlapping keywords."""
+
+    def __init__(self, rules: list[dict[str, Any]]) -> None:
+        self.rules_of: dict[str, list[int]] = defaultdict(list)
+        for index, rule in enumerate(rules):
+            for keyword in rule["keywords"]:
+                self.rules_of[_flat(keyword).lower()].append(index)
+
+    def rules_in(self, chunk: str) -> set[int]:
+        return {i for k, rules in self.rules_of.items() if k in chunk for i in rules}
+
+
+def _scan_session(
+    session: dict[str, Any],
+    rules: list[dict[str, Any]],
+    matcher: _KeywordMatcher,
+    hits: list[set[str]],
+    flagged: list[set[str]],
+) -> None:
+    for chunk, failed in _chunks(session):
+        if TALLY_OUTPUT_RE.search(chunk):
+            continue
+        for index in matcher.rules_in(chunk):
+            if rules[index]["quote"] in chunk:
+                continue
+            hits[index].add(session["id"])
+            if failed:
+                flagged[index].add(session["id"])
+
+
+def _session_kind(session: dict[str, Any]) -> str:
+    # A session that ran a tally reads its candidates back; they are not uses.
+    if session["ran_tally"]:
+        return "ran_a_tally"
+    if not session["calls"] and not session["user_texts"]:
+        return "empty"
+    return "scanned"
+
+
+def _tally_row(
+    rule: dict[str, Any], hit: set[str], flag: set[str], limit: int
+) -> dict[str, Any]:
+    return {
+        "id": rule["id"],
+        "line": rule["line"],
+        "heading": mask(rule["heading"]),
+        "keywords": [mask(k) for k in rule["keywords"]],
+        "state": "measured" if rule["keywords"] else "not_measurable",
+        "applicable_sessions": len(hit),
+        "violation_candidate_sessions": len(flag),
+        "sessions": sorted(hit)[:limit],
+        "violation_candidates": sorted(flag)[:limit],
+    }
+
+
+def rule_tally(
+    rules: list[dict[str, Any]], sessions: Iterable[dict[str, Any]], limit: int
+) -> dict[str, Any]:
+    """Per rule: sessions whose text names a keyword, and those where it failed."""
+    matcher = _KeywordMatcher(rules)
+    hits = [set() for _ in rules]
+    flagged = [set() for _ in rules]
+    counts = Counter()
+    for session in sessions:
+        kind = _session_kind(session)
+        counts[kind] += 1
+        if kind == "scanned":
+            _scan_session(session, rules, matcher, hits, flagged)
+    tally = [
+        _tally_row(rule, hit, flag, limit)
+        for rule, hit, flag in zip(rules, hits, flagged, strict=True)
+    ]
+    return {
+        "rules": tally,
+        "sessions_scanned": counts["scanned"],
+        "sessions_that_ran_a_tally": counts["ran_a_tally"],
+        "sessions_empty": counts["empty"],
+        "truncated": any(len(h) > limit for h in hits),
+    }
+
+
+def _tally_sessions(
+    files: list[tuple[Path, str]], gaps: Counter[str], skipped: list[str]
+) -> Iterator[dict[str, Any]]:
+    """Each transcript read once and released after its turn in the tally."""
+    for path, _project in files:
+        events = load_events(path, gaps)
+        if not events:
+            skipped.append(str(path))
+            continue
+        calls = tool_calls(events)
+        yield {
+            "id": path.stem,
+            "calls": calls,
+            "user_texts": user_texts_of(events, gaps),
+            "ran_tally": ran_tally(calls),
+        }
+
+
+def cmd_rule_tally(args, files, text: str, gaps: Counter[str]) -> int:
+    parsed = parse_rules(text)
+    skipped: list[str] = []
+    found = rule_tally(
+        parsed["rules"], _tally_sessions(files, gaps, skipped), args.limit
+    )
+    tally = found.pop("rules")
+    enough = found["sessions_scanned"] >= args.min_sessions
+    print(
+        json.dumps(
+            {
+                "mode": "rule-tally",
+                "signal": "C7",
+                "rules_file": str(args.rule_tally),
+                "days": args.days,
+                **found,
+                "sessions_skipped": skipped,
+                "gaps": dict(gaps),
+                "min_sessions": args.min_sessions,
+                "window_sufficient": enough,
+                "rules_total": len(tally),
+                "rules_not_measurable": sum(
+                    r["state"] == "not_measurable" for r in tally
+                ),
+                "lines_outside_rules": parsed["lines_outside_rules"],
+                "never_applicable": [
+                    r["id"]
+                    for r in tally
+                    if r["state"] == "measured" and not r["applicable_sessions"]
+                ]
+                if enough
+                else None,
+                "rules": tally,
+                "interpretation": "Keyword hits are candidates; followed or violated "
+                "is judged by reading the sessions. Zero hits can mean the rule "
+                "prevents its mistake silently.",
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+    )
+    return 0
+
+
 def learning_effectiveness(observations: Any) -> dict[str, Any]:
     """C4: summarize explicit later opportunities, not inferred non-use.
 
@@ -968,6 +1259,17 @@ def main() -> int:
         default=7,
         help="With --follow-up-sessions: the most days between the two sessions",
     )
+    parser.add_argument(
+        "--rule-tally",
+        type=Path,
+        help="C7: per rule of this instruction file, the sessions its keywords appear in",
+    )
+    parser.add_argument(
+        "--min-sessions",
+        type=int,
+        default=DEFAULT_MIN_SESSIONS,
+        help="With --rule-tally: fewer sessions read withholds never_applicable",
+    )
     parser.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     parser.add_argument(
         "--learning-observations",
@@ -992,6 +1294,15 @@ def main() -> int:
         except (OSError, ValueError, TypeError) as error:
             parser.exit(2, f"scan-cross-session: {error}\n")
         return 0
+
+    rules_text = None
+    if args.rule_tally is not None:
+        try:
+            # S8707: explicit caller-selected local instruction file, not a path
+            # from untrusted session content. No privilege boundary is crossed.
+            rules_text = args.rule_tally.read_text(encoding="utf-8")  # NOSONAR
+        except (OSError, UnicodeDecodeError) as error:
+            parser.exit(2, f"scan-cross-session: {error}\n")
 
     if args.project is not None and (
         args.project in ("", ".", "..") or Path(args.project).name != args.project
@@ -1021,6 +1332,8 @@ def main() -> int:
         return cmd_recurring_failures(args, files)
     if args.follow_up_sessions:
         return cmd_follow_up_sessions(args, files)
+    if rules_text is not None:
+        return cmd_rule_tally(args, files, rules_text, gaps)
     parser.print_help()
     return 1
 

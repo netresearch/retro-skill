@@ -293,9 +293,10 @@ It also reads only top-level transcripts, no subagent ones, looks back only
 output, not by any fingerprint you have in mind. Its silence is no more
 evidence than a `--pattern` zero.
 
-For an audit, three modes read the whole window (see the Schicht C section of
+For an audit, four modes read the whole window (see the Schicht C section of
 `friction-catalog.md`): `--user-correction-summary` (C1/C2),
-`--recurring-failures` (C1) and `--follow-up-sessions` (C5).
+`--recurring-failures` (C1), `--follow-up-sessions` (C5) and
+`--rule-tally <file>` (C7).
 
 ## Phase 4: Skill Discovery
 
@@ -602,6 +603,7 @@ Requires latency. Don't run within 24h of the session — most D signals (includ
 
 - Skip Phases 1 and 1b; Phase 2 runs over cross-session prose, and Phase 2b (trigger coverage) is exhaustive
 - **Phase 3c is the primary detection step:** ADR adherence, AGENTS.md rule compliance trends, coverage trends, skill-inventory drift
+- For an always-loaded instruction file, or a skill's `SKILL.md` or one reference file, `scan-cross-session.py --rule-tally <file>` (C7) counts per rule the sessions its keywords appear in; add `--project=<slug>` for a repository's `AGENTS.md`. Prose outside list items is not tallied. A `never_applicable` rule is a removal candidate for "Instruction pruning", not a removal; write the output to a temporary file, query it in the same session and delete it afterwards, since it lists every rule. Report applicable, followed and violated for each rule you judged, name the sessions you read, and leave the other rules unjudged
 - Output class is "architectural finding", not friction
 - Destinations skew toward `project-rule` (new ADR or AGENTS.md update) and `harness-artefact` (enforcement hook)
 - Cadence: monthly or quarterly. Tech-lead actor.

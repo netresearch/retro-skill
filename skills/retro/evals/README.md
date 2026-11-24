@@ -243,3 +243,8 @@ file's size and its delta and is not withheld over the 100-line reference
 and its control, an edit to a linked document that carries no size statement
 ([steering-size-not-for-linked-doc](steering-size-not-for-linked-doc.md)).
 The trigger of the first quotes the output of `steering-size.py`. They have not been run.
+
+Two described cases cover the rule tally (C7): a rule whose keywords no session matched in
+a large window ([rule-never-applicable-is-a-candidate](rule-never-applicable-is-a-candidate.md))
+and its control, a window too small for a zero
+([rule-tally-window-too-small](rule-tally-window-too-small.md)).
