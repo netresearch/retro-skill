@@ -23,6 +23,7 @@ SKILL = REPO_ROOT / "skills" / "retro"
 CATALOG = SKILL / "references" / "friction-catalog.md"
 ROUTING = SKILL / "references" / "classification-heuristic.md"
 COMMAND = REPO_ROOT / "commands" / "retro.md"
+README = REPO_ROOT / "README.md"
 DONE = SKILL / "references" / "done-mode.md"
 
 ROW = re.compile(r"(?m)^\| \**([A-E][0-9]+)\b\**")
@@ -84,8 +85,13 @@ class SignalCopies(unittest.TestCase):
         actual = {layer: sum(s[0] == layer for s in self.catalog) for layer in "ABCDE"}
         self.assertEqual(stated, actual)
 
+    def test_the_readme_states_the_same_counts(self):
+        stated = re.findall(r"\(layer ([ABC])[^)]*\)\*\*.*?\*\*(\d+)\*\*", read(README))
+        actual = [(x, str(sum(s[0] == x for s in self.catalog))) for x in "ABC"]
+        self.assertEqual(stated, actual)
+
     def test_the_later_b_signals_are_named_where_a_run_reads_them(self):
-        # B1 to B14 are described without their ids in these files.
+        # Of B1 to B15 these files describe most by name only.
         wanted = {s for s in self.catalog if s[0] == "B" and int(s[1:]) >= 16}
         for path in (COMMAND, SKILL / "SKILL.md", SKILL / "references" / "workflow.md"):
             with self.subTest(file=path.name):
@@ -124,6 +130,13 @@ class FindCopies(unittest.TestCase):
         code, out = self.find("x\na Reasoned\nno-op\n", "reasoned no-op")
         self.assertEqual(code, 0)
         self.assertIn("x.md:2:", out)
+
+    def test_a_lettered_phase_is_found_as_its_bare_id(self):
+        code, out = self.find(
+            "Phase 4b\n2b/3/4b\n| 4b (x) |\n14b x4b 4bx\n", "Phase 4b"
+        )
+        self.assertEqual(code, 0)
+        self.assertIn("== Phase 4b: 3 lines", out)
 
     def test_one_missing_term_fails_the_run(self):
         self.assertEqual(self.find("alpha\n", "alpha", "beta")[0], 1)

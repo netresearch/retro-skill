@@ -14,8 +14,9 @@ run this for its id or its wording and read each copy:
 
     uv run scripts/find-copies.py B19 "Phase 4b" "reasoned no-op"
 
-A signal id (B19) is also found inside a range (B16–B21), and a phrase is found
-across a line break. Case is ignored for phrases. Whether a copy is out of date
+A signal id (B19) is also found inside a range (B16–B21), a lettered phase
+(Phase 4b) also as its bare id in a list or table, and a phrase across a line
+break. Case is ignored for phrases. Whether a copy is out of date
 is the reader's judgement; the exit code says only that every term was found
 (0) or that one was not (1).
 """
@@ -40,6 +41,7 @@ SCOPE = (
     "AGENTS.md",
 )
 SIGNAL = re.compile(r"[A-E][0-9]{1,2}")
+PHASE = re.compile(r"[Pp]hase ([0-9]{1,2}[a-z])")
 # B16–B21, B16-B21, or one id.
 MENTION = re.compile(r"\b([A-E])([0-9]{1,2})(?:\s?[–-]\s?\1([0-9]{1,2}))?\b")
 
@@ -57,6 +59,11 @@ def signal_mentions(text: str) -> list[tuple[int, str]]:
 def offsets(term: str, text: str) -> list[int]:
     if SIGNAL.fullmatch(term):
         return [at for at, signal in signal_mentions(text) if signal == term]
+    phase = PHASE.fullmatch(term)
+    if phase:
+        # A bare id stands in the mode table and in lists (3c and 4b, 2b/3/4b).
+        bare = rf"\b{phase[1]}\b"
+        return [m.start() for m in re.finditer(bare, text)]
     words = r"\s+".join(re.escape(word) for word in term.split())
     return [m.start() for m in re.finditer(words, text, re.IGNORECASE)]
 
