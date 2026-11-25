@@ -141,5 +141,76 @@ class ScanSinceTest(unittest.TestCase):
         self.assertIn("2 events before it were not read", out.stdout)
 
 
+def at(event: dict, stamp: str) -> dict:
+    return {**event, "timestamp": stamp}
+
+
+def shell(tool_id: str, command: str, result: str, stamp: str) -> list[dict]:
+    events = call(tool_id, result, stamp)
+    events[0]["message"]["content"][0]["input"]["command"] = command
+    events[1]["message"]["content"][0]["is_error"] = False
+    return events
+
+
+class StateBeforeTheWindowTest(unittest.TestCase):
+    """What was set before the window holds inside it."""
+
+    def found(self, events: list[dict], signal: str, *since: str) -> int:
+        out = run(events, "--signals", signal, *since)
+        return len(json.loads(out.stdout)["findings"])
+
+    def same(self, events: list[dict], signal: str, expected: int) -> None:
+        self.assertEqual(self.found(events, signal), expected)
+        cut = ("--scan-since", "2026-11-25T13:30:00Z")
+        self.assertEqual(self.found(events, signal, *cut), expected)
+
+    def test_bypass_permissions(self):
+        user = {
+            "type": "user",
+            "permissionMode": "bypassPermissions",
+            "message": {"content": "go"},
+        }
+        self.same([at(user, OLD)] + shell("c", "cat src/x.py", "x", NEW), "A11", 0)
+
+    def test_without_bypass_a11_fires_in_the_window(self):
+        self.same(shell("c", "cat src/x.py", "x", NEW), "A11", 1)
+
+    def test_a_verification_run(self):
+        claim = {
+            "type": "assistant",
+            "message": {"content": [{"type": "text", "text": "All tests pass."}]},
+        }
+        events = shell("p", "pytest", "3 passed", OLD)
+        self.same(events + [at(claim, NEW)], "A13", 0)
+        self.same([at(claim, NEW)], "A13", 1)
+
+    def test_the_branch(self):
+        self.same(
+            shell("s", "git switch main", "", OLD)
+            + shell("c", "git commit -qm x", "", NEW),
+            "A14",
+            1,
+        )
+
+    def test_a_branch_commit_before_the_window_is_not_reported(self):
+        events = (
+            shell("s", "git switch main", "", OLD)
+            + shell("c", "git commit -qm x", "", OLD)
+            + shell("l", "ls", "", NEW)
+        )
+        self.assertEqual(
+            self.found(events, "A14", "--scan-since", "2026-11-25T13:30:00Z"), 0
+        )
+
+    def test_a_scheduled_prompt(self):
+        wake = shell("w", "x", "", OLD)
+        wake[0]["message"]["content"][0].update(
+            name="ScheduleWakeup", input={"prompt": "Stop the deploy check"}
+        )
+        fired = {"type": "user", "message": {"content": "Stop the deploy check"}}
+        self.same(wake + [at(fired, NEW)], "A6", 0)
+        self.same([at(fired, NEW)], "A6", 1)
+
+
 if __name__ == "__main__":
     unittest.main()

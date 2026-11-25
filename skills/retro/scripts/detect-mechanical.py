@@ -2598,9 +2598,9 @@ def main() -> int:
     parser.add_argument(
         "--scan-since",
         metavar="ISO",
-        help="Analyse only the events at or after this ISO 8601 time, e.g. the "
-        "end of the previous retro on a repeat run. Earlier events are blanked "
-        "as with --since-command; events without a timestamp are kept; a call "
+        help="Analyse only the events at or after this ISO 8601 time (UTC without "
+        "an offset), e.g. the end of the previous retro on a repeat run. Earlier events are blanked "
+        "as with --since-command, but state set by them still counts; events without a timestamp are kept; a call "
         "issued before it is not analysed, even when its result came after. "
         "Exits 2 when no event is that late.",
     )
@@ -2650,6 +2650,7 @@ def main() -> int:
     # `is None`: an empty value is given, not omitted, and must not widen the
     # scan to the whole session.
     events_before = None
+    all_events = events
     if args.scan_since is not None:
         cutoff = parse_time(args.scan_since)
         if cutoff is None:
@@ -2666,10 +2667,13 @@ def main() -> int:
                 file=sys.stderr,
             )
             return 2
-    user_texts = extract_user_texts(events)
-    assistant_texts = extract_assistant_texts(events)
-    tool_uses = extract_tool_uses(events)
-    bypass_from = bypass_permissions_from(events)
+    # Read whole, then cut: what was set before the window (the permission mode, a
+    # scheduled prompt, the branch, a verification run) still holds inside it.
+    all_tool_uses = extract_tool_uses(all_events)
+    user_texts = [t for t in extract_user_texts(all_events) if events[t[0]]]
+    assistant_texts = [t for t in extract_assistant_texts(all_events) if events[t[0]]]
+    tool_uses = [use for use in all_tool_uses if events[use[0]]]
+    bypass_from = bypass_permissions_from(all_events)
 
     selected = {s.strip() for s in args.signals.split(",") if s.strip()}
     findings = []
@@ -2688,7 +2692,9 @@ def main() -> int:
         elif func is signal_tool_count_vs_task:
             findings.extend(func(tool_uses, user_texts))
         elif func is signal_skipped_verification:
-            findings.extend(func(assistant_texts, tool_uses))
+            findings.extend(func(assistant_texts, all_tool_uses))
+        elif func is signal_main_branch_work:
+            findings.extend(f for f in func(all_tool_uses) if events[f["turn"]])
         elif func is signal_wrong_tool_choice:
             findings.extend(func(tool_uses, bypass_from))
         elif func is signal_rule_exists_but_violated:
@@ -2709,7 +2715,9 @@ def main() -> int:
             if fn is None:
                 continue
             if fn is signal_skipped_verification:
-                dep_findings.extend(fn(assistant_texts, tool_uses))
+                dep_findings.extend(fn(assistant_texts, all_tool_uses))
+            elif fn is signal_main_branch_work:
+                dep_findings.extend(f for f in fn(all_tool_uses) if events[f["turn"]])
             elif fn is signal_wrong_tool_choice:
                 # Same suppression as the reported pass — otherwise C6 still
                 # counts the findings A11 just withheld and escalates on them.
