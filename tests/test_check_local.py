@@ -34,7 +34,12 @@ class CheckLocalTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         self.repo = Path(tmp.name)
-        subprocess.run(["git", "init", "-q", str(self.repo)], check=True)
+        self.git("init", "-q")
+
+    def git(self, *args):
+        subprocess.run(
+            ["git", *args], cwd=self.repo, env=check_local.clean_env(), check=True
+        )
 
     def lint(self, text):
         path = self.repo / ".github" / "workflows" / "lint.yml"
@@ -95,8 +100,24 @@ class CheckLocalTest(unittest.TestCase):
         with contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertFalse(check_local.no_untracked(self.repo))
         self.assertIn("new.py", out.getvalue())
-        subprocess.run(["git", "-C", str(self.repo), "add", "new.py"], check=True)
+        self.git("add", "new.py")
         self.assertTrue(check_local.no_untracked(self.repo))
+
+    def test_a_git_location_of_the_caller_does_not_redirect_the_steps(self):
+        (self.repo / "new.py").write_text("", encoding="utf-8")
+        with tempfile.TemporaryDirectory() as other:
+            subprocess.run(
+                ["git", "init", "-q"],
+                cwd=other,
+                env=check_local.clean_env(),
+                check=True,
+            )
+            location = {"GIT_DIR": f"{other}/.git", "GIT_WORK_TREE": other}
+            with (
+                mock.patch.dict("os.environ", location),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertFalse(check_local.no_untracked(self.repo))
 
     def test_a_missing_pre_commit_fails(self):
         with (

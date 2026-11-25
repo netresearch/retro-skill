@@ -56,13 +56,24 @@ def read_lint(repo: Path) -> tuple[str, list[str]]:
     return command, versions
 
 
-def clean_env() -> dict[str, str]:
-    """The environment without the virtualenv `uv run --script` put in it.
+# A git hook exports these; they outrank the directory a step runs in.
+GIT_LOCATION = (
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_INDEX_FILE",
+    "GIT_COMMON_DIR",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_PREFIX",
+)
 
-    The steps start `uv run --python X`, which would otherwise find this
-    script's environment.
+
+def clean_env() -> dict[str, str]:
+    """The environment without a git location and without this script's virtualenv.
+
+    The steps start `uv run --python X`, which would otherwise find the virtualenv
+    `uv run --script` put there.
     """
-    env = dict(os.environ)
+    env = {k: v for k, v in os.environ.items() if k not in GIT_LOCATION}
     venv = env.pop("VIRTUAL_ENV", None)
     if venv:
         own = str(Path(venv) / "bin")
@@ -101,6 +112,7 @@ def no_untracked(repo: Path) -> bool:
     listed = subprocess.run(
         ["git", "ls-files", "--others", "--exclude-standard"],
         cwd=repo,
+        env=clean_env(),
         capture_output=True,
         text=True,
         check=True,
