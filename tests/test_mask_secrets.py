@@ -111,6 +111,10 @@ NEGATIVES = [
     "AWS_SECRET_ACCESS_KEY=$SECRET",
     "https://example.org:8443/path@x",
     "https://example.org:$PORT/path@x and http://localhost:{port}/@vite/client",
+    "http://h:<port>/@x and http://[::1]:5173/@vite/client",
+    "http://h:8080?next=/a@b and [a](http://h:8080),[x](https://npmjs.com/@s/x)",
+    # Longer than the bound that keeps the pattern linear.
+    "redis://:" + "a/" * 101 + "@host",
     "the hf_ prefix and sk_live_ alone are no keys",
     "X-API-Key header missing, Cookie header missing",
     "curl -H 'X-API-Key: $KEY' -H 'Cookie: $C' https://example.org/?token=$T",
@@ -236,6 +240,15 @@ class AlternativesTest(unittest.TestCase):
         for text, expected in (
             ("postgres://app:S3" + "cr/tPw99@db/x", "postgres://[REDACTED]@db/x"),
             ("redis://:a/b@" + "c+d/e==@host:6379", "redis://[REDACTED]@host:6379"),
+            # A value another pattern masks is not cut at its `@`.
+            (
+                "http://[::1]:8080/?pass" + "word=p@ss9",
+                "http://[::1]:8080/?password=[REDACTED]",
+            ),
+            (
+                "redis://:a/b@h/?pass" + "word=p@ss9",
+                "redis://[REDACTED]@h/?password=[REDACTED]",
+            ),
             # The slash of a path is not searched when the userinfo ended before it.
             ("https://u:" + "pw77@host/a@b", "https://[REDACTED]@host/a@b"),
         ):

@@ -76,11 +76,9 @@ ALTERNATIVES: dict[str, str] = {
     "jwt": r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*",
     # `https://user:token@host` — the userinfo is masked, scheme and host stay.
     # The user may be empty (`redis://:password@host`), and the password may
-    # hold an `@`: the userinfo runs to the last `@` before the path. Without an
-    # `@` before the first slash the password may hold a raw slash (base64 does);
-    # a port (`host:8443/path@x`) or a placeholder (`host:$PORT/path@x`) is none.
+    # hold an `@`: the userinfo runs to the last `@` before the path.
     "url_credentials": r"(?P<url_credentials_keep>\b[A-Za-z][A-Za-z0-9+.-]*://)"
-    r"[^\s/@:'\"]*:(?:[^\s/'\"]+|(?!\d{1,5}/)(?![$<{])[^\s'\"]{1,200})(?=@)",
+    r"[^\s/@:'\"]*:[^\s/'\"]+(?=@)",
     "vault_token": r"\bhv[sbr]\.[A-Za-z0-9_-]{20,}",
     "npm_token": r"\bnpm_[A-Za-z0-9]{36}\b",
     "google_api_key": r"\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])",
@@ -127,6 +125,18 @@ SECRET_ASSIGNMENT = re.compile(
 )
 
 
+# A URL password with a raw slash (base64 holds them), which url_credentials
+# does not match. A pass of its own, after the others: as an alternative it would
+# run into the query of a URL whose host holds a colon, and leave half a value
+# there. A port (`host:8443/path@x`) or a placeholder (`host:$PORT/path@x`) is no
+# password, and the characters of a query, a list or a placeholder end the search.
+# The bound keeps the run time linear.
+URL_SLASH_PASSWORD = re.compile(
+    r"(?P<keep>\b[A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:'\"]*:(?!\d{1,5}/)"
+    r"(?!\$\w+/)[^\s'\"?#,()<>{}\[\]]{1,200}(?=@)"
+)
+
+
 def _mask_curl_users(command: re.Match[str]) -> str:
     return CURL_USER_OPTION.sub(lambda m: m["keep"] + MARKER, command.group(0))
 
@@ -139,7 +149,8 @@ def _replace(m: re.Match[str]) -> str:
 def mask(text: str) -> str:
     """`text` with every credential the patterns know replaced by MARKER."""
     masked = CURL_COMMAND.sub(_mask_curl_users, SECRET.sub(_replace, text or ""))
-    return SECRET_ASSIGNMENT.sub(lambda m: m["keep"] + MARKER, masked)
+    masked = SECRET_ASSIGNMENT.sub(lambda m: m["keep"] + MARKER, masked)
+    return URL_SLASH_PASSWORD.sub(lambda m: m["keep"] + MARKER, masked)
 
 
 def squeeze(text: str, limit: int) -> str:
