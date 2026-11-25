@@ -171,6 +171,9 @@ class TestSchichtA(unittest.TestCase):
         for command in (
             "timeout 420 tail -f /dev/null",
             "timeout 2m tail -f /dev/null;",
+            # As Claude Code recorded it for a script that uses .cwd().
+            "cd '/home/cybot/projects' && timeout 60 tail -f /dev/null",
+            r"cd '/home/o'\''brien' && timeout 60 tail -f /dev/null",
         ):
             with self.subTest(command=command):
                 evs = tool_use_pair(
@@ -184,6 +187,13 @@ class TestSchichtA(unittest.TestCase):
             ("timeout 60 tail -f app.log", "Exit code 124"),
             ("make check; timeout 60 tail -f /dev/null", "Exit code 124"),
             ("timeout 60 tail -f /dev/null && make check", "Exit code 124"),
+            ("cd '/p' && timeout 60 make check", "Exit code 124"),
+            ("cd '/p' && make && timeout 60 tail -f /dev/null", "Exit code 124"),
+            ("cd '/p' && timeout 60 tail -f /dev/null && make", "Exit code 124"),
+            ("cd '/p'; timeout 60 tail -f /dev/null", "Exit code 124"),
+            ("cd '/p'$(make)'/q' && timeout 60 tail -f /dev/null", "Exit code 124"),
+            ("cd $(make) && timeout 60 tail -f /dev/null", "Exit code 124"),
+            ("cd\n'/p' && timeout 60 tail -f /dev/null", "Exit code 124"),
             ("timeout 60 tail -f /dev/null", "Exit code 137"),
             ("timeout 60 tail -f /dev/null", "Exit code 124\ntail: error"),
         ):
