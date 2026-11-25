@@ -118,6 +118,17 @@ class CheckLocalTest(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()),
             ):
                 self.assertFalse(check_local.no_untracked(self.repo))
+        for name in check_local.GIT_LOCATION:
+            with (
+                self.subTest(name=name),
+                mock.patch.dict("os.environ", {name: "/elsewhere"}),
+            ):
+                unset = f'test -z "${{{name}:-}}"'
+                self.assertTrue(check_local.run_test_command(unset, "3.11", self.repo))
+        self.assertLessEqual(
+            {"GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE", "GIT_COMMON_DIR"},
+            set(check_local.GIT_LOCATION),
+        )
 
     def test_a_missing_pre_commit_fails(self):
         with (
