@@ -1125,7 +1125,7 @@ def shape_histogram(tool_uses) -> dict[str, list[int]]:
 # front of a command that a script runs with .cwd(). It quotes the directory.
 # The prefix stays on one line: after a newline the quoted path is a command.
 PLANNED_WAIT = re.compile(
-    r"(?:cd[ \t]+'[^']*'[ \t]+&&[ \t]+)?"
+    r"(?:cd[ \t]+'[^']*'(?:\\''[^']*')*[ \t]+&&[ \t]+)?"
     r"timeout\s+\d+(?:\.\d+)?[smhd]?\s+tail\s+-f\s+/dev/null"
 )
 
