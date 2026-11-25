@@ -83,6 +83,7 @@ def _load_sibling(filename: str):
 
 _masking = _load_sibling("mask-secrets.py")
 mask, squeeze = _masking.mask, _masking.squeeze
+fill_nested_result = _load_sibling("transcript-results.py").fill_nested_result
 
 # Line-start correction openers (EN + DE). Anchored so a mid-sentence "no" /
 # "nicht" inside ordinary prose does not trip the signal.
@@ -365,7 +366,7 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             # (the `turn` numbers) stay those of the file.
             if _is_request_log(ev):
                 ev = {}
-            events.append(ev)
+            events.append(fill_nested_result(ev))
     return events
 
 
@@ -578,6 +579,8 @@ class ToolUse(tuple):
     """
 
     message_id: str | None
+    # Called from a Code Mode script, which read the result in the model's place.
+    nested: bool = False
 
     def __new__(cls, fields: tuple, message_id: str | None = None):
         obj = super().__new__(cls, fields)
@@ -660,7 +663,9 @@ def _pair_tool_result(block: dict, pending: dict[str, _PendingUse]) -> ToolUse |
     i_use, name, inp, message_id = pending.pop(use_id)
     result = _result_text(block.get("content", ""))
     is_error = block.get("is_error", False)
-    return ToolUse((i_use, name, inp, result, bool(is_error)), message_id)
+    use = ToolUse((i_use, name, inp, result, bool(is_error)), message_id)
+    use.nested = block.get("nested") is True
+    return use
 
 
 def _pair_block(
@@ -1130,7 +1135,10 @@ def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list
 
 def signal_verbose_results(tool_uses) -> list[dict]:
     out = []
-    for i, name, inp, result, is_error in tool_uses:
+    for use in tool_uses:
+        i, name, _inp, result, _is_error = use
+        if getattr(use, "nested", False):
+            continue  # it never entered the context; the script's own result did
         if len(result) > LARGE_TOOL_RESULT_BYTES:
             out.append(
                 {

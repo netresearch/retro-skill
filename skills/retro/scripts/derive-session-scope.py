@@ -62,17 +62,18 @@ from typing import Any
 from urllib.parse import unquote as unquote_url
 
 
-def _load_masking():
-    """mask-secrets.py, loaded by path: its name is hyphenated like ours."""
-    path = Path(__file__).resolve().parent / "mask-secrets.py"
-    spec = importlib.util.spec_from_file_location("mask_secrets", path)
+def _load_sibling(filename: str):
+    """A sibling script, loaded by path: its name is hyphenated like ours."""
+    path = Path(__file__).resolve().parent / filename
+    spec = importlib.util.spec_from_file_location(path.stem.replace("-", "_"), path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-_masking = _load_masking()
+_masking = _load_sibling("mask-secrets.py")
 mask, squeeze = _masking.mask, _masking.squeeze
+fill_nested_result = _load_sibling("transcript-results.py").fill_nested_result
 
 try:
     import tree_sitter_bash
@@ -450,7 +451,7 @@ def iter_events(path: Path):
             # calls included; read as conversation they repeat every call.
             if _is_request_log(event):
                 continue
-            yield event
+            yield fill_nested_result(event)
 
 
 #: Event types that log what the harness sent to the API, not the conversation.
