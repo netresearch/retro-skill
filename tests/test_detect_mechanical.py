@@ -191,6 +191,7 @@ class TestSchichtA(unittest.TestCase):
             ("cd '/p' && timeout 60 tail -f /dev/null && make", "Exit code 124"),
             ("cd '/p'; timeout 60 tail -f /dev/null", "Exit code 124"),
             ("cd $(make) && timeout 60 tail -f /dev/null", "Exit code 124"),
+            ("cd\n'/p' && timeout 60 tail -f /dev/null", "Exit code 124"),
             ("timeout 60 tail -f /dev/null", "Exit code 137"),
             ("timeout 60 tail -f /dev/null", "Exit code 124\ntail: error"),
         ):
