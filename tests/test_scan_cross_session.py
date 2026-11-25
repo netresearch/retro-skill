@@ -410,6 +410,11 @@ class RuleTallyTest(TempDirCase):
                 hit = self._applicable(rules, "Bash", {"command": command}, "ok")
                 self.assertEqual(hit, expected)
 
+    def test_a_keyword_ending_in_a_separator_hits_what_follows_it(self) -> None:
+        rules = "- read `docs/` first\n"
+        hit = self._applicable(rules, "Bash", {"command": "cat docs/x.md"}, "ok")
+        self.assertEqual(hit, [1])
+
     def test_a_short_option_hits_the_bundle_it_opens(self) -> None:
         rules = "- `set -e` first\n- never `tool --e`\n"
         for command, expected in (
@@ -439,7 +444,7 @@ class RuleTallyTest(TempDirCase):
     def test_reading_a_numbered_or_diffed_rule_is_not_an_occurrence(self) -> None:
         rules = "- Test:\n  - `make unit`\n  - `make lint`\n"
         lines = rules.splitlines()
-        for prefix in ("{n}\t", "    {n}→", "{n}:", "+", " "):
+        for prefix in ("{n}\t", "    {n}→", "{n}:", "+", "-", " "):
             shown = "\n".join(
                 prefix.format(n=n) + line for n, line in enumerate(lines, 1)
             )
