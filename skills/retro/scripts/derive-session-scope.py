@@ -924,6 +924,17 @@ def _reports_on_status_line(command: str, write: re.Match) -> bool:
     )
 
 
+def _already(result: str, number: str) -> list[str]:
+    """The repositories, in lower case, whose PR of this number the output
+    reports as already as wanted; "" for a report that names none."""
+    found = []
+    for report in ALREADY_RE.finditer(result):
+        if report["number"] == number:
+            named = SLUG_REF_RE.search(report[0])
+            found.append(named["project"].lower() if named else "")
+    return found
+
+
 def _write_order(command: str, write: re.Match) -> int:
     """Every write before the creates, so a create never takes the URL of a
     PR an edit, a comment or a merge in the same call reported. The one
@@ -1515,10 +1526,9 @@ class _Call:
             self.claimed.update(r["url"] for r in found)
         if found:
             return _with_origin(found, "created" if verb == "create" else "acted")
-        if number and any(
-            m["number"] == number["number"] for m in ALREADY_RE.finditer(self.result)
-        ):
-            return []
+        if number and (reports := _already(self.result, number["number"])):
+            own = any(not project or p in ("", project.lower()) for p in reports)
+            return [] if own else None
         # Silent success in the one unambiguous shape: `<verb> N -R repo`, in
         # a call the parser reads whole (an unclosed heredoc, which hides its
         # extent, is an ERROR node) and whose heredocs bash neither expands

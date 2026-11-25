@@ -1666,6 +1666,21 @@ class EighthRoundTest(unittest.TestCase):
         urls, _ = self.urls([({"command": cmd}, printed)])
         self.assertEqual(urls, {"https://github.com/o/r/pull/9": "acted"})
 
+    def test_already_queued_counts_for_the_named_repository(self):
+        printed = "! Pull request a/r#280 is already queued to merge"
+        silent = "gh pr merge {n} -R b/r >/dev/null 2>&1"
+        for n in ("280", "'280'"):
+            with self.subTest(number=n):
+                cmd = f"gh pr merge {n} -R a/r --auto; " + silent.format(n=n)
+                urls, data = self.urls([({"command": cmd}, printed)])
+                self.assertEqual(urls, {})
+                self.assertEqual(len(data["unresolved_forge_commands"]), 1)
+        # Without -R the report is the write's own.
+        for cmd in ("gh pr merge 280 --auto", "gh pr merge 280 -R A/R --auto"):
+            with self.subTest(command=cmd):
+                urls, data = self.urls([({"command": cmd}, printed)])
+                self.assertEqual((urls, data["unresolved_forge_commands"]), ({}, []))
+
     def test_a_create_keeps_its_url_when_a_rest_call_names_it_too(self):
         cmd = (
             "gh pr create -R o/r --fill; gh api repos/o/r/pulls/164/requested_reviewers"
