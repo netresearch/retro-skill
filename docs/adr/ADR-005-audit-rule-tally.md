@@ -24,7 +24,7 @@ audit run and stores nothing. markdown-it-py parses the file; a rule is a
 top-level list item. Its id is its `[→A123]` anchors, else a hash of its
 text. Its keywords are its code spans, cut before a placeholder. The script
 counts, per rule, the sessions whose tool-call inputs (their string values),
-tool results or user turns name a keyword, and marks those where such a text
+tool results or user turns name a keyword as a word of its own, and marks those where such a text
 was a failed call that was not a refusal, or a user correction. Texts quoting
 the rule's opening, tally output, and whole sessions that ran a tally are
 skipped. Below `--min-sessions` (30) scanned sessions, `never_applicable`
@@ -48,8 +48,9 @@ The threshold of 30 sessions is a choice, not a measurement. Rules without
 code spans are `not_measurable`: 167 of 356 items in one real
 `CLAUDE.md`. Over 30 scanned real sessions of three days one run took 28 s
 and reported 25 rules never applicable; one alternation regex over all
-keywords took 111 s on the same data, so each keyword is tested as a
-substring. A backticked example output is a quote,
+keywords took 111 s on the same data, so each keyword is searched as a
+substring and then checked for word boundaries (added 2026-11-24, after these
+runs). A backticked example output is a quote,
 not a topic, and makes a rule look unused. Subagent transcripts are not read.
 A rule that prevents its mistake silently also looks unused, which is why a hit only
 starts the pruning comparison.

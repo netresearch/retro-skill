@@ -164,7 +164,8 @@ violated. The report gives applicable, followed and violated per rule judged,
 names the sessions read, and leaves the other rules unjudged. Before reporting a
 `never_applicable` rule, read its keywords: one that is an example output, a
 notation or holds letter placeholders (`wXhY`, `vX.Y.Z`, `timeout N`) cannot
-occur literally, so report that rule as not measurable. Each other
+occur literally, so ignore it. Report a rule as not measurable when no keyword is
+left. Each other
 `never_applicable` rule is a removal candidate for "Instruction pruning" in
 `classification-heuristic.md`, never a removal.
 

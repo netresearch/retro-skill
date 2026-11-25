@@ -390,6 +390,76 @@ class RuleTallyTest(TempDirCase):
         found = _tally(self.root, rules)
         self.assertEqual([r["sessions"] for r in found["rules"]], [["a"], ["a"]])
 
+    def _applicable(self, rules: str, name: str, inp: dict, result: str) -> list[int]:
+        """Per rule, the sessions that count for one call."""
+        path = Transcript().call(name, inp, result).write(self.root, "-p", "a")
+        self.addCleanup(path.unlink, missing_ok=True)
+        return [r["applicable_sessions"] for r in _tally(self.root, rules)["rules"]]
+
+    def test_a_keyword_inside_another_word_does_not_hit(self) -> None:
+        rules = (
+            "- Never use bare `pip`.\n- Avoid `sed` for JSON.\n- Keep `.env` intact\n"
+        )
+        for command, expected in (
+            ("glab pipeline list; echo used x.environ", [0, 0, 0]),
+            ("mcp__pip__sed_x", [1, 1, 0]),
+            ("pipeline; pip; cat prod.env", [1, 0, 1]),
+            ("pip install x; sed -n 1p .env", [1, 1, 1]),
+        ):
+            with self.subTest(command=command):
+                hit = self._applicable(rules, "Bash", {"command": command}, "ok")
+                self.assertEqual(hit, expected)
+
+    def test_a_keyword_ending_in_a_separator_hits_what_follows_it(self) -> None:
+        rules = "- read `docs/` first\n"
+        hit = self._applicable(rules, "Bash", {"command": "cat docs/x.md"}, "ok")
+        self.assertEqual(hit, [1])
+
+    def test_a_short_option_hits_the_bundle_it_opens(self) -> None:
+        rules = "- `set -e` first\n- never `tool --e`\n"
+        for command, expected in (
+            ("set -euo pipefail", [1, 0]),
+            ("tool --exit", [0, 0]),
+        ):
+            with self.subTest(command=command):
+                hit = self._applicable(rules, "Bash", {"command": command}, "ok")
+                self.assertEqual(hit, expected)
+
+    def test_an_escaped_line_break_before_a_keyword_still_hits(self) -> None:
+        result = '{"log": "one\\nmake unit"}'
+        rules = "- run `make unit`\n"
+        self.assertEqual(self._applicable(rules, "Bash", {"command": "x"}, result), [1])
+
+    def test_a_keyword_cut_inside_a_word_hits_what_continues_it(self) -> None:
+        rules = "- board `OPSCUST-board{X}`\n- run `make unit <n>`\n"
+        for command, expected in (
+            ("show OPSCUST-board7", [1, 0]),
+            ("make unit 3", [0, 1]),
+            ("make units", [0, 0]),
+        ):
+            with self.subTest(command=command):
+                hit = self._applicable(rules, "Bash", {"command": command}, "ok")
+                self.assertEqual(hit, expected)
+
+    def test_reading_a_numbered_or_diffed_rule_is_not_an_occurrence(self) -> None:
+        rules = "- Test:\n  - `make unit`\n  - `make lint`\n"
+        lines = rules.splitlines()
+        for prefix in ("{n}\t", "    {n}→", "{n}:", "+", "-", " "):
+            shown = "\n".join(
+                prefix.format(n=n) + line for n, line in enumerate(lines, 1)
+            )
+            with self.subTest(prefix=prefix):
+                hit = self._applicable(rules, "Read", {"file_path": "x"}, shown)
+                self.assertEqual(hit, [0])
+        use = self._applicable(rules, "Bash", {"command": "make unit"}, "1\tok")
+        self.assertEqual(use, [1])
+
+    def test_a_cut_does_not_hide_a_credential_from_the_mask(self) -> None:
+        rules = "- DB: `postgres://app:S3cr*tPw99@db/x`\n"
+        out = json.dumps(_tally(self.root, rules))
+        self.assertNotIn("S3cr", out)
+        self.assertIn("[REDACTED]", out)
+
     def test_quotes_in_a_command_match_unescaped(self) -> None:
         rules = '- count with `grep -c "foo"` before you claim one\n'
         Transcript().call("Bash", {"command": 'grep -c "foo" f'}, "3").write(

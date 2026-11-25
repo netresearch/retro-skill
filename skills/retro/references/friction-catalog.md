@@ -439,12 +439,15 @@ session to read.
   of its text, with `line` giving its place. Its keywords are its code spans,
   cut before a placeholder (`<n>`, `{X}`, `*`, `…`), and a short bare word left before a cut (`try {…}`) is dropped; a rule without one is
   `not_measurable`. Per rule it counts the sessions where a tool-call input,
-  tool result or user turn names a keyword (`applicable_sessions`, ids in
+  tool result or user turn names a keyword as a word of its own (`applicable_sessions`, ids in
   `sessions`) and, among them, failed calls that were not refusals and user
   corrections (`violation_candidate_sessions`, ids in
   `violation_candidates`). A text that quotes the rule's opening, tally
   output, or a session that ran a tally does not count; query the output in
-  the session that ran it. `never_applicable` stays `null` while fewer than
+  the session that ran it. A keyword that is example output, a notation or
+  a letter placeholder cannot occur literally: ignore it, and report a rule
+  as not measurable when no keyword is left. A short option inside a bundle
+  (`ls -l` in `ls -al`) is missed. `never_applicable` stays `null` while fewer than
   `--min-sessions` (30) sessions were scanned. For a repository's
   `AGENTS.md`, pass `--project=<slug>`, or other projects' sessions fill the
   window. Subagent transcripts are not read, which errs toward "never
