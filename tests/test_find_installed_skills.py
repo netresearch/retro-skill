@@ -19,6 +19,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from git_env import clean_git_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "skills" / "retro" / "scripts" / "find-installed-skills.sh"
 
@@ -83,7 +85,9 @@ class FindInstalledSkillsTest(unittest.TestCase):
                 f"https://{token}@github.com/acme/plain-skill.git",
             ],
         ):
-            subprocess.run(command, check=True, capture_output=True)
+            subprocess.run(
+                command, check=True, capture_output=True, env=clean_git_env()
+            )
         result = self._run()
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("Tk5Tk5", result.stdout)
@@ -99,7 +103,9 @@ class FindInstalledSkillsTest(unittest.TestCase):
             ["git", "init", "-q", str(skill)],
             ["git", "-C", str(skill), "remote", "add", "origin", url],
         ):
-            subprocess.run(command, check=True, capture_output=True)
+            subprocess.run(
+                command, check=True, capture_output=True, env=clean_git_env()
+            )
         result = self._run()
         self.assertEqual(result.returncode, 0, result.stderr)
         skills = {s["name"]: s for s in json.loads(result.stdout)}

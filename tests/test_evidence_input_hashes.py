@@ -31,20 +31,11 @@ import unittest.mock
 from collections import Counter
 from pathlib import Path
 
+from git_env import clean_git_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 EVIDENCE = "docs/evidence/"
 SUFFIX = "input_sha256"
-# GIT_DIR and its siblings choose the repository ahead of `-C`; a git hook
-# or the caller's shell would otherwise list another repository's files.
-GIT_LOCATION_VARS = frozenset(
-    {
-        "GIT_DIR",
-        "GIT_WORK_TREE",
-        "GIT_COMMON_DIR",
-        "GIT_INDEX_FILE",
-        "GIT_OBJECT_DIRECTORY",
-    }
-)
 
 # (record, key) -> (unresolved count, where the record states the loss)
 DOCUMENTED_GAPS = {
@@ -70,7 +61,7 @@ def tracked_files() -> list[str]:
         ["git", "-C", str(REPO_ROOT), "ls-files", "-z"],
         capture_output=True,
         check=True,
-        env={k: v for k, v in os.environ.items() if k not in GIT_LOCATION_VARS},
+        env=clean_git_env(),
     ).stdout.decode()
     return [p for p in out.split("\0") if p]
 
@@ -181,7 +172,9 @@ class GitEnvTest(unittest.TestCase):
     def test_a_foreign_git_dir_does_not_change_the_listing(self) -> None:
 
         with tempfile.TemporaryDirectory() as other:
-            subprocess.run(["git", "init", "-q", other], check=True)
+            subprocess.run(
+                ["git", "init", "-q", other], check=True, env=clean_git_env()
+            )
             with unittest.mock.patch.dict(
                 os.environ, {"GIT_DIR": os.path.join(other, ".git")}
             ):

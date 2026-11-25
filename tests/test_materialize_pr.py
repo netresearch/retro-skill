@@ -17,6 +17,8 @@ import textwrap
 import unittest
 from pathlib import Path
 
+from git_env import clean_git_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = REPO_ROOT / "skills" / "retro" / "scripts" / "materialize-pr.sh"
 # The provenance line `finish` requires (patch-workflow.md, PR body template).
@@ -42,7 +44,12 @@ echo "https://github.com/example/demo/pull/1"
 
 def git(*args: str, cwd: Path | None = None) -> str:
     return subprocess.run(
-        ["git", *args], cwd=cwd, capture_output=True, text=True, check=True
+        ["git", *args],
+        cwd=cwd,
+        env=clean_git_env(),
+        capture_output=True,
+        text=True,
+        check=True,
     ).stdout.strip()
 
 

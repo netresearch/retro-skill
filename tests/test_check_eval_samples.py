@@ -21,6 +21,8 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
+from git_env import clean_git_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "skills" / "retro" / "scripts"
 
@@ -56,18 +58,22 @@ class CheckEvalSamplesTest(unittest.TestCase):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
         repo = Path(tmp.name)
-        subprocess.run(["git", "init", "-q", str(repo)], check=True)
+        env = clean_git_env()
+        subprocess.run(["git", "init", "-q", str(repo)], check=True, env=env)
         for key, value in (("user.email", "t@example.com"), ("user.name", "T")):
-            subprocess.run(["git", "-C", str(repo), "config", key, value], check=True)
+            subprocess.run(
+                ["git", "-C", str(repo), "config", key, value], check=True, env=env
+            )
         (repo / "evals").mkdir()
         if base_evals is not None:
             self._write(repo, base_evals)
         else:
             (repo / "README.md").write_text("seed\n", encoding="utf-8")
-        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True)
+        subprocess.run(["git", "-C", str(repo), "add", "-A"], check=True, env=env)
         subprocess.run(
             ["git", "-C", str(repo), "commit", "-q", "-m", "base", "--no-gpg-sign"],
             check=True,
+            env=env,
         )
         return repo
 
@@ -294,6 +300,7 @@ class CheckEvalSamplesTest(unittest.TestCase):
         self.assertIn("without samples", result.stderr)
         staged = subprocess.run(
             ["git", "-C", str(repo), "diff", "--cached", "--name-only"],
+            env=clean_git_env(),
             capture_output=True,
             text=True,
             check=True,
