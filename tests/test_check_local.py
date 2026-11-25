@@ -76,6 +76,17 @@ class CheckLocalTest(unittest.TestCase):
             "os.environ", {"VIRTUAL_ENV": "/v", "PATH": "/v/bin:/usr/bin"}
         ):
             env = check_local.clean_env()
+            self.assertTrue(
+                check_local.run_test_command(
+                    'test -z "${VIRTUAL_ENV:-}"', "3.11", self.repo
+                )
+            )
+            done = subprocess.CompletedProcess([], 0)
+            with mock.patch.object(
+                check_local.subprocess, "run", return_value=done
+            ) as run:
+                check_local.run_pre_commit(self.repo)
+        self.assertNotIn("VIRTUAL_ENV", run.call_args.kwargs["env"])
         self.assertNotIn("VIRTUAL_ENV", env)
         self.assertEqual(env["PATH"], "/usr/bin")
 

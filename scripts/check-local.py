@@ -20,9 +20,8 @@
 Every step runs even when an earlier one failed; the exit code is 1 when any
 did. Not covered: the hooks run at the revisions pinned in
 .pre-commit-config.yaml, while CI calls the reusable workflows at @main. The
-manifest sync, plugin version format, composer schema, checkpoint schema,
-harness, template drift, security, eval-sample, SonarCloud and DCO checks run
-in CI only.
+plugin version format, composer schema, checkpoint schema, harness, template
+drift, security, eval-sample, SonarCloud and DCO checks run in CI only.
 """
 
 from __future__ import annotations
