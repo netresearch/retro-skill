@@ -1495,6 +1495,20 @@ class SeventhRoundTest(unittest.TestCase):
         )
         self.assertEqual(data["unresolved_forge_commands"], [])
 
+    def test_a_quoted_number_names_the_artefact(self):
+        # Code Mode's shell helper quotes every value it inserts.
+        for number in ("'280'", '"280"'):
+            with self.subTest(number=number):
+                cmd = f"gh pr ready {number} --repo o/r"
+                urls, data = self.urls([({"command": cmd}, "")])
+                self.assertEqual(urls, {"https://github.com/o/r/pull/280": "acted"})
+                self.assertEqual(data["unresolved_forge_commands"], [])
+        for text in ("'280-fix'", "'280", "'280\""):
+            with self.subTest(text=text):
+                cmd = f"gh pr ready {text} --repo o/r"
+                urls, _ = self.urls([({"command": cmd}, "")])
+                self.assertEqual(urls, {})
+
     def test_an_edit_and_a_create_in_one_call(self):
         cmd = "gh pr edit 92 -R o/r --add-label x; gh pr create -R o/r --fill"
         printed = "https://github.com/o/r/pull/92\nhttps://github.com/o/r/pull/97"

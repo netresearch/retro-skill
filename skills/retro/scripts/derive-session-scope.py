@@ -906,7 +906,10 @@ def _write_number(command: str, write: re.Match) -> re.Match | None:
     """The number a `gh|glab pr|mr|issue <verb> N` names right after its verb.
 
     The number must be the whole argument: `123-fix` is a branch, not PR 123."""
-    return re.match(r"\s+(\d+)(?=$|[\s;&|)])", command[write.end() :])
+    return re.match(
+        r"\s+(?P<quote>['\"]?)(?P<number>\d+)(?P=quote)(?=$|[\s;&|)])",
+        command[write.end() :],
+    )
 
 
 def _reports_on_status_line(command: str, write: re.Match) -> bool:
@@ -1498,7 +1501,7 @@ class _Call:
                 if not slug:
                     continue  # `#N` needs the repository from this write's `-R`
                 ref = artefact(host, project, _kind(cli, noun, sep), bare)
-            if number and ref["number"] != int(number[1]):
+            if number and ref["number"] != int(number["number"]):
                 continue
             same_number = True
             if slug and ref["project"].lower() != project.lower():
@@ -1513,7 +1516,7 @@ class _Call:
         if found:
             return _with_origin(found, "created" if verb == "create" else "acted")
         if number and any(
-            m["number"] == number[1] for m in ALREADY_RE.finditer(self.result)
+            m["number"] == number["number"] for m in ALREADY_RE.finditer(self.result)
         ):
             return []
         # Silent success in the one unambiguous shape: `<verb> N -R repo`, in
@@ -1535,7 +1538,10 @@ class _Call:
             and not _is_text(self.command, write)
         ):
             return [
-                dict(artefact(host, project, wanted, int(number[1])), origin="acted")
+                dict(
+                    artefact(host, project, wanted, int(number["number"])),
+                    origin="acted",
+                )
             ]
         return None
 
