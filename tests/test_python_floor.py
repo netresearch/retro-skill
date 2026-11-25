@@ -23,7 +23,7 @@ SCRIPTS = REPO_ROOT / "skills" / "retro" / "scripts"
 FLOOR = ">=3.11"
 
 # Loaded by path from the other scripts, never run as a command.
-LOADED_BY_PATH = {"feedback-contract.py", "mask-secrets.py"}
+LOADED_BY_PATH = {"feedback-contract.py", "mask-secrets.py", "transcript-results.py"}
 
 # The PEP 723 reference regex.
 BLOCK = re.compile(

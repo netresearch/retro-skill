@@ -294,7 +294,10 @@ The detector reports `coverage.status` as `supported`, `empty`, or `unsupported`
 `findings_total` to `null`: no analysis ran, so this is not a clean assessment.
 Native Codex `response_item` envelopes need a transcript adapter before the
 pre-pass. `supported` recognizes the message envelope; it does not promise that
-all content blocks or pending tool results were measured. The loader still
+all content blocks or pending tool results were measured. A call made from a
+Code Mode script (the REPL tool) is read from `toolUseResult`, for shell commands
+and for tools that store a string there; its output never counts as A3. Results
+of other nested tools, such as Read and WebSearch, stay empty. The loader still
 ignores malformed and non-object JSON lines; `empty` means no object records
 were loaded, not that the original file contained no bytes.
 

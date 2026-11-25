@@ -14,6 +14,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/references/` — Friction catalog, destination taxonomy, classification heuristic, skill discovery, documentation lookup, patch workflow, eval integration, workflow modes
 - `skills/retro/scripts/detect-mechanical.py` — Schicht-A pre-pass (mechanical friction detection)
 - `skills/retro/scripts/mask-secrets.py` — Credential masking that `detect-mechanical.py`, `scan-cross-session.py`, `derive-session-scope.py`, `collect-review-findings.py` and `scan-memory-inventory.py` apply to the text they quote (not a command)
+- `skills/retro/scripts/transcript-results.py` — Puts the output of a Code Mode call, which Claude Code stores in `toolUseResult`, into its result block for the transcript readers (not a command)
 - `skills/retro/scripts/opencode-transcript.py` — Renders an opencode session (SQLite) as the JSONL Schicht A reads
 - `skills/retro/scripts/codex-transcript.py` — Renders a Codex CLI rollout as the JSONL Schicht A reads; real excerpts in `tests/fixtures/codex/`
 - `skills/retro/scripts/collect-session-metrics.py` — Normalizes recorded usage, observed time and provenance; unknown costs and parent/child counter overlap remain explicit

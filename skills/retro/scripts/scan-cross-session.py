@@ -53,17 +53,18 @@ from typing import Any
 from markdown_it import MarkdownIt
 
 
-def _load_masking():
-    """mask-secrets.py, loaded by path: its name is hyphenated like ours."""
-    path = Path(__file__).resolve().parent / "mask-secrets.py"
-    spec = importlib.util.spec_from_file_location("mask_secrets", path)
+def _load_sibling(filename: str):
+    """A sibling script, loaded by path: its name is hyphenated like ours."""
+    path = Path(__file__).resolve().parent / filename
+    spec = importlib.util.spec_from_file_location(path.stem.replace("-", "_"), path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
 
 
-_masking = _load_masking()
+_masking = _load_sibling("mask-secrets.py")
 mask, squeeze = _masking.mask, _masking.squeeze
+fill_nested_result = _load_sibling("transcript-results.py").fill_nested_result
 
 DEFAULT_PROJECTS_DIR = Path.home() / ".claude" / "projects"
 CORRECTION_PATTERNS = re.compile(
@@ -189,7 +190,7 @@ def load_events(
                 # Blanked, not dropped, so event positions stay those of the file.
                 if _is_request_log(ev):
                     ev = {}
-                events.append(ev)
+                events.append(fill_nested_result(ev))
     except OSError:
         gaps["unreadable_sessions"] += 1
         return None

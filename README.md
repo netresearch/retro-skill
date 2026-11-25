@@ -262,6 +262,7 @@ retro-skill/
 │       ├── collect-review-findings.py # review, issue and ticket feedback on the session's PRs/MRs
 │       ├── feedback-contract.py      # validates supplied tracker feedback (--feedback-file)
 │       ├── mask-secrets.py           # credential masking for the text five scripts quote
+│       ├── transcript-results.py     # output of Code Mode calls for the transcript readers
 │       ├── opencode-transcript.py    # renders an opencode session as layer-A JSONL
 │       ├── codex-transcript.py       # renders a Codex rollout as layer-A JSONL
 │       ├── scan-memory-inventory.py  # Promote: memory backlog pre-pass
