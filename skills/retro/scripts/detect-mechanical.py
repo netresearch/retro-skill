@@ -1076,9 +1076,7 @@ def shape_histogram(tool_uses) -> dict[str, list[int]]:
 
 # A wait for a fixed time: timeout ends it with 124, as intended. Anything beside
 # it in the call, and any other command that runs out of time, stays an error.
-PLANNED_WAIT = re.compile(
-    r"\s*timeout\s+\d+(?:\.\d+)?[smhd]?\s+tail\s+-f\s+/dev/null\s*;?\s*"
-)
+PLANNED_WAIT = re.compile(r"timeout\s+\d+(?:\.\d+)?[smhd]?\s+tail\s+-f\s+/dev/null")
 
 
 def _is_planned_wait(inp: dict, result: str) -> bool:
@@ -1086,7 +1084,7 @@ def _is_planned_wait(inp: dict, result: str) -> bool:
     return (
         isinstance(command, str)
         and result.strip() == "Exit code 124"
-        and bool(PLANNED_WAIT.fullmatch(command))
+        and bool(PLANNED_WAIT.fullmatch(command.strip().removesuffix(";").rstrip()))
     )
 
 
