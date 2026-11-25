@@ -1,12 +1,13 @@
 # SPDX-License-Identifier: MIT
 # SPDX-FileCopyrightText: Netresearch DTT GmbH
 
-"""Every Python call of git names the environment it runs in.
+"""Every Python call of git or a shell names the environment it runs in.
 
 Without `env=`, a GIT_DIR exported by a git hook sends the call to another
 repository, whatever `-C` or `cwd` says. Seen here: the calls that hand
-`subprocess` a list literal starting with "git". A list built elsewhere and a
-shell script are not seen, nor whether a named environment is really clean.
+`subprocess` a list literal starting with "git" or a shell, since a shell script
+may call git. A list built elsewhere and a Python script that calls git are not
+seen, nor whether a named environment is really clean.
 """
 
 from __future__ import annotations
@@ -17,12 +18,13 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCOPE = ("scripts/*.py", "skills/*/scripts/*.py", "tests/*.py")
+PROGRAMS = {"git", "bash", "sh"}
 RUNNERS = {"run", "Popen", "call", "check_call", "check_output"}
 # The caller's environment as it is.
 UNCHANGED = {"None", "os.environ", "os.environ.copy()", "dict(os.environ)"}
 
 
-def _is_git(call: ast.Call) -> bool:
+def _may_run_git(call: ast.Call) -> bool:
     argv = call.args[0] if call.args else None
     if argv is None:
         argv = next((k.value for k in call.keywords if k.arg == "args"), None)
@@ -30,7 +32,7 @@ def _is_git(call: ast.Call) -> bool:
         isinstance(argv, (ast.List, ast.Tuple))
         and bool(argv.elts)
         and isinstance(argv.elts[0], ast.Constant)
-        and argv.elts[0].value == "git"
+        and argv.elts[0].value in PROGRAMS
     )
 
 
@@ -44,13 +46,13 @@ def _passes_the_callers(env: ast.expr) -> bool:
 
 
 def unclean_calls(source: str) -> list[int]:
-    """Lines of the git calls that run in the caller's environment."""
+    """Lines of the calls that run in the caller's environment."""
     lines = []
     for node in ast.walk(ast.parse(source)):
         if not isinstance(node, ast.Call):
             continue
         name = getattr(node.func, "attr", getattr(node.func, "id", ""))
-        if name not in RUNNERS or not _is_git(node):
+        if name not in RUNNERS or not _may_run_git(node):
             continue
         env = next((k.value for k in node.keywords if k.arg == "env"), None)
         if env is None or _passes_the_callers(env):
@@ -69,7 +71,7 @@ class GitSubprocessEnvTest(unittest.TestCase):
                     self.assertEqual(
                         unclean_calls(source),
                         [],
-                        "git call without env= (tests: git_env.clean_git_env())",
+                        "call without its own env= (tests: git_env.clean_git_env())",
                     )
         self.assertGreater(seen, 10, "the scope finds no git calls")
 
@@ -78,6 +80,7 @@ class GitSubprocessEnvTest(unittest.TestCase):
             'subprocess.run(["git", "init"])',
             'run(("git", "init"))',
             'subprocess.check_output(args=["git", "init"])',
+            'subprocess.run(["bash", "x.sh"])',
             'subprocess.run(["git", "init"], env=None)',
             'subprocess.run(["git", "init"], env=os.environ)',
             'subprocess.run(["git", "init"], env=os.environ.copy())',
@@ -91,7 +94,7 @@ class GitSubprocessEnvTest(unittest.TestCase):
         for call in (
             'subprocess.run(["git", "init"], env=clean_git_env())',
             'subprocess.run(["git", "init"], env={**clean, "A": "b"})',
-            'subprocess.run(["bash", "x.sh"])',
+            'subprocess.run(["jq", "."])',
             'print(["git", "init"])',
         ):
             with self.subTest(call=call):

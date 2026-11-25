@@ -12,7 +12,6 @@ ones the old awk extraction returned wrongly: a block scalar came back as
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import tempfile
@@ -45,8 +44,8 @@ class FindInstalledSkillsTest(unittest.TestCase):
                 encoding="utf-8",
             )
 
-    def _run(self, path: str | None = None):
-        env = {**os.environ, "CLAUDE_HOME": str(self.home)}
+    def _run(self, path: str | None = None, **extra: str):
+        env = {**clean_git_env(), "CLAUDE_HOME": str(self.home), **extra}
         if path is not None:
             env["PATH"] = path
         return subprocess.run(
@@ -109,6 +108,10 @@ class FindInstalledSkillsTest(unittest.TestCase):
         result = self._run()
         self.assertEqual(result.returncode, 0, result.stderr)
         skills = {s["name"]: s for s in json.loads(result.stdout)}
+        self.assertEqual(skills["plain"]["repo_url"], url)
+        # A git hook's GIT_DIR names another repository.
+        hooked = self._run(GIT_DIR=str(self.home))
+        skills = {s["name"]: s for s in json.loads(hooked.stdout)}
         self.assertEqual(skills["plain"]["repo_url"], url)
 
     def test_missing_jq_is_an_error_not_an_empty_list(self):

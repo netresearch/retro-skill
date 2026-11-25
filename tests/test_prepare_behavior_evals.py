@@ -15,6 +15,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from git_env import clean_git_env
+
 SCRIPT = (
     Path(__file__).resolve().parents[1]
     / "skills/retro/scripts/prepare-behavior-evals.py"
@@ -175,6 +177,7 @@ class PrepareBehaviorEvalsTest(unittest.TestCase):
         shutil.copytree(source, copied)
         baseline = subprocess.run(
             ["sh", str(copied / "run-tests.sh")],
+            env=clean_git_env(),
             capture_output=True,
             text=True,
             check=False,
@@ -190,6 +193,7 @@ class PrepareBehaviorEvalsTest(unittest.TestCase):
         for _ in range(2):
             checked = subprocess.run(
                 ["sh", str(copied / "run-tests.sh")],
+                env=clean_git_env(),
                 capture_output=True,
                 text=True,
                 check=False,

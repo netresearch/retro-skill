@@ -195,6 +195,23 @@ class MaterializePrTest(unittest.TestCase):
             git("-C", str(self.remote), "log", "-1", "--format=%s", "feat/x"), "feat: a"
         )
 
+    def test_a_git_dir_of_the_caller_does_not_redirect_the_commit(self):
+        other = self.tmp / "other"
+        subprocess.run(["git", "init", "-q", str(other)], check=True, env=self.env)
+        project = self._bare_project(origin_head=True)
+        self.env["GIT_DIR"] = str(other / ".git")
+        started = self._run("start", str(project), "feat/g")
+        self.assertEqual(started.returncode, 0, started.stderr)
+        worktree = Path(started.stdout.strip())
+        (worktree / "a.txt").write_text("a\n", encoding="utf-8")
+        (self.tmp / "body.md").write_text(BODY, encoding="utf-8")
+        result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(
+            git("-C", str(self.remote), "log", "-1", "--format=%s", "feat/g"), "feat: a"
+        )
+        self.assertEqual(git("-C", str(other), "for-each-ref"), "")
+
     def test_finish_commits_only_the_named_files(self):
         """A file staged in the worktree beforehand must not ride along."""
         project = self._bare_project(origin_head=True)

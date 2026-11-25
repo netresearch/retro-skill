@@ -290,6 +290,7 @@ class CheckEvalSamplesTest(unittest.TestCase):
             capture_output=True,
             text=True,
             check=False,
+            env=clean_git_env(),
         )
 
     def test_finish_refuses_a_new_eval_without_samples(self):
