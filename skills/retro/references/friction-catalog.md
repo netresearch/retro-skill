@@ -42,7 +42,7 @@ Fast, deterministic, regex/count-based, with Bash syntax parsing for A20 polling
 
 | # | Signal | Detection | Hint at |
 |---|---|---|---|
-| A1 | Tool error rate | `exit_code != 0` or `is_error: true` in tool_use_result; not a Claude Code call that only waits (`timeout N tail -f /dev/null`, exit 124) | Wrong tool, wrong args, missing tool |
+| A1 | Tool error rate | `exit_code != 0` or `is_error: true` in tool_use_result; not a Claude Code call that only waits (`timeout N tail -f /dev/null`, exit 124), nor a Code Mode script error that only passes on an inner call's error, which is listed itself | Wrong tool, wrong args, missing tool |
 | A2 | Tool retry cluster | Same tool + similar args ≥3× within N turns | Tool misunderstanding, missing docs |
 | A3 | Tool output verbosity | `len(tool_result) > X` without subsequent filter | Token waste, wrong tool (cat vs head, full Read vs Range) |
 | A4 | Tool call count vs task | Total tool calls / user messages ratio above threshold | Inefficiency for simple task |
@@ -50,7 +50,7 @@ Fast, deterministic, regex/count-based, with Bash syntax parsing for A20 polling
 | A6 | User correction phrases | Line-start openers (EN + DE: `no\|nope\|stop\|don't\|wrong\|nein\|nicht\|falsch\|quatsch\|warum\|wieso\|manno` …) **plus** curated mid-line DE phrases (`raus damit`, `endlich mal`, `so nicht`, `mach … selber`, `sei genau` …), ALL CAPS, `!!!` | Classic friction — DE speakers correct mid-sentence, which line-anchored EN openers miss |
 | A7 | Prompt repetition | Semantic similarity of user messages within N turns | Assistant didn't understand |
 | A8 | Prompt sequence repetition | n-gram match (n=2..5) over user message sequence | Workflow ripe for snippet/command |
-| A9 | Tool sequence repetition | n-gram match over tool_use names + arg templates | Composition opportunity, skill instruction gap |
+| A9 | Tool sequence repetition | n-gram match over tool_use names; a sequence of generic tools only (Bash, Read, Write, Edit, REPL, Poll, …) is left out | Composition opportunity, skill instruction gap |
 | A10 | Skill in reminder vs invoke | `<command-name>` in system reminder, no matching Skill call | Skill not triggered |
 | A11 | Wrong tool choice | `grep` on JSON, `sed` on YAML, `cat` for huge file (not: `tail` on a task output or log, which Read cannot do; not a presence/count/locate `grep -c/-q/-l/-n`, a `sed -n '5,80p'` read or a search for git conflict markers — the enforcing gate permits all of those, and no structured parser can answer them) | Tool-not-used / wrong tool |
 | A12 | Re-read same file | Read tool same path ≥2× without intervening Edit | Caching opportunity |
@@ -60,7 +60,7 @@ Fast, deterministic, regex/count-based, with Bash syntax parsing for A20 polling
 | A16 | Outdated tool warning | "deprecated", "is now", "use X instead" patterns in stderr | Out-of-date knowledge |
 | A17 | Upstream failure | `git push` fails on pre-receive, `gh pr checks` fails post-push, post-commit lint fail | Pre-push verification gap (shift-left) |
 | A18 | Permission re-approval | Same permission prompt approved ≥3× in session | Allowlist needed |
-| A19 | Repeated command shape | One program+subcommand shape invoked >=8x (plumbing excluded, remote calls flagged) | The same derived answer recomputed by hand — script candidate |
+| A19 | Repeated command shape | One program+subcommand shape of a shell command invoked >=8x (plumbing excluded, remote calls flagged) | The same derived answer recomputed by hand — script candidate |
 | A20 | Wait-loop inefficiency | Bash `until`/`while` syntax containing a literal `sleep` command; quoted search text, comments and heredoc prose are excluded. The stronger terminal-condition candidate also requires backlog/zero comparison text inside that loop | A syntactic polling candidate to inspect, not execution or reachability proof; waiting for every check may delay an actionable failure |
 | A21 | Auto-memory write | `Write`/`Edit`/`MultiEdit`/`NotebookEdit` on a path under `~/.claude/projects/<slug>/memory/` (any slug; `.promoted/` tombstones excluded), one finding per file with every turn. A write through Bash is not covered | Knowledge parked in a cwd-scoped silo instead of the project docs or the owning skill — the normal run sees it, not only `/retro promote` |
 

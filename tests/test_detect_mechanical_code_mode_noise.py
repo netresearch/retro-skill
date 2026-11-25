@@ -1,0 +1,181 @@
+# SPDX-License-Identifier: MIT
+# SPDX-FileCopyrightText: Netresearch DTT GmbH
+"""A1, A9 and A19 on Code Mode sessions: what the script wrapper adds is noise."""
+
+from __future__ import annotations
+
+import importlib.util
+import sys
+import unittest
+from pathlib import Path
+
+SCRIPT = (
+    Path(__file__).resolve().parent.parent
+    / "skills"
+    / "retro"
+    / "scripts"
+    / "detect-mechanical.py"
+)
+_spec = importlib.util.spec_from_file_location("detect_code_mode_noise", SCRIPT)
+detect = importlib.util.module_from_spec(_spec)
+sys.modules[_spec.name] = detect
+_spec.loader.exec_module(detect)
+
+# As recorded by Claude Code 2.1.330 on 2026-11-25.
+DENIED = (
+    "Permission denied for Write: PreToolUse:Write hook error: "
+    "[/usr/bin/python3 -I -S $HOME/.claude/hooks/security_reminder_hook.py]: "
+    "Security Warning"
+)
+
+
+def pair(tool_id, name, inp, result, is_error=False, virtual=False):
+    use = {
+        "type": "assistant",
+        "message": {
+            "content": [{"type": "tool_use", "id": tool_id, "name": name, "input": inp}]
+        },
+    }
+    res = {
+        "type": "user",
+        "message": {
+            "content": [
+                {
+                    "type": "tool_result",
+                    "tool_use_id": tool_id,
+                    "content": result,
+                    "is_error": is_error,
+                }
+            ]
+        },
+    }
+    if virtual:
+        use["isVirtual"] = res["isVirtual"] = True
+    return [use, res]
+
+
+def errors(*events):
+    uses = detect.extract_tool_uses([e for group in events for e in group])
+    return [f["tool"] for f in detect.signal_tool_errors(uses)]
+
+
+class RepeatedInnerErrorTest(unittest.TestCase):
+    def test_a_quoted_inner_error_counts_once(self):
+        self.assertEqual(
+            errors(
+                pair("w", "Write", {}, DENIED, True, virtual=True),
+                pair("ok", "Write", {}, "", virtual=True),
+                pair("r", "REPL", {}, f"Error: write /x/y.sh: {DENIED}", True),
+            ),
+            ["Write"],
+        )
+
+    def test_a_shell_error_counts_once(self):
+        self.assertEqual(
+            errors(
+                pair("b", "Bash", {"command": "x"}, "boom", True, virtual=True),
+                pair(
+                    "r",
+                    "REPL",
+                    {},
+                    "ShellError: Command failed with exit code 1:",
+                    True,
+                ),
+            ),
+            ["Bash"],
+        )
+
+    def test_an_error_of_the_script_itself_is_reported(self):
+        self.assertEqual(
+            errors(
+                pair("w", "Write", {}, DENIED, True, virtual=True),
+                pair("r", "REPL", {}, "Error: edit 1 must be [old, new]", True),
+            ),
+            ["Write", "REPL"],
+        )
+
+    def test_a_shell_error_without_an_inner_error_is_reported(self):
+        text = "ShellError: Command failed with exit code 1:"
+        self.assertEqual(
+            errors(
+                pair("b", "Bash", {"command": "x"}, "fine", virtual=True),
+                pair("r", "REPL", {}, text, True),
+            ),
+            ["REPL"],
+        )
+
+    def test_an_earlier_scripts_error_does_not_hide_a_later_one(self):
+        self.assertEqual(
+            errors(
+                pair("w", "Write", {}, DENIED, True, virtual=True),
+                pair("p", "Poll", {}, "settled"),
+                pair("r", "REPL", {}, f"Error: {DENIED}", True),
+            ),
+            ["Write", "REPL"],
+        )
+
+    def test_a_call_outside_a_script_hides_nothing(self):
+        self.assertEqual(
+            errors(
+                pair("w", "Write", {}, DENIED, True),
+                pair("r", "REPL", {}, f"Error: {DENIED}", True),
+            ),
+            ["Write", "REPL"],
+        )
+
+    def test_an_empty_inner_error_hides_nothing(self):
+        self.assertEqual(
+            errors(
+                pair("w", "Write", {}, "", True, virtual=True),
+                pair("r", "REPL", {}, "Error: anything", True),
+            ),
+            ["Write", "REPL"],
+        )
+
+    def test_another_tool_quoting_the_error_is_reported(self):
+        self.assertEqual(
+            errors(
+                pair("w", "Write", {}, DENIED, True, virtual=True),
+                pair("e", "Edit", {}, DENIED, True, virtual=True),
+            ),
+            ["Write", "Edit"],
+        )
+
+
+class GenericSequenceTest(unittest.TestCase):
+    def ngrams(self, names):
+        uses = detect.extract_tool_uses(
+            [e for k, name in enumerate(names) for e in pair(f"u{k}", name, {}, "")]
+        )
+        return [f["ngram"] for f in detect.signal_tool_sequence_repetition(uses)]
+
+    def test_generic_tools_only_is_not_reported(self):
+        self.assertEqual(self.ngrams(["REPL", "Poll", "Bash", "Write"] * 4), [])
+
+    def test_a_sequence_that_names_the_work_is_reported(self):
+        self.assertIn(
+            ["Read", "mcp__tt__get_day", "Bash"],
+            self.ngrams(["Read", "mcp__tt__get_day", "Bash"] * 3),
+        )
+
+
+class RepeatedShapeTest(unittest.TestCase):
+    def shapes(self, name, inp):
+        events = []
+        for k in range(9):
+            events += pair(f"u{k}", name, inp, "")
+        uses = detect.extract_tool_uses(events)
+        return [f["shape"] for f in detect.signal_repeated_probe(uses)]
+
+    def test_a_tool_name_is_no_command_shape(self):
+        for name in ("Write", "Poll", "mcp__tt__get_day"):
+            self.assertEqual(self.shapes(name, {}), [])
+
+    def test_a_shell_command_still_is(self):
+        self.assertEqual(
+            self.shapes("Bash", {"command": "gh pr view 1"}), ["gh pr view"]
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
