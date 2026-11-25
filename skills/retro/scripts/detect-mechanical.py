@@ -581,6 +581,8 @@ class ToolUse(tuple):
     message_id: str | None
     # Called from a Code Mode script, which read the result in the model's place.
     nested: bool = False
+    # Called from a Code Mode script, whether or not its result was filled in.
+    virtual: bool = False
 
     def __new__(cls, fields: tuple, message_id: str | None = None):
         obj = super().__new__(cls, fields)
@@ -710,6 +712,7 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
         for block in content:
             paired = _pair_block(i, msg, block, tool_uses_pending)
             if paired is not None:
+                paired.virtual = ev.get("isVirtual") is True
                 out.append(paired)
     return out
 
@@ -1093,10 +1096,41 @@ def _is_planned_wait(inp: dict, result: str) -> bool:
     )
 
 
+# How much of an inner error has to reappear in the script's error.
+INNER_ERROR_PREFIX = 60
+
+
+def _repeats_inner_error(tool_uses, k: int) -> bool:
+    """True for a failed Code Mode script that only passes on a call's error.
+
+    Only for a dispatched script: its error is itself an `isVirtual` record and
+    follows its inner calls. A script that returned its output directly is
+    followed by them instead, and stays listed. The error
+    repeats one of them when it quotes that error, or when it is the shell
+    wrapper's `ShellError`, which names no cause of its own.
+    """
+    _i, name, _inp, result, is_error = tool_uses[k]
+    if name != "REPL" or not is_error or not getattr(tool_uses[k], "virtual", False):
+        return False
+    for use in reversed(tool_uses[:k]):
+        # Another script's error record ends this script's calls, too.
+        if not getattr(use, "virtual", False) or use[1] == "REPL":
+            return False
+        _j, inner_name, _inner_inp, inner, inner_error = use
+        head = inner.strip()[:INNER_ERROR_PREFIX]
+        if not inner_error or not head:
+            continue
+        if head in result:
+            return True
+        if inner_name == "Bash" and result.startswith("ShellError: Command failed"):
+            return True
+    return False
+
+
 def signal_tool_errors(tool_uses) -> list[dict]:
     out = []
-    for i, name, inp, result, is_error in tool_uses:
-        if _is_planned_wait(inp, result):
+    for k, (i, name, inp, result, is_error) in enumerate(tool_uses):
+        if _is_planned_wait(inp, result) or _repeats_inner_error(tool_uses, k):
             continue
         head = result[:200]
         # Trust the harness is_error flag unconditionally (an authoritative
@@ -1250,9 +1284,28 @@ def signal_prompt_sequence_repetition(
     return out
 
 
+# The tools every session alternates between. A sequence made only of these names
+# says nothing about what was done: 74 of 84 findings in one measured window.
+_GENERIC_TOOLS = {
+    "Agent",
+    "Bash",
+    "Edit",
+    "Glob",
+    "Grep",
+    "MultiEdit",
+    "NotebookEdit",
+    "Poll",
+    "REPL",
+    "Read",
+    "Task",
+    "Write",
+}
+
+
 def signal_tool_sequence_repetition(
     tool_uses, n: int = DEFAULT_SEQ_NGRAM
 ) -> list[dict]:
+    """A9: the same run of tools again, where at least one names the work."""
     out = []
     if len(tool_uses) < n * 2:
         return out
@@ -1261,7 +1314,7 @@ def signal_tool_sequence_repetition(
     for i in range(len(names) - n + 1):
         counter[tuple(names[i : i + n])] += 1
     for ngram, cnt in counter.items():
-        if cnt >= 2:
+        if cnt >= 2 and not _GENERIC_TOOLS.issuperset(ngram):
             out.append(
                 {
                     "signal": "A9",
@@ -2226,10 +2279,11 @@ def signal_repeated_probe(tool_uses, min_count: int = A19_MIN_COUNT) -> list[dic
     Read-only probes are the expensive case: each one costs a round trip and
     tokens, and the same derived answer is recomputed from scratch every time.
     The finding names the shape and the count so the proposal can be concrete
-    ("wrap these in a script") instead of "you used many tools".
+    ("wrap these in a script") instead of "you used many tools". Shell commands
+    only: a tool name (`Write`, `Poll`) has no subcommand to script.
     """
     out = []
-    hist = shape_histogram(tool_uses)
+    hist = shape_histogram([use for use in tool_uses if use[1] == "Bash"])
     for shape, turns in sorted(hist.items(), key=lambda kv: -len(kv[1])):
         if len(turns) < min_count:
             continue
