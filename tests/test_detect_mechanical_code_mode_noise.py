@@ -93,6 +93,19 @@ class RepeatedInnerErrorTest(unittest.TestCase):
             ["Write", "REPL"],
         )
 
+    def test_a_handled_call_error_does_not_hide_an_unrelated_one(self):
+        own = "ReferenceError: X is not defined"
+        shell = "ShellError: Command failed with exit code 1:"
+        for name, text in (("Bash", own), ("Write", shell)):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    errors(
+                        pair("c", name, {}, "boom", True, virtual=True),
+                        script_error("r", text),
+                    ),
+                    [name, "REPL"],
+                )
+
     def test_a_shell_error_without_an_inner_error_is_reported(self):
         text = "ShellError: Command failed with exit code 1:"
         self.assertEqual(
