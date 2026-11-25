@@ -76,9 +76,11 @@ ALTERNATIVES: dict[str, str] = {
     "jwt": r"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]*",
     # `https://user:token@host` — the userinfo is masked, scheme and host stay.
     # The user may be empty (`redis://:password@host`), and the password may
-    # hold an `@`: the userinfo runs to the last `@` before the path.
+    # hold an `@`: the userinfo runs to the last `@` before the path. Without an
+    # `@` before the first slash the password may hold a raw slash (base64 does);
+    # a port (`host:8443/path@x`) or a placeholder (`host:$PORT/path@x`) is none.
     "url_credentials": r"(?P<url_credentials_keep>\b[A-Za-z][A-Za-z0-9+.-]*://)"
-    r"[^\s/@:'\"]*:[^\s/'\"]+(?=@)",
+    r"[^\s/@:'\"]*:(?:[^\s/'\"]+|(?!\d{1,5}/)(?![$<{])[^\s'\"]{1,200})(?=@)",
     "vault_token": r"\bhv[sbr]\.[A-Za-z0-9_-]{20,}",
     "npm_token": r"\bnpm_[A-Za-z0-9]{36}\b",
     "google_api_key": r"\bAIza[0-9A-Za-z_-]{35}(?![0-9A-Za-z_-])",

@@ -110,6 +110,7 @@ NEGATIVES = [
     "AIzaShort is no key",
     "AWS_SECRET_ACCESS_KEY=$SECRET",
     "https://example.org:8443/path@x",
+    "https://example.org:$PORT/path@x and http://localhost:{port}/@vite/client",
     "the hf_ prefix and sk_live_ alone are no keys",
     "X-API-Key header missing, Cookie header missing",
     "curl -H 'X-API-Key: $KEY' -H 'Cookie: $C' https://example.org/?token=$T",
@@ -230,6 +231,16 @@ class AlternativesTest(unittest.TestCase):
         self.assertEqual(
             ms.mask("https://user:p@" + "ss9x@host/"), "https://[REDACTED]@host/"
         )
+
+    def test_a_raw_slash_in_a_url_password_is_masked(self):
+        for text, expected in (
+            ("postgres://app:S3" + "cr/tPw99@db/x", "postgres://[REDACTED]@db/x"),
+            ("redis://:a/b@" + "c+d/e==@host:6379", "redis://[REDACTED]@host:6379"),
+            # The slash of a path is not searched when the userinfo ended before it.
+            ("https://u:" + "pw77@host/a@b", "https://[REDACTED]@host/a@b"),
+        ):
+            with self.subTest(expected=expected):
+                self.assertEqual(ms.mask(text), expected)
 
     def test_vendor_api_key_headers_and_key_query_are_masked(self):
         # Header names other than `X-API-Key`, and Redmine's `?key=`, shipped
