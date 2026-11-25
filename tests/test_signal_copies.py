@@ -131,6 +131,15 @@ class FindCopies(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("x.md:2:", out)
 
+    def test_a_phrase_is_found_across_the_lines_of_a_quote_or_a_comment(self):
+        for prefix in ("> ", "# ", "    # ", "> > "):
+            with self.subTest(prefix=prefix):
+                text = f"x\n{prefix}a Reasoned\n{prefix}no-op\n"
+                code, out = self.find(text, "reasoned no-op")
+                self.assertEqual(code, 0)
+                self.assertIn("x.md:2:", out)
+        self.assertEqual(self.find("reasoned > no-op\n", "reasoned no-op")[0], 1)
+
     def test_a_lettered_phase_is_found_as_its_bare_id(self):
         code, out = self.find(
             "Phase 4b\n2b/3/4b\n| 4b (x) |\n14b x4b 4bx\n", "Phase 4b"

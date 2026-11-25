@@ -17,9 +17,9 @@ run this for its id or its wording and read each copy:
 A signal id (B19) is also found inside a range (B16–B21), a lettered phase
 (Phase 4b) also as its bare id in a list or table, and a phrase across a line
 break. A phase without a letter (Phase 4) is a plain phrase: it also matches
-Phase 4b, and lists and ranges need a search for "Phases". Case is ignored for phrases. Whether a copy is out of date
-is the reader's judgement; the exit code says only that every term was found
-(0) or that one was not (1).
+Phase 4b, and lists and ranges need a search for "Phases". Case is ignored for
+phrases. Whether a copy is out of date is the reader's judgement; the exit code
+says only that every term was found (0) or that one was not (1).
 """
 
 from __future__ import annotations
@@ -45,6 +45,8 @@ SIGNAL = re.compile(r"[A-E]\d{1,2}")
 PHASE = re.compile(r"[Pp]hase (\d{1,2}[a-z])")
 # B16–B21, B16-B21, or one id.
 MENTION = re.compile(r"\b([A-E])(\d{1,2})(?:\s?[–-]\s?\1(\d{1,2}))?\b")
+# Between two words: blanks, or a line break and the prefix of a quote or comment.
+GAP = r"(?:[^\S\n]+|[^\S\n]*\n[\s>#]*)"
 
 
 def signal_mentions(text: str) -> list[tuple[int, str]]:
@@ -65,7 +67,7 @@ def offsets(term: str, text: str) -> list[int]:
         # A bare id stands in the mode table and in lists (3c and 4b, 2b/3/4b).
         bare = rf"\b{phase[1]}\b"
         return [m.start() for m in re.finditer(bare, text)]
-    words = r"\s+".join(re.escape(word) for word in term.split())
+    words = GAP.join(re.escape(word) for word in term.split())
     return [m.start() for m in re.finditer(words, text, re.IGNORECASE)]
 
 
