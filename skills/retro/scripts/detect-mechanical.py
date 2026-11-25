@@ -1074,9 +1074,25 @@ def shape_histogram(tool_uses) -> dict[str, list[int]]:
     return hist
 
 
+# A wait for a fixed time: timeout ends it with 124, as intended. Anything beside
+# it in the call, and any other command that runs out of time, stays an error.
+PLANNED_WAIT = re.compile(r"timeout\s+\d+(?:\.\d+)?[smhd]?\s+tail\s+-f\s+/dev/null")
+
+
+def _is_planned_wait(inp: dict, result: str) -> bool:
+    command = inp.get("command") if isinstance(inp, dict) else None
+    return (
+        isinstance(command, str)
+        and result.strip() == "Exit code 124"
+        and bool(PLANNED_WAIT.fullmatch(command.strip().removesuffix(";").rstrip()))
+    )
+
+
 def signal_tool_errors(tool_uses) -> list[dict]:
     out = []
     for i, name, inp, result, is_error in tool_uses:
+        if _is_planned_wait(inp, result):
+            continue
         head = result[:200]
         # Trust the harness is_error flag unconditionally (an authoritative
         # failure). Only the text-based fallback is gated by A1_BENIGN, so

@@ -167,6 +167,32 @@ class TestSchichtA(unittest.TestCase):
         )
         self.assert_signal(evs, "A1")
 
+    def test_A1_a_planned_wait_is_no_error(self):
+        for command in (
+            "timeout 420 tail -f /dev/null",
+            "timeout 2m tail -f /dev/null;",
+        ):
+            with self.subTest(command=command):
+                evs = tool_use_pair(
+                    "u1", "Bash", {"command": command}, "Exit code 124", is_error=True
+                )
+                self.assert_not_signal(evs, "A1")
+
+    def test_A1_a_run_out_of_time_or_a_failed_wait_is_an_error(self):
+        for command, result in (
+            ("timeout 60 make check", "Exit code 124"),
+            ("timeout 60 tail -f app.log", "Exit code 124"),
+            ("make check; timeout 60 tail -f /dev/null", "Exit code 124"),
+            ("timeout 60 tail -f /dev/null && make check", "Exit code 124"),
+            ("timeout 60 tail -f /dev/null", "Exit code 137"),
+            ("timeout 60 tail -f /dev/null", "Exit code 124\ntail: error"),
+        ):
+            with self.subTest(command=command, result=result):
+                evs = tool_use_pair(
+                    "u1", "Bash", {"command": command}, result, is_error=True
+                )
+                self.assert_signal(evs, "A1")
+
     def test_A11_head_on_repo_file_fires(self):
         evs = tool_use_pair(
             "h", "Bash", {"command": "head -60 tests/smoke.sh"}, "#!/usr/bin/env bash"

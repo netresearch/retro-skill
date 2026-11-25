@@ -42,7 +42,7 @@ Fast, deterministic, regex/count-based, with Bash syntax parsing for A20 polling
 
 | # | Signal | Detection | Hint at |
 |---|---|---|---|
-| A1 | Tool error rate | `exit_code != 0` or `is_error: true` in tool_use_result | Wrong tool, wrong args, missing tool |
+| A1 | Tool error rate | `exit_code != 0` or `is_error: true` in tool_use_result; not a Claude Code call that only waits (`timeout N tail -f /dev/null`, exit 124) | Wrong tool, wrong args, missing tool |
 | A2 | Tool retry cluster | Same tool + similar args ≥3× within N turns | Tool misunderstanding, missing docs |
 | A3 | Tool output verbosity | `len(tool_result) > X` without subsequent filter | Token waste, wrong tool (cat vs head, full Read vs Range) |
 | A4 | Tool call count vs task | Total tool calls / user messages ratio above threshold | Inefficiency for simple task |
