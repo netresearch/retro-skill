@@ -140,6 +140,9 @@ class FindCopies(unittest.TestCase):
                 self.assertIn("x.md:2:", out)
         self.assertEqual(self.find("reasoned > no-op\n", "reasoned no-op")[0], 1)
 
+    def test_a_phrase_is_found_on_one_line(self):
+        self.assertEqual(self.find("a reasoned  no-op\n", "reasoned no-op")[0], 0)
+
     def test_a_lettered_phase_is_found_as_its_bare_id(self):
         code, out = self.find(
             "Phase 4b\n2b/3/4b\n| 4b (x) |\n14b x4b 4bx\n", "Phase 4b"
@@ -149,6 +152,7 @@ class FindCopies(unittest.TestCase):
 
     def test_one_missing_term_fails_the_run(self):
         self.assertEqual(self.find("alpha\n", "alpha", "beta")[0], 1)
+        self.assertEqual(self.find("alpha\n", "beta", "alpha")[0], 1)
 
 
 if __name__ == "__main__":
