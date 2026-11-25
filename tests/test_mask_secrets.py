@@ -240,6 +240,13 @@ class AlternativesTest(unittest.TestCase):
         for text, expected in (
             ("postgres://app:S3" + "cr/tPw99@db/x", "postgres://[REDACTED]@db/x"),
             ("redis://:a/b@" + "c+d/e==@host:6379", "redis://[REDACTED]@host:6379"),
+            # Without a user part, digits before the slash are no port.
+            ("redis://:12/a" + "b@host:6379", "redis://[REDACTED]@host:6379"),
+            # A token another pattern masked inside the password.
+            (
+                "postgres://app:ab/gh" + "p_" + "Ab1" * 12 + "/tail@db",
+                "postgres://[REDACTED]@db",
+            ),
             # A value another pattern masks is not cut at its `@`.
             (
                 "http://[::1]:8080/?pass" + "word=p@ss9",

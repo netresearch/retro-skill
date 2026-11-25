@@ -132,8 +132,8 @@ SECRET_ASSIGNMENT = re.compile(
 # password, and the characters of a query, a list or a placeholder end the search.
 # The bound keeps the run time linear.
 URL_SLASH_PASSWORD = re.compile(
-    r"(?P<keep>\b[A-Za-z][A-Za-z0-9+.-]*://)[^\s/@:'\"]*:(?!\d{1,5}/)"
-    r"(?!\$\w+/)[^\s'\"?#,()<>{}\[\]]{1,200}(?=@)"
+    r"(?P<keep>\b[A-Za-z][A-Za-z0-9+.-]*://)(?:[^\s/@:'\"]+:(?!\d{1,5}/)|:)"
+    r"(?!\$\w+/)(?:\[REDACTED\]|[^\s'\"?#,()<>{}\[\]]){1,200}(?=@)"
 )
 
 
