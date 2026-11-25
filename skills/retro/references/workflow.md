@@ -417,11 +417,13 @@ rollout whose tool calls all fail to render is refused with exit 2.
 
 On a repeat `/retro` within one session, filter findings to turns after the
 previous retro — earlier signals were already proposed and must not be
-re-presented. A fast-exit report (§ Sweep) is no previous retro for this
-filter: it proposed nothing, so `/retro --full` after it reads the whole session.
+re-presented. `detect-mechanical.py --scan-since <time of the previous retro>`
+does that for the pre-pass and keeps the turn numbers of the whole transcript.
+A fast-exit report (§ Sweep) is no previous retro for this filter: it proposed
+nothing, so `/retro --full` after it reads the whole session.
 
-The review collector takes the same window: `--scan-since <time of the
-previous retro>` reads only the transcript events at or after it, so only the
+The review collector takes the same window with the same option: `--scan-since
+<time of the previous retro>` reads only the transcript events at or after it, so only the
 PRs, MRs and issues written since then are read from the forge. Subagent
 transcripts last written before it are not opened, and the output counts what
 was skipped. On a long session this is the difference between minutes and

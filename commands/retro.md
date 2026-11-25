@@ -56,6 +56,10 @@ verbatim phrase from **this** conversation before analysing it — the selection
 procedure, its guards and the reasons behind them are in
 `${CLAUDE_PLUGIN_ROOT}/skills/retro/references/workflow.md` § Shared pipeline.
 
+On a repeat `/retro` in one session, add `--scan-since <time of the previous
+retro>` (ISO 8601): earlier findings were already proposed. The review collector
+in Phase 1b takes the same option.
+
 Output is one JSON object: `coverage.status`, `findings_total` and
 `findings[]`, each finding with `signal` (`A1`, …) and `name` and further
 fields that differ per signal. The field list is in

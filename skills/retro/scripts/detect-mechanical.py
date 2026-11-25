@@ -16,6 +16,7 @@ mechanical friction candidates. Output is JSON, consumed by the LLM in Schicht B
 Usage:
     uv run detect-mechanical.py --transcript-file <path> [--output-format json]
     uv run detect-mechanical.py --transcript-file <path> --signals A1,A6,A17
+    uv run detect-mechanical.py --transcript-file <path> --scan-since <ISO time>
 
 Signals implemented (Schicht A — full catalog):
     A1  Tool errors
@@ -58,6 +59,7 @@ import shlex
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Iterable
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -406,6 +408,40 @@ def transcript_coverage(events: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 COMMAND_NAME = re.compile(r"[A-Za-z0-9][\w.-]*")
+
+
+def parse_time(value: object) -> datetime | None:
+    """ISO 8601 with `Z` or an offset; without one it is UTC.
+
+    The reading of collect-review-findings.py's `--scan-since`, so one value
+    cuts both at the same event.
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        stamp = datetime.fromisoformat(value.strip())
+    except ValueError:
+        return None
+    return stamp if stamp.tzinfo else stamp.replace(tzinfo=UTC)
+
+
+def blank_before(
+    events: list[dict[str, Any]], cutoff: datetime
+) -> tuple[list[dict[str, Any]], int, int]:
+    """(events with those older than `cutoff` blanked, blanked, at or after it).
+
+    An event without a timestamp is kept, and counts for neither number.
+    """
+    out, older, newer = [], 0, 0
+    for ev in events:
+        stamp = parse_time(ev.get("timestamp"))
+        if stamp is not None and stamp < cutoff:
+            older += 1
+            ev = {}
+        elif stamp is not None:
+            newer += 1
+        out.append(ev)
+    return out, older, newer
 
 
 def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
@@ -2559,6 +2595,15 @@ def main() -> int:
         "events are blanked, not removed, so turn numbers stay those of the "
         "whole transcript. Exits 2 when /NAME never ran.",
     )
+    parser.add_argument(
+        "--scan-since",
+        metavar="ISO",
+        help="Analyse only the events at or after this ISO 8601 time, e.g. the "
+        "end of the previous retro on a repeat run. Earlier events are blanked "
+        "as with --since-command; events without a timestamp are kept; a call "
+        "issued before it is not analysed, even when its result came after. "
+        "Exits 2 when no event is that late.",
+    )
     args = parser.parse_args()
 
     if not args.transcript_file.exists():
@@ -2602,6 +2647,25 @@ def main() -> int:
             )
             return 2
         events = [ev if k >= since_event else {} for k, ev in enumerate(events)]
+    # `is None`: an empty value is given, not omitted, and must not widen the
+    # scan to the whole session.
+    events_before = None
+    if args.scan_since is not None:
+        cutoff = parse_time(args.scan_since)
+        if cutoff is None:
+            print(
+                f"--scan-since is not an ISO 8601 time: {args.scan_since!r}",
+                file=sys.stderr,
+            )
+            return 2
+        events, events_before, newer = blank_before(events, cutoff)
+        if not newer:
+            # An empty finding list here would read as "nothing happened since".
+            print(
+                f"No event at or after {args.scan_since} in {args.transcript_file}",
+                file=sys.stderr,
+            )
+            return 2
     user_texts = extract_user_texts(events)
     assistant_texts = extract_assistant_texts(events)
     tool_uses = extract_tool_uses(events)
@@ -2676,6 +2740,9 @@ def main() -> int:
     }
     if since_event is not None:
         summary["since_event"] = since_event
+    if events_before is not None:
+        summary["scan_since"] = cutoff.isoformat()
+        summary["events_before_scan_since"] = events_before
     if args.output_format == "json":
         print(_report_json(summary))
     else:
@@ -2684,6 +2751,11 @@ def main() -> int:
             f"Events: {summary['events_total']}  User msgs: {summary['user_messages']}  Tool uses: {summary['tool_uses']}"
         )
         print(f"Input format: {coverage['status']}")
+        if events_before is not None:
+            print(
+                f"--scan-since {summary['scan_since']}: "
+                f"{events_before} events before it were not read"
+            )
         print(f"Findings: {summary['findings_total']}")
         for f in findings:
             print(f"  - [{f['signal']}] {f['name']}: {f}")
