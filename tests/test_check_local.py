@@ -78,7 +78,7 @@ class CheckLocalTest(unittest.TestCase):
 
     def test_the_scripts_own_virtualenv_does_not_reach_the_steps(self):
         with mock.patch.dict(
-            "os.environ", {"VIRTUAL_ENV": "/v", "PATH": "/v/bin:/usr/bin"}
+            "os.environ", {"VIRTUAL_ENV": "/v", "PATH": "/v/bin:/usr/bin:/bin"}
         ):
             env = check_local.clean_env()
             self.assertTrue(
@@ -93,7 +93,7 @@ class CheckLocalTest(unittest.TestCase):
                 check_local.run_pre_commit(self.repo)
         self.assertNotIn("VIRTUAL_ENV", run.call_args.kwargs["env"])
         self.assertNotIn("VIRTUAL_ENV", env)
-        self.assertEqual(env["PATH"], "/usr/bin")
+        self.assertEqual(env["PATH"], "/usr/bin:/bin")
 
     def test_untracked_files_fail_and_tracked_ones_do_not(self):
         (self.repo / "new.py").write_text("", encoding="utf-8")
@@ -133,6 +133,9 @@ class CheckLocalTest(unittest.TestCase):
         with mock.patch.object(check_local.subprocess, "run", return_value=done) as run:
             self.assertTrue(check_local.run_pre_commit(self.repo))
         self.assertEqual(run.call_args.args[0], ["pre-commit", "run", "--all-files"])
+        failed = subprocess.CompletedProcess([], 1)
+        with mock.patch.object(check_local.subprocess, "run", return_value=failed):
+            self.assertFalse(check_local.run_pre_commit(self.repo))
 
     def run_main(self, argv, **results):
         steps = {"run_test_command": True, "run_pre_commit": True, "no_untracked": True}
