@@ -14,6 +14,9 @@
 
 set -euo pipefail
 
+# A git hook exports these; they outrank `git -C`.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+
 # Hard dependencies: jq JSON-escapes every value (`jq -Rs .`), uv runs the
 # Python 3.11+ that reads the frontmatter. A missing tool exits 2 rather than
 # printing `[]`, which would read as "no skills installed".

@@ -34,6 +34,9 @@
 # status. Never force-pushes, never merges.
 set -euo pipefail
 
+# A git hook exports these; they outrank `git -C`.
+unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE GIT_OBJECT_DIRECTORY
+
 die() { printf 'materialize-pr: %s\n' "$1" >&2; exit 2; }
 
 cmd="${1:-}"; shift || true

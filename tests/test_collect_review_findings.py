@@ -27,6 +27,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from unittest import mock
 
+from git_env import clean_git_env
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SCRIPTS = REPO_ROOT / "skills" / "retro" / "scripts"
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "review-findings"
@@ -501,7 +503,9 @@ class ReviewFixesArtefactTest(unittest.TestCase):
 
 
 def _git(*args: str, cwd: Path) -> None:
-    subprocess.run(["git", *args], cwd=cwd, check=True, capture_output=True)
+    subprocess.run(
+        ["git", *args], cwd=cwd, check=True, capture_output=True, env=clean_git_env()
+    )
 
 
 def _pr(threads=(), reviews=(), commits_total=None):
