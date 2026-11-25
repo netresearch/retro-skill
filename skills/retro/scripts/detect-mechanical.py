@@ -733,20 +733,35 @@ def _pair_block(
     return None
 
 
+#: Claude Code's Code Mode writes each call of a REPL script as its own event with
+#: a generated `message.id`, after the message that holds the REPL call. Measured on
+#: one transcript (2026-11-25): the ids start with this prefix, and calls that ran
+#: together in one script read as retries (A2) and as a serial run (A5).
+CODE_MODE_CALL_PREFIX = "repl_"
+
+
 def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     """Return (event_index, tool_name, input, result_text, is_error) per call.
+
+    A call of a Code Mode script gets the id of the message that issued the script.
 
     A call with an id is returned once its tool_result pairs with it; a call
     without one (Cursor) is returned where it was issued, with an empty result.
     """
     out = []
     tool_uses_pending: dict[str, _PendingUse] = {}
+    issuer: str | None = None  # id of the last message the model itself wrote
     for i, ev in enumerate(events):
         msg = _message(ev)
         content = msg.get("content") or []
         if not isinstance(content, list):
             continue
         for block in content:
+            if isinstance(block, dict) and block.get("type") == "tool_use":
+                if not str(block.get("id") or "").startswith(CODE_MODE_CALL_PREFIX):
+                    issuer = msg.get("id") or issuer
+                elif issuer:
+                    msg = {**msg, "id": issuer}
             paired = _pair_block(i, msg, block, tool_uses_pending)
             if paired is not None:
                 paired.virtual = ev.get("isVirtual") is True

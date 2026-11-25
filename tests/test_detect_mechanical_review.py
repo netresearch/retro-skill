@@ -177,6 +177,40 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
         findings = detect.signal_retry_clusters(_uses(evs))
         self.assertEqual([f["signal"] for f in findings], ["A2"])
 
+    @staticmethod
+    def _script(message_id, use_id, calls):
+        # Code Mode, as Claude Code wrote it on 2026-11-25: the REPL call, then
+        # each call of the script as its own event with a generated message id,
+        # then the result of the REPL call.
+        repl = call(message_id, use_id, "REPL", {"code": "…"}, "ok")
+        nested = []
+        for n, command in enumerate(calls):
+            nested += bash(f"{use_id}-uuid-{n}", f"repl_{use_id}_{n}", command, "x")
+        return [repl[0], *nested, repl[1]]
+
+    def test_calls_of_one_code_mode_script_are_one_message(self):
+        # The invocations of the retro run that exposed it.
+        evs = self._script(
+            "msg_1",
+            "toolu_1",
+            [
+                "uv run detect-mechanical.py --transcript-file t.jsonl",
+                "uv run collect-review-findings.py --transcript-file t.jsonl",
+                "uv run find-org-skills.py",
+            ],
+        )
+        uses = _uses(evs)
+        self.assertEqual({u.message_id for u in uses}, {"msg_1"})
+        self.assertEqual(detect.signal_retry_clusters(uses), [])
+        self.assertEqual(detect.signal_sequential_parallelizable(uses), [])
+
+    def test_A2_retry_across_code_mode_scripts_still_fires(self):
+        evs = []
+        for n in range(3):
+            evs += self._script(f"msg_{n}", f"toolu_{n}", [f"gh pr view {n}"])
+        findings = detect.signal_retry_clusters(_uses(evs))
+        self.assertIn("gh pr view", [f["tool"] for f in findings])
+
     def test_A5_run_mixing_one_batch_and_two_singles_counts_messages(self):
         # Two parallel Reads (one message) then two single-call messages:
         # three messages, four calls -> still a sequential run of three.
