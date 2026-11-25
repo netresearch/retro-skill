@@ -125,6 +125,18 @@ SECRET_ASSIGNMENT = re.compile(
 )
 
 
+# A URL password with a raw slash (base64 holds them), which url_credentials
+# does not match. A pass of its own, after the others: as an alternative it would
+# run into the query of a URL whose host holds a colon, and leave half a value
+# there. A port (`host:8443/path@x`) or a placeholder (`host:$PORT/path@x`) is no
+# password, and the characters of a query, a list or a placeholder end the search.
+# The bound keeps the run time linear.
+URL_SLASH_PASSWORD = re.compile(
+    r"(?P<keep>\b[A-Za-z][A-Za-z0-9+.-]*://)(?:[^\s/@:'\"]+:(?!\d{1,5}/)|:)"
+    r"(?!\$\w+/)(?:\[REDACTED\]|[^\s'\"?#,()<>{}\[\]]){1,200}(?=@)"
+)
+
+
 def _mask_curl_users(command: re.Match[str]) -> str:
     return CURL_USER_OPTION.sub(lambda m: m["keep"] + MARKER, command.group(0))
 
@@ -137,7 +149,8 @@ def _replace(m: re.Match[str]) -> str:
 def mask(text: str) -> str:
     """`text` with every credential the patterns know replaced by MARKER."""
     masked = CURL_COMMAND.sub(_mask_curl_users, SECRET.sub(_replace, text or ""))
-    return SECRET_ASSIGNMENT.sub(lambda m: m["keep"] + MARKER, masked)
+    masked = SECRET_ASSIGNMENT.sub(lambda m: m["keep"] + MARKER, masked)
+    return URL_SLASH_PASSWORD.sub(lambda m: m["keep"] + MARKER, masked)
 
 
 def squeeze(text: str, limit: int) -> str:
