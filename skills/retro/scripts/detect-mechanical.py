@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import argparse
 import functools
+import html
 import importlib.util
 import itertools
 import json
@@ -1136,29 +1137,44 @@ def _is_planned_wait(inp: dict, result: str) -> bool:
 INNER_ERROR_PREFIX = 60
 
 
+def _inner_calls(tool_uses, k: int):
+    """The calls of the Code Mode script at `k`: `isVirtual`, beside its result.
+
+    A dispatched script's error is itself such a record and follows its calls. A
+    script that returned its output directly is followed by them. Another REPL
+    record is another script.
+    """
+    if getattr(tool_uses[k], "virtual", False):
+        beside = reversed(tool_uses[:k])
+    else:
+        beside = iter(tool_uses[k + 1 :])
+    for use in beside:
+        if not getattr(use, "virtual", False) or use[1] == "REPL":
+            return
+        yield use
+
+
 def _repeats_inner_error(tool_uses, k: int) -> bool:
     """True for a failed Code Mode script that only passes on a call's error.
 
-    Only for a dispatched script: its error is itself an `isVirtual` record and
-    follows its inner calls. A script that returned its output directly is
-    followed by them instead, and stays listed. The error
-    repeats one of them when it quotes that error, or when it is the shell
-    wrapper's `ShellError`, which names no cause of its own.
+    Its error repeats one of its calls' when it quotes that error, or when it is
+    the shell wrapper's `ShellError`, which names no cause of its own.
     """
     _i, name, _inp, result, is_error = tool_uses[k]
-    if name != "REPL" or not is_error or not getattr(tool_uses[k], "virtual", False):
+    if name != "REPL" or not is_error:
         return False
-    for use in reversed(tool_uses[:k]):
-        # Another script's error record ends this script's calls, too.
-        if not getattr(use, "virtual", False) or use[1] == "REPL":
-            return False
-        _j, inner_name, _inner_inp, inner, inner_error = use
+    # Direct output is escaped and wrapped: <repl-output> <error>…</error>.
+    text = html.unescape(result)
+    _before, wrapped, error = text.partition("<error>")
+    if wrapped:
+        text = error
+    for _j, inner_name, _inner_inp, inner, inner_error in _inner_calls(tool_uses, k):
         head = inner.strip()[:INNER_ERROR_PREFIX]
         if not inner_error or not head:
             continue
-        if head in result:
+        if head in text:
             return True
-        if inner_name == "Bash" and result.startswith("ShellError: Command failed"):
+        if inner_name == "Bash" and text.startswith("ShellError: Command failed"):
             return True
     return False
 

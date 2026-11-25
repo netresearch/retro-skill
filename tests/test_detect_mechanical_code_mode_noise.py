@@ -183,6 +183,52 @@ class DirectScriptTest(unittest.TestCase):
             ["Write", "REPL"],
         )
 
+    def direct(self, text):
+        wrapped = f"<repl-output>\n<error>{text}</error>\n</repl-output>"
+        return script_error("r", wrapped, virtual=False)
+
+    def test_a_directly_returned_error_counts_once(self):
+        # Its calls follow it, and its text is escaped.
+        inner = "Exit code 1\nboom <a> & <b>"
+        for name, text, error in (
+            ("Write", f"Error: write /x/y.sh: {DENIED}", DENIED),
+            ("Read", "Error: 1 &lt; 2 &amp; more", "1 < 2 & more"),
+            ("Bash", "ShellError: Command failed with exit code 1:\nboom", inner),
+        ):
+            with self.subTest(name=name):
+                self.assertEqual(
+                    errors(
+                        self.direct(text),
+                        pair("ok", "Read", {}, "", virtual=True),
+                        pair("c", name, {}, error, True, virtual=True),
+                    ),
+                    [name],
+                )
+
+    def test_the_next_scripts_call_does_not_hide_a_direct_error(self):
+        for between in (
+            pair("p", "Poll", {}, "settled"),
+            pair("n", "REPL", {}, "<repl-output>fine</repl-output>"),
+        ):
+            self.assertEqual(
+                errors(
+                    self.direct(DENIED),
+                    between,
+                    pair("w", "Write", {}, DENIED, True, virtual=True),
+                ),
+                ["REPL", "Write"],
+            )
+
+    def test_output_printed_before_a_direct_error_is_not_the_error(self):
+        text = f"<repl-output><log>{DENIED}</log><error>TypeError: x</error>"
+        self.assertEqual(
+            errors(
+                script_error("r", text, virtual=False),
+                pair("w", "Write", {}, DENIED, True, virtual=True),
+            ),
+            ["REPL", "Write"],
+        )
+
 
 class GenericSequenceTest(unittest.TestCase):
     def ngrams(self, names):
