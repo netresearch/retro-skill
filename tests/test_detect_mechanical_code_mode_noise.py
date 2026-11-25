@@ -219,6 +219,45 @@ class DirectScriptTest(unittest.TestCase):
                 ["REPL", "Write"],
             )
 
+    def test_the_list_of_inner_errors_is_not_the_error(self):
+        # The call was handled; the script failed on its own.
+        text = (
+            "TypeError: undefined is not an object\n\n"
+            f"Inner tool errors (likely root cause):\n- Write: {DENIED}"
+        )
+        self.assertEqual(
+            errors(
+                self.direct(text),
+                pair("w", "Write", {}, DENIED, True, virtual=True),
+            ),
+            ["REPL", "Write"],
+        )
+
+    def test_a_printed_error_tag_is_not_the_wrapper(self):
+        text = (
+            f"<repl-output><log>&lt;error&gt;{DENIED}</log>"
+            "<error>TypeError: x</error></repl-output>"
+        )
+        self.assertEqual(
+            errors(
+                script_error("r", text, virtual=False),
+                pair("w", "Write", {}, DENIED, True, virtual=True),
+            ),
+            ["REPL", "Write"],
+        )
+
+    def test_an_error_tag_in_a_dispatched_error_is_content(self):
+        self.assertEqual(
+            errors(
+                pair("b", "Bash", {"command": "x"}, "boom", True, virtual=True),
+                script_error(
+                    "r",
+                    "ShellError: Command failed with exit code 1:\n<error>x</error>",
+                ),
+            ),
+            ["Bash"],
+        )
+
     def test_output_printed_before_a_direct_error_is_not_the_error(self):
         text = f"<repl-output><log>{DENIED}</log><error>TypeError: x</error>"
         self.assertEqual(

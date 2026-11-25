@@ -1135,6 +1135,7 @@ def _is_planned_wait(inp: dict, result: str) -> bool:
 
 # How much of an inner error has to reappear in the script's error.
 INNER_ERROR_PREFIX = 60
+INNER_ERRORS_FOOTER = "\n\nInner tool errors (likely root cause):"
 
 
 def _inner_calls(tool_uses, k: int):
@@ -1163,11 +1164,12 @@ def _repeats_inner_error(tool_uses, k: int) -> bool:
     _i, name, _inp, result, is_error = tool_uses[k]
     if name != "REPL" or not is_error:
         return False
-    # Direct output is escaped and wrapped: <repl-output> <error>…</error>.
-    text = html.unescape(result)
-    _before, wrapped, error = text.partition("<error>")
-    if wrapped:
-        text = error
+    text = result
+    if not getattr(tool_uses[k], "virtual", False):
+        # Direct output is escaped and wrapped, <repl-output> <error>…</error>,
+        # and ends with a list of inner errors, handled ones included.
+        error = result.partition("<error>")[2] or result
+        text = html.unescape(error.partition(INNER_ERRORS_FOOTER)[0])
     for _j, inner_name, _inner_inp, inner, inner_error in _inner_calls(tool_uses, k):
         head = inner.strip()[:INNER_ERROR_PREFIX]
         if not inner_error or not head:
