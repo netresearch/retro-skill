@@ -1121,7 +1121,12 @@ def shape_histogram(tool_uses) -> dict[str, list[int]]:
 
 # A wait for a fixed time: timeout ends it with 124, as intended. Anything beside
 # it in the call, and any other command that runs out of time, stays an error.
-PLANNED_WAIT = re.compile(r"timeout\s+\d+(?:\.\d+)?[smhd]?\s+tail\s+-f\s+/dev/null")
+# One prefix is allowed: the directory change Claude Code's Code Mode writes in
+# front of a command that a script runs with .cwd(). It quotes the directory.
+PLANNED_WAIT = re.compile(
+    r"(?:cd\s+'[^']*'\s+&&\s+)?"
+    r"timeout\s+\d+(?:\.\d+)?[smhd]?\s+tail\s+-f\s+/dev/null"
+)
 
 
 def _is_planned_wait(inp: dict, result: str) -> bool:
