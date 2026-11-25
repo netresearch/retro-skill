@@ -275,6 +275,7 @@ retro-skill/
 │       └── validate-evals.py         # validates retro's own evals (RT-40..42)
 ├── commands/retro.md             # /retro slash command (Claude Code plugin only)
 ├── hooks/session-end.json        # optional SessionEnd reminder (off by default; plugin-level, outside skills/retro/)
+├── scripts/check-local.py        # development: the CI checks that run locally
 ├── tests/                        # test_*.py, run with python -m unittest discover -s tests
 ├── docs/specs/                   # retro-skill.md (original spec, superseded), retro-promote-mode.md
 ├── docs/opencode-live-test.md    # checking the opencode adapter against a real, isolated opencode 2.x
@@ -383,7 +384,7 @@ Issues and PRs are welcome at <https://github.com/netresearch/retro-skill/issues
 
 - **DCO sign-off is required** — commit with `git commit -s`. Without the `Signed-off-by` trailer the PR is blocked even when all checks pass.
 - Use **Conventional Commits** (`feat:`, `fix:`, `chore:`, …).
-- The `lint` workflow runs python compile, the unit tests and `validate-evals.py`; the `validate` workflow runs validate-skill, markdownlint, yamllint, plugin/SKILL version parity, actionlint, JSON syntax, manifest sync, ShellCheck, ruff and the checkpoint-schema check — run them locally before pushing.
+- The `lint` workflow runs python compile, the unit tests and `validate-evals.py`; the `validate` workflow runs validate-skill, markdownlint, yamllint, plugin/SKILL version parity, actionlint, JSON syntax, manifest sync, ShellCheck, ruff and the checkpoint-schema check — before pushing, run `uv run scripts/check-local.py`, which reads the test command from `lint.yml` and runs every pre-commit hook over all tracked files (its fixer hooks rewrite files); its header names the checks that run in CI only.
 
 ## License
 
