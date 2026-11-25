@@ -28,6 +28,7 @@ LLM-driven session retrospection skill. Detects friction in agent sessions and m
 - `skills/retro/scripts/check-upstream-sources.py` — Drift check against canonical sources
 - `skills/retro/scripts/steering-size.py` — Reports lines, bytes and an approximate token count of the steering files that load in every turn, and the delta of a proposed edit (Phase 4b, Phase 7); a report, never a gate
 - `skills/retro/scripts/check-decision-records.py` — Reads the ADR declaration of a root `AGENTS.md` and the `Touches` anchors of decision records (E1, E7, E8)
+- `scripts/find-copies.py` — Development only: lists every instruction line that names a signal (ranges included) or a phrase; run it after changing one
 - `skills/retro/scripts/materialize-pr.sh` — Opens the skill-update PR against the source repo
 - `skills/retro/scripts/validate-evals.py` — Validates retro's own eval scenarios (RT-40..42)
 - `skills/retro/scripts/prepare-behavior-evals.py` — Freezes selected Markdown scenarios for native execution or the shared runner, with private grading inputs and isolated old/new fixtures

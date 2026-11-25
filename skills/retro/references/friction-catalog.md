@@ -32,7 +32,7 @@ Ingestion of error trackers, monitoring and chat is out of scope — see "Future
 | B — LLM inference | 24 | LLM-driven; B16–B21 are reusable-learning signals, B18–B20 read the output of `collect-review-findings.py`, B22 judges one decision point, B23 and B24 judge an instruction against the work it governed |
 | C — Cross-session | 7 | Partial (script `scan-cross-session.py`: C1, C2, C5, C7) |
 | D — Outcome | 12 | D4 and D6 read `collect-review-findings.py`; the others are LLM-driven. D11 (codify-success) and D12 (prune-superseded-copy) are the positive signals |
-| E — Constitutional (audit) | 6 | LLM-driven in `/retro audit`; no signal-specific script. The audit pre-passes are `scan-cross-session.py` (C1, C5, C7) and `check-upstream-sources.py` (skill drift) |
+| E — Constitutional (audit) | 8 | E1, E7 and E8 read `check-decision-records.py`; the others are LLM-driven in `/retro audit`. The audit pre-passes are `scan-cross-session.py` (C1, C5, C7) and `check-upstream-sources.py` (skill drift) |
 
 Schicht A is feature-complete. See `references/destination-taxonomy.md` for what each signal class routes to.
 
