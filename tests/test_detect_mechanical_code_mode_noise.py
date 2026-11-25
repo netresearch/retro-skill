@@ -54,6 +54,11 @@ def pair(tool_id, name, inp, result, is_error=False, virtual=False):
     return [use, res]
 
 
+def script_error(tool_id, text, virtual=True):
+    """A dispatched script's error: `isVirtual`, after its inner calls."""
+    return pair(tool_id, "REPL", {}, text, True, virtual=virtual)
+
+
 def errors(*events):
     uses = detect.extract_tool_uses([e for group in events for e in group])
     return [f["tool"] for f in detect.signal_tool_errors(uses)]
@@ -65,7 +70,7 @@ class RepeatedInnerErrorTest(unittest.TestCase):
             errors(
                 pair("w", "Write", {}, DENIED, True, virtual=True),
                 pair("ok", "Write", {}, "", virtual=True),
-                pair("r", "REPL", {}, f"Error: write /x/y.sh: {DENIED}", True),
+                script_error("r", f"Error: write /x/y.sh: {DENIED}"),
             ),
             ["Write"],
         )
@@ -74,13 +79,7 @@ class RepeatedInnerErrorTest(unittest.TestCase):
         self.assertEqual(
             errors(
                 pair("b", "Bash", {"command": "x"}, "boom", True, virtual=True),
-                pair(
-                    "r",
-                    "REPL",
-                    {},
-                    "ShellError: Command failed with exit code 1:",
-                    True,
-                ),
+                script_error("r", "ShellError: Command failed with exit code 1:"),
             ),
             ["Bash"],
         )
@@ -89,7 +88,7 @@ class RepeatedInnerErrorTest(unittest.TestCase):
         self.assertEqual(
             errors(
                 pair("w", "Write", {}, DENIED, True, virtual=True),
-                pair("r", "REPL", {}, "Error: edit 1 must be [old, new]", True),
+                script_error("r", "Error: edit 1 must be [old, new]"),
             ),
             ["Write", "REPL"],
         )
@@ -99,7 +98,7 @@ class RepeatedInnerErrorTest(unittest.TestCase):
         self.assertEqual(
             errors(
                 pair("b", "Bash", {"command": "x"}, "fine", virtual=True),
-                pair("r", "REPL", {}, text, True),
+                script_error("r", text),
             ),
             ["REPL"],
         )
@@ -109,7 +108,7 @@ class RepeatedInnerErrorTest(unittest.TestCase):
             errors(
                 pair("w", "Write", {}, DENIED, True, virtual=True),
                 pair("p", "Poll", {}, "settled"),
-                pair("r", "REPL", {}, f"Error: {DENIED}", True),
+                script_error("r", f"Error: {DENIED}"),
             ),
             ["Write", "REPL"],
         )
@@ -118,7 +117,7 @@ class RepeatedInnerErrorTest(unittest.TestCase):
         self.assertEqual(
             errors(
                 pair("w", "Write", {}, DENIED, True),
-                pair("r", "REPL", {}, f"Error: {DENIED}", True),
+                script_error("r", f"Error: {DENIED}"),
             ),
             ["Write", "REPL"],
         )
@@ -127,7 +126,7 @@ class RepeatedInnerErrorTest(unittest.TestCase):
         self.assertEqual(
             errors(
                 pair("w", "Write", {}, "", True, virtual=True),
-                pair("r", "REPL", {}, "Error: anything", True),
+                script_error("r", "Error: anything"),
             ),
             ["Write", "REPL"],
         )
@@ -139,6 +138,36 @@ class RepeatedInnerErrorTest(unittest.TestCase):
                 pair("e", "Edit", {}, DENIED, True, virtual=True),
             ),
             ["Write", "Edit"],
+        )
+
+
+class DirectScriptTest(unittest.TestCase):
+    def test_two_failed_scripts_in_a_row_are_both_reported(self):
+        text = "Error: ReferenceError: X is not defined"
+        self.assertEqual(
+            errors(script_error("r1", text), script_error("r2", text)),
+            ["REPL", "REPL"],
+        )
+
+    def test_the_earlier_scripts_call_does_not_hide_the_second_error(self):
+        text = "ShellError: Command failed with exit code 9:"
+        self.assertEqual(
+            errors(
+                pair("b", "Bash", {"command": "x"}, "boom", True, virtual=True),
+                script_error("r1", "ShellError: Command failed with exit code 1:"),
+                script_error("r2", text),
+            ),
+            ["Bash", "REPL"],
+        )
+
+    def test_a_directly_returned_error_is_not_matched_backwards(self):
+        # Its own calls follow it; the ones before belong to another script.
+        self.assertEqual(
+            errors(
+                pair("w", "Write", {}, DENIED, True, virtual=True),
+                script_error("r", f"<repl-output>{DENIED}", virtual=False),
+            ),
+            ["Write", "REPL"],
         )
 
 

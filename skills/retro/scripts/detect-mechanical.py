@@ -1103,15 +1103,18 @@ INNER_ERROR_PREFIX = 60
 def _repeats_inner_error(tool_uses, k: int) -> bool:
     """True for a failed Code Mode script that only passes on a call's error.
 
-    The script's inner calls are the `isVirtual` ones right before it. Its error
+    Only for a dispatched script: its error is itself an `isVirtual` record and
+    follows its inner calls. A script that returned its output directly is
+    followed by them instead, and stays listed. The error
     repeats one of them when it quotes that error, or when it is the shell
     wrapper's `ShellError`, which names no cause of its own.
     """
     _i, name, _inp, result, is_error = tool_uses[k]
-    if name != "REPL" or not is_error:
+    if name != "REPL" or not is_error or not getattr(tool_uses[k], "virtual", False):
         return False
     for use in reversed(tool_uses[:k]):
-        if not getattr(use, "virtual", False):
+        # Another script's error record ends this script's calls, too.
+        if not getattr(use, "virtual", False) or use[1] == "REPL":
             return False
         _j, inner_name, _inner_inp, inner, inner_error = use
         head = inner.strip()[:INNER_ERROR_PREFIX]
