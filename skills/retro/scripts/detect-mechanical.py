@@ -816,8 +816,8 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     turns: dict[tuple, int] = {}  # message_key of an assistant message -> ordinal
     for i, ev in enumerate(events):
         msg = _message(ev)
-        content = msg.get("content") or []
-        if not isinstance(content, list):
+        content = msg.get("content")
+        if not isinstance(content, list) or not content:
             _note_turn(turns, ev, msg, msg, i)  # a text-only message counts too
             continue
         for block in content:
@@ -1343,7 +1343,8 @@ def _retry_display(name: str, inp: dict) -> str:
     matches.
     """
     if name == "Bash":
-        return str(inp.get("command") or "")
+        command = str(inp.get("command") or "")
+        return _masking.MARKER if mask(command) != command else command
     args = " ".join(_entry(k, v) for k, v in sorted(inp.items()) if k != "description")
     return f"{name} {args}".strip()
 

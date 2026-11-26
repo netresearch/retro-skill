@@ -325,6 +325,11 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
         # A message whose content is a string, and an event marked only by its
         # type, are messages too: four of them push the third call out.
         def text_message(n, envelope):
+            if envelope == "empty":
+                return {
+                    "type": "assistant",
+                    "message": {"role": "assistant", "id": f"s{n}", "content": ""},
+                }
             if envelope == "string":
                 return {
                     "type": "assistant",
@@ -335,7 +340,7 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
                 "message": {"id": f"s{n}", "content": [{"type": "text", "text": "ok"}]},
             }
 
-        for envelope in ("string", "type"):
+        for envelope in ("string", "empty", "type"):
             with self.subTest(envelope=envelope):
                 evs = []
                 for n in range(3):
