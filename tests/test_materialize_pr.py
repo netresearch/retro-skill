@@ -240,6 +240,61 @@ class MaterializePrTest(unittest.TestCase):
         result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def _finish_with_hooks(self, branch: str, hook: str):
+        """Run `finish` in a worktree that has a .pre-commit-config.yaml, with
+        `hook` as the body of a stub `pre-commit` on PATH."""
+        stub = self.bin / "pre-commit"
+        stub.write_text(
+            '#!/bin/sh\necho "$*" >> "$PC_LOG"\nn=$(wc -l < "$PC_LOG")\n' + hook,
+            encoding="utf-8",
+        )
+        stub.chmod(0o755)
+        self.env["PC_LOG"] = str(self.tmp / "pc.log")
+        project = self._bare_project(origin_head=True)
+        started = self._run("start", str(project), branch)
+        self.assertEqual(started.returncode, 0, started.stderr)
+        worktree = Path(started.stdout.strip())
+        (worktree / ".pre-commit-config.yaml").write_text(
+            "repos: []\n", encoding="utf-8"
+        )
+        (worktree / "a.txt").write_text("a\n", encoding="utf-8")
+        (self.tmp / "body.md").write_text(BODY, encoding="utf-8")
+        result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = [
+            line[4:]
+            for line in self.gh_log.read_text(encoding="utf-8").splitlines()
+            if line.startswith("arg=")
+        ]
+        body = Path(args[args.index("--body-file") + 1]).read_text(encoding="utf-8")
+        calls = (self.tmp / "pc.log").read_text(encoding="utf-8").splitlines()
+        return worktree, body, calls
+
+    def test_finish_runs_the_hooks_on_the_named_files(self):
+        _, body, calls = self._finish_with_hooks("feat/h1", "exit 0\n")
+        self.assertEqual(calls, ["run --files a.txt"])
+        self.assertEqual(body, BODY)
+
+    def test_finish_commits_what_the_fixer_hooks_changed(self):
+        # First run: a fixer rewrites the file and fails; second run passes.
+        hook = '[ "$n" -eq 1 ] && { echo fixed > a.txt; exit 1; }\nexit 0\n'
+        _, body, calls = self._finish_with_hooks("feat/h2", hook)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(git("-C", str(self.remote), "show", "feat/h2:a.txt"), "fixed")
+        self.assertEqual(body, BODY)
+
+    def test_a_failing_hook_goes_into_the_body_and_the_pr_still_opens(self):
+        hook = 'echo "SIM114 Combine if branches"\nexit 1\n'
+        _, body, calls = self._finish_with_hooks("feat/h3", hook)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(body.startswith(BODY), body)
+        self.assertIn("\n## Pre-commit hooks\n", body)
+        self.assertIn("SIM114 Combine if branches", body)
+        self.assertEqual(
+            git("-C", str(self.remote), "log", "-1", "--format=%s", "feat/h3"),
+            "feat: a",
+        )
+
     def test_exit_statuses_match_the_header(self):
         """The header's Exit line: 2 for refusals, 1 for a missing argument,
         git's own status for a failing git command - never 0."""

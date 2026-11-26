@@ -25,7 +25,7 @@ The repository ships no server component, no container image and no library for 
 2. Transcript text that a script sends to the network is limited to identifiers: repository owner and name, GitLab project path and host, and PR, MR or issue numbers.
 3. Scripts that quote transcript text in their findings pass it through `mask-secrets.py` first. Where a script does not, this document says so.
 4. `scan-memory-inventory.py drain` and `materialize-pr.sh` change the explicitly selected note/worktree. `prepare-behavior-evals.py` creates a new isolated output directory and refuses an existing one. The remaining analysis scripts only read and print to stdout.
-5. `materialize-pr.sh` commits only the files it is given, signs the commit, never force-pushes and never merges.
+5. `materialize-pr.sh` commits only the files it is given, signs the commit, never force-pushes and never merges. Its `finish` runs the pre-commit hooks of the target repository on those files, so it runs the code that repository's `.pre-commit-config.yaml` names; `patch-workflow.md` asks for the same run on the hand-written path.
 6. Supplied input is validated before use: feedback files, PR/MR references and GitLab hosts are checked against fixed shapes and an allowlist.
 7. A failure is reported with a non-zero exit status, not as an empty result.
 8. Nothing committed to this repository contains a secret, and a release can be verified against the build that produced it.
@@ -48,7 +48,7 @@ The repository ships no server component, no container image and no library for 
 | `check-decision-records.py` | the root `AGENTS.md` of `--repo`, the `*.md` files of the ADR directory it declares, whether each anchored path exists, and an optional list of changed paths (`--changed-files-from`); a declared directory or an anchor that resolves outside `--repo` is reported, not read or tested | nothing | none of its input; on first use, `uv run --script` (the shebang) downloads `markdown-it-py`, `mdit-py-plugins` and `PyYAML` from the configured package index |
 | `check-eval-samples.py` | named `evals.json` files and their base version via `git show` | nothing | nothing |
 | `validate-evals.py` | `skills/retro/evals/*.md` | nothing | nothing |
-| `materialize-pr.sh` | git refs, the body file, the named files | a worktree and branch (`start`); a signed commit (`finish`) | `git fetch` and `git push` to `origin`; `gh pr create` with the title and body file |
+| `materialize-pr.sh` | git refs, the body file, the named files, the target's `.pre-commit-config.yaml` | a worktree and branch (`start`); the fixes of the target's pre-commit hooks in the named files, a PR body copy with the failing hook output in the worktree's git dir, a signed commit (`finish`) | `git fetch` and `git push` to `origin`; `pre-commit` (or `uv tool run pre-commit`) fetching the hooks the target's config names; `gh pr create` with the title and body file |
 | `hooks/session-end.json` | the hook's stdin JSON and the transcript's word count | nothing | nothing; prints a reminder with the count |
 
 The largest flow is not a network call made by a script: everything a script prints goes into the agent's context, and from there to the model provider the user's agent talks to. The agent may then quote it into memory files, issues and pull requests, which is the purpose of a retro. `mask-secrets.py` is the control on that flow.

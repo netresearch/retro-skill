@@ -173,8 +173,8 @@ classifies to it. Rules:
   absorbs.
 - The mechanical halves of a materialization repeat identically per proposal —
   use `${CLAUDE_SKILL_DIR}/scripts/materialize-pr.sh` (`start` = fetch + fresh worktree off the
-  default branch; `finish` = stage ONLY named files, signed commit, push, PR
-  via `--body-file`) instead of hand-typing the sequence dozens of times.
+  default branch; `finish` = stage ONLY named files, run the target's
+  pre-commit hooks on them, signed commit, push, PR via `--body-file`) instead of hand-typing the sequence dozens of times.
 - Drain stays per-note: each absorbed note is drained individually only after
   the availability check below, so pending or partially-landed proposals leave
   their active knowledge and handoff reference in place.

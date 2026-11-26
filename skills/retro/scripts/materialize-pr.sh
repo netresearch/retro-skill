@@ -23,10 +23,16 @@
 #       not the provenance line of the PR body template (patch-workflow.md) -
 #       the line elsewhere, or an issue link to the repo, does not count - or
 #       when a named evals.json adds or tightens an eval that carries no
-#       `samples` (check-eval-samples.py). Then stages and commits
-#       ONLY the named files (never -A; other staged changes stay out of the
-#       commit), signed (-S --signoff, message = title), pushes -u, opens the PR for that branch (--head) with
-#       --body-file as a draft (--draft), prints the PR URL.
+#       `samples` (check-eval-samples.py). Then stages ONLY the named files
+#       (never -A). When the worktree has a .pre-commit-config.yaml, runs the
+#       target repository's pre-commit hooks on those files (pre-commit, or
+#       `uv tool run pre-commit` when it is not installed) and keeps what
+#       the fixer hooks changed; a hook that still fails does not stop the
+#       PR, its output is appended to the PR body under "## Pre-commit
+#       hooks". Then commits ONLY the named files (other staged changes stay
+#       out of the commit), signed (-S --signoff, message = title), pushes
+#       -u, opens the PR for that branch (--head) with --body-file as a
+#       draft (--draft), prints the PR URL.
 #
 # Exit: 0 ok; 2 unknown command, no file named, body file not found, body
 # without the provenance line or an eval refused; 1 a missing positional
@@ -76,6 +82,35 @@ finish)
     uv run "$(dirname "$0")/check-eval-samples.py" --repo "$wt" -- "$@" \
         || die "eval(s) added or tightened without samples - see above"
     git -C "$wt" add -- "$@"
+    # The target repository's own hooks, so a contributor sees a lint failure
+    # in the PR body instead of first in CI. Fixer hooks (ruff --fix,
+    # ruff-format, whitespace) rewrite files on the first run; the second run
+    # reports what they could not fix. A failure never stops the PR: the
+    # retro run is a contribution, and a barrier here would lose it.
+    if [[ -f "$wt/.pre-commit-config.yaml" ]]; then
+        if command -v pre-commit >/dev/null 2>&1; then
+            precommit=(pre-commit)
+        else
+            precommit=(uv tool run pre-commit)
+        fi
+        if ! (cd "$wt" && "${precommit[@]}" run --files "$@") >/dev/null 2>&1; then
+            if ! hook_output=$(cd "$wt" && "${precommit[@]}" run --files "$@" 2>&1); then
+                printf 'materialize-pr: pre-commit hooks still fail; their output goes into the PR body\n' >&2
+                # In the worktree's git dir: never committed, removed with the worktree.
+                report="$(git -C "$wt" rev-parse --absolute-git-dir)/retro-pr-body.md"
+                {
+                    cat "$body"
+                    printf '\n## Pre-commit hooks\n\n'
+                    # shellcheck disable=SC2016 # literal backticks: Markdown code span
+                    printf '`pre-commit run --files` still fails after the fixer hooks ran; CI is likely to fail the same way. Last 150 lines of its output:\n\n'
+                    printf '````text\n'
+                    printf '%s\n' "$hook_output" | tail -n 150
+                    printf '````\n'
+                } > "$report"
+                body="$report"
+            fi
+        fi
+    fi
     # The pathspec limits the commit to the named files: anything else that
     # was already staged in the worktree stays out of it.
     git -C "$wt" commit -S --signoff -m "$title" -- "$@"
