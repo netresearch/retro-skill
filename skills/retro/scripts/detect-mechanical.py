@@ -780,6 +780,13 @@ def _attribute_to_issuer(
     return msg, issuer
 
 
+def _note_turn(turns: dict[str, int], msg: dict, block_msg: dict) -> None:
+    """Give the assistant message a block counts under its ordinal, once."""
+    mid = block_msg.get("id")
+    if msg.get("role") == "assistant" and isinstance(mid, str):
+        turns.setdefault(mid, len(turns))
+
+
 def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     """Return (event_index, tool_name, input, result_text, is_error) per call.
 
@@ -799,9 +806,7 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
             continue
         for block in content:
             block_msg, issuer = _attribute_to_issuer(msg, block, issuer)
-            mid = block_msg.get("id")
-            if msg.get("role") == "assistant" and isinstance(mid, str):
-                turns.setdefault(mid, len(turns))
+            _note_turn(turns, msg, block_msg)
             paired = _pair_block(i, block_msg, block, tool_uses_pending)
             if paired is not None:
                 paired.virtual = ev.get("isVirtual") is True
