@@ -321,6 +321,29 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
         ]
         self.assertEqual(detect.signal_retry_clusters(uses), [])
 
+    def test_A2_window_counts_messages_without_blocks(self):
+        # A message whose content is a string, and an event marked only by its
+        # type, are messages too: four of them push the third call out.
+        def text_message(n, envelope):
+            if envelope == "string":
+                return {
+                    "type": "assistant",
+                    "message": {"role": "assistant", "id": f"s{n}", "content": "ok"},
+                }
+            return {
+                "type": "assistant",
+                "message": {"id": f"s{n}", "content": [{"type": "text", "text": "ok"}]},
+            }
+
+        for envelope in ("string", "type"):
+            with self.subTest(envelope=envelope):
+                evs = []
+                for n in range(3):
+                    evs += bash(f"m{n}", f"t{n}", "gh pr view 7", "{}")
+                    if n == 1:
+                        evs += [text_message(k, envelope) for k in range(4)]
+                self.assertEqual(detect.signal_retry_clusters(_uses(evs)), [])
+
     def test_A2_ignores_the_bash_description(self):
         evs = []
         for n in range(3):

@@ -531,6 +531,24 @@ class DetectMechanicalFieldsTest(unittest.TestCase):
                 self.assertNotIn("abcdefghij", dumped)
                 self.assertNotIn("pw-1234567", dumped)
 
+    def test_retry_call_hides_a_whole_masked_value(self):
+        # The mask stops at a space and covers one credential per hit; the
+        # finding hides the whole value instead.
+        cases = (
+            {"password": "horse battery staple"},
+            {"auth": {"password": "horse battery staple"}},
+            {"args": ["password=horse battery staple"]},
+            {"Cookie": "api_token=tok-abcdef123456; session=horse battery staple"},
+        )
+        for inp in cases:
+            with self.subTest(inp=inp):
+                uses = [(i * 2, "mcp__x__y", inp, "", False) for i in range(3)]
+                findings = dm.signal_retry_clusters(uses)
+                self.assertEqual(len(findings), 1, findings)
+                dumped = json.dumps(findings)
+                self.assertNotIn("battery", dumped)
+                self.assertNotIn("tok-abcdef", dumped)
+
     def test_permission_prefix_is_masked(self):
         tool_uses = [
             (i * 20, "Bash", {"command": f"GH_TOKEN={GH} gh pr view"}, "", False)

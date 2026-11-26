@@ -796,7 +796,7 @@ def _note_turn(
     The message is keyed as `message_key` keys a call: by its id, or by its
     event where it has none (Cursor writes one message per event).
     """
-    if (msg.get("role") or ev.get("role")) != "assistant":
+    if (msg.get("role") or ev.get("role") or ev.get("type")) != "assistant":
         return
     mid = block_msg.get("id")
     turns.setdefault(("id", mid) if mid else ("event", i), len(turns))
@@ -818,6 +818,7 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
         msg = _message(ev)
         content = msg.get("content") or []
         if not isinstance(content, list):
+            _note_turn(turns, ev, msg, msg, i)  # a text-only message counts too
             continue
         for block in content:
             block_msg, issuer = _attribute_to_issuer(msg, block, issuer)
@@ -1307,25 +1308,33 @@ def _retry_key(name: str, inp: dict) -> str | None:
 
 
 def _entry(key: object, value: object) -> str:
-    """One argument as `key=value`, or `key: value` where only that form masks.
+    """One argument as `key=value`, its whole value hidden where a mask hits it.
 
     The mask reads a header (`Authorization: Bearer …`) by its colon and an
-    assignment (`password=…`) by its equals sign.
+    assignment (`password=…`) by its equals sign, and it stops at a space or
+    a quote. So a value is tried in both forms, and any hit hides all of it:
+    the words of a value after a space, or a credential next to the one the
+    hit covered (`Cookie: api_token=…; session=…`), never reach the finding.
     """
-    shown = _raw_value(value)
-    for text in (f"{key}={shown}", f"{key}: {shown}"):
-        if mask(text) != text:
-            return text
+    if isinstance(value, dict | list | tuple):
+        return f"{key}={_raw_value(value)}"
+    shown = str(value)
+    if any(mask(text) != text for text in (f"{key}={shown}", f"{key}: {shown}")):
+        return f"{key}={_masking.MARKER}"
     return f"{key}={shown}"
 
 
 def _raw_value(value: object) -> str:
-    """A value as typed: the strings of a list or dict joined, never their repr."""
+    """A value as typed: the strings of a list or dict joined, never their repr.
+
+    A string that a mask hits is hidden whole, as in `_entry`.
+    """
     if isinstance(value, dict):
         return " ".join(_entry(k, v) for k, v in value.items())
     if isinstance(value, list | tuple):
         return " ".join(_raw_value(v) for v in value)
-    return str(value)
+    shown = str(value)
+    return _masking.MARKER if mask(shown) != shown else shown
 
 
 def _retry_display(name: str, inp: dict) -> str:
