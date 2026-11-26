@@ -759,6 +759,9 @@ CODE_MODE_CALL_PREFIX = "repl_"
 #: The tool that runs a Code Mode script. A message holding only a `Poll` can sit
 #: between the calls of one script, so only a REPL call starts a new script.
 CODE_MODE_TOOL = "REPL"
+#: Claude Code records a failed Code Mode script as a virtual REPL call with an
+#: id of this prefix and no input. It is the issuing script's error, not a call.
+CODE_MODE_ERROR_PREFIX = "repl-error-"
 
 
 def _attribute_to_issuer(
@@ -768,10 +771,14 @@ def _attribute_to_issuer(
 
     A call of a Code Mode script counts under the message that issued the script.
     A REPL call makes its own message the issuer; any other call leaves it.
+    The error record of a failed script counts under the issuer too.
     """
     if not (isinstance(block, dict) and block.get("type") == "tool_use"):
         return msg, issuer
-    if not str(block.get("id") or "").startswith(CODE_MODE_CALL_PREFIX):
+    use_id = str(block.get("id") or "")
+    if use_id.startswith(CODE_MODE_ERROR_PREFIX):
+        return ({**msg, "id": issuer} if issuer else msg), issuer
+    if not use_id.startswith(CODE_MODE_CALL_PREFIX):
         if block.get("name") == CODE_MODE_TOOL:
             return msg, msg.get("id") or issuer
         return msg, issuer
@@ -1272,13 +1279,22 @@ def signal_tool_errors(tool_uses) -> list[dict]:
     return out
 
 
-def _retry_key(name: str, inp: dict) -> str:
-    """The call as A2 compares it: tool name and arguments, without `description`.
+#: Tools whose `description` is the agent's label for the call, not an argument.
+_LABELLED_TOOLS = {"Agent", "Bash", "Monitor", CODE_MODE_TOOL}
 
-    `description` is the agent's label for a Bash call, not an argument; two
-    runs of one command with different labels are the same call.
+
+def _retry_key(name: str, inp: dict) -> str | None:
+    """The call as A2 compares it: tool name and arguments.
+
+    The `description` of a Bash, REPL, Monitor or Agent call is a label, so
+    two runs of one command with different labels are the same call. A REPL
+    record without input is the error of a failed script
+    (CODE_MODE_ERROR_PREFIX): no call.
     """
-    args = {k: v for k, v in inp.items() if k != "description"}
+    if name == CODE_MODE_TOOL and not inp:
+        return None
+    labelled = name in _LABELLED_TOOLS
+    args = {k: v for k, v in inp.items() if not (labelled and k == "description")}
     return name + " " + json.dumps(args, sort_keys=True, default=str)
 
 
@@ -1312,7 +1328,7 @@ def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list
     for use, pos in zip(tool_uses, message_positions(tool_uses), strict=True):
         call = _retry_key(use[1], use[2])
         key = message_key(use)
-        if (call, key) in seen:
+        if call is None or (call, key) in seen:
             continue
         seen.add((call, key))
         by_call[call].append((pos, use[0]))

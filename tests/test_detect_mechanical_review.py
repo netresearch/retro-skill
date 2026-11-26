@@ -178,12 +178,12 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
         self.assertEqual([f["signal"] for f in findings], ["A2"])
 
     @staticmethod
-    def _script(message_id, use_id, calls, poll_message_id=None):
+    def _script(message_id, use_id, calls, poll_message_id=None, code="…"):
         # Code Mode, as Claude Code wrote it on 2026-11-25: the REPL call and its
         # result, a Poll in the same message, then each call of the script as its
         # own event with a generated message id. With poll_message_id, a second
         # Poll in a message of its own sits between the calls of the script.
-        repl = call(message_id, use_id, "REPL", {"code": "…"}, "dispatched")
+        repl = call(message_id, use_id, "REPL", {"code": code}, "dispatched")
         poll = call(message_id, f"{use_id}-poll", "Poll", {}, "")
         nested = []
         for n, command in enumerate(calls):
@@ -254,6 +254,61 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
 
         self.assertEqual(len(run(3)), 1)
         self.assertEqual(run(4), [])
+
+    @staticmethod
+    def _script_error(n, message):
+        # A failed script as Claude Code records it: a virtual REPL call with
+        # no input under a message id of its own, its result the error text.
+        return call(f"uuid-err-{n}", f"repl-error-{n}", "REPL", {}, message)
+
+    def test_A2_error_records_of_different_scripts_are_no_retry(self):
+        # Seen in a stored transcript on 2026-11-26: three scripts failing
+        # with three unrelated errors within five messages.
+        evs = []
+        for n, error in enumerate(
+            ["Error: tail anchor", "Nothing ran", "Error: edit 1 of 2"]
+        ):
+            evs += self._script(
+                f"msg_{n}", f"toolu_{n}", [f"gh pr view {n}"], code=f"script {n}"
+            )
+            evs += self._script_error(n, error)
+        # The fixture's Poll repeats in each message, so A2 rightly flags it.
+        tools_flagged = [f["tool"] for f in detect.signal_retry_clusters(_uses(evs))]
+        self.assertEqual(tools_flagged, ["Poll"])
+
+    def test_error_record_takes_no_message_of_its_own(self):
+        # Three scripts run one command; two Reads sit between the first two.
+        # Counted as messages, the third call comes four messages after the
+        # first, so A2 fires. Each error record counted as a message would
+        # push the span to six.
+        evs = []
+        for n in range(3):
+            evs += self._script(f"msg_{n}", f"toolu_{n}", ["gh pr view 7"])
+            evs += self._script_error(n, "Error: x")
+            if n == 0:
+                for k in range(2):
+                    evs += call(
+                        f"m_read{k}", f"t_read{k}", "Read", {"file_path": f"/f{k}"}
+                    )
+        uses = _uses(evs)
+        errors = [u for u in uses if u[1] == "REPL" and not u[2]]
+        self.assertEqual([u.message_id for u in errors], ["msg_0", "msg_1", "msg_2"])
+        self.assertIn(
+            "gh pr view", [f["tool"] for f in detect.signal_retry_clusters(uses)]
+        )
+
+    def test_A2_compares_the_description_of_other_tools(self):
+        # For an MCP tool the description is a real argument.
+        evs = []
+        for n in range(3):
+            evs += call(
+                f"msg_{n}",
+                f"t{n}",
+                "mcp__tt__log_time",
+                {"ticket": "X-1", "description": f"work {n}"},
+                "{}",
+            )
+        self.assertEqual(detect.signal_retry_clusters(_uses(evs)), [])
 
     def test_A2_ignores_the_bash_description(self):
         evs = []
