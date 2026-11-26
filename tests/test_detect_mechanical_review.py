@@ -177,6 +177,58 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
         findings = detect.signal_retry_clusters(_uses(evs))
         self.assertEqual([f["signal"] for f in findings], ["A2"])
 
+    @staticmethod
+    def _script(message_id, use_id, calls, poll_message_id=None):
+        # Code Mode, as Claude Code wrote it on 2026-11-25: the REPL call and its
+        # result, a Poll in the same message, then each call of the script as its
+        # own event with a generated message id. With poll_message_id, a second
+        # Poll in a message of its own sits between the calls of the script.
+        repl = call(message_id, use_id, "REPL", {"code": "…"}, "dispatched")
+        poll = call(message_id, f"{use_id}-poll", "Poll", {}, "")
+        nested = []
+        for n, command in enumerate(calls):
+            if poll_message_id and n == 1:
+                nested += call(poll_message_id, f"{use_id}-poll2", "Poll", {}, "")
+            nested += bash(f"{use_id}-uuid-{n}", f"repl_{use_id}_{n}", command, "x")
+        return [*repl, *poll, *nested]
+
+    def test_calls_of_one_code_mode_script_are_one_message(self):
+        # The invocations of the retro run that exposed it.
+        evs = self._script(
+            "msg_1",
+            "toolu_1",
+            [
+                "uv run detect-mechanical.py --transcript-file t.jsonl",
+                "uv run collect-review-findings.py --transcript-file t.jsonl",
+                "uv run find-org-skills.py",
+            ],
+        )
+        uses = _uses(evs)
+        self.assertEqual({u.message_id for u in uses}, {"msg_1"})
+        self.assertEqual(detect.signal_retry_clusters(uses), [])
+        self.assertEqual(detect.signal_sequential_parallelizable(uses), [])
+
+    def test_poll_between_the_calls_of_one_script_starts_no_new_script(self):
+        # Seen 21 times in 500 calls on 2026-11-26: a script still running when
+        # the next message held only a Poll.
+        evs = self._script(
+            "msg_1",
+            "toolu_1",
+            ["gh pr view 1", "gh pr view 2"],
+            poll_message_id="msg_2",
+        )
+        uses = _uses(evs)
+        nested = [u for u in uses if u[1] == "Bash"]
+        self.assertEqual(len(nested), 2)
+        self.assertEqual({u.message_id for u in nested}, {"msg_1"})
+
+    def test_calls_of_separate_scripts_keep_separate_messages(self):
+        evs = []
+        for n in range(3):
+            evs += self._script(f"msg_{n}", f"toolu_{n}", [f"gh pr view {n}"])
+        nested = [u for u in _uses(evs) if u[1] == "Bash"]
+        self.assertEqual([u.message_id for u in nested], ["msg_0", "msg_1", "msg_2"])
+
     def test_A5_run_mixing_one_batch_and_two_singles_counts_messages(self):
         # Two parallel Reads (one message) then two single-call messages:
         # three messages, four calls -> still a sequential run of three.

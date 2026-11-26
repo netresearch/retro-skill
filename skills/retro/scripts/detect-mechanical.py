@@ -733,21 +733,55 @@ def _pair_block(
     return None
 
 
+#: Claude Code's Code Mode writes each call of a REPL script as its own event with
+#: a generated `message.id`, after the message that holds the REPL call. Measured on
+#: one transcript (2026-11-25): the `tool_use` ids of these calls start with this
+#: prefix, and calls that ran together in one script read as retries (A2) and as a
+#: serial run (A5).
+CODE_MODE_CALL_PREFIX = "repl_"
+#: The tool that runs a Code Mode script. A message holding only a `Poll` can sit
+#: between the calls of one script, so only a REPL call starts a new script.
+CODE_MODE_TOOL = "REPL"
+
+
+def _attribute_to_issuer(
+    msg: dict, block: object, issuer: str | None
+) -> tuple[dict, str | None]:
+    """Return the message a block counts under, and the issuer for the next block.
+
+    A call of a Code Mode script counts under the message that issued the script.
+    A REPL call makes its own message the issuer; any other call leaves it.
+    """
+    if not (isinstance(block, dict) and block.get("type") == "tool_use"):
+        return msg, issuer
+    if not str(block.get("id") or "").startswith(CODE_MODE_CALL_PREFIX):
+        if block.get("name") == CODE_MODE_TOOL:
+            return msg, msg.get("id") or issuer
+        return msg, issuer
+    if issuer:
+        return {**msg, "id": issuer}, issuer
+    return msg, issuer
+
+
 def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     """Return (event_index, tool_name, input, result_text, is_error) per call.
+
+    A call of a Code Mode script gets the id of the message that issued the script.
 
     A call with an id is returned once its tool_result pairs with it; a call
     without one (Cursor) is returned where it was issued, with an empty result.
     """
     out = []
     tool_uses_pending: dict[str, _PendingUse] = {}
+    issuer: str | None = None  # id of the last message holding a REPL call
     for i, ev in enumerate(events):
         msg = _message(ev)
         content = msg.get("content") or []
         if not isinstance(content, list):
             continue
         for block in content:
-            paired = _pair_block(i, msg, block, tool_uses_pending)
+            block_msg, issuer = _attribute_to_issuer(msg, block, issuer)
+            paired = _pair_block(i, block_msg, block, tool_uses_pending)
             if paired is not None:
                 paired.virtual = ev.get("isVirtual") is True
                 out.append(paired)
