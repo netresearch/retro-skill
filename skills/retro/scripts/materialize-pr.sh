@@ -103,22 +103,21 @@ finish)
         else
             precommit=(uv tool run pre-commit)
         fi
-        if ! (cd "$wt" && "${precommit[@]}" run --files "$@") >/dev/null 2>&1; then
-            if ! hook_output=$(cd "$wt" && "${precommit[@]}" run --files "$@" 2>&1); then
-                printf 'materialize-pr: pre-commit hooks still fail; their output goes into the PR body\n' >&2
-                # In the worktree's git dir: never committed, removed with the worktree.
-                report="$(git -C "$wt" rev-parse --absolute-git-dir)/retro-pr-body.md"
-                {
-                    cat "$body"
-                    printf '\n## Pre-commit hooks\n\n'
-                    # shellcheck disable=SC2016 # literal backticks: Markdown code span
-                    printf '`pre-commit run --files` still fails after the fixer hooks ran; CI is likely to fail the same way. Last 150 lines of its output:\n\n'
-                    printf '````text\n'
-                    printf '%s\n' "$hook_output" | tail -n 150
-                    printf '````\n'
-                } > "$report"
-                body="$report"
-            fi
+        if ! (cd "$wt" && "${precommit[@]}" run --files "$@") >/dev/null 2>&1 \
+            && ! hook_output=$(cd "$wt" && "${precommit[@]}" run --files "$@" 2>&1); then
+            printf 'materialize-pr: pre-commit hooks still fail; their output goes into the PR body\n' >&2
+            # In the worktree's git dir: never committed, removed with the worktree.
+            report="$(git -C "$wt" rev-parse --absolute-git-dir)/retro-pr-body.md"
+            {
+                cat "$body"
+                printf '\n## Pre-commit hooks\n\n'
+                # shellcheck disable=SC2016 # literal backticks: Markdown code span
+                printf '`pre-commit run --files` still fails after the fixer hooks ran; CI is likely to fail the same way. Last 150 lines of its output:\n\n'
+                printf '````text\n'
+                printf '%s\n' "$hook_output" | tail -n 150
+                printf '````\n'
+            } > "$report"
+            body="$report"
         fi
     fi
     # The pathspec limits the commit to the named files: anything else that
