@@ -735,9 +735,13 @@ def _pair_block(
 
 #: Claude Code's Code Mode writes each call of a REPL script as its own event with
 #: a generated `message.id`, after the message that holds the REPL call. Measured on
-#: one transcript (2026-11-25): the ids start with this prefix, and calls that ran
-#: together in one script read as retries (A2) and as a serial run (A5).
+#: one transcript (2026-11-25): the `tool_use` ids of these calls start with this
+#: prefix, and calls that ran together in one script read as retries (A2) and as a
+#: serial run (A5).
 CODE_MODE_CALL_PREFIX = "repl_"
+#: The tool that runs a Code Mode script. A message holding only a `Poll` can sit
+#: between the calls of one script, so only a REPL call starts a new script.
+CODE_MODE_TOOL = "REPL"
 
 
 def _attribute_to_issuer(
@@ -746,12 +750,14 @@ def _attribute_to_issuer(
     """Return the message a block counts under, and the issuer for the next block.
 
     A call of a Code Mode script counts under the message that issued the script.
-    Any other call makes its own message the issuer.
+    A REPL call makes its own message the issuer; any other call leaves it.
     """
     if not (isinstance(block, dict) and block.get("type") == "tool_use"):
         return msg, issuer
     if not str(block.get("id") or "").startswith(CODE_MODE_CALL_PREFIX):
-        return msg, msg.get("id") or issuer
+        if block.get("name") == CODE_MODE_TOOL:
+            return msg, msg.get("id") or issuer
+        return msg, issuer
     if issuer:
         return {**msg, "id": issuer}, issuer
     return msg, issuer
@@ -767,7 +773,7 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     """
     out = []
     tool_uses_pending: dict[str, _PendingUse] = {}
-    issuer: str | None = None  # id of the last message the model itself wrote
+    issuer: str | None = None  # id of the last message holding a REPL call
     for i, ev in enumerate(events):
         msg = _message(ev)
         content = msg.get("content") or []
