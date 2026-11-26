@@ -538,6 +538,7 @@ class DetectMechanicalFieldsTest(unittest.TestCase):
             {"password": "horse battery staple"},
             {"auth": {"password": "horse battery staple"}},
             {"args": ["password=horse battery staple"]},
+            {"password": ["horse", "battery", "staple"]},
             {"Cookie": "api_token=tok-abcdef123456; session=horse battery staple"},
         )
         for inp in cases:

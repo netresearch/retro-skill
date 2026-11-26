@@ -1316,9 +1316,7 @@ def _entry(key: object, value: object) -> str:
     the words of a value after a space, or a credential next to the one the
     hit covered (`Cookie: api_token=…; session=…`), never reach the finding.
     """
-    if isinstance(value, dict | list | tuple):
-        return f"{key}={_raw_value(value)}"
-    shown = str(value)
+    shown = _raw_value(value)
     if any(mask(text) != text for text in (f"{key}={shown}", f"{key}: {shown}")):
         return f"{key}={_masking.MARKER}"
     return f"{key}={shown}"
