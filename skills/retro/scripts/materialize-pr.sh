@@ -25,7 +25,9 @@
 #       when a named evals.json adds or tightens an eval that carries no
 #       `samples` (check-eval-samples.py). Then stages ONLY the named files
 #       (never -A). When the worktree has a .pre-commit-config.yaml, runs the
-#       target repository's pre-commit hooks on those files (pre-commit, or
+#       target repository's pre-commit hooks on those files - by itself
+#       only for a netresearch/* origin, elsewhere with MATERIALIZE_PR_HOOKS=1
+#       (MATERIALIZE_PR_HOOKS=0 turns it off) - (pre-commit, or
 #       `uv tool run pre-commit` when it is not installed) and keeps what
 #       the fixer hooks changed; a hook that still fails does not stop the
 #       PR, its output is appended to the PR body under "## Pre-commit
@@ -87,7 +89,15 @@ finish)
     # ruff-format, whitespace) rewrite files on the first run; the second run
     # reports what they could not fix. A failure never stops the PR: the
     # retro run is a contribution, and a barrier here would lose it.
-    if [[ -f "$wt/.pre-commit-config.yaml" ]]; then
+    # pre-commit fetches and runs the code the config names, so it runs by
+    # itself only for a target of our own organisation; for any other
+    # target MATERIALIZE_PR_HOOKS=1 is the user's explicit opt-in.
+    repo_slug=$(git -C "$wt" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+    run_hooks=${MATERIALIZE_PR_HOOKS:-}
+    if [[ -z "$run_hooks" ]]; then
+        if [[ "$repo_slug" == netresearch/* ]]; then run_hooks=1; else run_hooks=0; fi
+    fi
+    if [[ -f "$wt/.pre-commit-config.yaml" && "$run_hooks" == 1 ]]; then
         if command -v pre-commit >/dev/null 2>&1; then
             precommit=(pre-commit)
         else
@@ -117,7 +127,6 @@ finish)
     git -C "$wt" push -u origin "$branch"
     # From the worktree, and with --head: gh otherwise takes the head branch
     # and its gh-merge-base (the PR's base) from the caller's checkout.
-    repo_slug=$(git -C "$wt" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
     body=$(cd "$(dirname "$body")" && pwd)/$(basename "$body")
     # A draft: leaving draft summons reviewers, and that is the user's call.
     (cd "$wt" && gh pr create --draft --title "$title" --body-file "$body" --head "$branch" --repo "$repo_slug")
