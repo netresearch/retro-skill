@@ -240,6 +240,130 @@ class MaterializePrTest(unittest.TestCase):
         result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def _finish_with_hooks(
+        self,
+        branch: str,
+        hook: str,
+        origin_url: str = "",
+        project_name: str = "project",
+        hooks: str = "1",
+    ):
+        """Run `finish` in a worktree that has a .pre-commit-config.yaml, with
+        `hook` as the body of a stub `pre-commit` on PATH."""
+        stub = self.bin / "pre-commit"
+        stub.write_text(
+            '#!/bin/sh\necho "$*" >> "$PC_LOG"\nn=$(wc -l < "$PC_LOG")\n' + hook,
+            encoding="utf-8",
+        )
+        stub.chmod(0o755)
+        self.env["PC_LOG"] = str(self.tmp / "pc.log")
+        (self.tmp / "pc.log").unlink(missing_ok=True)
+        # Set, never inherited: the test remote is a local path, so "1" opts
+        # in and "" leaves the decision to the origin URL.
+        self.env["MATERIALIZE_PR_HOOKS"] = hooks
+        project = self._bare_project(project_name, origin_head=True)
+        started = self._run("start", str(project), branch)
+        self.assertEqual(started.returncode, 0, started.stderr)
+        worktree = Path(started.stdout.strip())
+        if origin_url:
+            # The fetch URL names the organisation; pushes still go to the
+            # local remote.
+            git("-C", str(worktree), "remote", "set-url", "origin", origin_url)
+            git(
+                "-C",
+                str(worktree),
+                "remote",
+                "set-url",
+                "--push",
+                "origin",
+                str(self.remote),
+            )
+        (worktree / ".pre-commit-config.yaml").write_text(
+            "repos: []\n", encoding="utf-8"
+        )
+        (worktree / "a.txt").write_text("a\n", encoding="utf-8")
+        (self.tmp / "body.md").write_text(BODY, encoding="utf-8")
+        result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        args = [
+            line[4:]
+            for line in self.gh_log.read_text(encoding="utf-8").splitlines()
+            if line.startswith("arg=")
+        ]
+        body = Path(args[args.index("--body-file") + 1]).read_text(encoding="utf-8")
+        pc_log = self.tmp / "pc.log"
+        calls = (
+            pc_log.read_text(encoding="utf-8").splitlines() if pc_log.exists() else []
+        )
+        self.last_stderr = result.stderr
+        return worktree, body, calls
+
+    def test_hooks_of_a_netresearch_origin_run_without_the_opt_in(self):
+        urls = (
+            "https://github.com/netresearch/demo.git",
+            "https://github.com/netresearch/demo/",
+            "git@github.com:netresearch/demo.git",
+            "ssh://git@github.com/netresearch/demo.git",
+        )
+        for k, url in enumerate(urls):
+            with self.subTest(url=url):
+                _, _, calls = self._finish_with_hooks(
+                    f"feat/hn{k}", "exit 0\n", url, f"project{k}", hooks=""
+                )
+                self.assertEqual(calls, ["run --files a.txt"])
+
+    def test_hooks_of_a_foreign_origin_do_not_run_without_the_opt_in(self):
+        """pre-commit runs the code the target's config names."""
+        urls = (
+            "",  # the local test remote
+            "https://evil.example/netresearch/demo.git",
+            "git@github-work:netresearch/demo.git",
+            "https://github.com/someone/netresearch.git",
+            "https://github.com/netresearch/demo/extra",
+        )
+        for k, url in enumerate(urls):
+            with self.subTest(url=url):
+                _, body, calls = self._finish_with_hooks(
+                    f"feat/h0{k}", "exit 1\n", url, f"foreign{k}", hooks=""
+                )
+                self.assertEqual(calls, [])
+                self.assertEqual(body, BODY)
+                # The skip is visible, never silent.
+                self.assertIn("pre-commit hooks not run", self.last_stderr)
+
+    def test_a_credential_in_the_hook_output_is_masked_in_the_body(self):
+        token = "ghp_" + "A1b2C3d4E5" * 4
+        hook = f'echo "remote: https://x:{token}@github.com/o/r"\nexit 1\n'
+        _, body, _ = self._finish_with_hooks("feat/hm", hook)
+        self.assertIn("## Pre-commit hooks", body)
+        self.assertNotIn(token, body)
+        self.assertIn("[REDACTED]", body)
+
+    def test_finish_runs_the_hooks_on_the_named_files(self):
+        _, body, calls = self._finish_with_hooks("feat/h1", "exit 0\n")
+        self.assertEqual(calls, ["run --files a.txt"])
+        self.assertEqual(body, BODY)
+
+    def test_finish_commits_what_the_fixer_hooks_changed(self):
+        # First run: a fixer rewrites the file and fails; second run passes.
+        hook = '[ "$n" -eq 1 ] && { echo fixed > a.txt; exit 1; }\nexit 0\n'
+        _, body, calls = self._finish_with_hooks("feat/h2", hook)
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(git("-C", str(self.remote), "show", "feat/h2:a.txt"), "fixed")
+        self.assertEqual(body, BODY)
+
+    def test_a_failing_hook_goes_into_the_body_and_the_pr_still_opens(self):
+        hook = 'echo "SIM114 Combine if branches"\nexit 1\n'
+        _, body, calls = self._finish_with_hooks("feat/h3", hook)
+        self.assertEqual(len(calls), 2)
+        self.assertTrue(body.startswith(BODY), body)
+        self.assertIn("\n## Pre-commit hooks\n", body)
+        self.assertIn("SIM114 Combine if branches", body)
+        self.assertEqual(
+            git("-C", str(self.remote), "log", "-1", "--format=%s", "feat/h3"),
+            "feat: a",
+        )
+
     def test_exit_statuses_match_the_header(self):
         """The header's Exit line: 2 for refusals, 1 for a missing argument,
         git's own status for a failing git command - never 0."""

@@ -23,10 +23,21 @@
 #       not the provenance line of the PR body template (patch-workflow.md) -
 #       the line elsewhere, or an issue link to the repo, does not count - or
 #       when a named evals.json adds or tightens an eval that carries no
-#       `samples` (check-eval-samples.py). Then stages and commits
-#       ONLY the named files (never -A; other staged changes stay out of the
-#       commit), signed (-S --signoff, message = title), pushes -u, opens the PR for that branch (--head) with
-#       --body-file as a draft (--draft), prints the PR URL.
+#       `samples` (check-eval-samples.py). Then stages ONLY the named files
+#       (never -A). When the worktree has a .pre-commit-config.yaml, runs the
+#       target repository's pre-commit hooks on those files - by itself
+#       only for a github.com/netresearch/* origin, elsewhere (an SSH host
+#       alias included) with MATERIALIZE_PR_HOOKS=1
+#       (MATERIALIZE_PR_HOOKS=0 turns it off) - (pre-commit, or
+#       `uv tool run pre-commit` when it is not installed) and keeps what
+#       the fixer hooks changed; a hook that still fails does not stop the
+#       PR, its output (credentials masked with mask-secrets.py) is
+#       appended to the PR body under "## Pre-commit hooks". A pre-commit
+#       git hook installed in the clone still runs at the commit (never
+#       --no-verify), and its failure stops the script before the push. Then commits ONLY the named files (other staged changes stay
+#       out of the commit), signed (-S --signoff, message = title), pushes
+#       -u, opens the PR for that branch (--head) with --body-file as a
+#       draft (--draft), prints the PR URL.
 #
 # Exit: 0 ok; 2 unknown command, no file named, body file not found, body
 # without the provenance line or an eval refused; 1 a missing positional
@@ -76,13 +87,61 @@ finish)
     uv run "$(dirname "$0")/check-eval-samples.py" --repo "$wt" -- "$@" \
         || die "eval(s) added or tightened without samples - see above"
     git -C "$wt" add -- "$@"
+    # The target repository's own hooks, so a contributor sees a lint failure
+    # in the PR body instead of first in CI. Fixer hooks (ruff --fix,
+    # ruff-format, whitespace) rewrite files on the first run; the second run
+    # reports what they could not fix. A failure never stops the PR: the
+    # retro run is a contribution, and a barrier here would lose it.
+    # pre-commit fetches and runs the code the config names, so it runs by
+    # itself only for a target of our own organisation; for any other
+    # target MATERIALIZE_PR_HOOKS=1 is the user's explicit opt-in.
+    origin_url=$(git -C "$wt" remote get-url origin)
+    # owner/repo from the last two path segments, for `gh --repo` and the notice.
+    repo_slug=$(printf '%s\n' "$origin_url" | sed -E 's#/+$##; s#\.git$##; s#^.*[:/]([^/:]+/[^/:]+)$#\1#')
+    # Trusted only with the host checked too: a path ending in netresearch/x
+    # on another host, or an SSH alias that may point anywhere, needs the opt-in.
+    trusted='^(https://github\.com/|ssh://git@github\.com/|git@github\.com:)netresearch/[A-Za-z0-9._-]+/?$'
+    run_hooks=${MATERIALIZE_PR_HOOKS:-}
+    if [[ -z "$run_hooks" ]]; then
+        if [[ "$origin_url" =~ $trusted ]]; then run_hooks=1; else run_hooks=0; fi
+    fi
+    if [[ -f "$wt/.pre-commit-config.yaml" && "$run_hooks" != 1 ]]; then
+        printf 'materialize-pr: pre-commit hooks not run for %s; set MATERIALIZE_PR_HOOKS=1 to run them\n' "$repo_slug" >&2
+    fi
+    if [[ -f "$wt/.pre-commit-config.yaml" && "$run_hooks" == 1 ]]; then
+        if command -v pre-commit >/dev/null 2>&1; then
+            precommit=(pre-commit)
+        else
+            precommit=(uv tool run pre-commit)
+        fi
+        if ! (cd "$wt" && "${precommit[@]}" run --files "$@") >/dev/null 2>&1 \
+            && ! hook_output=$(cd "$wt" && "${precommit[@]}" run --files "$@" 2>&1); then
+            printf 'materialize-pr: pre-commit hooks still fail; their output goes into the PR body\n' >&2
+            # In the worktree's git dir: never committed, removed with the worktree.
+            report="$(git -C "$wt" rev-parse --absolute-git-dir)/retro-pr-body.md"
+            # The body is published: mask credentials in the whole output first,
+            # then cut it, so a cut cannot leave the head of a token in clear.
+            if ! masked=$(printf '%s\n' "$hook_output" | uv run --no-project --python '>=3.11' python -c 'import importlib.util as u, sys; s = u.spec_from_file_location("mask_secrets", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m); sys.stdout.write(m.mask(sys.stdin.read()))' "$(dirname "$0")/mask-secrets.py"); then
+                masked='(hook output withheld: masking it failed)'
+            fi
+            {
+                cat "$body"
+                printf '\n## Pre-commit hooks\n\n'
+                # shellcheck disable=SC2016 # literal backticks: Markdown code span
+                printf '`pre-commit run --files` still fails after the fixer hooks ran; CI is likely to fail the same way. Last 150 lines of its output:\n\n'
+                printf '````text\n'
+                printf '%s\n' "$masked" | tail -n 150
+                printf '````\n'
+            } > "$report"
+            body="$report"
+        fi
+    fi
     # The pathspec limits the commit to the named files: anything else that
     # was already staged in the worktree stays out of it.
     git -C "$wt" commit -S --signoff -m "$title" -- "$@"
     git -C "$wt" push -u origin "$branch"
     # From the worktree, and with --head: gh otherwise takes the head branch
     # and its gh-merge-base (the PR's base) from the caller's checkout.
-    repo_slug=$(git -C "$wt" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
     body=$(cd "$(dirname "$body")" && pwd)/$(basename "$body")
     # A draft: leaving draft summons reviewers, and that is the user's call.
     (cd "$wt" && gh pr create --draft --title "$title" --body-file "$body" --head "$branch" --repo "$repo_slug")
