@@ -740,6 +740,23 @@ def _pair_block(
 CODE_MODE_CALL_PREFIX = "repl_"
 
 
+def _attribute_to_issuer(
+    msg: dict, block: object, issuer: str | None
+) -> tuple[dict, str | None]:
+    """Return the message a block counts under, and the issuer for the next block.
+
+    A call of a Code Mode script counts under the message that issued the script.
+    Any other call makes its own message the issuer.
+    """
+    if not (isinstance(block, dict) and block.get("type") == "tool_use"):
+        return msg, issuer
+    if not str(block.get("id") or "").startswith(CODE_MODE_CALL_PREFIX):
+        return msg, msg.get("id") or issuer
+    if issuer:
+        return {**msg, "id": issuer}, issuer
+    return msg, issuer
+
+
 def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     """Return (event_index, tool_name, input, result_text, is_error) per call.
 
@@ -757,12 +774,8 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
         if not isinstance(content, list):
             continue
         for block in content:
-            if isinstance(block, dict) and block.get("type") == "tool_use":
-                if not str(block.get("id") or "").startswith(CODE_MODE_CALL_PREFIX):
-                    issuer = msg.get("id") or issuer
-                elif issuer:
-                    msg = {**msg, "id": issuer}
-            paired = _pair_block(i, msg, block, tool_uses_pending)
+            block_msg, issuer = _attribute_to_issuer(msg, block, issuer)
+            paired = _pair_block(i, block_msg, block, tool_uses_pending)
             if paired is not None:
                 paired.virtual = ev.get("isVirtual") is True
                 out.append(paired)
