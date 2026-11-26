@@ -880,8 +880,19 @@ class TestSchichtA(unittest.TestCase):
         self.assert_not_signal(evs, "A14")
 
     def test_A2_retry_cluster(self):
-        # Same command shape, differing arguments — the "similar args" half the
-        # catalog has always described.
+        # One call, identical arguments, three times: a loop.
+        evs = []
+        for i in range(3):
+            evs.extend(
+                tool_use_pair(
+                    f"u{i}", "Bash", {"command": "gh pr view 7 --json state"}, "{}"
+                )
+            )
+        self.assert_signal(evs, "A2")
+
+    def test_A2_same_shape_different_arguments_is_work(self):
+        # Three PRs looked at once each share the shape `gh pr view` but are
+        # three calls, not a retry (decided on netresearch/retro-skill#295).
         evs = []
         for i in range(3):
             evs.extend(
@@ -889,7 +900,7 @@ class TestSchichtA(unittest.TestCase):
                     f"u{i}", "Bash", {"command": f"gh pr view {i} --json state"}, "{}"
                 )
             )
-        self.assert_signal(evs, "A2")
+        self.assert_not_signal(evs, "A2")
 
     def test_A2_distinct_commands_do_not_cluster(self):
         # Three unrelated shell calls are a session, not a retry cluster.

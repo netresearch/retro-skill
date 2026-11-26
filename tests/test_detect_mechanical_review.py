@@ -173,7 +173,7 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
     def test_A2_sequential_retries_with_distinct_message_ids_still_fire(self):
         evs = []
         for n in range(3):
-            evs += bash(f"msg_{n}", f"t{n}", f"gh pr view {n} --json state", "{}")
+            evs += bash(f"msg_{n}", f"t{n}", "gh pr view 7 --json state", "{}")
         findings = detect.signal_retry_clusters(_uses(evs))
         self.assertEqual([f["signal"] for f in findings], ["A2"])
 
@@ -228,6 +228,44 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
             evs += self._script(f"msg_{n}", f"toolu_{n}", [f"gh pr view {n}"])
         nested = [u for u in _uses(evs) if u[1] == "Bash"]
         self.assertEqual([u.message_id for u in nested], ["msg_0", "msg_1", "msg_2"])
+
+    def test_A2_retry_across_code_mode_scripts_fires(self):
+        # netresearch/retro-skill#295: three scripts that each run the same
+        # command lie 12 events apart, but only three messages.
+        evs = []
+        for n in range(3):
+            evs += self._script(f"msg_{n}", f"toolu_{n}", ["gh pr view 7"])
+        findings = detect.signal_retry_clusters(_uses(evs))
+        self.assertIn("gh pr view", [f["tool"] for f in findings])
+
+    def test_A2_window_counts_messages(self):
+        # Third call five messages after the first fires; six messages after
+        # does not. Each filler message is one Read of a different file.
+        def run(gap):
+            evs, n = [], 0
+            for k in range(3):
+                evs += bash(f"m{n}", f"t{n}", "gh pr view 7", "{}")
+                n += 1
+                if k < 2:
+                    for _ in range(gap if k == 1 else 0):
+                        evs += call(f"m{n}", f"t{n}", "Read", {"file_path": f"/f{n}"})
+                        n += 1
+            return detect.signal_retry_clusters(_uses(evs))
+
+        self.assertEqual(len(run(3)), 1)
+        self.assertEqual(run(4), [])
+
+    def test_A2_ignores_the_bash_description(self):
+        evs = []
+        for n in range(3):
+            evs += call(
+                f"msg_{n}",
+                f"t{n}",
+                "Bash",
+                {"command": "gh pr view 7", "description": f"look {n}"},
+                "{}",
+            )
+        self.assertEqual(len(detect.signal_retry_clusters(_uses(evs))), 1)
 
     def test_A5_run_mixing_one_batch_and_two_singles_counts_messages(self):
         # Two parallel Reads (one message) then two single-call messages:

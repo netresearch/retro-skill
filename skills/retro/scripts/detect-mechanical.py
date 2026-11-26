@@ -620,6 +620,9 @@ class ToolUse(tuple):
     nested: bool = False
     # Called from a Code Mode script, whether or not its result was filled in.
     virtual: bool = False
+    # Ordinal of the issuing assistant message among all assistant messages
+    # with an id; set by extract_tool_uses.
+    turn: int | None = None
 
     def __new__(cls, fields: tuple, message_id: str | None = None):
         obj = super().__new__(cls, fields)
@@ -636,6 +639,20 @@ def message_key(tool_use: tuple) -> tuple:
     """
     mid = getattr(tool_use, "message_id", None)
     return ("id", mid) if mid else ("event", tool_use[0])
+
+
+def message_positions(tool_uses) -> list[int]:
+    """Position of each call in assistant messages, the unit of the A2 window.
+
+    A call from extract_tool_uses carries `turn`, the ordinal of its assistant
+    message: one Code Mode script spans many transcript events but is one
+    message. A hand-built tuple carries only its event index; a call and its
+    result are two events, so half the index stands in for the message.
+    """
+    return [
+        turn if (turn := getattr(use, "turn", None)) is not None else use[0] // 2
+        for use in tool_uses
+    ]
 
 
 _PendingUse = tuple[int, str, dict, "str | None"]
@@ -774,6 +791,7 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     out = []
     tool_uses_pending: dict[str, _PendingUse] = {}
     issuer: str | None = None  # id of the last message holding a REPL call
+    turns: dict[str, int] = {}  # assistant message id -> ordinal
     for i, ev in enumerate(events):
         msg = _message(ev)
         content = msg.get("content") or []
@@ -781,10 +799,15 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
             continue
         for block in content:
             block_msg, issuer = _attribute_to_issuer(msg, block, issuer)
+            mid = block_msg.get("id")
+            if msg.get("role") == "assistant" and isinstance(mid, str):
+                turns.setdefault(mid, len(turns))
             paired = _pair_block(i, block_msg, block, tool_uses_pending)
             if paired is not None:
                 paired.virtual = ev.get("isVirtual") is True
                 out.append(paired)
+    for use in out:
+        use.turn = turns.get(use.message_id) if use.message_id else None
     return out
 
 
@@ -1244,33 +1267,50 @@ def signal_tool_errors(tool_uses) -> list[dict]:
     return out
 
 
+def _retry_key(name: str, inp: dict) -> str:
+    """The call as A2 compares it: tool name and arguments, without `description`.
+
+    `description` is the agent's label for a Bash call, not an argument; two
+    runs of one command with different labels are the same call.
+    """
+    args = {k: v for k, v in inp.items() if k != "description"}
+    return name + " " + json.dumps(args, sort_keys=True, default=str)
+
+
 def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list[dict]:
+    """A2: one call, identical in tool and arguments, in 3+ messages within `window`.
+
+    The window counts assistant messages (`message_positions`). A call that
+    differs in any argument is a different call: three reads of three files are
+    work, three reads of one file within five messages are a loop. Whether a
+    call failed does not matter, so a polling loop counts too.
+    Counted once per assistant message: calls issued together in one message
+    (a parallel batch, or one Code Mode script) are not retries of each other.
+    """
     out = []
-    # Grouped by command shape: "Bash three times" says nothing, "gh pr view
-    # three times in five turns" is the finding.
-    # Counted once per assistant message: a retry needs the previous result, so
-    # it is always a later message, while calls issued together in one message
-    # (a parallel batch) are not retries of each other.
-    by_tool: dict[str, list[int]] = defaultdict(list)
+    by_call: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    shape: dict[str, str] = {}
     seen: set[tuple[str, tuple]] = set()
-    for use in tool_uses:
+    for use, pos in zip(tool_uses, message_positions(tool_uses), strict=True):
+        call = _retry_key(use[1], use[2])
         key = message_key(use)
-        for sh in shape_of(use[1], use[2]):
-            if (sh, key) not in seen:
-                seen.add((sh, key))
-                by_tool[sh].append(use[0])
-    for name, turns in by_tool.items():
-        if len(turns) < 3:
+        if (call, key) in seen:
             continue
-        # Detect 3+ within window
-        for j in range(len(turns) - 2):
-            if turns[j + 2] - turns[j] <= window * 2:
+        seen.add((call, key))
+        by_call[call].append((pos, use[0]))
+        shape.setdefault(call, next(iter(shape_of(use[1], use[2])), use[1]))
+    for call, calls in by_call.items():
+        if len(calls) < 3:
+            continue
+        for j in range(len(calls) - 2):
+            if calls[j + 2][0] - calls[j][0] <= window:
                 out.append(
                     {
                         "signal": "A2",
                         "name": "tool_retry_cluster",
-                        "tool": name,
-                        "turns": turns[j : j + 3],
+                        "tool": shape[call],
+                        "call": mask(squeeze(call, 160)),
+                        "turns": [ev for _, ev in calls[j : j + 3]],
                     }
                 )
                 break
