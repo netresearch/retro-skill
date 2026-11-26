@@ -453,11 +453,13 @@ def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
       - Claude Code's expansion, `<command-message>…</command-message>` then
         `<command-name>/NAME</command-name>`; a plugin command carries its
         namespace (`/retro:retro`);
-      - the typed command as plain text, `/NAME` followed by whitespace or the
-        end, which is what codex-transcript.py renders a Codex invocation as.
+      - the typed command as plain text, `/NAME` (or `$NAME`, which is how
+        OpenCode and OpenChamber invoke a skill) followed by whitespace or the
+        end, which is what codex-transcript.py and opencode-transcript.py
+        render an invocation as.
     NAME must match COMMAND_NAME; the caller checks that.
     """
-    ns = r"/(?:[\w.-]+:)?" + re.escape(name)
+    ns = r"[/$](?:[\w.-]+:)?" + re.escape(name)
     expansion = re.compile(
         r"\A\s*(?:<command-message>[^<]*</command-message>\s*)?"
         r"<command-name>" + ns + r"</command-name>"

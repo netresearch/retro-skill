@@ -442,6 +442,57 @@ class OpencodeV2TranscriptTest(unittest.TestCase):
             adapter.find_session(adapter._connect(self.db), "fix the parser"), "ses_v2"
         )
 
+    def test_a_chat_quote_reply_is_rendered_as_user_text(self) -> None:
+        """OpenChamber keeps the human's reply to a selected fragment in a `synthetic`
+        row whose `metadata.openchamberContext.kind` is `chat-quote`. Its text is
+        typed by the user: dropping it with the other synthetic rows lost 59 of 98
+        owner messages in one measured session, so the detector never saw those
+        corrections. A synthetic row without that kind stays dropped."""
+        _v2_database(
+            self.db,
+            rows=[
+                ("q1", "user", 1, {"text": "new posts are broken", "time": {"created": 1}}),
+                (
+                    "q2",
+                    "synthetic",
+                    2,
+                    {
+                        "metadata": {"openchamberContext": {"kind": "chat-quote"}},
+                        "text": (
+                            "The user selected this fragment of an earlier message:\n"
+                            "> quote\n\nThe user wrote this to you about it:\nonly at build"
+                        ),
+                        "time": {"created": 2},
+                    },
+                ),
+                (
+                    "q3",
+                    "synthetic",
+                    3,
+                    {"text": "injected by the harness", "time": {"created": 3}},
+                ),
+                # Malformed metadata must not break the render either.
+                ("q4", "synthetic", 4, {"metadata": "not a dict", "text": "x"}),
+            ],
+            session_id="ses_quote",
+        )
+
+        lines = self._render("ses_quote")
+        self.assertEqual([json.loads(line)["type"] for line in lines], ["user", "user"])
+        self.assertTrue(_blocks(lines)[1]["text"].endswith("only at build"))
+
+        # The consumer contract: the detector counts the reply as a user message.
+        out = self.dir / "quote.jsonl"
+        out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        run = subprocess.run(
+            [sys.executable, str(Path(detector.__file__)), "--transcript-file", str(out)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(run.returncode, 0, run.stderr)
+        self.assertEqual(json.loads(run.stdout)["user_messages"], 2)
+
     def test_v2_rows_render_in_seq_order_with_role_from_the_type_column(self) -> None:
         texts = [b["text"] for b in _blocks(self._render()) if b["type"] == "text"]
         # `reasoning`, `synthetic` and `agent-switched` are not rendered.

@@ -58,7 +58,13 @@ its input as a partial JSON STRING, which the detector would call `.get` on.
 A `running` or `streaming` call gets no result, and neither does a
 `tool.interrupted` error, which is how 2.x copies a 1.x call that was still
 running at the upgrade. The other row types (`synthetic`, `shell`,
-`compaction`, `system`, …) are not rendered.
+`compaction`, `system`, …) are not rendered — with one exception. A
+`synthetic` row whose `metadata.openchamberContext.kind` is `chat-quote` is
+the human's reply to a selected fragment of an earlier message (OpenChamber's
+quote reply); opencode did not inject that text, the user typed it, so it is
+rendered as user text. Measured on 2026-11-26: 59 of 98 owner messages of one
+session were stored this way, and dropping them hid the owner's corrections
+from the detector.
 
 TOOL NAMES. opencode names its tools `bash` (1.x) or `shell` (2.x), `read`,
 `edit`, … and its file tools take `filePath` (1.x) or `path` (2.x); the
@@ -543,6 +549,19 @@ def _cached_timeline(
     return timelines[session_id]
 
 
+def _is_chat_quote(data: dict) -> bool:
+    """Is this `synthetic` row the human's reply to a selected fragment?
+
+    OpenChamber stores a reply written to a selected fragment of an earlier
+    message as a `synthetic` row with `metadata.openchamberContext.kind ==
+    "chat-quote"`. opencode did not inject that text; the user typed it.
+    """
+    # A malformed row must not break the render: anything but dicts reads as "no".
+    metadata = data.get("metadata")
+    context = metadata.get("openchamberContext") if isinstance(metadata, dict) else None
+    return isinstance(context, dict) and context.get("kind") == "chat-quote"
+
+
 def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
     timelines: dict = {}
     lines: list[str] = []
@@ -552,6 +571,8 @@ def _render_v2(conn: sqlite3.Connection, session_id: str) -> list[str]:
     ).fetchall():
         data = json.loads(data)
         if role == "user":
+            lines.extend(_events("user", _text(data.get("text")), [], timestamp))
+        elif role == "synthetic" and _is_chat_quote(data):
             lines.extend(_events("user", _text(data.get("text")), [], timestamp))
         elif role == "assistant":
             directory, _ = _directory_at(conn, session_id, seq, timelines)
