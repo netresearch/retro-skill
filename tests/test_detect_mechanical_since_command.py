@@ -164,6 +164,25 @@ class SinceCommand(unittest.TestCase):
         self.assertEqual(report["since_event"], 2)
         self.assertEqual(report["findings_total"], 1)
 
+    def test_the_dollar_form_counts_as_an_invocation(self):
+        # OpenCode and OpenChamber invoke a skill as `$retro`: the same run.
+        for text in ("$retro", "$retro done"):
+            with self.subTest(text=text):
+                events = (
+                    _call("w1", "make build", "Error: build failed", True)
+                    + [_user(text)]
+                    + _call("r1", "jq .x out.json", "jq: error: Cannot index", True)
+                )
+                report = json.loads(_run(events, "--since-command", "retro").stdout)
+                self.assertEqual(report["since_event"], 2)
+                self.assertEqual(report["findings_total"], 1)
+
+    def test_a_dollar_mention_is_not_an_invocation(self):
+        for text in ("please run $retro later", "$retrospective now", "$retro-x"):
+            with self.subTest(text=text):
+                events = [_user(text)] + _call("w1", "make", "ok", False)
+                self.assertEqual(_run(events, "--since-command", "retro").returncode, 2)
+
     def test_a_typed_mention_or_a_longer_command_is_not_an_invocation(self):
         for text in ("please run /retro later", "/retrospective now", "/retro-x"):
             with self.subTest(text=text):
