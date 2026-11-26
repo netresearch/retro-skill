@@ -240,7 +240,13 @@ class MaterializePrTest(unittest.TestCase):
         result = self._run("finish", str(worktree), "feat: a", "body.md", "a.txt")
         self.assertEqual(result.returncode, 0, result.stderr)
 
-    def _finish_with_hooks(self, branch: str, hook: str, origin_url: str = ""):
+    def _finish_with_hooks(
+        self,
+        branch: str,
+        hook: str,
+        origin_url: str = "",
+        project_name: str = "project",
+    ):
         """Run `finish` in a worktree that has a .pre-commit-config.yaml, with
         `hook` as the body of a stub `pre-commit` on PATH."""
         stub = self.bin / "pre-commit"
@@ -250,9 +256,10 @@ class MaterializePrTest(unittest.TestCase):
         )
         stub.chmod(0o755)
         self.env["PC_LOG"] = str(self.tmp / "pc.log")
+        (self.tmp / "pc.log").unlink(missing_ok=True)
         # The test remote is a local path, not netresearch/*: opt in.
         self.env.setdefault("MATERIALIZE_PR_HOOKS", "1")
-        project = self._bare_project(origin_head=True)
+        project = self._bare_project(project_name, origin_head=True)
         started = self._run("start", str(project), branch)
         self.assertEqual(started.returncode, 0, started.stderr)
         worktree = Path(started.stdout.strip())
@@ -286,14 +293,24 @@ class MaterializePrTest(unittest.TestCase):
         calls = (
             pc_log.read_text(encoding="utf-8").splitlines() if pc_log.exists() else []
         )
+        self.last_stderr = result.stderr
         return worktree, body, calls
 
     def test_hooks_of_a_netresearch_origin_run_without_the_opt_in(self):
         self.env["MATERIALIZE_PR_HOOKS"] = ""
-        _, _, calls = self._finish_with_hooks(
-            "feat/hn", "exit 0\n", "https://github.com/netresearch/demo.git"
+        urls = (
+            "https://github.com/netresearch/demo.git",
+            "https://github.com/netresearch/demo/",
+            "git@github.com:netresearch/demo.git",
+            "ssh://git@github.com/netresearch/demo.git",
+            "git@github-work:netresearch/demo.git",
         )
-        self.assertEqual(calls, ["run --files a.txt"])
+        for k, url in enumerate(urls):
+            with self.subTest(url=url):
+                _, _, calls = self._finish_with_hooks(
+                    f"feat/hn{k}", "exit 0\n", url, f"project{k}"
+                )
+                self.assertEqual(calls, ["run --files a.txt"])
 
     def test_hooks_of_a_foreign_origin_do_not_run_without_the_opt_in(self):
         """pre-commit runs the code the target's config names."""
@@ -301,6 +318,8 @@ class MaterializePrTest(unittest.TestCase):
         _, body, calls = self._finish_with_hooks("feat/h0", "exit 1\n")
         self.assertEqual(calls, [])
         self.assertEqual(body, BODY)
+        # The skip is visible, never silent.
+        self.assertIn("pre-commit hooks not run", self.last_stderr)
 
     def test_finish_runs_the_hooks_on_the_named_files(self):
         _, body, calls = self._finish_with_hooks("feat/h1", "exit 0\n")

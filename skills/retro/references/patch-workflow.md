@@ -206,7 +206,8 @@ diff and check:
   files, keeps what the fixer hooks change and appends a hook that still fails
   to the PR body. It does so by itself only for a `netresearch/*` origin,
   because the hooks run code the target's config names; for another target
-  set `MATERIALIZE_PR_HOOKS=1` once you trust that repository. On the
+  set `MATERIALIZE_PR_HOOKS=1` once you trust that repository; the script
+  says when it skipped the hooks. On the
   hand-written path, run `pre-commit run --files <files>` yourself.
 - **An eval you add or tighten carries `samples`.** A pattern-bearing assertion
   with no `samples.passing` / `samples.failing` is never executed by anything —

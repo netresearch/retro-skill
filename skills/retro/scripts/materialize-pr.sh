@@ -92,10 +92,15 @@ finish)
     # pre-commit fetches and runs the code the config names, so it runs by
     # itself only for a target of our own organisation; for any other
     # target MATERIALIZE_PR_HOOKS=1 is the user's explicit opt-in.
-    repo_slug=$(git -C "$wt" remote get-url origin | sed -E 's#(git@github.com:|https://github.com/)##; s#\.git$##')
+    # owner/repo from the last two path segments, so scp-style, ssh:// and
+    # https URLs and SSH host aliases all give the same slug.
+    repo_slug=$(git -C "$wt" remote get-url origin | sed -E 's#/+$##; s#\.git$##; s#^.*[:/]([^/:]+/[^/:]+)$#\1#')
     run_hooks=${MATERIALIZE_PR_HOOKS:-}
     if [[ -z "$run_hooks" ]]; then
         if [[ "$repo_slug" == netresearch/* ]]; then run_hooks=1; else run_hooks=0; fi
+    fi
+    if [[ -f "$wt/.pre-commit-config.yaml" && "$run_hooks" != 1 ]]; then
+        printf 'materialize-pr: pre-commit hooks not run for %s; set MATERIALIZE_PR_HOOKS=1 to run them\n' "$repo_slug" >&2
     fi
     if [[ -f "$wt/.pre-commit-config.yaml" && "$run_hooks" == 1 ]]; then
         if command -v pre-commit >/dev/null 2>&1; then
