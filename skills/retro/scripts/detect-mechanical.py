@@ -1277,6 +1277,18 @@ def _retry_key(name: str, inp: dict) -> str:
     return name + " " + json.dumps(args, sort_keys=True, default=str)
 
 
+def _retry_display(name: str, inp: dict) -> str:
+    """The call as a finding shows it, built from the raw values.
+
+    Masking runs on this text (squeeze), so it must hold the values as typed:
+    JSON escaping can split a credential so that the mask no longer matches.
+    """
+    if name == "Bash":
+        return str(inp.get("command") or "")
+    args = " ".join(f"{k}={v}" for k, v in sorted(inp.items()) if k != "description")
+    return f"{name} {args}".strip()
+
+
 def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list[dict]:
     """A2: one call, identical in tool and arguments, in 3+ messages within `window`.
 
@@ -1290,6 +1302,7 @@ def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list
     out = []
     by_call: dict[str, list[tuple[int, int]]] = defaultdict(list)
     shape: dict[str, str] = {}
+    shown: dict[str, str] = {}
     seen: set[tuple[str, tuple]] = set()
     for use, pos in zip(tool_uses, message_positions(tool_uses), strict=True):
         call = _retry_key(use[1], use[2])
@@ -1299,6 +1312,7 @@ def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list
         seen.add((call, key))
         by_call[call].append((pos, use[0]))
         shape.setdefault(call, next(iter(shape_of(use[1], use[2])), use[1]))
+        shown.setdefault(call, _retry_display(use[1], use[2]))
     for call, calls in by_call.items():
         if len(calls) < 3:
             continue
@@ -1309,7 +1323,7 @@ def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list
                         "signal": "A2",
                         "name": "tool_retry_cluster",
                         "tool": shape[call],
-                        "call": mask(squeeze(call, 160)),
+                        "call": squeeze(shown[call], 160),
                         "turns": [ev for _, ev in calls[j : j + 3]],
                     }
                 )
