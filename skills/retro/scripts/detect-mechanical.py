@@ -1306,10 +1306,23 @@ def _retry_key(name: str, inp: dict) -> str | None:
     return name + " " + json.dumps(args, sort_keys=True, default=str)
 
 
+def _entry(key: object, value: object) -> str:
+    """One argument as `key=value`, or `key: value` where only that form masks.
+
+    The mask reads a header (`Authorization: Bearer …`) by its colon and an
+    assignment (`password=…`) by its equals sign.
+    """
+    shown = _raw_value(value)
+    for text in (f"{key}={shown}", f"{key}: {shown}"):
+        if mask(text) != text:
+            return text
+    return f"{key}={shown}"
+
+
 def _raw_value(value: object) -> str:
     """A value as typed: the strings of a list or dict joined, never their repr."""
     if isinstance(value, dict):
-        return " ".join(f"{k}={_raw_value(v)}" for k, v in value.items())
+        return " ".join(_entry(k, v) for k, v in value.items())
     if isinstance(value, list | tuple):
         return " ".join(_raw_value(v) for v in value)
     return str(value)
@@ -1324,9 +1337,7 @@ def _retry_display(name: str, inp: dict) -> str:
     """
     if name == "Bash":
         return str(inp.get("command") or "")
-    args = " ".join(
-        f"{k}={_raw_value(v)}" for k, v in sorted(inp.items()) if k != "description"
-    )
+    args = " ".join(_entry(k, v) for k, v in sorted(inp.items()) if k != "description")
     return f"{name} {args}".strip()
 
 

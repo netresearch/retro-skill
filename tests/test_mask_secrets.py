@@ -519,6 +519,18 @@ class DetectMechanicalFieldsTest(unittest.TestCase):
         self.assertEqual(len(findings), 1, findings)
         self.assertNotIn("s3cr3tvalue", json.dumps(findings))
 
+    def test_retry_call_masks_an_authorization_argument(self):
+        # The header mask needs a colon; `k=v` hid the header from it.
+        bearer = {"Authorization": "Bearer abcdefghijklmnopqrstuvwxyz0123"}
+        for inp in (bearer, {"headers": bearer}, {"auth": {"password": "pw-1234567"}}):
+            with self.subTest(inp=inp):
+                uses = [(i * 2, "mcp__x__y", inp, "", False) for i in range(3)]
+                findings = dm.signal_retry_clusters(uses)
+                self.assertEqual(len(findings), 1, findings)
+                dumped = json.dumps(findings)
+                self.assertNotIn("abcdefghij", dumped)
+                self.assertNotIn("pw-1234567", dumped)
+
     def test_permission_prefix_is_masked(self):
         tool_uses = [
             (i * 20, "Bash", {"command": f"GH_TOKEN={GH} gh pr view"}, "", False)
