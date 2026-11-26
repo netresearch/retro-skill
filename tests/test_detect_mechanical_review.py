@@ -310,6 +310,17 @@ class TestParallelCallsAreOneMessage(unittest.TestCase):
             )
         self.assertEqual(detect.signal_retry_clusters(_uses(evs)), [])
 
+    def test_A2_orders_calls_by_message(self):
+        # The late call of a detached script, at event 2 of message 1, is read
+        # after a call of message 6: in message order the span is six.
+        cmd = {"command": "gh pr view 7"}
+        uses = [
+            (0, "Bash", cmd, "", False),
+            (12, "Bash", cmd, "", False),
+            (2, "Bash", cmd, "", False),
+        ]
+        self.assertEqual(detect.signal_retry_clusters(uses), [])
+
     def test_A2_ignores_the_bash_description(self):
         evs = []
         for n in range(3):

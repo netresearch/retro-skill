@@ -510,6 +510,15 @@ class DetectMechanicalFieldsTest(unittest.TestCase):
         self.assertNotIn("s3cr3tvalue", json.dumps(findings))
         self.assertIn("[REDACTED]", findings[0]["call"])
 
+    def test_retry_call_is_masked_in_a_nested_argument(self):
+        # repr() escapes a single quote in a string holding both kinds, and the
+        # mask then kept the secret: `API_TOKEN=[REDACTED]'s3cr3t…\'`.
+        inp = {"args": ["API_TOKEN='s3cr3tvalue1234567' \"q\""]}
+        tool_uses = [(i * 2, "mcp__x__run", inp, "", False) for i in range(3)]
+        findings = dm.signal_retry_clusters(tool_uses)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertNotIn("s3cr3tvalue", json.dumps(findings))
+
     def test_permission_prefix_is_masked(self):
         tool_uses = [
             (i * 20, "Bash", {"command": f"GH_TOKEN={GH} gh pr view"}, "", False)

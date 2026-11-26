@@ -646,8 +646,9 @@ def message_positions(tool_uses) -> list[int]:
 
     A call from extract_tool_uses carries `turn`, the ordinal of its assistant
     message: one Code Mode script spans many transcript events but is one
-    message. A hand-built tuple carries only its event index; a call and its
-    result are two events, so half the index stands in for the message.
+    message, and a Cursor event is one message. A hand-built tuple carries only
+    its event index; a call and its result are two events, so half the index
+    stands in for the message.
     """
     return [
         turn if (turn := getattr(use, "turn", None)) is not None else use[0] // 2
@@ -787,11 +788,18 @@ def _attribute_to_issuer(
     return msg, issuer
 
 
-def _note_turn(turns: dict[str, int], msg: dict, block_msg: dict) -> None:
-    """Give the assistant message a block counts under its ordinal, once."""
+def _note_turn(
+    turns: dict[tuple, int], ev: dict, msg: dict, block_msg: dict, i: int
+) -> None:
+    """Give the assistant message a block counts under its ordinal, once.
+
+    The message is keyed as `message_key` keys a call: by its id, or by its
+    event where it has none (Cursor writes one message per event).
+    """
+    if (msg.get("role") or ev.get("role")) != "assistant":
+        return
     mid = block_msg.get("id")
-    if msg.get("role") == "assistant" and isinstance(mid, str):
-        turns.setdefault(mid, len(turns))
+    turns.setdefault(("id", mid) if mid else ("event", i), len(turns))
 
 
 def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
@@ -805,7 +813,7 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     out = []
     tool_uses_pending: dict[str, _PendingUse] = {}
     issuer: str | None = None  # id of the last message holding a REPL call
-    turns: dict[str, int] = {}  # assistant message id -> ordinal
+    turns: dict[tuple, int] = {}  # message_key of an assistant message -> ordinal
     for i, ev in enumerate(events):
         msg = _message(ev)
         content = msg.get("content") or []
@@ -813,13 +821,13 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
             continue
         for block in content:
             block_msg, issuer = _attribute_to_issuer(msg, block, issuer)
-            _note_turn(turns, msg, block_msg)
+            _note_turn(turns, ev, msg, block_msg, i)
             paired = _pair_block(i, block_msg, block, tool_uses_pending)
             if paired is not None:
                 paired.virtual = ev.get("isVirtual") is True
                 out.append(paired)
     for use in out:
-        use.turn = turns.get(use.message_id) if use.message_id else None
+        use.turn = turns.get(message_key(use))
     return out
 
 
@@ -1298,15 +1306,27 @@ def _retry_key(name: str, inp: dict) -> str | None:
     return name + " " + json.dumps(args, sort_keys=True, default=str)
 
 
+def _raw_value(value: object) -> str:
+    """A value as typed: the strings of a list or dict joined, never their repr."""
+    if isinstance(value, dict):
+        return " ".join(f"{k}={_raw_value(v)}" for k, v in value.items())
+    if isinstance(value, list | tuple):
+        return " ".join(_raw_value(v) for v in value)
+    return str(value)
+
+
 def _retry_display(name: str, inp: dict) -> str:
     """The call as a finding shows it, built from the raw values.
 
     Masking runs on this text (squeeze), so it must hold the values as typed:
-    JSON escaping can split a credential so that the mask no longer matches.
+    JSON or repr escaping can split a credential so that the mask no longer
+    matches.
     """
     if name == "Bash":
         return str(inp.get("command") or "")
-    args = " ".join(f"{k}={v}" for k, v in sorted(inp.items()) if k != "description")
+    args = " ".join(
+        f"{k}={_raw_value(v)}" for k, v in sorted(inp.items()) if k != "description"
+    )
     return f"{name} {args}".strip()
 
 
@@ -1337,6 +1357,9 @@ def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list
     for call, calls in by_call.items():
         if len(calls) < 3:
             continue
+        # A late call of a detached script counts under its issuing message,
+        # which can come before a call made in between.
+        calls.sort()
         for j in range(len(calls) - 2):
             if calls[j + 2][0] - calls[j][0] <= window:
                 out.append(

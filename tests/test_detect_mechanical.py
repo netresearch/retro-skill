@@ -1409,6 +1409,21 @@ class TestHelpers(unittest.TestCase):
             for name, inp in calls
         ]
 
+    def test_A2_window_counts_cursor_messages(self):
+        # Cursor writes one assistant event per message and no result events,
+        # so an event is a message, not half of one.
+        def run(spacing):
+            calls = []
+            for n in range(3):
+                calls.append(("Shell", {"command": "gh pr view 7"}))
+                if n < 2:
+                    calls += [("Read", {"path": f"/f{n}{k}"}) for k in range(spacing)]
+            uses = detect.extract_tool_uses(self._cursor_events(*calls))
+            return detect.signal_retry_clusters(uses)
+
+        self.assertEqual(len(run(1)), 1)
+        self.assertEqual(run(3), [])
+
     def test_cursor_calls_are_renamed_to_the_signal_vocabulary(self):
         events = self._cursor_events(
             ("Shell", {"command": "git status", "description": "x"}),
