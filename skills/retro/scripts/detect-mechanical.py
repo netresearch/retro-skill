@@ -620,6 +620,9 @@ class ToolUse(tuple):
     nested: bool = False
     # Called from a Code Mode script, whether or not its result was filled in.
     virtual: bool = False
+    # Ordinal of the issuing assistant message among all assistant messages
+    # with an id; set by extract_tool_uses.
+    turn: int | None = None
 
     def __new__(cls, fields: tuple, message_id: str | None = None):
         obj = super().__new__(cls, fields)
@@ -636,6 +639,21 @@ def message_key(tool_use: tuple) -> tuple:
     """
     mid = getattr(tool_use, "message_id", None)
     return ("id", mid) if mid else ("event", tool_use[0])
+
+
+def message_positions(tool_uses) -> list[int]:
+    """Position of each call in assistant messages, the unit of the A2 window.
+
+    A call from extract_tool_uses carries `turn`, the ordinal of its assistant
+    message: one Code Mode script spans many transcript events but is one
+    message, and a Cursor event is one message. A hand-built tuple carries only
+    its event index; a call and its result are two events, so half the index
+    stands in for the message.
+    """
+    return [
+        turn if (turn := getattr(use, "turn", None)) is not None else use[0] // 2
+        for use in tool_uses
+    ]
 
 
 _PendingUse = tuple[int, str, dict, "str | None"]
@@ -742,6 +760,9 @@ CODE_MODE_CALL_PREFIX = "repl_"
 #: The tool that runs a Code Mode script. A message holding only a `Poll` can sit
 #: between the calls of one script, so only a REPL call starts a new script.
 CODE_MODE_TOOL = "REPL"
+#: Claude Code records a failed Code Mode script as a virtual REPL call with an
+#: id of this prefix and no input. It is the issuing script's error, not a call.
+CODE_MODE_ERROR_PREFIX = "repl-error-"
 
 
 def _attribute_to_issuer(
@@ -751,16 +772,34 @@ def _attribute_to_issuer(
 
     A call of a Code Mode script counts under the message that issued the script.
     A REPL call makes its own message the issuer; any other call leaves it.
+    The error record of a failed script counts under the issuer too.
     """
     if not (isinstance(block, dict) and block.get("type") == "tool_use"):
         return msg, issuer
-    if not str(block.get("id") or "").startswith(CODE_MODE_CALL_PREFIX):
+    use_id = str(block.get("id") or "")
+    if use_id.startswith(CODE_MODE_ERROR_PREFIX):
+        return ({**msg, "id": issuer} if issuer else msg), issuer
+    if not use_id.startswith(CODE_MODE_CALL_PREFIX):
         if block.get("name") == CODE_MODE_TOOL:
             return msg, msg.get("id") or issuer
         return msg, issuer
     if issuer:
         return {**msg, "id": issuer}, issuer
     return msg, issuer
+
+
+def _note_turn(
+    turns: dict[tuple, int], ev: dict, msg: dict, block_msg: dict, i: int
+) -> None:
+    """Give the assistant message a block counts under its ordinal, once.
+
+    The message is keyed as `message_key` keys a call: by its id, or by its
+    event where it has none (Cursor writes one message per event).
+    """
+    if (msg.get("role") or ev.get("role") or ev.get("type")) != "assistant":
+        return
+    mid = block_msg.get("id")
+    turns.setdefault(("id", mid) if mid else ("event", i), len(turns))
 
 
 def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
@@ -774,17 +813,22 @@ def extract_tool_uses(events: Iterable[dict]) -> list[ToolUse]:
     out = []
     tool_uses_pending: dict[str, _PendingUse] = {}
     issuer: str | None = None  # id of the last message holding a REPL call
+    turns: dict[tuple, int] = {}  # message_key of an assistant message -> ordinal
     for i, ev in enumerate(events):
         msg = _message(ev)
-        content = msg.get("content") or []
-        if not isinstance(content, list):
+        content = msg.get("content")
+        if not isinstance(content, list) or not content:
+            _note_turn(turns, ev, msg, msg, i)  # a text-only message counts too
             continue
         for block in content:
             block_msg, issuer = _attribute_to_issuer(msg, block, issuer)
+            _note_turn(turns, ev, msg, block_msg, i)
             paired = _pair_block(i, block_msg, block, tool_uses_pending)
             if paired is not None:
                 paired.virtual = ev.get("isVirtual") is True
                 out.append(paired)
+    for use in out:
+        use.turn = turns.get(message_key(use))
     return out
 
 
@@ -1244,33 +1288,106 @@ def signal_tool_errors(tool_uses) -> list[dict]:
     return out
 
 
+#: Tools whose `description` is the agent's label for the call, not an argument.
+_LABELLED_TOOLS = {"Agent", "Bash", "Monitor", CODE_MODE_TOOL}
+
+
+def _retry_key(name: str, inp: dict) -> str | None:
+    """The call as A2 compares it: tool name and arguments.
+
+    The `description` of a Bash, REPL, Monitor or Agent call is a label, so
+    two runs of one command with different labels are the same call. A REPL
+    record without input is the error of a failed script
+    (CODE_MODE_ERROR_PREFIX): no call.
+    """
+    if name == CODE_MODE_TOOL and not inp:
+        return None
+    labelled = name in _LABELLED_TOOLS
+    args = {k: v for k, v in inp.items() if not (labelled and k == "description")}
+    return name + " " + json.dumps(args, sort_keys=True, default=str)
+
+
+def _entry(key: object, value: object) -> str:
+    """One argument as `key=value`, its whole value hidden where a mask hits it.
+
+    The mask reads a header (`Authorization: Bearer …`) by its colon and an
+    assignment (`password=…`) by its equals sign, and it stops at a space or
+    a quote. So a value is tried in both forms, and any hit hides all of it:
+    the words of a value after a space, or a credential next to the one the
+    hit covered (`Cookie: api_token=…; session=…`), never reach the finding.
+    """
+    shown = _raw_value(value)
+    if any(mask(text) != text for text in (f"{key}={shown}", f"{key}: {shown}")):
+        return f"{key}={_masking.MARKER}"
+    return f"{key}={shown}"
+
+
+def _raw_value(value: object) -> str:
+    """A value as typed: the strings of a list or dict joined, never their repr.
+
+    A string that a mask hits is hidden whole, as in `_entry`.
+    """
+    if isinstance(value, dict):
+        return " ".join(_entry(k, v) for k, v in value.items())
+    if isinstance(value, list | tuple):
+        return " ".join(_raw_value(v) for v in value)
+    shown = str(value)
+    return _masking.MARKER if mask(shown) != shown else shown
+
+
+def _retry_display(name: str, inp: dict) -> str:
+    """The call as a finding shows it, built from the raw values.
+
+    Masking runs on this text (squeeze), so it must hold the values as typed:
+    JSON or repr escaping can split a credential so that the mask no longer
+    matches.
+    """
+    if name == "Bash":
+        command = str(inp.get("command") or "")
+        return _masking.MARKER if mask(command) != command else command
+    args = " ".join(_entry(k, v) for k, v in sorted(inp.items()) if k != "description")
+    return f"{name} {args}".strip()
+
+
 def signal_retry_clusters(tool_uses, window: int = DEFAULT_RETRY_WINDOW) -> list[dict]:
+    """A2: one call, identical in tool and arguments, in 3+ messages within `window`.
+
+    The window counts assistant messages (`message_positions`). A call that
+    differs in any argument is a different call: three reads of three files are
+    work, three reads of one file within five messages are a loop. Whether a
+    call failed does not matter, so a polling loop counts too.
+    Counted once per assistant message: calls issued together in one message
+    (a parallel batch, or one Code Mode script) are not retries of each other.
+    """
     out = []
-    # Grouped by command shape: "Bash three times" says nothing, "gh pr view
-    # three times in five turns" is the finding.
-    # Counted once per assistant message: a retry needs the previous result, so
-    # it is always a later message, while calls issued together in one message
-    # (a parallel batch) are not retries of each other.
-    by_tool: dict[str, list[int]] = defaultdict(list)
+    by_call: dict[str, list[tuple[int, int]]] = defaultdict(list)
+    shape: dict[str, str] = {}
+    shown: dict[str, str] = {}
     seen: set[tuple[str, tuple]] = set()
-    for use in tool_uses:
+    for use, pos in zip(tool_uses, message_positions(tool_uses), strict=True):
+        call = _retry_key(use[1], use[2])
         key = message_key(use)
-        for sh in shape_of(use[1], use[2]):
-            if (sh, key) not in seen:
-                seen.add((sh, key))
-                by_tool[sh].append(use[0])
-    for name, turns in by_tool.items():
-        if len(turns) < 3:
+        if call is None or (call, key) in seen:
             continue
-        # Detect 3+ within window
-        for j in range(len(turns) - 2):
-            if turns[j + 2] - turns[j] <= window * 2:
+        seen.add((call, key))
+        by_call[call].append((pos, use[0]))
+        shape.setdefault(call, next(iter(shape_of(use[1], use[2])), use[1]))
+        shown.setdefault(call, _retry_display(use[1], use[2]))
+    for call, calls in by_call.items():
+        if len(calls) < 3:
+            continue
+        # A late call of a detached script counts under its issuing message,
+        # which can come before a call made in between.
+        calls.sort()
+        for j in range(len(calls) - 2):
+            if calls[j + 2][0] - calls[j][0] <= window:
                 out.append(
                     {
                         "signal": "A2",
                         "name": "tool_retry_cluster",
-                        "tool": name,
-                        "turns": turns[j : j + 3],
+                        "tool": shape[call],
+                        "call": squeeze(shown[call], 160),
+                        "turns": [ev for _, ev in calls[j : j + 3]],
                     }
                 )
                 break

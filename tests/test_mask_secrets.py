@@ -500,6 +500,59 @@ class DetectMechanicalFieldsTest(unittest.TestCase):
         self.assertNotIn("iosfodnn", dumped)
         self.assertIn("[redacted]", dumped)
 
+    def test_retry_call_is_masked_from_the_raw_command(self):
+        # In JSON text the quote before the value is escaped, and the mask
+        # then kept the secret: `API_TOKEN=[REDACTED]"s3cr3t…`.
+        cmd = 'export API_TOKEN="s3cr3tvalue1234567"; gh pr view 7'
+        tool_uses = [(i * 2, "Bash", {"command": cmd}, "", False) for i in range(3)]
+        findings = dm.signal_retry_clusters(tool_uses)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertNotIn("s3cr3tvalue", json.dumps(findings))
+        self.assertIn("[REDACTED]", findings[0]["call"])
+
+    def test_retry_call_is_masked_in_a_nested_argument(self):
+        # repr() escapes a single quote in a string holding both kinds, and the
+        # mask then kept the secret: `API_TOKEN=[REDACTED]'s3cr3t…\'`.
+        inp = {"args": ["API_TOKEN='s3cr3tvalue1234567' \"q\""]}
+        tool_uses = [(i * 2, "mcp__x__run", inp, "", False) for i in range(3)]
+        findings = dm.signal_retry_clusters(tool_uses)
+        self.assertEqual(len(findings), 1, findings)
+        self.assertNotIn("s3cr3tvalue", json.dumps(findings))
+
+    def test_retry_call_masks_an_authorization_argument(self):
+        # The header mask needs a colon; `k=v` hid the header from it.
+        bearer = {"Authorization": "Bearer abcdefghijklmnopqrstuvwxyz0123"}
+        for inp in (bearer, {"headers": bearer}, {"auth": {"password": "pw-1234567"}}):
+            with self.subTest(inp=inp):
+                uses = [(i * 2, "mcp__x__y", inp, "", False) for i in range(3)]
+                findings = dm.signal_retry_clusters(uses)
+                self.assertEqual(len(findings), 1, findings)
+                dumped = json.dumps(findings)
+                self.assertNotIn("abcdefghij", dumped)
+                self.assertNotIn("pw-1234567", dumped)
+
+    def test_retry_call_hides_a_whole_masked_value(self):
+        # The mask stops at a space and covers one credential per hit; the
+        # finding hides the whole value instead.
+        cases = (
+            {"password": "horse battery staple"},
+            {"auth": {"password": "horse battery staple"}},
+            {"args": ["password=horse battery staple"]},
+            {"password": ["horse", "battery", "staple"]},
+            {"Cookie": "api_token=tok-abcdef123456; session=horse battery staple"},
+        )
+        bash = {
+            "command": "curl --data 'password=horse battery staple' https://x.invalid"
+        }
+        for name, inp in [("mcp__x__y", c) for c in cases] + [("Bash", bash)]:
+            with self.subTest(inp=inp):
+                uses = [(i * 2, name, inp, "", False) for i in range(3)]
+                findings = dm.signal_retry_clusters(uses)
+                self.assertEqual(len(findings), 1, findings)
+                dumped = json.dumps(findings)
+                self.assertNotIn("battery", dumped)
+                self.assertNotIn("tok-abcdef", dumped)
+
     def test_permission_prefix_is_masked(self):
         tool_uses = [
             (i * 20, "Bash", {"command": f"GH_TOKEN={GH} gh pr view"}, "", False)

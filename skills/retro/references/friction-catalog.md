@@ -43,7 +43,7 @@ Fast, deterministic, regex/count-based, with Bash syntax parsing for A20 polling
 | # | Signal | Detection | Hint at |
 |---|---|---|---|
 | A1 | Tool error rate | `exit_code != 0` or `is_error: true` in tool_use_result; not a Claude Code call that only waits (`timeout N tail -f /dev/null`, exit 124, also after the `cd '<dir>' &&` that Code Mode's `.cwd()` puts in front), nor a Code Mode script's error that only passes on an inner call's error, which is listed itself | Wrong tool, wrong args, missing tool |
-| A2 | Tool retry cluster | Same tool + similar args ≥3× within N turns | Tool misunderstanding, missing docs |
+| A2 | Tool retry cluster | Same tool with identical arguments (the `description` label of a Bash, REPL, Monitor or Agent call aside) in ≥3 assistant messages, the third at most 5 messages after the first, with or without an error; a polling loop counts. The error record of a failed Code Mode script is no call | Tool misunderstanding, missing docs |
 | A3 | Tool output verbosity | `len(tool_result) > X` without subsequent filter | Token waste, wrong tool (cat vs head, full Read vs Range) |
 | A4 | Tool call count vs task | Total tool calls / user messages ratio above threshold | Inefficiency for simple task |
 | A5 | Sequential vs parallel | Multiple independent calls serial in separate blocks | Performance waste |

@@ -880,8 +880,19 @@ class TestSchichtA(unittest.TestCase):
         self.assert_not_signal(evs, "A14")
 
     def test_A2_retry_cluster(self):
-        # Same command shape, differing arguments — the "similar args" half the
-        # catalog has always described.
+        # One call, identical arguments, three times: a loop.
+        evs = []
+        for i in range(3):
+            evs.extend(
+                tool_use_pair(
+                    f"u{i}", "Bash", {"command": "gh pr view 7 --json state"}, "{}"
+                )
+            )
+        self.assert_signal(evs, "A2")
+
+    def test_A2_same_shape_different_arguments_is_work(self):
+        # Three PRs looked at once each share the shape `gh pr view` but are
+        # three calls, not a retry (decided on netresearch/retro-skill#295).
         evs = []
         for i in range(3):
             evs.extend(
@@ -889,7 +900,7 @@ class TestSchichtA(unittest.TestCase):
                     f"u{i}", "Bash", {"command": f"gh pr view {i} --json state"}, "{}"
                 )
             )
-        self.assert_signal(evs, "A2")
+        self.assert_not_signal(evs, "A2")
 
     def test_A2_distinct_commands_do_not_cluster(self):
         # Three unrelated shell calls are a session, not a retry cluster.
@@ -1397,6 +1408,21 @@ class TestHelpers(unittest.TestCase):
             }
             for name, inp in calls
         ]
+
+    def test_A2_window_counts_cursor_messages(self):
+        # Cursor writes one assistant event per message and no result events,
+        # so an event is a message, not half of one.
+        def run(spacing):
+            calls = []
+            for n in range(3):
+                calls.append(("Shell", {"command": "gh pr view 7"}))
+                if n < 2:
+                    calls += [("Read", {"path": f"/f{n}{k}"}) for k in range(spacing)]
+            uses = detect.extract_tool_uses(self._cursor_events(*calls))
+            return detect.signal_retry_clusters(uses)
+
+        self.assertEqual(len(run(1)), 1)
+        self.assertEqual(run(3), [])
 
     def test_cursor_calls_are_renamed_to_the_signal_vocabulary(self):
         events = self._cursor_events(
