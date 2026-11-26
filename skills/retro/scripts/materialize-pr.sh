@@ -31,8 +31,10 @@
 #       (MATERIALIZE_PR_HOOKS=0 turns it off) - (pre-commit, or
 #       `uv tool run pre-commit` when it is not installed) and keeps what
 #       the fixer hooks changed; a hook that still fails does not stop the
-#       PR, its output is appended to the PR body under "## Pre-commit
-#       hooks". Then commits ONLY the named files (other staged changes stay
+#       PR, its output (credentials masked with mask-secrets.py) is
+#       appended to the PR body under "## Pre-commit hooks". A pre-commit
+#       git hook installed in the clone still runs at the commit (never
+#       --no-verify), and its failure stops the script before the push. Then commits ONLY the named files (other staged changes stay
 #       out of the commit), signed (-S --signoff, message = title), pushes
 #       -u, opens the PR for that branch (--head) with --body-file as a
 #       draft (--draft), prints the PR URL.
@@ -117,13 +119,18 @@ finish)
             printf 'materialize-pr: pre-commit hooks still fail; their output goes into the PR body\n' >&2
             # In the worktree's git dir: never committed, removed with the worktree.
             report="$(git -C "$wt" rev-parse --absolute-git-dir)/retro-pr-body.md"
+            # The body is published: mask credentials in the whole output first,
+            # then cut it, so a cut cannot leave the head of a token in clear.
+            if ! masked=$(printf '%s\n' "$hook_output" | uv run --no-project --python '>=3.11' python -c 'import importlib.util as u, sys; s = u.spec_from_file_location("mask_secrets", sys.argv[1]); m = u.module_from_spec(s); s.loader.exec_module(m); sys.stdout.write(m.mask(sys.stdin.read()))' "$(dirname "$0")/mask-secrets.py"); then
+                masked='(hook output withheld: masking it failed)'
+            fi
             {
                 cat "$body"
                 printf '\n## Pre-commit hooks\n\n'
                 # shellcheck disable=SC2016 # literal backticks: Markdown code span
                 printf '`pre-commit run --files` still fails after the fixer hooks ran; CI is likely to fail the same way. Last 150 lines of its output:\n\n'
                 printf '````text\n'
-                printf '%s\n' "$hook_output" | tail -n 150
+                printf '%s\n' "$masked" | tail -n 150
                 printf '````\n'
             } > "$report"
             body="$report"

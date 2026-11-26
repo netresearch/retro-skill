@@ -204,7 +204,9 @@ diff and check:
   put new prose in a reference file, not SKILL.md.
   `materialize-pr.sh finish` runs the target's pre-commit hooks on the named
   files, keeps what the fixer hooks change and appends a hook that still fails
-  to the PR body. It does so by itself only for a `github.com/netresearch/*` origin,
+  to the PR body, with credentials masked. A pre-commit hook installed as a
+  git hook in the clone still runs at the commit, and its failure stops the
+  script before the push. It does so by itself only for a `github.com/netresearch/*` origin,
   because the hooks run code the target's config names; for another target
   set `MATERIALIZE_PR_HOOKS=1` once you trust that repository; the script
   says when it skipped the hooks. On the
