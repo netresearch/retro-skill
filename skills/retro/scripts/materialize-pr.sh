@@ -26,7 +26,8 @@
 #       `samples` (check-eval-samples.py). Then stages ONLY the named files
 #       (never -A). When the worktree has a .pre-commit-config.yaml, runs the
 #       target repository's pre-commit hooks on those files - by itself
-#       only for a netresearch/* origin, elsewhere with MATERIALIZE_PR_HOOKS=1
+#       only for a github.com/netresearch/* origin, elsewhere (an SSH host
+#       alias included) with MATERIALIZE_PR_HOOKS=1
 #       (MATERIALIZE_PR_HOOKS=0 turns it off) - (pre-commit, or
 #       `uv tool run pre-commit` when it is not installed) and keeps what
 #       the fixer hooks changed; a hook that still fails does not stop the
@@ -92,12 +93,15 @@ finish)
     # pre-commit fetches and runs the code the config names, so it runs by
     # itself only for a target of our own organisation; for any other
     # target MATERIALIZE_PR_HOOKS=1 is the user's explicit opt-in.
-    # owner/repo from the last two path segments, so scp-style, ssh:// and
-    # https URLs and SSH host aliases all give the same slug.
-    repo_slug=$(git -C "$wt" remote get-url origin | sed -E 's#/+$##; s#\.git$##; s#^.*[:/]([^/:]+/[^/:]+)$#\1#')
+    origin_url=$(git -C "$wt" remote get-url origin)
+    # owner/repo from the last two path segments, for `gh --repo` and the notice.
+    repo_slug=$(printf '%s\n' "$origin_url" | sed -E 's#/+$##; s#\.git$##; s#^.*[:/]([^/:]+/[^/:]+)$#\1#')
+    # Trusted only with the host checked too: a path ending in netresearch/x
+    # on another host, or an SSH alias that may point anywhere, needs the opt-in.
+    trusted='^(https://github\.com/|ssh://git@github\.com/|git@github\.com:)netresearch/[A-Za-z0-9._-]+/?$'
     run_hooks=${MATERIALIZE_PR_HOOKS:-}
     if [[ -z "$run_hooks" ]]; then
-        if [[ "$repo_slug" == netresearch/* ]]; then run_hooks=1; else run_hooks=0; fi
+        if [[ "$origin_url" =~ $trusted ]]; then run_hooks=1; else run_hooks=0; fi
     fi
     if [[ -f "$wt/.pre-commit-config.yaml" && "$run_hooks" != 1 ]]; then
         printf 'materialize-pr: pre-commit hooks not run for %s; set MATERIALIZE_PR_HOOKS=1 to run them\n' "$repo_slug" >&2
