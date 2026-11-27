@@ -471,16 +471,7 @@ def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
     last = None
     for k, ev in enumerate(events):
         if ev.get("type") == "assistant":
-            blocks = _message(ev).get("content")
-            if isinstance(blocks, list) and any(
-                isinstance(b, dict)
-                and b.get("type") == "tool_use"
-                and b.get("name") == "Skill"
-                and isinstance(b.get("input"), dict)
-                and isinstance(b["input"].get("skill"), str)
-                and skill.fullmatch(b["input"]["skill"])
-                for b in blocks
-            ):
+            if _calls_skill(ev, skill):
                 last = k
             continue
         if ev.get("type") != "user":
@@ -497,6 +488,25 @@ def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
         ):
             last = k
     return last
+
+
+def _calls_skill(ev: dict, skill: re.Pattern[str]) -> bool:
+    """True when the assistant event holds a Skill tool_use whose `skill` fully matches."""
+    blocks = _message(ev).get("content")
+    if not isinstance(blocks, list):
+        return False
+    for b in blocks:
+        if (
+            not isinstance(b, dict)
+            or b.get("type") != "tool_use"
+            or b.get("name") != "Skill"
+        ):
+            continue
+        inp = b.get("input")
+        name = inp.get("skill") if isinstance(inp, dict) else None
+        if isinstance(name, str) and skill.fullmatch(name):
+            return True
+    return False
 
 
 def _message(ev: dict) -> dict:
