@@ -448,13 +448,17 @@ def blank_before(
 def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
     """Index of the last event that invoked the slash command /NAME, or None.
 
-    Two shapes count, and only at the very start of a user message, so a
+    Three shapes count. Two only at the very start of a user message, so a
     message that quotes or mentions the command does not:
       - Claude Code's expansion, `<command-message>…</command-message>` then
         `<command-name>/NAME</command-name>`; a plugin command carries its
         namespace (`/retro:retro`);
       - the typed command as plain text, `/NAME` followed by whitespace or the
         end, which is what codex-transcript.py renders a Codex invocation as.
+    The third is the agent's own call of the skill, a `Skill` tool_use whose
+    `skill` is NAME or a namespaced NAME (`retro:retro`). A trigger phrase
+    such as "alles erledigt?" starts /retro done this way, with no command tags
+    anywhere in the transcript.
     NAME must match COMMAND_NAME; the caller checks that.
     """
     ns = r"/(?:[\w.-]+:)?" + re.escape(name)
@@ -463,8 +467,13 @@ def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
         r"<command-name>" + ns + r"</command-name>"
     )
     typed = re.compile(r"\A\s*" + ns + r"(?:\s|\Z)")
+    skill = re.compile(r"(?:[\w.-]+:)?" + re.escape(name))
     last = None
     for k, ev in enumerate(events):
+        if ev.get("type") == "assistant":
+            if _calls_skill(ev, skill):
+                last = k
+            continue
         if ev.get("type") != "user":
             continue
         content = _message(ev).get("content")
@@ -479,6 +488,25 @@ def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
         ):
             last = k
     return last
+
+
+def _calls_skill(ev: dict, skill: re.Pattern[str]) -> bool:
+    """True when the assistant event holds a Skill tool_use whose `skill` fully matches."""
+    blocks = _message(ev).get("content")
+    if not isinstance(blocks, list):
+        return False
+    for b in blocks:
+        if (
+            not isinstance(b, dict)
+            or b.get("type") != "tool_use"
+            or b.get("name") != "Skill"
+        ):
+            continue
+        inp = b.get("input")
+        name = inp.get("skill") if isinstance(inp, dict) else None
+        if isinstance(name, str) and skill.fullmatch(name):
+            return True
+    return False
 
 
 def _message(ev: dict) -> dict:
