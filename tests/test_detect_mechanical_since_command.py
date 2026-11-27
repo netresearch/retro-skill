@@ -39,6 +39,26 @@ def _command(name: str) -> dict:
     }
 
 
+def _skill_call(tool_id: str, skill: str, args: str = "") -> dict:
+    """The agent's own Skill tool call, as Claude Code recorded it on
+    2026-11-27 when the user asked "ALLES erledigt?" and the agent ran
+    /retro done without any command tags in the transcript."""
+    return {
+        "type": "assistant",
+        "message": {
+            "role": "assistant",
+            "content": [
+                {
+                    "type": "tool_use",
+                    "id": tool_id,
+                    "name": "Skill",
+                    "input": {"skill": skill, "args": args},
+                }
+            ],
+        },
+    }
+
+
 def _user(text: str) -> dict:
     """A message the human typed, as a text block."""
     return {
@@ -169,6 +189,31 @@ class SinceCommand(unittest.TestCase):
             with self.subTest(text=text):
                 events = [_user(text)] + _call("w1", "make", "ok", False)
                 self.assertEqual(_run(events, "--since-command", "retro").returncode, 2)
+
+    def test_a_skill_tool_call_counts_as_an_invocation(self):
+        events = (
+            _call("w1", "make build", "Error: build failed", True)
+            + [_skill_call("s1", "retro:retro", "done")]
+            + _call("r1", "jq .x out.json", "jq: error: Cannot index", True)
+        )
+        out = _run(events, "--since-command", "retro")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        report = json.loads(out.stdout)
+        self.assertEqual(report["since_event"], 2)
+        self.assertEqual(report["findings_total"], 1)
+
+    def test_a_skill_call_of_another_skill_is_not_an_invocation(self):
+        for name in ("retrospective", "retro:retro-x", "other:retrox"):
+            with self.subTest(name=name):
+                events = [_skill_call("s1", name)] + _call("w1", "make", "ok", False)
+                self.assertEqual(_run(events, "--since-command", "retro").returncode, 2)
+
+    def test_a_skill_call_without_a_skill_name_is_skipped_not_a_crash(self):
+        odd = _skill_call("s0", "retro")
+        odd["message"]["content"][0]["input"] = {"skill": None}
+        out = _run([odd] + EVENTS, "--since-command", "retro")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(json.loads(out.stdout)["since_event"], 6)
 
     def test_a_null_text_block_is_skipped_not_a_crash(self):
         odd = {

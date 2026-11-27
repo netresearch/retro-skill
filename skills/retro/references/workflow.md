@@ -630,7 +630,9 @@ deviation line, like any other skipped phase.
 invocation and keeps the turn numbers. An invocation counts only at the start
 of a user message: Claude Code's expansion (plugin namespaces such as
 `/retro:retro` included) or the typed `/retro` a Codex transcript carries; a
-message that quotes or mentions the command does not move the start. Exit 2
+message that quotes or mentions the command does not move the start. The
+agent's own `Skill` call of `retro` or `retro:retro` counts too: a trigger
+phrase starts Done mode that way, without command tags. Exit 2
 means no list to read — no `/retro` ran, the name was refused, or the
 transcript is unsupported (that one prints `"findings": []` with
 `"findings_total": null`). Read an empty list as "none found" only after exit

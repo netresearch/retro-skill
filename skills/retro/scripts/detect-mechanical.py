@@ -448,13 +448,17 @@ def blank_before(
 def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
     """Index of the last event that invoked the slash command /NAME, or None.
 
-    Two shapes count, and only at the very start of a user message, so a
+    Three shapes count. Two only at the very start of a user message, so a
     message that quotes or mentions the command does not:
       - Claude Code's expansion, `<command-message>…</command-message>` then
         `<command-name>/NAME</command-name>`; a plugin command carries its
         namespace (`/retro:retro`);
       - the typed command as plain text, `/NAME` followed by whitespace or the
         end, which is what codex-transcript.py renders a Codex invocation as.
+    The third is the agent's own call of the skill, a `Skill` tool_use whose
+    `skill` is NAME or a namespaced NAME (`retro:retro`). A trigger phrase
+    such as "alles erledigt?" starts /retro done this way, with no command tags
+    anywhere in the transcript.
     NAME must match COMMAND_NAME; the caller checks that.
     """
     ns = r"/(?:[\w.-]+:)?" + re.escape(name)
@@ -463,8 +467,22 @@ def last_command_event(events: list[dict[str, Any]], name: str) -> int | None:
         r"<command-name>" + ns + r"</command-name>"
     )
     typed = re.compile(r"\A\s*" + ns + r"(?:\s|\Z)")
+    skill = re.compile(r"(?:[\w.-]+:)?" + re.escape(name))
     last = None
     for k, ev in enumerate(events):
+        if ev.get("type") == "assistant":
+            blocks = _message(ev).get("content")
+            if isinstance(blocks, list) and any(
+                isinstance(b, dict)
+                and b.get("type") == "tool_use"
+                and b.get("name") == "Skill"
+                and isinstance(b.get("input"), dict)
+                and isinstance(b["input"].get("skill"), str)
+                and skill.fullmatch(b["input"]["skill"])
+                for b in blocks
+            ):
+                last = k
+            continue
         if ev.get("type") != "user":
             continue
         content = _message(ev).get("content")
